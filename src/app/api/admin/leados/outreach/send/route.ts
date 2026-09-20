@@ -33,57 +33,97 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email message body is required.' }, { status: 400 });
     }
 
-    const resendKey = process.env.RESEND_API_KEY;
     const resendFrom = process.env.RESEND_FROM || 'Himalayan Koh <sales@himalayankoh.com>';
+    const senderEmail = 'sales@himalayankoh.com';
     
     let isSimulated = false;
     let providerSuccess = false;
     let providerMessageId: string | null = null;
     let providerError: string | null = null;
 
-    if (resendKey && resendKey.trim().startsWith('re_')) {
-      // Live delivery configured
-      try {
-        const resendRes = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${resendKey}`,
-          },
-          body: JSON.stringify({
-            from: resendFrom,
-            to: [recipientEmail.trim()],
-            subject: subject.trim(),
-            text: message.trim(),
-            html: `
-              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; line-height: 1.6; color: #1e293b;">
-                ${message.trim().replace(/\n/g, '<br/>')}
-                <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
-                <p style="font-size: 12px; color: #64748b;">
-                  <strong>Himalayan Koh</strong><br />
-                  12620 FM 1960 W Ste A-4, Houston, TX 77065<br />
-                  Direct B2B Inquiries: sales@himalayankoh.com | (832) 224-6466
-                </p>
-              </div>
-            `,
-          }),
-        });
+    // ================================================================
+    // Provider priority:
+    //   1. Cloudflare send_email binding (EMAIL_SENDER) — preferred on staging
+    //   2. Resend API (RESEND_API_KEY) — fallback
+    //   3. Simulation mode — when no provider is available
+    // ================================================================
 
-        if (resendRes.ok) {
-          const resendData = await resendRes.json();
-          providerSuccess = true;
-          providerMessageId = resendData.id || null;
-        } else {
-          providerError = `Provider HTTP ${resendRes.status}`;
-          isSimulated = true;
-        }
+    // --- 1. Cloudflare send_email binding ---
+    const cfSender = (globalThis as any).EMAIL_SENDER ?? (process.env as any).EMAIL_SENDER;
+    if (cfSender && typeof cfSender.send === 'function') {
+      try {
+        // Build HTML email with Himalayan Koh branding
+        const htmlBody = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; line-height: 1.6; color: #1e293b;">
+            ${message.trim().replace(/\n/g, '<br/>')}
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+            <p style="font-size: 12px; color: #64748b;">
+              <strong>Himalayan Koh</strong><br />
+              12620 FM 1960 W Ste A-4, Houston, TX 77065<br />
+              Direct B2B Inquiries: sales@himalayankoh.com | (832) 224-6466
+            </p>
+          </div>
+        `;
+
+        const emailMsg = new (globalThis as any).EmailMessage(
+          senderEmail,
+          recipientEmail.trim(),
+          subject.trim(),
+          htmlBody,
+        );
+        await cfSender.send(emailMsg);
+        providerSuccess = true;
+        providerMessageId = `cf-${Date.now()}`;
       } catch (err: any) {
-        providerError = err.message || 'Provider connection failed';
+        providerError = `Cloudflare send_email: ${err.message || err}`;
         isSimulated = true;
       }
     } else {
-      // Staging / preview simulation mode
-      isSimulated = true;
+      // --- 2. Resend API fallback ---
+      const resendKey = process.env.RESEND_API_KEY;
+      if (resendKey && resendKey.trim().startsWith('re_')) {
+        try {
+          const resendRes = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${resendKey}`,
+            },
+            body: JSON.stringify({
+              from: resendFrom,
+              to: [recipientEmail.trim()],
+              subject: subject.trim(),
+              text: message.trim(),
+              html: `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; line-height: 1.6; color: #1e293b;">
+                  ${message.trim().replace(/\n/g, '<br/>')}
+                  <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+                  <p style="font-size: 12px; color: #64748b;">
+                    <strong>Himalayan Koh</strong><br />
+                    12620 FM 1960 W Ste A-4, Houston, TX 77065<br />
+                    Direct B2B Inquiries: sales@himalayankoh.com | (832) 224-6466
+                  </p>
+                </div>
+              `,
+            }),
+          });
+
+          if (resendRes.ok) {
+            const resendData = await resendRes.json();
+            providerSuccess = true;
+            providerMessageId = resendData.id || null;
+          } else {
+            providerError = `Resend HTTP ${resendRes.status}`;
+            isSimulated = true;
+          }
+        } catch (err: any) {
+          providerError = err.message || 'Resend connection failed';
+          isSimulated = true;
+        }
+      } else {
+        // --- 3. Simulation mode ---
+        isSimulated = true;
+      }
     }
 
     // STRICT STATUS UPDATE RULE:

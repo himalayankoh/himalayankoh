@@ -80,5 +80,18 @@
     "NEXT_PUBLIC_DATA_SOURCE": "woocommerce",
     "NEXT_PUBLIC_WORDPRESS_BASE_URL": "https://himalayankoh.com/staging",
     "NEXT_PUBLIC_WOOCOMMERCE_BASE_URL": "https://himalayankoh.com/staging"
-  }
+  },
+
+  /**
+   * Cloudflare Email Sending binding.
+   * Allows the Worker to send outbound email via Cloudflare's email
+   * infrastructure. Requires himalayankoh.com to have Cloudflare Email
+   * Routing enabled. The sender address must use the domain.
+   */
+  "send_email": [
+    {
+      "name": "EMAIL_SENDER",
+      "allowed_destinations": ["@himalayankoh.com"]
+    }
+  ]
 }
