@@ -17,7 +17,7 @@
  */
 
 import { getAccessToken } from '@/services/wordpressAdminAuth';
-import type { Order, OrderItem, Profile } from '@/lib/supabase/database.types';
+import type { Order, OrderItem, Profile } from '@/lib/commerce/databaseTypes';
 
 async function authHeaders(): Promise<Record<string, string>> {
   const token = getAccessToken();

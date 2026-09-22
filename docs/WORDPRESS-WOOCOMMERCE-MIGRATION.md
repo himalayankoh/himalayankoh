@@ -469,7 +469,7 @@ With no override the app runs the `supabase` default. What to expect on each:
 | 6 | Images from WordPress media | ✅ Real staging images render. No `next.config.ts` change is actually needed: the storefront never uses `next/image` (40 plain `<img>` elements), so absolute staging URLs load directly. `images.remotePatterns` only matters if the app later migrates to `next/image`. |
 | 7 | Cart & checkout | ✅ **Cart** to `wc/store/v1`, **wishlist** to the `hk-storefront/v1` plugin, and **orders** to WooCommerce: the checkout reserves the Woo order before the PaymentIntent (its id travels in Stripe metadata), the webhook marks it paid, and Shippo tracking, the emails, customer history and the admin console all read and write that order. `stripe_checkout_sessions` is deleted. See `ORDERS-WOOCOMMERCE-MIGRATION.md` §7 for what is implemented and what is not (the historical import). |
 | 8 | Customer accounts / CRM | ⏸ Not started — **production customers untouched** |
-| 9 | Supabase removal | ⚠️ Started and measured. Runtime imports **11 modules** (from 33; 24 before this pass), server-side 9, and the two browser modules left are `/admin/categories` and `/admin/category-hubs`. The whole site-content block — **settings, category-hub overrides, first-party events, newsletter, contact submissions, blog admin writes, blog media, product/media uploads, the label worklist and the dashboard analytics** — now reads and writes WordPress/WooCommerce (`hk-storefront/v1`, `wp/v2/posts`, `wp/v2/media`, `wc/v3`); see §10. What is left is the legacy admin catalog (`features/catalog/repository.ts`, `lib/backend/adminCatalog.ts`, `lib/backend/products.ts` Supabase branches), `lib/seo/server.ts`, `lib/hermes/evidenceStore.ts`, `lib/shippo/server/rates.ts`'s packing lookup, and the read-only historical-orders adapter — each named in §10.3. Earlier steps: Runtime imports **24 modules** (from 33), server-side 19. **Blog reads** moved to WordPress (`/wp/v2/posts`); blog *admin writes* and Storage are the remaining half. **Orders** are off Supabase for the new-order lifecycle; only a read-only legacy adapter for pre-migration orders remains. Detail: The cart, wishlist, YouTube, admin auth, LeadOS/CRM, **customer accounts, saved addresses, password reset and traffic events** have left the app. The **storefront no longer ships the Supabase SDK or its config, on any route** — `npm run check:client-supabase` against a production build reports **5 of 73 routes**, down from 31, and every one of the 5 is `/admin/*`, which the owner asked to leave alone (`/products/[slug]` was the last storefront leak: the campaign path reached `lib/marketing` → `services/siteEvents`, which POSTed to Supabase with the anon key; it now posts to `/api/events`). `orders`, `order_items`, `products`, `profiles`, `blog_posts` and the rest are still read and written **server-side**. The `carts`/`cart_items`/`wishlists`/`addresses`/`notifications` tables are now unused but **kept** until the WordPress path has run in production — they hold the only copy of existing data. What is left is server-side and the admin console; orders is the bulk of it, designed in `ORDERS-WOOCOMMERCE-MIGRATION.md`. |
+| 9 | Supabase removal | ✅ **Runtime imports: 0.** `npm run audit:supabase` reports browser 0, server 0 and raw PostgREST runtime calls 0; `npm run check:client-supabase` against a production build reports 0 of 73 routes shipping the SDK or its config. The legacy admin catalog (`features/catalog/repository.ts`, `services/db.ts`) now writes WooCommerce and the plugin's record store through `/api/admin/*`, `lib/supabase/*` is deleted, and the historical orders are carried by a static archive. What remains is type-only (`lib/commerce/databaseTypes.ts`). Earlier in the migration: runtime imports **11 modules** (from 33; 24 before that), server-side 9, and the two browser modules left are `/admin/categories` and `/admin/category-hubs`. The whole site-content block — **settings, category-hub overrides, first-party events, newsletter, contact submissions, blog admin writes, blog media, product/media uploads, the label worklist and the dashboard analytics** — now reads and writes WordPress/WooCommerce (`hk-storefront/v1`, `wp/v2/posts`, `wp/v2/media`, `wc/v3`); see §10. What is left is the legacy admin catalog (`features/catalog/repository.ts`, `lib/backend/adminCatalog.ts`, `lib/backend/products.ts` Supabase branches), `lib/seo/server.ts`, `lib/hermes/evidenceStore.ts`, `lib/shippo/server/rates.ts`'s packing lookup, and the read-only historical-orders adapter — each named in §10.3. Earlier steps: Runtime imports **24 modules** (from 33), server-side 19. **Blog reads** moved to WordPress (`/wp/v2/posts`); blog *admin writes* and Storage are the remaining half. **Orders** are off Supabase for the new-order lifecycle; only a read-only legacy adapter for pre-migration orders remains. Detail: The cart, wishlist, YouTube, admin auth, LeadOS/CRM, **customer accounts, saved addresses, password reset and traffic events** have left the app. The **storefront no longer ships the Supabase SDK or its config, on any route** — `npm run check:client-supabase` against a production build reports **5 of 73 routes**, down from 31, and every one of the 5 is `/admin/*`, which the owner asked to leave alone (`/products/[slug]` was the last storefront leak: the campaign path reached `lib/marketing` → `services/siteEvents`, which POSTed to Supabase with the anon key; it now posts to `/api/events`). `orders`, `order_items`, `products`, `profiles`, `blog_posts` and the rest are still read and written **server-side**. The `carts`/`cart_items`/`wishlists`/`addresses`/`notifications` tables are now unused but **kept** until the WordPress path has run in production — they hold the only copy of existing data. What is left is server-side and the admin console; orders is the bulk of it, designed in `ORDERS-WOOCOMMERCE-MIGRATION.md`. |
 | 10 | Demo-data separation | ⏸ Not started |
 | 11 | Cloudflare hosting | ⏸ Not started |
 | 12 | Environment configuration | ⚠️ Documented in §6, needs manual file edit |
@@ -530,19 +530,43 @@ What the app calls, and the route that fronts it:
 
 ### 10.3 What is still on Supabase, individually
 
-Measured with `npm run audit:supabase` after this pass (11 runtime modules):
+**Nothing in the application.** `npm run audit:supabase` measures the source and
+reports `importing Supabase at runtime: 0` — browser 0, server 0 — plus
+`RAW SUPABASE CALLS (no SDK import): 0`, the second half of the acceptance rule,
+because the hand-rolled PostgREST client this repository used to carry imported
+nothing from the SDK and would have read as "no dependency" in an import-only scan.
 
-| Module(s) | Why it is still there | The WooCommerce/WordPress replacement |
-| --- | --- | --- |
-| `features/catalog/repository.ts` (and its callers `CatalogAdmin`, `AdminSection`, `AIImportPanel`, `ListingTaskAdmin`, `HermesIntel`), `services/db.ts` Supabase adapter | The legacy admin catalog CRUD. In the `vinext` build `import.meta.env.VITE_SUPABASE_*` is statically replaced, so this path is live on the Worker — it is not dead code | `lib/woo/productWrite.ts`, `lib/woo/taxonomyWrite.ts`, `lib/woo/coupons.ts`, `lib/woo/inventory.ts` — all of which exist and are already used by the newer admin routes. This is the largest single block left |
-| `lib/backend/products.ts`, `lib/backend/adminCatalog.ts` | Their `supabase` source branches, selected by `NEXT_PUBLIC_DATA_SOURCE`. On this deployment the flag is `woocommerce`, so the branch is unreachable — but it is still imported, so the SDK and `lib/supabase/*` stay in the graph | Delete the branch and the flag: WooCommerce becomes the only catalog source |
-| `views/admin/AdminCategories.tsx` | Its Supabase category editor, shown only while the flag is `supabase` | The WooCommerce editor *already exists in the same file* (`/api/admin/categories`, `/api/admin/categories/[id]`) |
-| `views/admin/AdminCategoryHubs.tsx` | **Fixed in this pass** — the last gate and notice are gone | — |
-| `lib/seo/server.ts` | Reads SEO metadata through a Supabase client created during server render | `wp/v2/posts` + Yoast's REST fields (already read by `lib/blog/wordpressBlog.ts`) and `wc/v3` product fields |
-| `lib/hermes/evidenceStore.ts` | `hermes_evidence` table, with an in-memory fallback | A plugin table (the storefront plugin already owns tables) or WooCommerce order notes for order-scoped evidence |
-| `lib/shippo/server/rates.ts` (+ `lib/shippo/packing/enrichLineItems.ts`) | Reads packing profiles from Supabase to compute rate packages | WooCommerce product weight/dimensions + a plugin packing-profile option — the profile is per product, which is what product meta is for |
-| `lib/orders/legacyOrders.ts`, `/api/admin/orders/legacy` | **Intentional**, read-only, for pre-migration orders | `scripts/import-historical-orders.mjs` (Phase P) is the design; it is not run yet, so the adapter stays and is clearly marked |
-| `lib/stripe/server/supabaseAdmin.ts`, `lib/supabase/*` | The plumbing the rows above still import | Deleted with the last importer |
+This pass closed the block §10.1 named as the largest and then deleted what it had
+been keeping alive:
+
+| Was on Supabase | Now |
+| --- | --- |
+| `features/catalog/repository.ts` — the legacy admin catalog CRUD behind every `/admin` product screen | The same exported functions, with WooCommerce underneath: `/api/admin/products`, `/api/admin/categories`, `/api/admin/coupons`, `/api/admin/catalog`. `CatalogAdmin`, `AdminSection`, `AIImportPanel`, `ListingTaskAdmin` and `HermesIntel` are unchanged |
+| `services/db.ts` — a PostgREST adapter built in the browser from `VITE_SUPABASE_*` | WordPress: the same `DbAdapter` interface over `/api/admin/records` and the plugin's `hk_admin_records` table. It holds the console's *own* working state (Scout candidates, scores, suppliers, agent jobs, offers, settings blobs); products, coupons and inventory are refused by the plugin's allowlist because WooCommerce owns them |
+| `lib/backend/products.ts`, `lib/backend/adminCatalog.ts` Supabase branches and `NEXT_PUBLIC_DATA_SOURCE` | Deleted in the previous pass; WooCommerce is the only catalog source. The deleted modules now read WooCommerce only |
+| `views/admin/AdminCategories.tsx` Supabase editor | Deleted (841 → 383 lines); the Woo editor already existed in the same file |
+| `lib/seo/server.ts` | Its Supabase read had no callers left — dead code carrying a live client. Deleted |
+| `lib/hermes/evidenceStore.ts` | Plugin table `hk_hermes_evidence`, reached through `lib/wordpress/storefrontClient.ts`; dedupe is the table's UNIQUE key |
+| `lib/shippo/server/rates.ts` packing lookup | WooCommerce product weight/dimensions plus `_hk_packing_profile` product meta, read by `lib/woo/packingProfile.ts` — which also resolves the store's weight unit from Woo settings instead of assuming pounds |
+| `lib/orders/legacyOrders.ts`, `/api/admin/orders/legacy` | A read-only adapter over the static archive the export writes (`supabase-backup/legacy-orders.archive.json`). No network, no client, no writes — see §10.5 |
+| `lib/stripe/server/supabaseAdmin.ts`, `lib/supabase/*` | Deleted: `client.ts`, `adminClient.ts`, `config.ts` and all four `api/` modules. `@supabase/supabase-js` stays in `package.json` because the *scripts* still use it (backup, RLS verification, the order export) — tooling, not runtime |
+
+### 10.5 The historical orders are carried, not queried
+
+The import (`npm run migrate:orders -- --apply`) still needs a WordPress
+administrator application password and the plugin on the target, so it has not run.
+Fourteen orders with twenty-three line items is not a reason to keep a database
+connection in the application, so they were exported once:
+
+```
+npm run migrate:orders -- --export-archive   # writes supabase-backup/legacy-orders.archive.json
+```
+
+`lib/orders/legacyOrders.ts` reads that file. If it is not present, the legacy path
+answers "nothing here" — the same answer as a deployment that never had these orders,
+and never an outage. The archive is untracked on purpose: it carries customers' own
+addresses and order details, which do not belong in git history. The removal
+condition for this whole path is in `ORDERS-WOOCOMMERCE-MIGRATION.md` §4.
 
 ### 10.4 Phase L — the plugin blocker, measured
 

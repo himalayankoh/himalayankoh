@@ -41,7 +41,7 @@
 
 import { WordPressApiError, wordpressRequest, wordpressRequestWithMeta } from '../backend/wordpress';
 import { requireWooCredentials } from '../backend/credentials';
-import type { Json, Order, OrderItem } from '../supabase/database.types';
+import type { Json, Order, OrderItem } from '../commerce/databaseTypes';
 
 /**
  * The app's own order types, re-exported so a caller can name the shape it receives

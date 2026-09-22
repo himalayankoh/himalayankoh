@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
-import type { Profile } from '../lib/supabase/database.types';
+import type { Profile } from '../lib/commerce/databaseTypes';
 import {
   type AuthSession,
   type SessionUser,

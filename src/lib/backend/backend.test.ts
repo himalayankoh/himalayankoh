@@ -17,7 +17,7 @@ import {
   type WpCoreProduct,
 } from './woocommerce';
 import { mapSupabaseProduct } from '../products/mapProduct';
-import type { ProductWithCategory } from '../supabase/database.types';
+import type { ProductWithCategory } from '../commerce/databaseTypes';
 
 /** The real body staging returns for /wc/store/v1/products. */
 const WORDPRESS_FATAL_BODY = `<!DOCTYPE html>

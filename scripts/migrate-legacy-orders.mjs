@@ -3,6 +3,17 @@
 //   npm run migrate:orders                     # DRY RUN — reads both sides, writes nothing
 //   npm run migrate:orders -- --apply          # perform the import
 //   npm run migrate:orders -- --limit=5        # cap how many orders are read/imported
+//   npm run migrate:orders -- --export-archive # write the static fallback the app reads
+//
+// ## The archive, and why it exists
+//
+// `--export-archive` writes the same 14 orders to
+// `supabase-backup/legacy-orders.archive.json`, which is what the app's read-only
+// legacy order path serves when the import cannot run — no WordPress administrator
+// application password, or the plugin not yet installed on the target. That path
+// used to hold a live Supabase client; the archive is why the application no longer
+// needs one. It is untracked on purpose: it carries customers' own order details,
+// and git history is the wrong place for them.
 //
 // DRY RUN IS THE DEFAULT, and it is also the migration *report*: it prints the
 // counts the design document asks for (total orders, statuses, payment statuses,
@@ -395,6 +406,31 @@ try {
   console.log(`Report written to ${REPORT_PATH}`);
 } catch (error) {
   console.warn(`Report could not be written: ${error.message}`);
+}
+
+// ---------------------------------------------------------------------------
+// The static archive
+// ---------------------------------------------------------------------------
+
+if (args.has('--export-archive')) {
+  const archive = {
+    exportedAt: new Date().toISOString(),
+    source: 'supabase',
+    /** Read-only: the app serves these and writes nothing back. */
+    orders: orders.map((order) => ({
+      ...order,
+      order_items: itemsByOrder.get(order.id) || [],
+    })),
+  };
+  const archivePath = join(root, 'supabase-backup', 'legacy-orders.archive.json');
+  try {
+    mkdirSync(join(root, 'supabase-backup'), { recursive: true });
+    writeFileSync(archivePath, `${JSON.stringify(archive, null, 2)}\n`);
+    console.log(`Archive written to ${archivePath} (${archive.orders.length} orders)`);
+  } catch (error) {
+    console.error(`Archive could not be written: ${error.message}`);
+    process.exit(1);
+  }
 }
 
 if (!apply) {

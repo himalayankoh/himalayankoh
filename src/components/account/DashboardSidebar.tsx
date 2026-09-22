@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Heart, LayoutDashboard, MapPin, Package, Shield, User, BarChart3, ShoppingBag, Truck } from 'lucide-react';
-import type { Profile } from '../../lib/supabase/database.types';
+import type { Profile } from '../../lib/commerce/databaseTypes';
 import type { SessionUser } from '../../lib/auth/sessionShape';
 
 /**

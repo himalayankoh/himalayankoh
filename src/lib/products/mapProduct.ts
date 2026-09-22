@@ -1,6 +1,6 @@
 import type { Product } from '../../data/products';
 import { products as fallbackProducts } from '../../data/products';
-import type { Inventory, ProductWithCategory } from '../supabase/database.types';
+import type { Inventory, ProductWithCategory } from '../commerce/databaseTypes';
 import type { StockStatus } from '../../data/products';
 import { collectMissingCatalogFields, priceDisplayFromRange } from './price';
 import { getFallbackProductBySlug as findFallbackBySlug, normalizeProductSlug, productSlugFromName, slugsMatch } from './slug';

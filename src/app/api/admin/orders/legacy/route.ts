@@ -2,10 +2,11 @@
  * The app's own order records, read-only.
  *
  * Before the migration this *was* the order list. WooCommerce is now where orders
- * live, but orders placed through this app's checkout before that is migrated are
- * still in its own table — and an owner who cannot see them would think they had
- * been lost. So they are readable here, clearly labelled as legacy, and never
- * written: this route has no POST, and the status update route writes the store.
+ * live, but orders placed through this app's checkout before that are still worth
+ * reading — and an owner who could not see them would think they had been lost. So
+ * they are served from the static archive the export wrote (see
+ * `lib/orders/legacyOrders.ts`), clearly labelled as legacy, and never written: this
+ * route has no POST, and the status update route writes the store.
  *
  * It exists as its own endpoint rather than being merged into `/api/admin/orders`
  * because the two sources count and page differently. A single list that merged
@@ -15,46 +16,34 @@
 
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { adminApi } from '@/lib/supabase/api/admin';
-import { isSupabaseConfigured } from '@/lib/supabase/client';
-import type { Order } from '@/lib/supabase/database.types';
+import {
+  isLegacyOrderStoreAvailable,
+  listLegacyOrders,
+} from '@/lib/orders/legacyOrders';
 
 export const dynamic = 'force-dynamic';
-
-const LEGACY_STATUSES: Order['status'][] = [
-  'pending',
-  'confirmed',
-  'processing',
-  'packed',
-  'shipped',
-  'delivered',
-  'cancelled',
-  'refunded',
-];
 
 export async function GET(request: Request) {
   const auth = await verifyAdminRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  if (!isSupabaseConfigured()) {
+  if (!isLegacyOrderStoreAvailable()) {
     return NextResponse.json({
       orders: [],
       count: 0,
       totalPages: 1,
       available: false,
-      reason: 'The app’s own order store is not configured on this deployment.',
+      reason:
+        'No legacy order archive is installed on this deployment, and nothing is read from the old database at runtime.',
     });
   }
 
   const params = new URL(request.url).searchParams;
-  const statusParam = params.get('status') || '';
 
   try {
-    const page = await adminApi.getOrders({
+    const page = await listLegacyOrders({
       search: params.get('search') || undefined,
-      status: LEGACY_STATUSES.includes(statusParam as Order['status'])
-        ? (statusParam as Order['status'])
-        : undefined,
+      status: params.get('status') || undefined,
       page: Number(params.get('page') ?? '1') || 1,
       limit: Number(params.get('limit') ?? '') || 25,
     });

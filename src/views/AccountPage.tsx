@@ -12,7 +12,7 @@ import { wishlistApi } from '../lib/wishlist/client';
 import { signOutOfBrowser } from '../lib/auth/browserSignOut';
 import { getCustomerAccessToken } from '../lib/auth/customerClient';
 import type { SavedAddress } from '../lib/account/addresses';
-import type { OrderWithItems } from '../lib/supabase/database.types';
+import type { OrderWithItems } from '../lib/commerce/databaseTypes';
 
 // The account portal is the only customer account screen. `/orders` was a
 // second one with its own layout and its own copy of the orders list; it is now

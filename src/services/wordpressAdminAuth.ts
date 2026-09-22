@@ -11,8 +11,9 @@
  * This is the admin client's **single home**. It used to be reached through
  * `services/supabase.ts`, which re-exported every name below while also holding
  * the Supabase config resolver — one file answering for two backends, and two
- * import paths for one module. Admin code imports from here directly now, and the
- * Supabase configuration belongs to the customer path (`lib/supabase/config.ts`).
+ * import paths for one module. Admin code imports from here directly now, and no
+ * file in this application resolves Supabase configuration at all: every backend
+ * below is WordPress, WooCommerce or the hk-storefront plugin.
  *
  * It is a *client*: the server-side credential check is a different concern and
  * lives in `lib/auth/wordpressAdminAuth.ts`. This file is never imported by the

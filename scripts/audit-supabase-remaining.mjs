@@ -40,8 +40,17 @@ const root = process.cwd();
 const SRC = path.join(root, 'src');
 const showAllTables = process.argv.includes('--tables');
 
-/** A module names Supabase when it imports one of its modules or the SDK. */
-const SUPABASE_IMPORT = /from\s+['"][^'"]*(?:supabase|@supabase\/supabase-js)[^'"]*['"]/;
+/**
+ * A module names Supabase when it imports one of its modules or the SDK — and,
+ * per the migration's acceptance rule, also when it builds a raw Supabase URL by
+ * hand and fetches it. The hand-rolled PostgREST client this repository used to
+ * carry imported nothing from the SDK and would have read as "no dependency" in
+ * a scan that only counted imports.
+ */
+const SUPABASE_IMPORT = /from\s+['"][^'"]*supabase[^'"]*['"]|\/rest\/v1\/|\/storage\/v1\/|@supabase\/supabase-js/;
+
+/** The generated database types, by whatever path they are imported from. */
+const GENERATED_TYPES = /from\s+['"][^'"]*databaseTypes['"]/;
 
 /**
  * Value import or types only?
@@ -73,6 +82,19 @@ const BACKENDS = {
   'WordPress admin auth': /from '[^']*services\/wordpressAdminAuth['"]/,
 };
 
+/**
+ * Code with the prose taken out.
+ *
+ * Modules here explain what they used to do, and those explanations name the
+ * PostgREST paths they called — so a scan that reads comments counts a paragraph
+ * as a runtime dependency. Comment stripping is deliberately naive (it does not
+ * know about strings), which is the safe direction: it can under-count a pattern
+ * inside a string literal, never invent one in a comment.
+ */
+function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
 function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
@@ -94,8 +116,10 @@ function tierOf(rel) {
   return 'shared / server libraries';
 }
 
-const supabaseFiles = files.filter((file) => SUPABASE_IMPORT.test(fs.readFileSync(file, 'utf8')));
-const runtimeFiles = supabaseFiles.filter((file) => importKind(fs.readFileSync(file, 'utf8')) === 'value');
+const codeOf = (file) => stripComments(fs.readFileSync(file, 'utf8'));
+
+const supabaseFiles = files.filter((file) => SUPABASE_IMPORT.test(codeOf(file)));
+const runtimeFiles = supabaseFiles.filter((file) => importKind(codeOf(file)) === 'value');
 const typesOnlyFiles = supabaseFiles.filter((file) => !runtimeFiles.includes(file));
 
 const tiers = new Map();
@@ -106,8 +130,7 @@ for (const file of runtimeFiles) {
 }
 
 const supabaseLibLines = files
-  .filter((file) => relative(file).startsWith('src/lib/supabase/'))
-  .filter((file) => !relative(file).includes('storefrontGraph.test'))
+  .filter((file) => /^src\/lib\/(supabase|commerce)\/databaseTypes\.ts$/.test(relative(file)))
   .reduce((sum, file) => sum + fs.readFileSync(file, 'utf8').split('\n').length, 0);
 
 /** Tables and Storage buckets are both `.from('x')` — the receiver tells them apart. */
@@ -174,9 +197,21 @@ console.log(`\n  SERVER — ${serverMembers.length} module(s), never shipped to 
 printMembers(serverMembers);
 
 console.log(`\nTYPES ONLY — ${typesOnlyFiles.length} module(s), erased at compile`);
-console.log('  no bundle cost and no runtime dependency: these disappear with database.types.ts');
+console.log('  no bundle cost and no runtime dependency: these disappear with the type file itself');
 for (const file of typesOnlyFiles.map(relative).sort()) console.log(`    ${file.replace(/^src\//, '')}`);
-console.log(`\n  lines in src/lib/supabase/: ${supabaseLibLines} (includes the generated database types)`);
+
+/** Types are only "Supabase" by provenance: nothing here runs. Kept as its own number. */
+const generatedTypeImporters = files.filter((file) => GENERATED_TYPES.test(fs.readFileSync(file, 'utf8')));
+console.log(`\nGENERATED TYPES (type-only) — ${generatedTypeImporters.length} module(s)`);
+console.log(`  src/lib/commerce/databaseTypes.ts: ${supabaseLibLines} lines, imported as types only.`);
+console.log('  TypeScript erases these imports, so they are not a runtime dependency — but the');
+console.log('  file is a Supabase schema, and it goes when the last reader is re-pointed at the');
+console.log('  WooCommerce order model.');
+
+const rawRest = files.filter((file) => /\/rest\/v1\/|\/storage\/v1\/|supabase\.co/.test(codeOf(file)));
+console.log(`\nRAW SUPABASE CALLS (no SDK import) — ${rawRest.length} module(s)`);
+if (!rawRest.length) console.log('    (none)');
+for (const file of rawRest.map(relative).sort()) console.log(`    ${file.replace(/^src\//, '')}`);
 
 console.log('\nBROWSER — which routes ship it (measured by check:client-supabase)');
 const reportPath = path.join(root, '.next', 'client-supabase-report.json');
@@ -233,7 +268,7 @@ const features = [
   ['Order creation (Stripe + invoice)', 'WooCommerce order, reserved before payment; id in Stripe metadata', 'moved'],
   ['Order reads (confirmation, tracker, history, admin)', 'WooCommerce /wc/v3', 'moved'],
   ['Order status, Stripe, Shippo, order emails', 'WooCommerce order + _hk_* meta; Shippo returns written to the order', 'moved'],
-  ['Historical Supabase orders', 'read-only legacy adapter; import measured and ready (npm run migrate:orders) — see §4', 'blocked'],
+  ['Historical Supabase orders', 'read-only adapter over a static archive (supabase-backup/legacy-orders.archive.json); import measured, apply blocked on a WordPress admin credential — see §4', 'archived'],
   ['Blog reads (storefront + metadata)', 'WordPress /wp/v2/posts (lib/blog/wordpressBlog.ts)', 'moved'],
   ['Blog admin write + media', 'WordPress /wp/v2/posts + Media Library (lib/blog/wordpressAdminBlog.ts, lib/media)', 'moved'],
   ['Customer profiles', 'WooCommerce customer — the last server-side Supabase read left after the orders import', 'remaining'],
@@ -250,7 +285,7 @@ const features = [
   ['Shippo packing profiles', 'WooCommerce product meta _hk_packing_profile (lib/woo/packingProfile.ts)', 'moved'],
   ['SEO server reads', 'the dead Supabase product fetch was deleted; blog SEO reads WordPress', 'moved'],
   ['Stripe admin client', 'deleted from lib/stripe/server — the one remaining Supabase client is the orders adapter', 'moved'],
-  ['Admin catalog data layer', 'features/catalog/repository.ts + services/db.ts still read PostgREST when VITE_SUPABASE_* is set', 'remaining'],
+  ['Admin catalog data layer', 'features/catalog/repository.ts → /api/admin/* → WooCommerce; the console’s own records go to the plugin table via services/db.ts', 'moved'],
 ];
 for (const [feature, owner, status] of features) {
   console.log(`  [${status.padEnd(9)}] ${feature.padEnd(52)} ${owner}`);

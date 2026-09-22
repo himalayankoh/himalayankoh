@@ -10,7 +10,7 @@ import {
   orderStatusBadgeClass,
 } from '../lib/orders/status';
 import { useAuthContext } from '../context/AuthContext';
-import type { Json, OrderWithItems } from '../lib/supabase/database.types';
+import type { Json, OrderWithItems } from '../lib/commerce/databaseTypes';
 import { useCart } from '../store/cartStore';
 
 interface ShippingAddress {

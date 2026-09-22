@@ -12,7 +12,7 @@ import { SkeletonOrderList } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
 import DashboardSidebar from '../components/account/DashboardSidebar';
 import { useAuthContext } from '../context/AuthContext';
-import type { OrderWithItems } from '../lib/supabase/database.types';
+import type { OrderWithItems } from '../lib/commerce/databaseTypes';
 import { useCart } from '../store/cartStore';
 import { useToast } from '../context/ToastContext';
 

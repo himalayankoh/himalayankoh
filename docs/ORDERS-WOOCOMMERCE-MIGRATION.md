@@ -479,8 +479,8 @@ The requirement was to classify each one rather than leave the answer implied.
 
 | Use | Class | Action |
 | --- | --- | --- |
-| `lib/orders/legacyOrders.ts` | **LEGACY historical read** | Kept. Read-only, no writes, reached only when the store has no such order. Removal condition in §4. |
-| `app/api/admin/orders/legacy/route.ts` + `adminApi.getOrders` | **LEGACY historical read** | Kept for the same reason, and gated on `isSupabaseConfigured()`. |
+| `lib/orders/legacyOrders.ts` | **LEGACY historical read** | Kept, but no longer reaches Supabase: it reads the static archive the export writes. Read-only, no network, reached only when the store has no such order. Removal condition in §4. |
+| `app/api/admin/orders/legacy/route.ts` | **LEGACY historical read** | Kept for the same reason, served from the archive; `adminApi.getOrders` is gone with `lib/supabase/api/admin.ts`. |
 | `adminApi.updateOrderStatus`, `updateOrderPaymentStatus`, `getOrderAnalytics`, `getDashboardStats`, `AdminOrderAnalytics` | **DEAD** | **Deleted.** No caller since the console moved to `lib/woo/orders`; order figures now come from `statsFromWooOrders`. |
 | `adminApi.getShippingLabelOrders` | **NEW-path gap** | Still reads Supabase `orders` for `/admin/labels`. Should become `listWooOrders`; not done in this pass. |
 | `adminApi.getDashboardAnalytics` (orders + order_items), `adminApi.deleteProduct`'s `order_items` cascade | **UNRELATED to the order source of truth** | Left alone: they are the admin catalog/analytics screens, which are their own migration block. |
@@ -495,8 +495,14 @@ reports 14 orders, 23 line items and zero mapping exceptions, and no Supabase or
 has been copied into WooCommerce. No production table has been dropped or altered.
 
 Applying it needs an administrator application password for staging WordPress — see
-the blocker note in §3.10 for why the WooCommerce REST API cannot substitute. Until it
-has run, `lib/orders/legacyOrders.ts` and `/api/admin/orders/legacy` stay as the
-read-only compatibility path, and `lib/supabase/adminClient.ts` exists only to serve
-them. `lib/stripe/server/supabaseAdmin.ts` is **deleted**: nothing in the Stripe
-runtime touches Supabase any more.
+the blocker note in §3.10 for why the WooCommerce REST API cannot substitute.
+
+**The application no longer waits for it.** The 14 orders and 23 line items were
+exported to `supabase-backup/legacy-orders.archive.json`, and
+`lib/orders/legacyOrders.ts` reads that file instead of opening a Supabase client.
+The import remains the end state — the archive is a carrier, not an architecture —
+but until the credential exists, showing fourteen historical orders costs the
+application no database connection at all. `lib/supabase/adminClient.ts` and
+`lib/supabase/client.ts` are **deleted** with the last importers, and
+`lib/stripe/server/supabaseAdmin.ts` was already gone: nothing in the Stripe runtime
+touches Supabase any more.

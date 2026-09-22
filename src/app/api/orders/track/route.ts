@@ -24,7 +24,7 @@ import {
   orderFromWoo,
   type WooOrderLike,
 } from '@/lib/woo/orders';
-import type { OrderWithItems } from '@/lib/supabase/database.types';
+import type { OrderWithItems } from '@/lib/commerce/databaseTypes';
 
 export const dynamic = 'force-dynamic';
 

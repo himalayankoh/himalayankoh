@@ -10,7 +10,7 @@ import {
   type ShippingMethod,
 } from '../lib/orders/totals';
 import { ordersApi } from '../lib/orders/client';
-import type { OrderWithItems } from '../lib/supabase/database.types';
+import type { OrderWithItems } from '../lib/commerce/databaseTypes';
 import { publicEnv } from '../lib/env';
 import { useCart } from '../store/cartStore';
 import { getStripeClientConfig, type StripePublicConfig } from '../lib/stripe/clientConfig';

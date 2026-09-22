@@ -156,10 +156,9 @@ describe('sign-out ownership', () => {
     // Prose may still explain what this replaced. A *call* may not exist: the
     // Supabase store is not this app's to clear, and reaching for it is how a
     // sign-out ends up clearing the wrong one.
-    const callers = sourceFiles().filter((entry) => {
-      if (entry.startsWith('lib/supabase/')) return false;
-      return readFileSync(`${SRC}/${entry}`, 'utf8').includes('clearSupabaseSession()');
-    });
+    const callers = sourceFiles().filter((entry) =>
+      readFileSync(`${SRC}/${entry}`, 'utf8').includes('clearSupabaseSession()'),
+    );
 
     expect(callers).toEqual([]);
   });
