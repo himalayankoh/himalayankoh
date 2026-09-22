@@ -35,6 +35,12 @@ function readPatch(body: Record<string, unknown>): Record<string, unknown> {
     'backorders',
     'lowStockAmount',
     'weight',
+    'dimensions',
+    'costPrice',
+    'landedCost',
+    'packagePreset',
+    'seoKeywords',
+    'canonicalSlug',
     'featured',
     'seo',
   ];

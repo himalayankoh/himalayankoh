@@ -26,18 +26,16 @@ import {
   onAuthStateChange,
   isWordPressAdminAuthConfigured,
 } from '../services/wordpressAdminAuth';
-import { ensureCustomerProfile } from '../services/customer';
-
-/** Fire-and-forget: keep a customers row in sync with the auth user. */
-function syncCustomerProfile(user: SbUser | null): void {
-  if (!user) return;
-  void ensureCustomerProfile({ id: user.id, email: user.email, name: user.name }).then((r) => {
-    if (!r.ok && r.reason !== 'not-provisioned') {
-      // Honest, non-fatal: profile sync issues must never break sign-in.
-      console.warn('[customer-sync]', r.reason, r.detail || '');
-    }
-  });
-}
+/**
+ * The customer's store profile needs no syncing here any more.
+ *
+ * This used to fire-and-forget a write into the app's own `customers` table on every
+ * sign-in. That table was a second, invisible copy of who a customer is: the
+ * storefront's real identity is the WooCommerce customer the sign-in itself resolves
+ * (see `lib/auth/customerSession.ts`), and writing a parallel row on the side is how
+ * the two disagree later. The call was also already inert — the module it lived in
+ * only ran against the Supabase source.
+ */
 
 export interface AuthResult {
   success: boolean;
@@ -135,7 +133,6 @@ export const useAuthStore = create<AuthStore>()((set) => ({
       const session = await signInWithPassword(email.trim(), password);
       applyUser(set, session.user);
       scheduleRefresh(session.expiresAt);
-      syncCustomerProfile(session.user);
       return { success: true, message: 'Signed in successfully.', user: session.user };
     } catch (e) {
       return { success: false, message: (e as Error).message || 'Sign-in failed.', user: null };
@@ -155,7 +152,6 @@ export const useAuthStore = create<AuthStore>()((set) => ({
       if (session) {
         applyUser(set, session.user);
         scheduleRefresh(session.expiresAt);
-        syncCustomerProfile(session.user);
       }
       return {
         success: true,

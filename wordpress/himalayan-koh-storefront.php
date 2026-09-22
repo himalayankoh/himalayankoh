@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — Storefront Account State
  * Description:       Custom tables and REST endpoints for the state WordPress does not already own: per-account storefront state (wishlist, saved addresses, cart binding), the customer operations WooCommerce exposes no REST route for (sign-in, account creation, password reset), and the app's site-content bridge (settings, category-hub overrides, first-party events, newsletter/contact submissions, HK blog fields). This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the hk-storefront/v1 namespace below.
- * Version:           1.3.0
+ * Version:           1.5.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -69,7 +69,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_STOREFRONT_VERSION', '1.4.0' );
+define( 'HK_STOREFRONT_VERSION', '1.5.0' );
 
 /** The installed schema version, so an update can add tables without re-activation. */
 const HK_STOREFRONT_DB_VERSION_OPTION = 'hk_storefront_db_version';
@@ -265,6 +265,36 @@ function hk_storefront_install() {
 
 	dbDelta( $evidence_sql );
 
+	// The admin tool's own records: product-scout candidates and scores, suppliers
+	// and their products, agent jobs, and the media/settings key-value stores.
+	//
+	// One table rather than a table per feature, on purpose. These are the app's
+	// *own* working state — nothing on the storefront reads them, nothing in
+	// WooCommerce depends on them — and giving each shape its own typed table would
+	// be six migrations to maintain for data whose schema is owned by the admin tool
+	// that writes it. The JSON payload is that shape; `table_name` plus `record_id`
+	// is the identity, and the UNIQUE key is what makes an upsert an upsert instead
+	// of a duplicate.
+	//
+	// `table_name` is checked against an allowlist in PHP, so this is not an
+	// open key-value store behind an administrator password: an unlisted name is
+	// refused rather than stored.
+	$records_table = hk_storefront_admin_records_table();
+
+	$records_sql = "CREATE TABLE {$records_table} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		table_name varchar(64) NOT NULL,
+		record_id varchar(191) NOT NULL,
+		payload longtext NOT NULL,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		UNIQUE KEY record (table_name, record_id),
+		KEY table_updated (table_name, updated_at)
+	) $charset;";
+
+	dbDelta( $records_sql );
+
 	update_option( HK_STOREFRONT_DB_VERSION_OPTION, HK_STOREFRONT_VERSION );
 }
 register_activation_hook( __FILE__, 'hk_storefront_install' );
@@ -297,6 +327,69 @@ function hk_storefront_contact_table() {
 function hk_storefront_evidence_table() {
 	global $wpdb;
 	return $wpdb->prefix . 'hk_hermes_evidence';
+}
+
+/** The admin tool's record table's name. */
+function hk_storefront_admin_records_table() {
+	global $wpdb;
+	return $wpdb->prefix . 'hk_admin_records';
+}
+
+/**
+ * The record names this endpoint will store.
+ *
+ * An allowlist rather than a free namespace: the endpoint sits behind an
+ * administrator application password, but "administrator" is not the same as "may
+ * write any name into our table", and an unlisted name answering 400 is a bug
+ * report instead of a silent row nobody can find again.
+ *
+ * `store_settings` is here because the app's own settings keys (free-shipping
+ * strategy, listing-playbook configuration, import history) are loose JSON blobs
+ * that the typed settings registry does not describe.
+ */
+function hk_storefront_admin_record_tables() {
+	return array(
+		'store_settings',
+		'store_offers',
+		'product_candidates',
+		'product_scores',
+		'suppliers',
+		'supplier_products',
+		'agent_jobs',
+		'media_videos',
+		// The Hermes review feeds. Nothing writes these yet — the panels are empty
+		// because no producer exists, not because the storage was missing — but they
+		// are named here so the day one is written, it lands in WordPress rather than
+		// in whichever store happened to be wired up first.
+		'hermes_recommendations',
+		'hermes_seo_suggestions',
+		'hermes_marketing_intel',
+		'ads_readiness',
+	);
+}
+
+/** A validated table name from the request, or a WP_Error. */
+function hk_storefront_admin_record_table( $raw ) {
+	$table = sanitize_key( is_string( $raw ) ? trim( $raw ) : '' );
+	if ( ! in_array( $table, hk_storefront_admin_record_tables(), true ) ) {
+		return new WP_Error(
+			'hk_storefront_unknown_record_table',
+			'That record name is not one this endpoint stores.',
+			array( 'status' => 400 )
+		);
+	}
+	return $table;
+}
+
+/** One stored record, decoded. */
+function hk_storefront_admin_record_row( $row ) {
+	$payload = hk_storefront_decode_json( $row->payload );
+	return array(
+		'id'         => (string) $row->record_id,
+		'payload'    => is_array( $payload ) ? $payload : array(),
+		'created_at' => (string) $row->created_at,
+		'updated_at' => (string) $row->updated_at,
+	);
 }
 
 /**
@@ -2264,6 +2357,136 @@ function hk_storefront_list_contacts( WP_REST_Request $request ) {
 }
 
 /* -------------------------------------------------------------------------
+ * The admin tool's own records
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Lists one record name's rows.
+ *
+ * Ordering and the limit are applied in SQL; the app's per-column filters are
+ * applied to the decoded payloads by the caller, because those filters name fields
+ * inside JSON the database cannot index without a schema this endpoint deliberately
+ * does not have.
+ */
+function hk_storefront_list_admin_records( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$table = hk_storefront_admin_record_table( $request->get_param( 'table' ) );
+	if ( is_wp_error( $table ) ) {
+		return $table;
+	}
+
+	$limit = (int) $request->get_param( 'limit' );
+	$limit = $limit > 0 ? min( $limit, 2000 ) : 500;
+	$order = strtolower( (string) $request->get_param( 'order' ) );
+	// `strpos`/`substr` rather than str_starts_with/str_ends_with: those are PHP 8+,
+	// and a plugin that fatals on a 7.4 host takes the whole site with it.
+	$column = strpos( $order, 'created_at' ) === 0 ? 'created_at' : 'updated_at';
+	$direction = substr( $order, -3 ) === 'asc' ? 'ASC' : 'DESC';
+
+	$records = hk_storefront_admin_records_table();
+	// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is built from $wpdb->prefix; $column and $direction are chosen from the allowlist above.
+	$sql = "SELECT * FROM {$records} WHERE table_name = %s ORDER BY {$column} {$direction}, id {$direction} LIMIT %d";
+	// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared here.
+	$rows = $wpdb->get_results( $wpdb->prepare( $sql, $table, $limit ) );
+
+	return rest_ensure_response(
+		array( 'items' => array_map( 'hk_storefront_admin_record_row', is_array( $rows ) ? $rows : array() ) )
+	);
+}
+
+/** One record by name and id, or null. */
+function hk_storefront_get_admin_record( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$table = hk_storefront_admin_record_table( $request->get_param( 'table' ) );
+	if ( is_wp_error( $table ) ) {
+		return $table;
+	}
+	$id = substr( (string) $request->get_param( 'id' ), 0, 191 );
+	if ( $id === '' ) {
+		return new WP_Error( 'hk_storefront_record_id_required', 'A record id is required.', array( 'status' => 400 ) );
+	}
+
+	$records = hk_storefront_admin_records_table();
+	// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is built from $wpdb->prefix.
+	$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$records} WHERE table_name = %s AND record_id = %s LIMIT 1", $table, $id ) );
+
+	return rest_ensure_response( array( 'record' => $row ? hk_storefront_admin_record_row( $row ) : null ) );
+}
+
+/**
+ * Creates or replaces one record.
+ *
+ * An upsert, because that is what every caller means: the admin tool knows the id of
+ * the thing it is saving and does not know (or care) whether this is the first write.
+ * `created_at` is preserved on the update branch — REPLACE would silently reset it and
+ * make every record look new.
+ */
+function hk_storefront_upsert_admin_record( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$body  = $request->get_json_params() ?: array();
+	$table = hk_storefront_admin_record_table( $body['table'] ?? '' );
+	if ( is_wp_error( $table ) ) {
+		return $table;
+	}
+
+	$id = substr( (string) ( $body['id'] ?? '' ), 0, 191 );
+	if ( $id === '' ) {
+		return new WP_Error( 'hk_storefront_record_id_required', 'A record id is required.', array( 'status' => 400 ) );
+	}
+
+	$payload = is_array( $body['payload'] ?? null ) ? $body['payload'] : array();
+	$records = hk_storefront_admin_records_table();
+	$now     = current_time( 'mysql', true );
+
+	// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is built from $wpdb->prefix.
+	$ok = $wpdb->query(
+		$wpdb->prepare(
+			"INSERT INTO {$records} (table_name, record_id, payload, created_at, updated_at)
+			 VALUES (%s, %s, %s, %s, %s)
+			 ON DUPLICATE KEY UPDATE payload = VALUES(payload), updated_at = VALUES(updated_at)",
+			$table,
+			$id,
+			wp_json_encode( $payload ),
+			$now,
+			$now
+		)
+	);
+
+	if ( $ok === false ) {
+		return new WP_Error( 'hk_storefront_record_write_failed', 'The record could not be stored.', array( 'status' => 500 ) );
+	}
+
+	// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is built from $wpdb->prefix.
+	$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$records} WHERE table_name = %s AND record_id = %s LIMIT 1", $table, $id ) );
+
+	return rest_ensure_response( array( 'record' => $row ? hk_storefront_admin_record_row( $row ) : null ) );
+}
+
+/** Removes one record, and reports whether it existed. */
+function hk_storefront_delete_admin_record( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$body  = $request->get_json_params() ?: array();
+	$table = hk_storefront_admin_record_table( $body['table'] ?? '' );
+	if ( is_wp_error( $table ) ) {
+		return $table;
+	}
+
+	$id = substr( (string) ( $body['id'] ?? '' ), 0, 191 );
+	if ( $id === '' ) {
+		return new WP_Error( 'hk_storefront_record_id_required', 'A record id is required.', array( 'status' => 400 ) );
+	}
+
+	$records = hk_storefront_admin_records_table();
+	$deleted = $wpdb->delete( $records, array( 'table_name' => $table, 'record_id' => $id ) );
+
+	return rest_ensure_response( array( 'deleted' => (int) $deleted > 0 ) );
+}
+
+/* -------------------------------------------------------------------------
  * Hermes evidence
  * ---------------------------------------------------------------------- */
 
@@ -2849,6 +3072,43 @@ add_action(
 					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => 'hk_storefront_submit_contact',
 					'permission_callback' => $manage,
+				),
+			)
+		);
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/admin-records',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => 'hk_storefront_list_admin_records',
+					'permission_callback' => $manage,
+					'args'                => array( 'table' => array( 'required' => true ) ),
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => 'hk_storefront_upsert_admin_record',
+					'permission_callback' => $manage,
+				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => 'hk_storefront_delete_admin_record',
+					'permission_callback' => $manage,
+				),
+			)
+		);
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/admin-records/one',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'hk_storefront_get_admin_record',
+				'permission_callback' => $manage,
+				'args'                => array(
+					'table' => array( 'required' => true ),
+					'id'    => array( 'required' => true ),
 				),
 			)
 		);
