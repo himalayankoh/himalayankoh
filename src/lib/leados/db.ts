@@ -1,16 +1,47 @@
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
+/**
+ * LeadOS persistence — WordPress, not Supabase.
+ *
+ * Every function here used to build a Supabase query against `leados_*` tables,
+ * with an in-memory Map as a silent fallback when the tables had not been
+ * migrated. Both are gone:
+ *
+ *  - The data now lives in custom tables on WordPress, behind our own
+ *    `leados/v1` REST namespace. The WordPress side is
+ *    `wordpress/himalayan-koh-leados.php` — schema and endpoints in one file —
+ *    and the endpoint contract is documented in
+ *    `docs/LEADOS-WORDPRESS-CONTRACT.md`.
+ *  - The in-memory fallback is gone deliberately. It made a broken deployment
+ *    look like a working one: leads appeared saved, then vanished on the next
+ *    request. A failure now surfaces as an error the caller can show.
+ *
+ * The exported names and signatures are unchanged, so the eight
+ * `/api/admin/leados/*` routes that use this module needed no edit at all.
+ *
+ * Rows come back with the same snake_case keys the Supabase version produced, so
+ * the row→record mapping below is the same code that was already written and
+ * reviewed rather than a second dialect to maintain.
+ *
+ * Server-only: the WordPress credential it uses is an administrator application
+ * password.
+ */
+
+import { WordPressApiError, wordpressRequest } from '@/lib/backend/wordpress';
+import { requireWordPressCredentials } from '@/lib/backend/wordpressCredentials';
 import type {
   LeadOSProject,
   SavedLeadRecord,
-  LeadOSScoreWeight,
   NormalizedLead,
-  ProjectFitResult,
 } from './types';
-import { DEFAULT_SCORE_WEIGHTS } from './scoring';
 
 export const HK_DEFAULT_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
 export const HK_DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000002';
 
+/**
+ * The default project's description, used for project-fit scoring before the
+ * stored row is read. Kept as a constant because scoring must work even when the
+ * WordPress read fails — an unreachable site should not change what "a good fit"
+ * means.
+ */
 export const HK_DEFAULT_PROJECT: LeadOSProject = {
   id: HK_DEFAULT_PROJECT_ID,
   workspaceId: HK_DEFAULT_WORKSPACE_ID,
@@ -73,230 +104,187 @@ export const HK_DEFAULT_PROJECT: LeadOSProject = {
   leadCount: 0,
 };
 
-// In-memory fallback in case Supabase tables have not yet been migrated on the remote database
-const inMemoryStore = {
-  projects: new Map<string, LeadOSProject>([[HK_DEFAULT_PROJECT_ID, HK_DEFAULT_PROJECT]]),
-  savedLeads: new Map<string, SavedLeadRecord>(),
-  projectLeads: new Map<string, Set<string>>(), // projectId -> Set of leadIds
-  searches: [] as Array<{ id: string; category: string; location: string; resultsCount: number; createdAt: string }>,
-  scoreWeights: { ...DEFAULT_SCORE_WEIGHTS },
-};
+// ---------------------------------------------------------------------------
+// Request plumbing
+// ---------------------------------------------------------------------------
+
+type RawRow = Record<string, any>;
+
+/** A WordPress read/write against the app's own namespace. */
+async function leadosRequest<T>(
+  path: string,
+  options: { method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown; params?: Record<string, string | number | undefined> } = {}
+): Promise<T> {
+  return wordpressRequest<T>(`/leados/v1${path}`, {
+    method: options.method ?? 'GET',
+    body: options.body,
+    params: options.params,
+    credentials: requireWordPressCredentials(),
+  });
+}
 
 /**
- * Ensures the default workspace and project exist in Supabase (or memory).
+ * Turns a WordPress failure into the message the route layer already logs and
+ * the console already shows. Kept per-operation so the text names the thing that
+ * failed rather than "an error occurred".
+ */
+function describe(label: string, error: unknown): Error {
+  if (error instanceof WordPressApiError) {
+    if (error.status === 401) {
+      return new Error(
+        `${label} failed: WordPress rejected the app credential. Check WORDPRESS_ADMIN_USER / WORDPRESS_ADMIN_APP_PASSWORD.`
+      );
+    }
+    if (error.status === 404) {
+      return new Error(
+        `${label} failed: the leados/v1 namespace is not available. Is the Himalayan Koh LeadOS plugin active on WordPress?`
+      );
+    }
+    return new Error(`${label} failed: ${error.message}`);
+  }
+  return new Error(`${label} failed: ${error instanceof Error ? error.message : 'unexpected error'}`);
+}
+
+/** Business categories the ICP deliberately excludes, filtered wherever a project is read. */
+function withoutPetCategories(categories: unknown): string[] {
+  return (Array.isArray(categories) ? categories.map(String) : []).filter(
+    (category) => !/pet\s*shop|pet\s*store/i.test(category)
+  );
+}
+
+function toProject(row: RawRow): LeadOSProject {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    name: row.name,
+    website: row.website,
+    shortDescription: row.short_description,
+    productService: row.product_service,
+    targetCustomerDescription: row.target_customer_description,
+    industries: row.industries || [],
+    businessCategories: withoutPetCategories(row.business_categories),
+    preferredLocations: row.preferred_locations || [],
+    countries: row.countries || [],
+    targetBusinessSize: row.target_business_size,
+    positiveKeywords: row.positive_keywords || [],
+    negativeKeywords: row.negative_keywords || [],
+    idealCustomerProfile: row.ideal_customer_profile,
+    notes: row.notes,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    leadCount: row.lead_count ?? 0,
+  };
+}
+
+function toSavedLead(row: RawRow): SavedLeadRecord {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    businessName: row.business_name,
+    category: row.category,
+    address: row.address,
+    city: row.city,
+    region: row.region,
+    country: row.country,
+    website: row.website,
+    phone: row.phone,
+    email: row.email,
+    emailSource: row.email_source || (row.email ? 'discovered_osm' : undefined),
+    opportunityScore: row.opportunity_score === null || row.opportunity_score === undefined
+      ? null
+      : Number(row.opportunity_score),
+    opportunitySignals: row.opportunity_signals || null,
+    status: row.status,
+    starred: Boolean(row.starred),
+    tags: row.tags || null,
+    notes: row.notes,
+    osmUrl: row.osm_url,
+    discoveredAt: row.discovered_at || row.created_at,
+    createdAt: row.created_at,
+    projects: (row.leados_project_leads || []).map((link: RawRow) => ({
+      leadId: row.id,
+      projectId: link.project_id,
+      projectName: 'Project',
+      projectFitScore: link.project_fit_score === null ? null : Number(link.project_fit_score),
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensures the default workspace and project exist, returning the default project.
+ * The rows are created by the plugin on activation; this call re-asserts them so
+ * a plugin installed after the app was deployed, or a project deleted by hand,
+ * still leaves the console working.
  */
 export async function ensureDefaultProject(): Promise<LeadOSProject> {
   try {
-    const supabase = getSupabaseAdmin();
-
-    // 1. Ensure workspace
-    await (supabase as any)
-      .from('leados_workspaces')
-      .upsert(
-        {
-          id: HK_DEFAULT_WORKSPACE_ID,
-          name: 'Himalayan Koh LeadOS',
-          slug: 'himalayan-koh',
-        },
-        { onConflict: 'id' }
-      );
-
-    // 2. Fetch or insert default project
-    const { data: existing } = await (supabase as any)
-      .from('leados_projects')
-      .select('*')
-      .eq('id', HK_DEFAULT_PROJECT_ID)
-      .maybeSingle();
-
-    if (existing) {
-      return {
-        id: existing.id,
-        workspaceId: existing.workspace_id,
-        name: existing.name,
-        website: existing.website,
-        shortDescription: existing.short_description,
-        productService: existing.product_service,
-        targetCustomerDescription: existing.target_customer_description,
-        industries: existing.industries || [],
-        businessCategories: (existing.business_categories || []).filter((category: string) => !/pet\s*shop|pet\s*store/i.test(category)),
-        preferredLocations: existing.preferred_locations || [],
-        countries: existing.countries || [],
-        targetBusinessSize: existing.target_business_size,
-        positiveKeywords: existing.positive_keywords || [],
-        negativeKeywords: existing.negative_keywords || [],
-        idealCustomerProfile: existing.ideal_customer_profile,
-        notes: existing.notes,
-        status: existing.status,
-        createdAt: existing.created_at,
-        updatedAt: existing.updated_at,
-      };
+    const response = await leadosRequest<{ id?: string } | null>('/ensure-default', { method: 'POST' });
+    if (!response || !response.id) {
+      throw new Error('WordPress returned no project.');
     }
-
-    const { data: inserted, error: insertErr } = await (supabase as any)
-      .from('leados_projects')
-      .insert({
-        id: HK_DEFAULT_PROJECT.id,
-        workspace_id: HK_DEFAULT_PROJECT.workspaceId,
-        name: HK_DEFAULT_PROJECT.name,
-        website: HK_DEFAULT_PROJECT.website,
-        short_description: HK_DEFAULT_PROJECT.shortDescription,
-        product_service: HK_DEFAULT_PROJECT.productService,
-        target_customer_description: HK_DEFAULT_PROJECT.targetCustomerDescription,
-        industries: HK_DEFAULT_PROJECT.industries,
-        business_categories: HK_DEFAULT_PROJECT.businessCategories,
-        preferred_locations: HK_DEFAULT_PROJECT.preferredLocations,
-        countries: HK_DEFAULT_PROJECT.countries,
-        target_business_size: HK_DEFAULT_PROJECT.targetBusinessSize,
-        positive_keywords: HK_DEFAULT_PROJECT.positiveKeywords,
-        negative_keywords: HK_DEFAULT_PROJECT.negativeKeywords,
-        ideal_customer_profile: HK_DEFAULT_PROJECT.idealCustomerProfile,
-        notes: HK_DEFAULT_PROJECT.notes,
-        status: HK_DEFAULT_PROJECT.status,
-      })
-      .select()
-      .single();
-
-    if (!insertErr && inserted) {
-      return {
-        id: inserted.id,
-        workspaceId: inserted.workspace_id,
-        name: inserted.name,
-        website: inserted.website,
-        shortDescription: inserted.short_description,
-        productService: inserted.product_service,
-        targetCustomerDescription: inserted.target_customer_description,
-        industries: inserted.industries || [],
-        businessCategories: inserted.business_categories || [],
-        preferredLocations: inserted.preferred_locations || [],
-        countries: inserted.countries || [],
-        targetBusinessSize: inserted.target_business_size,
-        positiveKeywords: inserted.positive_keywords || [],
-        negativeKeywords: inserted.negative_keywords || [],
-        idealCustomerProfile: inserted.ideal_customer_profile,
-        notes: inserted.notes,
-        status: inserted.status,
-        createdAt: inserted.created_at,
-        updatedAt: inserted.updated_at,
-      };
-    }
-  } catch (err) {
-    throw new Error(`LeadOS persistence unavailable: ${err instanceof Error ? err.message : 'database error'}`);
+    return toProject(response as RawRow);
+  } catch (error) {
+    throw describe('LeadOS persistence unavailable', error);
   }
-
-  throw new Error('LeadOS default project could not be persisted.');
 }
 
-/**
- * Lists all projects.
- */
+/** Lists every project in the workspace. */
 export async function listProjects(): Promise<LeadOSProject[]> {
   try {
-    const supabase = getSupabaseAdmin();
-    const { data: projects, error } = await (supabase as any)
-      .from('leados_projects')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (!error && Array.isArray(projects) && projects.length > 0) {
-      return projects.map((p) => ({
-        id: p.id,
-        workspaceId: p.workspace_id,
-        name: p.name,
-        website: p.website,
-        shortDescription: p.short_description,
-        productService: p.product_service,
-        targetCustomerDescription: p.target_customer_description,
-        industries: p.industries || [],
-        businessCategories: p.business_categories || [],
-        preferredLocations: p.preferred_locations || [],
-        countries: p.countries || [],
-        targetBusinessSize: p.target_business_size,
-        positiveKeywords: p.positive_keywords || [],
-        negativeKeywords: p.negative_keywords || [],
-        idealCustomerProfile: p.ideal_customer_profile,
-        notes: p.notes,
-        status: p.status,
-        createdAt: p.created_at,
-        updatedAt: p.updated_at,
-        leadCount: 0,
-      }));
-    }
+    const response = await leadosRequest<{ projects?: RawRow[] }>('/projects');
+    return (response.projects || []).map(toProject);
   } catch (error) {
-    throw new Error(`LeadOS project read failed: ${error instanceof Error ? error.message : 'database error'}`);
+    throw describe('LeadOS project read', error);
   }
-
-  throw new Error('LeadOS project read failed.');
 }
 
-/**
- * Gets single project by ID.
- */
+/** Gets a single project by ID, or null when it does not exist. */
 export async function getProjectById(id: string): Promise<LeadOSProject | null> {
-  const all = await listProjects();
-  return all.find((p) => p.id === id) || null;
-}
-
-/**
- * Creates or updates a project.
- */
-export async function saveProject(project: Partial<LeadOSProject> & { name: string }): Promise<LeadOSProject> {
-  const id = project.id || crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  const formatted: LeadOSProject = {
-    id,
-    workspaceId: project.workspaceId || HK_DEFAULT_WORKSPACE_ID,
-    name: project.name,
-    website: project.website || null,
-    shortDescription: project.shortDescription || null,
-    productService: project.productService || null,
-    targetCustomerDescription: project.targetCustomerDescription || null,
-    industries: project.industries || [],
-    businessCategories: project.businessCategories || [],
-    preferredLocations: project.preferredLocations || [],
-    countries: project.countries || [],
-    targetBusinessSize: project.targetBusinessSize || null,
-    positiveKeywords: project.positiveKeywords || [],
-    negativeKeywords: project.negativeKeywords || [],
-    idealCustomerProfile: project.idealCustomerProfile || null,
-    notes: project.notes || null,
-    status: project.status || 'active',
-    createdAt: project.createdAt || now,
-    updatedAt: now,
-  };
-
   try {
-    const supabase = getSupabaseAdmin();
-    await (supabase as any).from('leados_projects').upsert({
-      id: formatted.id,
-      workspace_id: formatted.workspaceId,
-      name: formatted.name,
-      website: formatted.website,
-      short_description: formatted.shortDescription,
-      product_service: formatted.productService,
-      target_customer_description: formatted.targetCustomerDescription,
-      industries: formatted.industries,
-      business_categories: formatted.businessCategories,
-      preferred_locations: formatted.preferredLocations,
-      countries: formatted.countries,
-      target_business_size: formatted.targetBusinessSize,
-      positive_keywords: formatted.positiveKeywords,
-      negative_keywords: formatted.negativeKeywords,
-      ideal_customer_profile: formatted.idealCustomerProfile,
-      notes: formatted.notes,
-      status: formatted.status,
-      updated_at: formatted.updatedAt,
-    });
+    const response = await leadosRequest<RawRow | null>(`/projects/${encodeURIComponent(id)}`);
+    return response ? toProject(response) : null;
   } catch (error) {
-    throw new Error(`LeadOS project save failed: ${error instanceof Error ? error.message : 'database error'}`);
+    // A caller asking "what is project X?" is better served by null than by an
+    // exception when the answer is simply "there is no such project".
+    if (error instanceof WordPressApiError && error.status === 404) return null;
+    throw describe('LeadOS project read', error);
   }
-
-  inMemoryStore.projects.set(id, formatted);
-  return formatted;
 }
+
+/** Creates or updates a project. */
+export async function saveProject(
+  project: Partial<LeadOSProject> & { name: string }
+): Promise<LeadOSProject> {
+  try {
+    const response = await leadosRequest<RawRow>('/projects', {
+      method: 'POST',
+      body: {
+        ...project,
+        id: project.id || undefined,
+        workspaceId: project.workspaceId || HK_DEFAULT_WORKSPACE_ID,
+      },
+    });
+    return toProject(response);
+  } catch (error) {
+    throw describe('LeadOS project save', error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Saved leads
+// ---------------------------------------------------------------------------
 
 /**
  * Saves a discovered lead to the Saved Leads library.
+ *
+ * De-duplication is the server's job: when the lead carries an OSM identity the
+ * plugin updates the existing row and — deliberately — leaves the owner's status,
+ * notes, stars and tags alone, so re-running a search cannot undo their triage.
  */
 export async function saveLeadToLibrary(
   lead: NormalizedLead & {
@@ -308,13 +296,9 @@ export async function saveLeadToLibrary(
   },
   projectId?: string
 ): Promise<SavedLeadRecord> {
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  const record: SavedLeadRecord = {
-    id,
-    workspaceId: HK_DEFAULT_WORKSPACE_ID,
-    businessName: lead.businessName,
+  const payload = {
+    workspace_id: HK_DEFAULT_WORKSPACE_ID,
+    business_name: lead.businessName,
     category: lead.category || null,
     address: lead.address || null,
     city: lead.city || null,
@@ -323,128 +307,34 @@ export async function saveLeadToLibrary(
     website: lead.website || null,
     phone: lead.phone || null,
     email: lead.email || null,
-    opportunityScore: lead.opportunityScore ?? null,
-    opportunitySignals: lead.opportunitySignals || null,
-    status: 'new',
-    starred: false,
+    email_source: lead.emailSource || (lead.email ? 'discovered_osm' : null),
+    latitude: lead.latitude,
+    longitude: lead.longitude,
+    osm_type: lead.osmType,
+    osm_id: lead.osmId,
+    osm_url: lead.osmUrl,
+    data_source: lead.dataSource || 'openstreetmap',
+    opportunity_score: lead.opportunityScore ?? null,
+    opportunity_signals: lead.opportunitySignals || [],
     tags: lead.category ? [lead.category] : [],
-    notes: null,
-    osmUrl: lead.osmUrl || null,
-    discoveredAt: now,
-    createdAt: now,
-    projects: projectId
-      ? [
-          {
-            leadId: id,
-            projectId,
-            projectName: (await getProjectById(projectId))?.name || 'Assigned Project',
-            projectFitScore: lead.projectFitScore ?? null,
-          },
-        ]
-      : [],
+    project_fit_score: lead.projectFitScore ?? null,
+    project_fit_reasons: lead.projectFitReasons || null,
+    outreach_angles: lead.outreachAngles || null,
   };
 
   try {
-    const supabase = getSupabaseAdmin();
-    const provider = record.osmUrl ? 'openstreetmap' : (lead.dataSource || 'unknown');
-    const providerRecordId = lead.osmType && lead.osmId ? `${lead.osmType}/${lead.osmId}` : null;
-    const existingQuery = providerRecordId
-      ? await (supabase as any)
-          .from('leados_leads')
-          .select('id, status, notes, starred, tags')
-          .eq('workspace_id', record.workspaceId)
-          .eq('data_source', provider)
-          .eq('osm_type', lead.osmType)
-          .eq('osm_id', lead.osmId)
-          .maybeSingle()
-      : { data: null, error: null };
-    if (existingQuery.error) throw existingQuery.error;
-    const existing = existingQuery.data;
-    const leadPayload = {
-      workspace_id: record.workspaceId,
-      business_name: record.businessName,
-      category: record.category,
-      address: record.address,
-      city: record.city,
-      region: record.region,
-      country: record.country,
-      website: record.website,
-      phone: record.phone,
-      email: record.email,
-      email_source: record.emailSource || (record.email ? 'discovered_osm' : null),
-      latitude: lead.latitude,
-      longitude: lead.longitude,
-      osm_type: lead.osmType,
-      osm_id: lead.osmId,
-      osm_url: lead.osmUrl,
-      data_source: provider,
-      opportunity_score: record.opportunityScore,
-      opportunity_signals: record.opportunitySignals,
-      tags: record.tags,
-    };
-    if (existing) {
-      await (supabase as any).from('leados_leads').update(leadPayload).eq('id', existing.id).eq('workspace_id', record.workspaceId);
-      record.id = existing.id;
-      record.status = existing.status || record.status;
-      record.notes = existing.notes || record.notes;
-      record.starred = Boolean(existing.starred);
-      record.tags = existing.tags || record.tags;
-    } else {
-      await (supabase as any).from('leados_leads').insert({
-      id: record.id,
-      workspace_id: record.workspaceId,
-      business_name: record.businessName,
-      category: record.category,
-      address: record.address,
-      city: record.city,
-      region: record.region,
-      country: record.country,
-      website: record.website,
-      phone: record.phone,
-      email: record.email,
-      email_source: record.emailSource || (record.email ? 'discovered_osm' : null),
-      latitude: lead.latitude,
-      longitude: lead.longitude,
-      osm_type: lead.osmType,
-      osm_id: lead.osmId,
-      osm_url: lead.osmUrl,
-      data_source: lead.dataSource || 'openstreetmap',
-      opportunity_score: record.opportunityScore,
-      opportunity_signals: record.opportunitySignals,
-      status: record.status,
-      starred: record.starred,
-      tags: record.tags,
-      notes: record.notes,
-      });
-    }
-
-    if (projectId) {
-      await (supabase as any).from('leados_project_leads').upsert({
-        project_id: projectId,
-        lead_id: record.id,
-        project_fit_score: lead.projectFitScore ?? null,
-        project_fit_reasons: lead.projectFitReasons || null,
-        outreach_angles: lead.outreachAngles || null,
-      }, { onConflict: 'project_id,lead_id' });
-    }
+    const response = await leadosRequest<{ lead?: RawRow }>('/leads', {
+      method: 'POST',
+      body: { lead: payload, projectId: projectId || null },
+    });
+    if (!response?.lead) throw new Error('WordPress returned no lead.');
+    return toSavedLead(response.lead);
   } catch (error) {
-    throw new Error(`LeadOS lead save failed: ${error instanceof Error ? error.message : 'database error'}`);
+    throw describe('LeadOS lead save', error);
   }
-
-  inMemoryStore.savedLeads.set(record.id, record);
-  if (projectId) {
-    if (!inMemoryStore.projectLeads.has(projectId)) {
-      inMemoryStore.projectLeads.set(projectId, new Set());
-    }
-    inMemoryStore.projectLeads.get(projectId)!.add(id);
-  }
-
-  return record;
 }
 
-/**
- * Lists saved leads with filtering and pagination.
- */
+/** Lists saved leads with filtering and pagination. */
 export async function listSavedLeads(options?: {
   search?: string;
   status?: string;
@@ -452,209 +342,127 @@ export async function listSavedLeads(options?: {
   limit?: number;
   page?: number;
 }): Promise<{ leads: SavedLeadRecord[]; total: number }> {
-  const limit = options?.limit || 50;
-  const page = options?.page || 1;
-
   try {
-    const supabase = getSupabaseAdmin();
-    let query = (supabase as any)
-      .from('leados_leads')
-      .select('*, leados_project_leads(project_id, project_fit_score)', { count: 'exact' });
-
-    if (options?.status && options.status !== 'all') {
-      query = query.eq('status', options.status);
-    }
-    if (options?.search) {
-      query = query.ilike('business_name', `%${options.search}%`);
-    }
-
-    const { data, count, error } = await query
-      .order('created_at', { ascending: false })
-      .range((page - 1) * limit, page * limit - 1);
-
-    if (!error && Array.isArray(data)) {
-      const mapped: SavedLeadRecord[] = data.map((d: any) => ({
-        id: d.id,
-        workspaceId: d.workspace_id,
-        businessName: d.business_name,
-        category: d.category,
-        address: d.address,
-        city: d.city,
-        region: d.region,
-        country: d.country,
-        website: d.website,
-        phone: d.phone,
-        email: d.email,
-        emailSource: d.email_source || (d.email ? 'discovered_osm' : undefined),
-        opportunityScore: d.opportunity_score,
-        opportunitySignals: d.opportunity_signals,
-        status: d.status,
-        starred: d.starred,
-        tags: d.tags,
-        notes: d.notes,
-        osmUrl: d.osm_url,
-        discoveredAt: d.discovered_at || d.created_at,
-        createdAt: d.created_at,
-        projects: (d.leados_project_leads || []).map((pl: any) => ({
-          leadId: d.id,
-          projectId: pl.project_id,
-          projectName: 'Project',
-          projectFitScore: pl.project_fit_score,
-        })),
-      }));
-
-      return { leads: mapped, total: count || mapped.length };
-    }
+    const response = await leadosRequest<{ leads?: RawRow[]; total?: number }>('/leads', {
+      params: {
+        search: options?.search,
+        status: options?.status,
+        page: options?.page,
+        limit: options?.limit,
+      },
+    });
+    const leads = (response.leads || []).map(toSavedLead);
+    return { leads, total: response.total ?? leads.length };
   } catch (error) {
-    throw new Error(`LeadOS lead read failed: ${error instanceof Error ? error.message : 'database error'}`);
+    throw describe('LeadOS lead read', error);
   }
-
-  let list = Array.from(inMemoryStore.savedLeads.values());
-  if (options?.status && options.status !== 'all') {
-    list = list.filter((l) => l.status === options.status);
-  }
-  if (options?.search) {
-    const s = options.search.toLowerCase();
-    list = list.filter(
-      (l) =>
-        l.businessName.toLowerCase().includes(s) ||
-        (l.city && l.city.toLowerCase().includes(s)) ||
-        (l.category && l.category.toLowerCase().includes(s))
-    );
-  }
-
-  const start = (page - 1) * limit;
-  return {
-    leads: list.slice(start, start + limit),
-    total: list.length,
-  };
 }
 
-/**
- * Updates lead status, notes, tags, or starred status.
- */
+/** One saved lead by id, or null. */
+export async function getSavedLeadById(id: string): Promise<SavedLeadRecord | null> {
+  try {
+    const response = await leadosRequest<{ leads?: RawRow[] }>('/leads', {
+      params: { id, limit: 1 },
+    });
+    const row = response.leads?.[0];
+    return row ? toSavedLead(row) : null;
+  } catch (error) {
+    throw describe('LeadOS lead read', error);
+  }
+}
+
+/** Updates status, notes, tags, stars or contact details on a saved lead. */
 export async function updateSavedLead(
   id: string,
   patch: Partial<SavedLeadRecord>
 ): Promise<SavedLeadRecord | null> {
   try {
-    const supabase = getSupabaseAdmin();
-    const updatePayload: Record<string, unknown> = {};
-    if (patch.status !== undefined) updatePayload.status = patch.status;
-    if (patch.starred !== undefined) updatePayload.starred = patch.starred;
-    if (patch.notes !== undefined) updatePayload.notes = patch.notes;
-    if (patch.tags !== undefined) updatePayload.tags = patch.tags;
+    const body: Record<string, unknown> = {};
+    if (patch.status !== undefined) body.status = patch.status;
+    if (patch.starred !== undefined) body.starred = patch.starred;
+    if (patch.notes !== undefined) body.notes = patch.notes;
+    if (patch.tags !== undefined) body.tags = patch.tags;
     if (patch.email !== undefined) {
-      updatePayload.email = patch.email;
-      updatePayload.email_source = patch.emailSource || 'manually_entered';
+      body.email = patch.email;
+      body.emailSource = patch.emailSource || 'manually_entered';
     }
-    if (patch.phone !== undefined) updatePayload.phone = patch.phone;
-    if (patch.website !== undefined) updatePayload.website = patch.website;
+    if (patch.phone !== undefined) body.phone = patch.phone;
+    if (patch.website !== undefined) body.website = patch.website;
 
-    const { data: updatedRows, error } = await (supabase as any)
-      .from('leados_leads')
-      .update(updatePayload)
-      .eq('id', id)
-      .eq('workspace_id', HK_DEFAULT_WORKSPACE_ID)
-      .select('*');
-    if (error) throw error;
-    if (!updatedRows?.length) return null;
+    const response = await leadosRequest<{ lead?: RawRow | null }>(
+      `/leads/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body }
+    );
+    return response?.lead ? toSavedLead(response.lead) : null;
   } catch (error) {
-    throw new Error(`LeadOS lead update failed: ${error instanceof Error ? error.message : 'database error'}`);
+    throw describe('LeadOS lead update', error);
   }
-
-  const existing = inMemoryStore.savedLeads.get(id);
-  if (existing) {
-    const updated = { ...existing, ...patch };
-    inMemoryStore.savedLeads.set(id, updated);
-    return updated;
-  }
-  return null;
 }
 
-/**
- * Deletes a saved lead.
- */
+/** Deletes a saved lead. Returns false when it was already gone. */
 export async function deleteSavedLead(id: string): Promise<boolean> {
   try {
-    const supabase = getSupabaseAdmin();
-    const { data: deletedRows, error } = await (supabase as any)
-      .from('leados_leads')
-      .delete()
-      .eq('id', id)
-      .eq('workspace_id', HK_DEFAULT_WORKSPACE_ID)
-      .select('id');
-    if (error) throw error;
-    if (!deletedRows?.length) return false;
+    const response = await leadosRequest<{ deleted?: boolean }>(
+      `/leads/${encodeURIComponent(id)}`,
+      { method: 'DELETE' }
+    );
+    return Boolean(response?.deleted);
   } catch (error) {
-    throw new Error(`LeadOS lead delete failed: ${error instanceof Error ? error.message : 'database error'}`);
+    throw describe('LeadOS lead delete', error);
   }
-
-  inMemoryStore.savedLeads.delete(id);
-  return true;
 }
 
-/**
- * Records a search execution into search history.
- */
+/** Records a search execution into search history. */
 export async function recordSearchExecution(entry: {
   category: string;
   location: string;
   resultsCount: number;
 }): Promise<void> {
-  const record = {
-    id: crypto.randomUUID(),
-    category: entry.category,
-    location: entry.location,
-    resultsCount: entry.resultsCount,
-    createdAt: new Date().toISOString(),
-  };
-
   try {
-    const supabase = getSupabaseAdmin();
-    await (supabase as any).from('leados_searches').insert({
-      id: record.id,
-      workspace_id: HK_DEFAULT_WORKSPACE_ID,
-      query_category: record.category,
-      query_location: record.location,
-      results_count: record.resultsCount,
-    });
+    await leadosRequest('/searches', { method: 'POST', body: entry });
   } catch (error) {
-    throw new Error(`LeadOS search history write failed: ${error instanceof Error ? error.message : 'database error'}`);
-  }
-
-  inMemoryStore.searches.unshift(record);
-  if (inMemoryStore.searches.length > 20) {
-    inMemoryStore.searches.pop();
+    throw describe('LeadOS search history write', error);
   }
 }
 
-/**
- * Returns dashboard overview stats.
- */
+/** Writes one audit entry (outreach, status changes, …). */
+export async function recordAuditEntry(entry: {
+  action: string;
+  entityType?: string;
+  entityId?: string;
+  details?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await leadosRequest('/audit', { method: 'POST', body: entry });
+  } catch (error) {
+    throw describe('LeadOS audit write', error);
+  }
+}
+
+/** Dashboard overview stats. */
 export async function getLeadOSOverviewStats() {
-  const supabase = getSupabaseAdmin();
-  const base = () => (supabase as any).from('leados_leads').select('id', { count: 'exact', head: true }).eq('workspace_id', HK_DEFAULT_WORKSPACE_ID);
-  const [total, high, contacted, pipeline, activity] = await Promise.all([
-    base(),
-    base().gte('opportunity_score', 70),
-    base().eq('status', 'contacted'),
-    base().in('status', ['shortlisted', 'qualified']),
-    (supabase as any).from('leados_audit_logs').select('action, details, created_at').eq('workspace_id', HK_DEFAULT_WORKSPACE_ID).order('created_at', { ascending: false }).limit(5),
-  ]);
-  for (const result of [total, high, contacted, pipeline, activity]) if (result.error) throw result.error;
-  const projects = await listProjects();
-  return {
-    savedLeadsCount: total.count || 0,
-    highOpportunityCount: high.count || 0,
-    contactedCount: contacted.count || 0,
-    inPipelineCount: pipeline.count || 0,
-    activeProjectsCount: projects.length,
-    searchesCount: 0,
-    defaultProject: projects.find((p) => p.id === HK_DEFAULT_PROJECT_ID) || projects[0] || null,
-    recentActivity: (activity.data || []).map((row: any) => ({
-      description: String(row.details?.action || row.action || 'LeadOS activity'),
-      time: row.created_at,
-    })),
-  };
+  try {
+    const [statsResponse, projects] = await Promise.all([
+      leadosRequest<{ stats?: Record<string, any> }>('/stats'),
+      listProjects(),
+    ]);
+    const stats = statsResponse.stats || {};
+
+    return {
+      savedLeadsCount: stats.savedLeadsCount || 0,
+      highOpportunityCount: stats.highOpportunityCount || 0,
+      contactedCount: stats.contactedCount || 0,
+      inPipelineCount: stats.inPipelineCount || 0,
+      activeProjectsCount: stats.activeProjectsCount ?? projects.length,
+      searchesCount: stats.searchesCount || 0,
+      defaultProject:
+        projects.find((project) => project.id === HK_DEFAULT_PROJECT_ID) || projects[0] || null,
+      recentActivity: (stats.recentActivity || []).map((entry: RawRow) => ({
+        description: String(entry.description || 'LeadOS activity'),
+        time: entry.time,
+      })),
+    };
+  } catch (error) {
+    throw describe('LeadOS stats read', error);
+  }
 }

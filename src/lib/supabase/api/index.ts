@@ -7,7 +7,7 @@ export { blogApi } from './blog';
 export { notificationsApi } from './notifications';
 export { adminApi } from './admin';
 export { addressesApi } from './addresses';
-export { crmApi } from './crm';
+// crmApi is gone: the CRM lead inbox moved to WordPress (see lib/leados/crm.ts).
 
 
 // Re-export types

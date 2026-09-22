@@ -1,6 +1,15 @@
+/**
+ * CRM lead list + CSV export — admin only.
+ *
+ * Reads the WordPress `crm_leads` table through `lib/leados/crm`. The filters,
+ * the CSV columns and the response shape are unchanged; only the source of the
+ * rows moved. Admin identity comes from the WordPress-signed session token that
+ * `verifyAdminRequest` validates.
+ */
+
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
+import { listCrmLeads } from '@/lib/leados/crm';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,37 +32,13 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get('search') || '').trim();
     const source = (searchParams.get('source') || '').trim();
-    const couponUsed = searchParams.get('couponUsed');
+    const couponUsedParam = searchParams.get('couponUsed');
     const format = (searchParams.get('format') || 'json').toLowerCase();
 
-    const supabase = getSupabaseAdmin();
-    let query = supabase
-      .from('crm_leads')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const couponUsed =
+      couponUsedParam === '1' || couponUsedParam === '0' ? couponUsedParam : undefined;
 
-    if (source) {
-      query = query.eq('source', source);
-    }
-
-    if (couponUsed === '1') {
-      query = query.eq('coupon_used', true);
-    } else if (couponUsed === '0') {
-      query = query.or('coupon_used.is.null,coupon_used.eq.false');
-    }
-
-    if (search) {
-      query = query.or(
-        `email.ilike.%${search}%,name.ilike.%${search}%,phone.ilike.%${search}%,company.ilike.%${search}%,coupon_code.ilike.%${search}%`
-      );
-    }
-
-    const { data: leads, error } = await query;
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const items = (leads || []) as Array<Record<string, unknown>>;
+    const items = await listCrmLeads({ search, source, couponUsed });
 
     if (format === 'csv') {
       const headers = ['id', 'email', 'name', 'phone', 'source', 'page_url', 'coupon_code', 'coupon_used', 'created_at'];

@@ -208,12 +208,14 @@ export default function AuthModal({ isOpen, onClose }: Props) {
 
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">
-                  Email Address
+                  {mode === 'login' ? 'Email or WordPress username' : 'Email Address'}
                 </label>
                 <div className="relative">
                   <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
-                    type="email"
+                    // A WordPress admin signs in with a username, which the
+                    // browser's native email validation would refuse.
+                    type={mode === 'login' ? 'text' : 'email'}
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}

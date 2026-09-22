@@ -1,58 +1,50 @@
-// ============================================================================
-// LUXEDGE V2 — MINIMAL SUPABASE AUTH CLIENT (browser)
-//
-// Thin fetch-based client for Supabase Auth (email/password). No SDK
-// dependency: keeps the storefront bundle lean and the surface area small.
-// Only what Luxedge needs is implemented: password sign-in, sign-up, refresh,
-// sign-out, session persistence and role mapping.
-//
-// SECURITY:
-//  - Uses the PUBLIC anon key only. The service-role key and the JWT secret
-//    never appear in browser code, localStorage, logs or the bundle.
-//  - The role claim (app_metadata.role) comes from the SIGNED JWT returned by
-//    Supabase — it is never invented client-side and never accepted from a
-//    user-supplied field.
-//  - No plaintext passwords are ever stored.
-//
-// When VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are absent this module is
-// inert: callers must show an honest "not configured" state instead of a fake
-// login (enforced by the auth store and the login pages).
-// ============================================================================
-
-export interface SbUser {
-  id: string;
-  email: string;
-  name: string;
-  role: 'admin' | 'buyer';
-}
-
-export interface SbSession {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number; // epoch ms
-  user: SbUser;
-}
-
-export type AuthChangeEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED';
-
-const SESSION_KEY = 'luxedge_sb_session';
-const REFRESH_LEAD_MS = 60_000; // refresh when the token is this close to expiring
+/**
+ * ADMIN AUTH — now WordPress, no longer Supabase.
+ *
+ * This module used to be the browser Supabase auth client: it held the
+ * access/refresh tokens, refreshed them, and mapped the `app_metadata.role`
+ * claim. Admin auth has moved to WordPress REST API authentication, and the
+ * implementation is now `./wordpressAdminAuth` — the admin signs in with a
+ * WordPress username + application password, the server verifies it and returns
+ * a signed session token, and that token is what admin writes carry.
+ *
+ * The names below are re-exported unchanged so the ~20 admin panels, the
+ * feature modules and the legacy zustand store that import from here keep
+ * working without a single edit at their call sites.
+ *
+ * What remains here, and why: `getSupabaseConfig`. The *customer* path
+ * (sign-up, customer sign-in, orders) is still Supabase and has not been
+ * migrated — `lib/supabase/client.ts` builds the SDK client from this resolver,
+ * so deleting it would break the storefront. When the customer path moves to
+ * WordPress/WooCommerce, this resolver goes with it and this file can be
+ * deleted outright.
+ */
 
 // ---------------------------------------------------------------------------
-// Configuration
+// Supabase configuration — kept only for the customer path (see module header)
 // ---------------------------------------------------------------------------
 let configOverride: { url: string; anonKey: string } | null | undefined = undefined;
 
 /**
- * Resolve the Supabase project configuration from Vite env vars. Returns null
+ * Resolve the Supabase project configuration from the environment. Returns null
  * when not configured — callers must show an honest "not configured" state.
  */
 export function getSupabaseConfig(): { url: string; anonKey: string } | null {
   if (configOverride !== undefined) return configOverride;
-  const metaEnv = (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env) || {};
-  const procEnv = (typeof process !== 'undefined' && (process.env as Record<string, string | undefined>)) || {};
-  const url = metaEnv.VITE_SUPABASE_URL || procEnv.NEXT_PUBLIC_SUPABASE_URL || procEnv.VITE_SUPABASE_URL || '';
-  const anonKey = metaEnv.VITE_SUPABASE_ANON_KEY || procEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY || procEnv.VITE_SUPABASE_ANON_KEY || '';
+  const metaEnv =
+    (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env) || {};
+  const procEnv =
+    (typeof process !== 'undefined' && (process.env as Record<string, string | undefined>)) || {};
+  const url =
+    metaEnv.VITE_SUPABASE_URL ||
+    procEnv.NEXT_PUBLIC_SUPABASE_URL ||
+    procEnv.VITE_SUPABASE_URL ||
+    '';
+  const anonKey =
+    metaEnv.VITE_SUPABASE_ANON_KEY ||
+    procEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    procEnv.VITE_SUPABASE_ANON_KEY ||
+    '';
   if (!url || !anonKey) return null;
   return { url: url.replace(/\/$/, ''), anonKey };
 }
@@ -61,316 +53,33 @@ export function getSupabaseConfig(): { url: string; anonKey: string } | null {
  * Test-only hook: override the resolved config (null = simulate unconfigured,
  * undefined = restore real env resolution). Never called by app code.
  */
-export function __setSupabaseConfigForTests(config: { url: string; anonKey: string } | null | undefined): void {
+export function __setSupabaseConfigForTests(
+  config: { url: string; anonKey: string } | null | undefined
+): void {
   configOverride = config;
 }
 
-export function isSupabaseConfigured(): boolean {
-  return getSupabaseConfig() !== null;
-}
-
 // ---------------------------------------------------------------------------
-// Session storage (localStorage — survives refresh; contains no secrets
-// beyond the access/refresh tokens, which is exactly how Supabase sessions
-// are designed to work client-side)
-// ---------------------------------------------------------------------------
-export function readStoredSession(): SbSession | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.localStorage.getItem(SESSION_KEY);
-    if (raw) {
-      const s = JSON.parse(raw) as Partial<SbSession>;
-      if (
-        typeof s.accessToken === 'string' && s.accessToken &&
-        typeof s.refreshToken === 'string' && s.refreshToken &&
-        typeof s.expiresAt === 'number' &&
-        s.user && typeof s.user.id === 'string'
-      ) {
-        return s as SbSession;
-      }
-    }
-
-    // Fallback: check standard Supabase JS client session stored in localStorage
-    for (let i = 0; i < window.localStorage.length; i++) {
-      const key = window.localStorage.key(i);
-      if (key && (key.startsWith('sb-') && key.includes('-auth-token'))) {
-        const val = window.localStorage.getItem(key);
-        if (!val) continue;
-        try {
-          const parsed = JSON.parse(val);
-          const access = parsed.access_token || parsed.currentSession?.access_token;
-          const refresh = parsed.refresh_token || parsed.currentSession?.refresh_token;
-          const u = parsed.user || parsed.currentSession?.user;
-          const exp = (parsed.expires_at || parsed.currentSession?.expires_at || 0) * 1000;
-          if (access && u) {
-            const role = (
-              u.app_metadata?.role === 'admin' ||
-              u.user_metadata?.role === 'admin' ||
-              u.email === '8002salman@gmail.com' ||
-              u.email === 'basco.pk@gmail.com' ||
-              u.email?.startsWith('admin@')
-            ) ? 'admin' : 'buyer';
-            return {
-              accessToken: access,
-              refreshToken: refresh || '',
-              expiresAt: exp || (Date.now() + 3600_000),
-              user: {
-                id: u.id,
-                email: u.email || '',
-                name: u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0] || 'Admin',
-                role,
-              },
-            };
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredSession(session: SbSession): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  } catch {
-    /* storage full or unavailable — session simply won't survive refresh */
-  }
-}
-
-function clearStoredSession(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.removeItem(SESSION_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Synchronous access token read — used to stamp Authorization headers. */
-export function getAccessToken(): string | null {
-  return readStoredSession()?.accessToken || null;
-}
-
-/**
- * Fresh access token for writes: refreshes the session first when the stored
- * token is expired or near expiry (getSession already handles that), then
- * returns the current token. Admin save paths call this before touching the
- * DB so a long-open form never writes with a stale JWT (Supabase 401
- * "JWT expired"). Returns null only when there is no session at all.
- */
-export async function getFreshAccessToken(): Promise<string | null> {
-  const session = await getSession();
-  return session ? session.accessToken : null;
-}
-
-/** The currently known user (from a stored session), without any token. */
-export function getSessionUser(): SbUser | null {
-  return readStoredSession()?.user || null;
-}
-
-// ---------------------------------------------------------------------------
-// Auth change events
-// ---------------------------------------------------------------------------
-type Listener = (event: AuthChangeEvent) => void;
-const listeners = new Set<Listener>();
-function emit(event: AuthChangeEvent): void {
-  listeners.forEach((cb) => {
-    try {
-      cb(event);
-    } catch {
-      /* listener errors must not break auth */
-    }
-  });
-}
-export function onAuthStateChange(cb: Listener): () => void {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
-}
-
-// ---------------------------------------------------------------------------
-// Supabase REST helpers
-// ---------------------------------------------------------------------------
-interface RawAuthResponse {
-  access_token?: string;
-  refresh_token?: string;
-  expires_in?: number;
-  user?: Record<string, unknown>;
-  error?: string;
-  error_description?: string;
-  msg?: string;
-}
-
-function mapRawUser(raw: Record<string, unknown>): SbUser {
-  const appMeta = (raw.app_metadata || {}) as Record<string, unknown>;
-  const userMeta = (raw.user_metadata || {}) as Record<string, unknown>;
-  const email = String(raw.email || '');
-  const name = String(userMeta.name || userMeta.full_name || email.split('@')[0] || '');
-  const role = appMeta.role === 'admin' ? 'admin' : 'buyer';
-  return { id: String(raw.id || ''), email, name, role };
-}
-
-async function parseAuthResponse(res: Response): Promise<RawAuthResponse> {
-  let data: RawAuthResponse = {};
-  try {
-    data = (await res.json()) as RawAuthResponse;
-  } catch {
-    /* non-JSON body */
-  }
-  if (!res.ok) {
-    const detail = data.error_description || data.error || data.msg || `HTTP ${res.status}`;
-    throw new Error(detail);
-  }
-  return data;
-}
-
-async function authRequest(path: string, init: RequestInit & { config: { url: string; anonKey: string } }): Promise<Response> {
-  const { config } = init;
-  const headers: Record<string, string> = {
-    apikey: config.anonKey,
-    'Content-Type': 'application/json',
-    ...((init.headers as Record<string, string>) || {}),
-  };
-  const res = await fetch(`${config.url}${path}`, { ...init, headers });
-  return res;
-}
-
-function toSession(data: RawAuthResponse): SbSession | null {
-  if (!data.access_token || !data.refresh_token || !data.user) return null;
-  const expiresAt = Date.now() + (data.expires_in || 3600) * 1000;
-  return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
-    expiresAt,
-    user: mapRawUser(data.user),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Public API
+// Admin auth — WordPress (the implementation lives in ./wordpressAdminAuth)
 // ---------------------------------------------------------------------------
 
-/** Sign in with email + password. Throws an honest Error on failure. */
-export async function signInWithPassword(email: string, password: string): Promise<SbSession> {
-  const config = getSupabaseConfig();
-  if (!config) throw new Error('Supabase is not configured (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).');
-  const res = await authRequest('/auth/v1/token?grant_type=password', {
-    method: 'POST',
-    config,
-    body: JSON.stringify({ email, password }),
-  });
-  const data = await parseAuthResponse(res);
-  const session = toSession(data);
-  if (!session) throw new Error('Sign-in did not return a session');
-  writeStoredSession(session);
-  emit('SIGNED_IN');
-  return session;
-}
-
-/** Create an account. Throws on failure (e.g. email already registered). */
-export async function signUp(name: string, email: string, password: string): Promise<{ session: SbSession | null }> {
-  const config = getSupabaseConfig();
-  if (!config) throw new Error('Supabase is not configured (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).');
-  const res = await authRequest('/auth/v1/signup', {
-    method: 'POST',
-    config,
-    body: JSON.stringify({ email, password, data: { name } }),
-  });
-  const data = await parseAuthResponse(res);
-  const session = toSession(data);
-  if (session) {
-    writeStoredSession(session);
-    emit('SIGNED_IN');
-  }
-  return { session };
-}
-
-/** Sign out: revoke server-side (best effort) and clear the local session. */
-export async function signOut(): Promise<void> {
-  const token = getAccessToken();
-  const config = getSupabaseConfig();
-  clearStoredSession();
-  emit('SIGNED_OUT');
-  if (token && config) {
-    try {
-      await fetch(`${config.url}/auth/v1/logout`, {
-        method: 'POST',
-        headers: { apikey: config.anonKey, Authorization: `Bearer ${token}` },
-      });
-    } catch {
-      /* network failure — local session is already cleared */
-    }
-  }
-}
-
-/**
- * Load the current session, refreshing the access token when it is close to
- * expiring. Returns null when signed out. Never throws for "no session".
- */
-/**
- * Load the current session, refreshing the access token when it is close to
- * expiring. Pass `force` to refresh unconditionally — used when the server
- * rejected a token that still "looks" valid locally (revoked/invalidated
- * mid-session), which the clock-based guard would otherwise never refresh.
- * Returns null when signed out. Never throws for "no session".
- */
-export async function getSession(force = false): Promise<SbSession | null> {
-  const session = readStoredSession();
-  if (!session) return null;
-  if (!force && session.expiresAt - Date.now() > REFRESH_LEAD_MS) return session;
-
-  const config = getSupabaseConfig();
-  if (!config) {
-    // Supabase was deconfigured — drop the stale session rather than keep it.
-    clearStoredSession();
-    return null;
-  }
-  try {
-    const res = await authRequest('/auth/v1/token?grant_type=refresh_token', {
-      method: 'POST',
-      config,
-      body: JSON.stringify({ refresh_token: session.refreshToken }),
-    });
-    const data = await parseAuthResponse(res);
-    const refreshed = toSession(data);
-    if (!refreshed) throw new Error('refresh returned no session');
-    writeStoredSession(refreshed);
-    emit('TOKEN_REFRESHED');
-    return refreshed;
-  } catch {
-    // Refresh failed (revoked/expired refresh token) — sign out cleanly.
-    clearStoredSession();
-    emit('SIGNED_OUT');
-    return null;
-  }
-}
-
-/** Change the password for the signed-in user. Throws an honest Error. */
-export async function updatePassword(newPassword: string): Promise<void> {
-  const token = getAccessToken();
-  const config = getSupabaseConfig();
-  if (!token || !config) throw new Error('Not signed in');
-  const res = await fetch(`${config.url}/auth/v1/user`, {
-    method: 'PUT',
-    headers: { apikey: config.anonKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password: newPassword }),
-  });
-  await parseAuthResponse(res);
-}
-
-/** Update profile metadata (name) for the signed-in user. */
-export async function updateUserMetadata(patch: { name?: string }): Promise<void> {
-  const token = getAccessToken();
-  const config = getSupabaseConfig();
-  if (!token || !config) throw new Error('Not signed in');
-  const res = await fetch(`${config.url}/auth/v1/user`, {
-    method: 'PUT',
-    headers: { apikey: config.anonKey, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: patch }),
-  });
-  await parseAuthResponse(res);
-}
+export {
+  type SbUser,
+  type SbSession,
+  type AuthChangeEvent,
+  SESSION_STORAGE_KEY,
+  adminLoginUrl,
+  readStoredSession,
+  getAccessToken,
+  getFreshAccessToken,
+  getSession,
+  getSessionUser,
+  onAuthStateChange,
+  signInWithPassword,
+  signUp,
+  signOut,
+  updatePassword,
+  updateUserMetadata,
+  isWordPressAdminAuthConfigured,
+  isSupabaseConfigured,
+} from './wordpressAdminAuth';

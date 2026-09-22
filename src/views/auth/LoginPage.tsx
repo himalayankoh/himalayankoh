@@ -181,7 +181,7 @@ export default function LoginPage() {
             <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
               {demoAccounts
                 ? 'Supabase environment variables are missing. Demo login will work after `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are added in Vercel and the demo accounts are seeded.'
-                : 'Supabase environment variables are missing. Sign-in is unavailable until they are configured.'}
+                : 'Customer sign-in is unavailable until the Supabase environment variables are configured. WordPress admin sign-in still works.'}
             </div>
           )}
 
@@ -199,17 +199,21 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">
-                Email Address
+                Email or WordPress username
               </label>
               <div className="relative">
                 <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
-                  type="email"
+                  // Deliberately not type="email": WordPress admins sign in with a
+                  // username, which the browser's native email validation would refuse.
+                  type="text"
+                  name="email"
+                  autoComplete="username"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
-                  placeholder="john@example.com"
+                  placeholder="you@example.com or your WordPress username"
                 />
               </div>
             </div>

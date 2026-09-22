@@ -1,5 +1,13 @@
+/**
+ * CRM lead capture — public endpoint (campaign popups, gift-drop signups).
+ *
+ * Writes to the WordPress `crm_leads` table through `lib/leados/crm` instead of
+ * the Supabase admin client. Validation is unchanged, so callers see the same
+ * status codes and the same `{ ok, lead }` shape.
+ */
+
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
+import { createCrmLead } from '@/lib/leados/crm';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,8 +34,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid email address format.' }, { status: 400 });
     }
 
-    const supabase = getSupabaseAdmin();
-    const leadRecord = {
+    const lead = await createCrmLead({
       email,
       name: body.name ? String(body.name).trim() : null,
       phone: body.phone ? String(body.phone).trim() : null,
@@ -37,20 +44,9 @@ export async function POST(request: Request) {
       coupon_code: body.coupon_code ? String(body.coupon_code).trim() : null,
       metadata: body.metadata || {},
       opted_in: body.opted_in !== false,
-      updated_at: new Date().toISOString(),
-    };
+    });
 
-    const { data, error } = await supabase
-      .from('crm_leads')
-      .insert(leadRecord as never)
-      .select()
-      .single();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json({ ok: true, lead: data });
+    return NextResponse.json({ ok: true, lead });
   } catch (err) {
     return NextResponse.json(
       { error: (err as Error).message || 'Failed to save lead' },

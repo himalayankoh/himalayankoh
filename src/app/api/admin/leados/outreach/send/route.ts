@@ -1,9 +1,20 @@
+/**
+ * LeadOS outreach — send a vetted email to a saved lead.
+ *
+ * The lead it reads and the audit row it writes used to come straight from the
+ * Supabase client. Both now go through `lib/leados/db`, so the outreach trail
+ * lands in the same WordPress tables as the rest of LeadOS instead of a database
+ * the rest of the console has already left.
+ *
+ * The claim check stays first: nothing is sent, and nothing is recorded, until
+ * the copy has passed it.
+ */
+
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { updateSavedLead, HK_DEFAULT_WORKSPACE_ID } from '@/lib/leados/db';
+import { getSavedLeadById, recordAuditEntry, updateSavedLead } from '@/lib/leados/db';
 import { validateOutboundCopy } from '@/lib/leados/claims';
 import { sendLeadOSMail } from '@/lib/leados/emailProvider';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
 
 export async function POST(request: Request) {
   const auth = await verifyAdminRequest(request);
@@ -31,16 +42,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Outbound copy contains claims that are not approved.', claims: claimCheck.claims }, { status: 400 });
     }
 
-    const supabase = getSupabaseAdmin();
-    const { data: rawLead, error: leadError } = await (supabase as any)
-      .from('leados_leads')
-      .select('id, workspace_id, email, email_source, status, notes')
-      .eq('id', leadId)
-      .eq('workspace_id', HK_DEFAULT_WORKSPACE_ID)
-      .maybeSingle();
-    const lead = rawLead as { id: string; notes: string | null } | null;
-    if (leadError) throw leadError;
-    if (!lead) return NextResponse.json({ error: 'Lead not found in the active workspace.' }, { status: 404 });
+    const lead = await getSavedLeadById(leadId);
+    if (!lead) {
+      return NextResponse.json({ error: 'Lead not found in the active workspace.' }, { status: 404 });
+    }
 
     const result = await sendLeadOSMail({ to: recipientEmail, subject, text: message }, { simulationRequested });
     const auditDetails = {
@@ -54,14 +59,13 @@ export async function POST(request: Request) {
       sender: 'sales@himalayankoh.com',
       createdAt: new Date().toISOString(),
     };
-    const { error: auditError } = await (supabase as any).from('leados_audit_logs').insert({
-      workspace_id: HK_DEFAULT_WORKSPACE_ID,
+
+    await recordAuditEntry({
       action: `outreach_${result.state}`,
-      entity_type: 'lead',
-      entity_id: leadId,
+      entityType: 'lead',
+      entityId: leadId,
       details: auditDetails,
     });
-    if (auditError) throw auditError;
 
     if (result.state === 'delivered') {
       await updateSavedLead(leadId, {

@@ -5,6 +5,12 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { authApi, SignUpData, SignInData } from '../lib/supabase/api';
 import type { Profile } from '../lib/supabase/database.types';
+import {
+  readStoredSession as readStoredAdminSession,
+  signInWithPassword as signInWithWordPressAdmin,
+  signOut as signOutOfWordPressAdmin,
+  type SbUser as WordPressAdmin,
+} from '../services/wordpressAdminAuth';
 
 interface AuthContextType {
   user: User | null;
@@ -61,6 +67,62 @@ function roleFromUser(user: User | null): 'admin' | 'customer' | null {
   if (metaRole === 'admin' || metaRole === 'customer') return metaRole as 'admin' | 'customer';
   if (user?.email && (user.email === '8002salman@gmail.com' || user.email === 'basco.pk@gmail.com' || user.email.startsWith('admin@'))) return 'admin';
   return null;
+}
+
+/**
+ * Admin sessions are minted by WordPress auth, not Supabase — but the whole
+ * console reads `user`, `session` and `profile` from this context. These
+ * adapters present the WordPress identity in that shape instead of making every
+ * consumer learn a second one. Nothing here can grant admin: the role is copied
+ * from a token the server signed only after it checked the WordPress
+ * `administrator` role, and a customer session never reaches these functions.
+ */
+function isWordPressAdminUser(user: User | null): boolean {
+  return (user?.app_metadata as { provider?: string } | undefined)?.provider === 'wordpress';
+}
+
+function adminUserToSessionUser(admin: WordPressAdmin): User {
+  const now = new Date().toISOString();
+  return {
+    id: admin.id,
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: admin.email || undefined,
+    email_confirmed_at: now,
+    phone: '',
+    confirmed_at: now,
+    last_sign_in_at: now,
+    app_metadata: { provider: 'wordpress', providers: ['wordpress'], role: 'admin' },
+    user_metadata: { role: 'admin', full_name: admin.name, username: admin.username },
+    identities: [],
+    created_at: now,
+    updated_at: now,
+  } as unknown as User;
+}
+
+function adminSessionForUser(admin: WordPressAdmin, token: string, expiresAt: number): Session {
+  return {
+    access_token: token,
+    refresh_token: '',
+    token_type: 'bearer',
+    expires_in: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)),
+    expires_at: Math.floor(expiresAt / 1000),
+    user: adminUserToSessionUser(admin),
+  } as unknown as Session;
+}
+
+function adminProfileFrom(admin: WordPressAdmin): Profile {
+  const now = new Date().toISOString();
+  return {
+    id: admin.id,
+    email: admin.email || '',
+    full_name: admin.name || null,
+    phone: null,
+    avatar_url: null,
+    role: 'admin',
+    created_at: now,
+    updated_at: now,
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -169,6 +231,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Initialize auth state
   useEffect(() => {
+    // A WordPress admin session stands on its own: when one is present it is the
+    // whole answer, and initialising Supabase on top of it would replace the admin
+    // identity with a customer one. Admin tokens cannot be refreshed, so an
+    // expired one is left behind for the sign-in screen to overwrite.
+    const storedAdmin = readStoredAdminSession();
+    if (storedAdmin && storedAdmin.expiresAt - Date.now() > 60_000) {
+      setUser(adminUserToSessionUser(storedAdmin.user));
+      setSession(
+        adminSessionForUser(storedAdmin.user, storedAdmin.accessToken, storedAdmin.expiresAt)
+      );
+      setProfile(adminProfileFrom(storedAdmin.user));
+      setProfileLoading(false);
+      setProfileError(null);
+      setLoading(false);
+      return;
+    }
+
     if (!isSupabaseConfigured()) {
       setLoading(false);
       return;
@@ -301,6 +380,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     setLoading(true);
     try {
+      // WordPress admins first. An admin signs in with their WordPress username
+      // + application password, which Supabase knows nothing about; when that
+      // route refuses the credential we fall through to the customer path, so a
+      // shopper's email + password still works exactly as before.
+      try {
+        const adminSession = await signInWithWordPressAdmin(data.email, data.password);
+        profileRequestId.current += 1;
+        setUser(adminUserToSessionUser(adminSession.user));
+        setSession(
+          adminSessionForUser(adminSession.user, adminSession.accessToken, adminSession.expiresAt)
+        );
+        setProfile(adminProfileFrom(adminSession.user));
+        setProfileError(null);
+        setLoading(false);
+        return;
+      } catch (adminError) {
+        // A declined admin credential is expected for every customer sign-in, so
+        // it is not an error worth showing — the next attempt decides.
+        console.debug(
+          'WordPress admin sign-in declined:',
+          adminError instanceof Error ? adminError.message : adminError
+        );
+      }
+
       const result = await authApi.signIn(data);
       setSession(result.session);
       setUser(result.user);
@@ -337,6 +440,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     try {
       await authApi.signOut();
+      // The WordPress admin session is a separate credential with its own storage
+      // key; clear it too, so signing out cannot leave an admin token behind.
+      await signOutOfWordPressAdmin();
     } catch (err) {
       // authApi.signOut already swallows benign errors; log anything else but
       // never re-throw — the user is signed out locally regardless.
@@ -367,7 +473,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // re-trigger the full-page auth spinner on every route it's shared with.
   const refreshProfile = useCallback(async () => {
     if (user) {
-      await fetchProfile(user.id, user);
+      // A WordPress admin has no Supabase profile row: fetching one would fail
+      // and then fall back to the same session metadata we already hold.
+      if (!isWordPressAdminUser(user)) await fetchProfile(user.id, user);
     }
   }, [user, fetchProfile]);
 

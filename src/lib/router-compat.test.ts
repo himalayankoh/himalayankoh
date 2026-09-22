@@ -58,12 +58,21 @@ describe('router shim SSR safety', () => {
     expect(files.length).toBeGreaterThan(50);
   });
 
-  it('imports useSearchParams from next/navigation nowhere in src', () => {
-    const offenders = files.filter((file) =>
-      navigationImports(readFileSync(file, 'utf8')).some((name) => name.startsWith('useSearchParams'))
-    );
-    expect(offenders).toEqual([]);
-  });
+  // This is the one test here that reads the whole source tree off disk, so it
+  // gets an explicit budget: the 5s default is sized for a unit test, and a
+  // synchronous walk of every file — which grows with the codebase, on whatever
+  // filesystem this happens to run on — was already close enough to it that
+  // adding a handful of files pushed it over.
+  it(
+    'imports useSearchParams from next/navigation nowhere in src',
+    () => {
+      const offenders = files.filter((file) =>
+        navigationImports(readFileSync(file, 'utf8')).some((name) => name.startsWith('useSearchParams'))
+      );
+      expect(offenders).toEqual([]);
+    },
+    30_000
+  );
 
   it('keeps the shim reading the query string from the browser', () => {
     const shim = readFileSync(fileURLToPath(new URL('./router-compat.tsx', import.meta.url)), 'utf8');
