@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { checkFetchableUrl } from '@/lib/scrape/urlSafety';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
+import { WordPressApiError } from '@/lib/backend/wordpress';
+import { MAX_MEDIA_BYTES, uploadMediaToWordPress } from '@/lib/media/wordpressMedia';
 
 export const dynamic = 'force-dynamic';
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_IMAGE_BYTES = MAX_MEDIA_BYTES;
 const ALLOWED_MIME_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/jpg': 'jpg',
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  let body: { url?: string; productId?: string };
+  let body: { url?: string; productId?: string; altText?: string };
   try {
     body = await request.json();
   } catch {
@@ -92,45 +93,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Fetched image is empty.' }, { status: 400 });
     }
 
-    // 5. Upload to Supabase storage
-    const folder = (body.productId || 'imported').replace(/[^a-zA-Z0-9_-]/g, '') || 'imported';
-    const filePath = `${folder}/${crypto.randomUUID()}.${ext}`;
-
-    const supabase = getSupabaseAdmin();
-    let bucketName = 'products';
-    let { error: uploadError } = await supabase.storage
-      .from(bucketName)
-      .upload(filePath, buffer, {
+    // The bytes are the ones that were just fetched and validated. WordPress owns
+    // the file from here: it becomes a Media Library item, so WooCommerce can use
+    // it, WordPress's own editors can see it, and the storefront gets one URL.
+    try {
+      const media = await uploadMediaToWordPress({
+        buffer,
+        filename: `${crypto.randomUUID()}.${ext}`,
         contentType: rawContentType,
-        cacheControl: '31536000',
-        upsert: false,
+        title: rawUrl.split('/').pop()?.split('?')[0] || 'imported-image',
       });
 
-    if (uploadError && /bucket.*not found/i.test(uploadError.message)) {
-      bucketName = 'product-media';
-      const fallback = await supabase.storage
-        .from(bucketName)
-        .upload(filePath, buffer, {
-          contentType: rawContentType,
-          cacheControl: '31536000',
-          upsert: false,
-        });
-      uploadError = fallback.error;
+      return NextResponse.json({
+        success: true,
+        publicUrl: media.sourceUrl,
+        mediaId: media.id,
+        contentType: rawContentType,
+        size: buffer.length,
+        filename: media.sourceUrl.split('/').pop() || `${crypto.randomUUID()}.${ext}`,
+      });
+    } catch (uploadError) {
+      if (uploadError instanceof WordPressApiError) {
+        return NextResponse.json({ error: uploadError.message }, { status: uploadError.status || 502 });
+      }
+      throw uploadError;
     }
-
-    if (uploadError) {
-      return NextResponse.json({ error: `Storage upload failed: ${uploadError.message}` }, { status: 502 });
-    }
-
-    const { data: { publicUrl } } = supabase.storage.from(bucketName).getPublicUrl(filePath);
-
-    return NextResponse.json({
-      success: true,
-      publicUrl,
-      contentType: rawContentType,
-      size: buffer.length,
-      filename: `${crypto.randomUUID()}.${ext}`,
-    });
   } catch (err) {
     const isAbort = err instanceof Error && err.name === 'AbortError';
     const message = isAbort ? 'Image download timed out (15s limit reached).' : err instanceof Error ? err.message : 'Import failed';

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart3, DollarSign, Package, ShoppingCart, TrendingUp, Users } from 'lucide-react';
-import { adminApi, AdminDashboardAnalytics } from '../../lib/supabase/api/admin';
-import { isSupabaseConfigured } from '../../lib/supabase/client';
 import { fetchAdminCatalogStats } from '../../lib/admin/adminCatalogClient';
 import type { AdminCatalogStats } from '../../lib/backend/adminCatalog';
+import type { AdminDashboardAnalytics } from '../../lib/admin/dashboardAnalytics';
+import { getFreshAccessToken } from '../../services/wordpressAdminAuth';
 import { getErrorMessage } from '../../lib/errors';
 import {
   AdminButton,
@@ -19,10 +19,10 @@ import { ICON_TILE, ICON_TILE_TONES, TABLE_BODY } from '../../components/admin/a
 /**
  * Analytics.
  *
- * Every figure comes from the orders source (Supabase today). When that source is
- * not configured the tiles read "Not connected" rather than zero — an unknown
- * revenue and a revenue of zero are different claims, and this console never
- * makes the second one on the first one's behalf.
+ * Every figure comes from the store — WooCommerce orders, customers and stock, read
+ * through `/api/admin/analytics`. A failed read leaves the tiles reading "Not
+ * connected" rather than zero: an unknown revenue and a revenue of zero are different
+ * claims, and this console never makes the second one on the first one's behalf.
  */
 export default function AdminAnalytics() {
   const [analytics, setAnalytics] = useState<AdminDashboardAnalytics | null>(null);
@@ -30,28 +30,31 @@ export default function AdminAnalytics() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const connected = isSupabaseConfigured();
-
   const fetchAnalytics = useCallback(async () => {
     // Low-stock alerts name live products, so they are read from the active
-    // catalog source — the same rule the dashboard follows. On the WooCommerce
-    // source stock is not reported at all, and an alert list built from the old
-    // Supabase rows would name products the storefront no longer sells.
+    // catalog source — the same rule the dashboard follows.
     setCatalogStats(await fetchAdminCatalogStats().catch(() => null));
-
-    if (!isSupabaseConfigured()) {
-      setAnalytics(null);
-      setLoading(false);
-      return;
-    }
 
     setLoading(true);
     try {
       setFetchError(null);
-      const data = await adminApi.getDashboardAnalytics();
-      setAnalytics(data);
+      const token = await getFreshAccessToken();
+      if (!token) throw new Error('Sign in as an administrator to see analytics.');
+
+      const response = await fetch('/api/admin/analytics', {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        analytics?: AdminDashboardAnalytics;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(body.error || `Could not load analytics (HTTP ${response.status}).`);
+
+      setAnalytics(body.analytics ?? null);
     } catch (err) {
       setFetchError(getErrorMessage(err, 'Failed to load analytics.'));
+      setAnalytics(null);
     } finally {
       setLoading(false);
     }
@@ -86,12 +89,7 @@ export default function AdminAnalytics() {
         </AdminNotice>
       )}
 
-      {!connected && (
-        <AdminNotice tone="warning" title="No orders source is connected">
-          Orders, revenue and customer figures come from Supabase order history, which this deployment
-          has no configuration for. Nothing below is estimated.
-        </AdminNotice>
-      )}
+
 
       <div className="grid grid-cols-4 gap-4">
         <AdminStatTile

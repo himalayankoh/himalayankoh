@@ -43,6 +43,8 @@ interface WpPost {
   categories?: number[];
   tags?: number[];
   featured_media?: number;
+  /** The HK fields the plugin registers on posts (see `hk_storefront_blog_meta_fields`). */
+  meta?: Record<string, unknown>;
   yoast_head_json?: { title?: string; description?: string };
   _embedded?: {
     author?: Array<{ id?: number; name?: string; avatar_urls?: Record<string, string> }>;
@@ -102,10 +104,26 @@ export function blogPostFromWp(post: WpPost): BlogPostWithAuthor {
   const author = post._embedded?.author?.[0];
   const avatar = author?.avatar_urls ? Object.values(author.avatar_urls)[0] ?? null : null;
   const terms = embeddedTerms(post);
+  const meta = post.meta ?? {};
   const category = terms.find((term) => term.taxonomy === 'category')?.name ?? null;
-  const tags = terms.filter((term) => term.taxonomy === 'post_tag').map((term) => term.name);
+  const metaTags = Array.isArray(meta.hk_tags)
+    ? meta.hk_tags.filter((tag): tag is string => typeof tag === 'string')
+    : [];
+  const tags = metaTags.length
+    ? metaTags
+    : terms.filter((term) => term.taxonomy === 'post_tag').map((term) => term.name);
   const published = post.date_gmt && !post.date_gmt.startsWith('0000') ? `${post.date_gmt}Z` : null;
   const modified = post.modified_gmt && !post.modified_gmt.startsWith('0000') ? `${post.modified_gmt}Z` : null;
+
+  // The HK hero image is what the console's editor sets, and the featured media is
+  // what WordPress itself uses; either can be the one that exists, so the featured
+  // image wins (it is the one WordPress's own templates render) and the meta is the
+  // fallback for an image that could not be copied into the media library.
+  const featuredMedia = post._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null;
+  const heroImage = featuredMedia || (typeof meta.hk_hero_image_url === 'string' ? meta.hk_hero_image_url || null : null);
+  const seoTitle = typeof meta.hk_seo_title === 'string' && meta.hk_seo_title ? meta.hk_seo_title : null;
+  const seoDescription =
+    typeof meta.hk_meta_description === 'string' && meta.hk_meta_description ? meta.hk_meta_description : null;
 
   return {
     id: String(post.id),
@@ -113,15 +131,17 @@ export function blogPostFromWp(post: WpPost): BlogPostWithAuthor {
     slug: post.slug,
     excerpt: post.excerpt?.rendered ? stripHtml(post.excerpt.rendered) || null : null,
     content: contentHtml || null,
-    featured_image: post._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null,
+    featured_image: heroImage,
     author_id: author?.id ? String(author.id) : post.author ? String(post.author) : null,
     category,
     tags,
     is_published: post.status === 'publish',
     published_at: published,
-    // Yoast's fields when the plugin exposes them; the post's own words otherwise.
-    meta_title: post.yoast_head_json?.title ?? null,
-    meta_description: post.yoast_head_json?.description ?? null,
+    // The console's own SEO fields first, then Yoast, then the post's own words: the
+    // editor wrote those fields deliberately, so a third-party plugin must not
+    // silently override them.
+    meta_title: seoTitle ?? post.yoast_head_json?.title ?? null,
+    meta_description: seoDescription ?? post.yoast_head_json?.description ?? null,
     read_time: estimateReadTime(contentHtml),
     view_count: 0,
     created_at: published ?? modified ?? new Date(0).toISOString(),

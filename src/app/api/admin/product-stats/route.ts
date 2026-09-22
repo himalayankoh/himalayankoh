@@ -1,32 +1,41 @@
+/**
+ * First-party view/interest counts per product, for the catalog console.
+ *
+ * The events are WordPress's now (the `hk_site_events` table behind
+ * `hk-storefront/v1/events`), so the read goes through `siteEventsApi` instead of
+ * Supabase. The counting itself is unchanged, including which events mean what:
+ * `view_item` is a view, `add_to_cart` is interest, `wishlist_save` is a save.
+ *
+ * The row cap is real, so it is reported: `truncated: true` means the window held
+ * more events than one read returns, and the figures below are then a floor rather
+ * than a total. Silently charting a partial window as a complete one is how an
+ * analytics panel loses its reader's trust.
+ */
+
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
+import { siteEventsApi } from '@/lib/wordpress/siteContent';
 
 export const dynamic = 'force-dynamic';
+
+const TRACKED_EVENTS = ['view_item', 'add_to_cart', 'wishlist_save'];
+const READ_LIMIT = 5000;
+const WINDOW_DAYS = 90;
 
 export async function GET(request: Request) {
   const auth = await verifyAdminRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
-    const supabase = getSupabaseAdmin();
-    const since90 = new Date(Date.now() - 90 * 86400000).toISOString();
-    const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
-    const since7 = new Date(Date.now() - 7 * 86400000).toISOString();
+    const since = new Date(Date.now() - WINDOW_DAYS * 86_400_000)
+      .toISOString()
+      .slice(0, 19)
+      .replace('T', ' ');
 
-    const { data: events, error } = await supabase
-      .from('site_events')
-      .select('event, path, item_ids, occurred_at')
-      .in('event', ['view_item', 'add_to_cart', 'wishlist_save'])
-      .gte('occurred_at', since90)
-      .limit(20000);
+    const events = await siteEventsApi.list({ since, events: TRACKED_EVENTS, limit: READ_LIMIT });
 
-    if (error) {
-      return NextResponse.json({
-        stats: {},
-        unavailable: error.message,
-      });
-    }
+    const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const since7 = new Date(Date.now() - 7 * 86_400_000).toISOString();
 
     const stats: Record<string, { views: number; views7d: number; views30d: number; interest: number; saved: number }> = {};
 
@@ -51,24 +60,21 @@ export async function GET(request: Request) {
       }
     };
 
-    for (const r of events || []) {
-      const occurred = (r as { occurred_at?: string }).occurred_at || '';
-      const ev = (r as { event?: string }).event || '';
-      const itemIds = (r as { item_ids?: unknown }).item_ids;
-      const path = (r as { path?: string }).path || '';
-
-      if (Array.isArray(itemIds)) {
-        for (const it of itemIds) {
-          recordStat(String(it), ev, occurred);
-        }
+    for (const row of events) {
+      // The plugin stores `occurred_at` as UTC MySQL time; comparing it against a
+      // string timerange only works if both sides are the same format, so the ISO
+      // form is normalised here rather than assumed.
+      const occurred = (row.occurred_at || '').replace(' ', 'T');
+      for (const itemId of Array.isArray(row.item_ids) ? row.item_ids : []) {
+        recordStat(String(itemId), row.event, occurred);
       }
-      if (path) {
-        const m = path.match(/\/product\/([^/?#]+)/);
-        if (m) recordStat(decodeURIComponent(m[1]), ev, occurred);
+      if (row.path) {
+        const match = row.path.match(/\/product\/([^/?#]+)/);
+        if (match) recordStat(decodeURIComponent(match[1]), row.event, occurred);
       }
     }
 
-    return NextResponse.json({ stats });
+    return NextResponse.json({ stats, truncated: events.length >= READ_LIMIT });
   } catch (err) {
     return NextResponse.json({
       stats: {},

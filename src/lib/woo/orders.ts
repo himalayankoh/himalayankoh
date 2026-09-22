@@ -43,6 +43,13 @@ import { WordPressApiError, wordpressRequest, wordpressRequestWithMeta } from '.
 import { requireWooCredentials } from '../backend/credentials';
 import type { Json, Order, OrderItem } from '../supabase/database.types';
 
+/**
+ * The app's own order types, re-exported so a caller can name the shape it receives
+ * without importing the generated database types — those exist only to describe the
+ * store that no longer owns orders.
+ */
+export type { Order, OrderItem };
+
 const REST_V3 = '/wc/v3';
 
 /** Order meta this app owns. Prefixed so a Woo admin can tell ours from a plugin's. */

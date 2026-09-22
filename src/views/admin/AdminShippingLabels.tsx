@@ -3,13 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Download, Loader2, Package, Printer, Search, Settings } from 'lucide-react';
-import { adminApi, AdminOrder } from '../../lib/supabase/api/admin';
-import { isSupabaseConfigured } from '../../lib/supabase/client';
 import { getErrorMessage } from '../../lib/errors';
+import { getFreshAccessToken } from '../../services/wordpressAdminAuth';
 import { useAuthContext } from '../../context/AuthContext';
 import { createShippoLabel } from '../../lib/shippo/client';
 import { publicEnv } from '../../lib/env';
-import ShippingLabelPanel from '../../components/admin/ShippingLabelPanel';
+import ShippingLabelPanel, { type LabelOrder } from '../../components/admin/ShippingLabelPanel';
 import ShippingSetup from '../../admin/ShippingSetup';
 import {
   AdminButton,
@@ -20,6 +19,19 @@ import {
   AdminStatTile,
 } from '../../components/admin/AdminUI';
 import { BUTTON, INPUT } from '../../components/admin/adminTheme';
+
+/**
+ * A paid order as this screen renders it — the fields `/api/admin/labels` sends.
+ *
+ * `LabelOrder` is the label block's own contract; the bench also prints the order
+ * number, the email and the total, so those are added here.
+ */
+type AdminOrder = LabelOrder & {
+  order_number: string;
+  email: string;
+  total: number;
+  created_at: string;
+};
 
 export default function AdminShippingLabels() {
   const [activeTab, setActiveTab] = useState<'labels' | 'setup'>('labels');
@@ -40,17 +52,26 @@ export default function AdminShippingLabels() {
 
   const fetchLabels = useCallback(async () => {
     setLoading(true);
-    if (!isSupabaseConfigured()) {
-      setReady([]);
-      setPending([]);
-      setLoading(false);
-      return;
-    }
+    setFetchError(null);
 
     try {
-      const result = await adminApi.getShippingLabelOrders();
-      setReady(result.ready);
-      setPending(result.pending);
+      const token = await getFreshAccessToken();
+      if (!token) throw new Error('Sign in as an administrator to see the label worklist.');
+
+      const response = await fetch('/api/admin/labels', {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        ready?: AdminOrder[];
+        pending?: AdminOrder[];
+        error?: string;
+      };
+
+      if (!response.ok) throw new Error(body.error || `Could not load the label worklist (HTTP ${response.status}).`);
+
+      setReady(body.ready ?? []);
+      setPending(body.pending ?? []);
     } catch (err) {
       setFetchError(getErrorMessage(err, 'Failed to load shipping label orders.'));
     } finally {
@@ -202,12 +223,7 @@ export default function AdminShippingLabels() {
               </AdminNotice>
             )}
 
-            {!isSupabaseConfigured() && (
-              <AdminNotice tone="warning" title="Orders are not connected">
-                Labels are created against orders, and this deployment has no order source configured, so there
-                is nothing here to label.
-              </AdminNotice>
-            )}
+
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <AdminStatTile

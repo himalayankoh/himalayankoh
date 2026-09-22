@@ -11,13 +11,11 @@ import {
 import type { CategoryHubOverrideForm } from '../../lib/categoryContent/cmsTypes';
 import type { CategoryContentKey } from '../../lib/categoryContent';
 import type { CategoryTrustPoint } from '../../lib/categoryContent';
-import { categoryHubApi } from '../../lib/supabase/api/categoryHub';
-import { isSupabaseConfigured } from '../../lib/supabase/client';
+import { categoryHubApi } from '../../lib/categoryContent/hubOverrides';
 import {
   AdminButton,
   AdminField,
   AdminInput,
-  AdminNotice,
   AdminPageHeader,
   AdminPanel,
 } from '../../components/admin/AdminUI';
@@ -84,12 +82,6 @@ export default function AdminCategoryHubs() {
   const toast = useToast();
 
   const loadForm = useCallback(async (key: CategoryContentKey) => {
-    if (!isSupabaseConfigured()) {
-      setForm(buildFormFromSources(key, null));
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     try {
       const override = await categoryHubApi.getOverride(key, { includeUnpublished: true });
@@ -113,12 +105,6 @@ export default function AdminCategoryHubs() {
 
   const handleSave = async () => {
     setSaving(true);
-
-    if (!isSupabaseConfigured()) {
-      toast.error('Supabase is required to save category hub CMS overrides.');
-      setSaving(false);
-      return;
-    }
 
     try {
       await categoryHubApi.upsertOverride(form);
@@ -179,13 +165,6 @@ export default function AdminCategoryHubs() {
           </Link>
         }
       />
-
-      {!isSupabaseConfigured() && (
-        <AdminNotice tone="warning" title="CMS overrides are not connected">
-          Supabase is not configured on this deployment, so the editor below shows the content from the
-          code registry and cannot persist changes.
-        </AdminNotice>
-      )}
 
       <div className="grid grid-cols-12 gap-5">
         <aside className={`${SURFACE} col-span-4 p-4`}>

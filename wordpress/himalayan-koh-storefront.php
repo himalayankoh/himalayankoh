@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:       Himalayan Koh — Storefront Account State
- * Description:       Custom table and REST endpoints for per-account storefront state (the wishlist) and for the customer operations WooCommerce exposes no REST route for (sign-in, account creation, password reset). This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the hk-storefront/v1 namespace below.
- * Version:           1.2.0
+ * Description:       Custom tables and REST endpoints for the state WordPress does not already own: per-account storefront state (wishlist, saved addresses, cart binding), the customer operations WooCommerce exposes no REST route for (sign-in, account creation, password reset), and the app's site-content bridge (settings, category-hub overrides, first-party events, newsletter/contact submissions, HK blog fields). This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the hk-storefront/v1 namespace below.
+ * Version:           1.3.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -170,6 +170,67 @@ function hk_storefront_install() {
 
 	dbDelta( $address_sql );
 
+	// First-party storefront events. A table rather than post meta because this is
+	// append-only telemetry read in aggregate (views per product, per path), and a
+	// site with traffic would otherwise put every page view in the posts table.
+	$events_table = hk_storefront_events_table();
+
+	$events_sql = "CREATE TABLE {$events_table} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		event varchar(64) NOT NULL,
+		path varchar(2048) NOT NULL DEFAULT '',
+		referrer varchar(2048) NOT NULL DEFAULT '',
+		visitor_id varchar(64) NOT NULL DEFAULT '',
+		session_id varchar(64) NOT NULL DEFAULT '',
+		device varchar(16) NOT NULL DEFAULT '',
+		utm_source varchar(256) NOT NULL DEFAULT '',
+		utm_medium varchar(256) NOT NULL DEFAULT '',
+		utm_campaign varchar(256) NOT NULL DEFAULT '',
+		item_ids text NOT NULL,
+		value decimal(12,2) DEFAULT NULL,
+		currency varchar(8) NOT NULL DEFAULT '',
+		occurred_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		KEY event_occurred (event, occurred_at),
+		KEY occurred_at (occurred_at)
+	) $charset;";
+
+	dbDelta( $events_sql );
+
+	// Newsletter subscribers. The UNIQUE key on the email is the idempotency rule:
+	// subscribing the same address twice keeps one row rather than erroring.
+	$newsletter_table = hk_storefront_newsletter_table();
+
+	$newsletter_sql = "CREATE TABLE {$newsletter_table} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		email varchar(300) NOT NULL,
+		source varchar(100) NOT NULL DEFAULT '',
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		UNIQUE KEY email (email),
+		KEY created_at (created_at)
+	) $charset;";
+
+	dbDelta( $newsletter_sql );
+
+	// Contact-form submissions. A row here is a message the owner has to answer, so
+	// losing one is worse than any tidiness argument for leaving it in Supabase.
+	$contact_table = hk_storefront_contact_table();
+
+	$contact_sql = "CREATE TABLE {$contact_table} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		name varchar(200) NOT NULL DEFAULT '',
+		email varchar(300) NOT NULL DEFAULT '',
+		phone varchar(50) NOT NULL DEFAULT '',
+		subject varchar(200) NOT NULL DEFAULT '',
+		message text NOT NULL,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		KEY created_at (created_at)
+	) $charset;";
+
+	dbDelta( $contact_sql );
+
 	update_option( HK_STOREFRONT_DB_VERSION_OPTION, HK_STOREFRONT_VERSION );
 }
 register_activation_hook( __FILE__, 'hk_storefront_install' );
@@ -178,6 +239,24 @@ register_activation_hook( __FILE__, 'hk_storefront_install' );
 function hk_storefront_cart_table() {
 	global $wpdb;
 	return $wpdb->prefix . 'hk_cart_sessions';
+}
+
+/** The first-party events table's name. */
+function hk_storefront_events_table() {
+	global $wpdb;
+	return $wpdb->prefix . 'hk_site_events';
+}
+
+/** The newsletter table's name. */
+function hk_storefront_newsletter_table() {
+	global $wpdb;
+	return $wpdb->prefix . 'hk_newsletter_subscribers';
+}
+
+/** The contact-submissions table's name. */
+function hk_storefront_contact_table() {
+	global $wpdb;
+	return $wpdb->prefix . 'hk_contact_submissions';
 }
 
 /**
@@ -1519,3 +1598,752 @@ function hk_storefront_delete_address( WP_REST_Request $request ) {
 
 	return rest_ensure_response( array( 'ok' => true, 'deleted' => (bool) $deleted ) );
 }
+
+/* =========================================================================
+ * Site content bridge
+ *
+ * WordPress already owns the blog (posts), the media library and the site's own
+ * settings. What it does not own is the handful of HK-specific things the app's
+ * admin console writes, so those live here rather than in a second backend:
+ *
+ *   - app settings the console edits                  -> WordPress options
+ *   - category-hub overrides                          -> WordPress options
+ *   - first-party storefront events                   -> a table (append-only)
+ *   - newsletter subscribers / contact submissions    -> a table each
+ *   - the HK blog fields (SEO, hero image, FAQ, tags) -> post meta
+ *
+ * Options rather than a table for the first two: they are small, whole-value
+ * documents read as a unit ("this category's settings", "this hub's override"),
+ * which is exactly what an option is, and it inherits WordPress's own caching
+ * and export/backup path instead of inventing a parallel one.
+ * ====================================================================== */
+
+/* -------------------------------------------------------------------------
+ * HK blog fields (post meta)
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The HK blog fields, as post meta.
+ *
+ * `show_in_rest` is what makes them readable and writable through `/wp/v2/posts`,
+ * which is where the app's blog console reads and writes posts. They are kept as
+ * meta rather than a parallel table because they *are* properties of the post, and
+ * WordPress's own revision system then snapshots them with the content for free.
+ */
+function hk_storefront_blog_meta_fields() {
+	return array(
+		'hk_hero_image_url'     => array( 'type' => 'string' ),
+		'hk_hero_image_alt'     => array( 'type' => 'string' ),
+		'hk_seo_title'          => array( 'type' => 'string' ),
+		'hk_meta_description'   => array( 'type' => 'string' ),
+		'hk_target_keyword'     => array( 'type' => 'string' ),
+		'hk_search_intent'      => array( 'type' => 'string' ),
+		'hk_secondary_keywords' => array( 'type' => 'array' ),
+		'hk_tags'               => array( 'type' => 'array' ),
+		'hk_faq_json'           => array( 'type' => 'string' ),
+	);
+}
+
+/**
+ * Registers the fields above on posts.
+ *
+ * The auth callback is the default REST write check (`edit_posts` for the post in
+ * question) rather than a custom rule: the app writes posts through WordPress core
+ * with an administrator application password, so WordPress's own capability check
+ * is the right one and a second rule here could only disagree with it.
+ */
+add_action(
+	'init',
+	function () {
+		foreach ( hk_storefront_blog_meta_fields() as $key => $spec ) {
+			register_post_meta(
+				'post',
+				$key,
+				array(
+					'type'         => $spec['type'],
+					'single'       => true,
+					'show_in_rest' => array( 'schema' => array( 'type' => $spec['type'] ) ),
+				)
+			);
+		}
+	}
+);
+
+/* -------------------------------------------------------------------------
+ * App settings and category-hub overrides (WordPress options)
+ * ---------------------------------------------------------------------- */
+
+/** The option name holding one settings category's values. */
+function hk_storefront_settings_option( $category ) {
+	return 'hk_settings_' . sanitize_key( $category );
+}
+
+/** The option name holding one category hub's override. */
+function hk_storefront_hub_option( $key ) {
+	return 'hk_category_hub_' . sanitize_key( $key );
+}
+
+/** A required, sanitised category name from the request. */
+function hk_storefront_require_category( $raw ) {
+	$category = sanitize_key( is_string( $raw ) ? trim( $raw ) : '' );
+	if ( $category === '' ) {
+		return new WP_Error(
+			'hk_storefront_category_required',
+			'A settings category is required.',
+			array( 'status' => 400 )
+		);
+	}
+	return $category;
+}
+
+/**
+ * One settings category's values, always an array.
+ *
+ * Values are stored as strings (or null to mean "cleared"), because that is what
+ * the app stores: the console's fields are text, and a key present with a null
+ * value is a field the owner deliberately emptied, which is not the same as a field
+ * that was never set.
+ */
+function hk_storefront_settings_values( $category ) {
+	$stored = get_option( hk_storefront_settings_option( $category ), array() );
+	return is_array( $stored ) ? $stored : array();
+}
+
+/** Reads one settings category. */
+function hk_storefront_get_settings( WP_REST_Request $request ) {
+	$category = hk_storefront_require_category( $request->get_param( 'category' ) );
+	if ( is_wp_error( $category ) ) {
+		return $category;
+	}
+
+	return rest_ensure_response(
+		array(
+			'category' => $category,
+			'values'   => hk_storefront_settings_values( $category ),
+		)
+	);
+}
+
+/**
+ * Writes one settings category.
+ *
+ * A whole-category write rather than a per-key one: the console saves a form, and
+ * one `update_option` either lands entirely or not at all — a per-key loop can
+ * leave half a form saved, which is the state that makes an owner distrust the
+ * screen.
+ */
+function hk_storefront_save_settings( WP_REST_Request $request ) {
+	$body     = $request->get_json_params() ?: array();
+	$category = hk_storefront_require_category( $body['category'] ?? '' );
+	if ( is_wp_error( $category ) ) {
+		return $category;
+	}
+
+	$incoming = $body['values'] ?? null;
+	if ( ! is_array( $incoming ) ) {
+		return new WP_Error(
+			'hk_storefront_settings_invalid',
+			'A values object is required.',
+			array( 'status' => 400 )
+		);
+	}
+
+	$option = hk_storefront_settings_option( $category );
+	$values = $request->get_param( 'replace' ) ? array() : hk_storefront_settings_values( $category );
+
+	foreach ( $incoming as $key => $value ) {
+		$key = sanitize_key( (string) $key );
+		if ( $key === '' ) {
+			continue;
+		}
+		if ( $value === null ) {
+			$values[ $key ] = null;
+			continue;
+		}
+		// Stored as text: the console's inputs are text, and JSON-encoding an array
+		// here would hand every reader a string it has to know how to parse.
+		$values[ $key ] = is_scalar( $value ) ? (string) $value : wp_json_encode( $value );
+	}
+
+	update_option( $option, $values, false );
+
+	return rest_ensure_response(
+		array(
+			'ok'     => true,
+			'values' => hk_storefront_settings_values( $category ),
+		)
+	);
+}
+
+/** Removes one stored value — a campaign that no longer exists, say. */
+function hk_storefront_delete_setting( WP_REST_Request $request ) {
+	$category = hk_storefront_require_category( $request->get_param( 'category' ) );
+	if ( is_wp_error( $category ) ) {
+		return $category;
+	}
+
+	$key = sanitize_key( (string) $request->get_param( 'key' ) );
+	if ( $key === '' ) {
+		return new WP_Error(
+			'hk_storefront_key_required',
+			'A settings key is required.',
+			array( 'status' => 400 )
+		);
+	}
+
+	$values = hk_storefront_settings_values( $category );
+	$had    = array_key_exists( $key, $values );
+	unset( $values[ $key ] );
+	update_option( hk_storefront_settings_option( $category ), $values, false );
+
+	return rest_ensure_response( array( 'ok' => true, 'deleted' => $had ) );
+}
+
+/** One category hub override, or null. */
+function hk_storefront_hub_override( $key ) {
+	$stored = get_option( hk_storefront_hub_option( $key ), null );
+	return is_array( $stored ) ? $stored : null;
+}
+
+/** Every category hub override that exists. */
+function hk_storefront_list_hubs( WP_REST_Request $request ) {
+	global $wpdb;
+
+	// The option prefix is ours, so this LIKE is a search over a known namespace
+	// rather than over arbitrary options. `_transient_` and friends cannot match
+	// because the prefix is a literal.
+	$prefix = $wpdb->esc_like( 'hk_category_hub_' ) . '%';
+	// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is WordPress's own.
+	$names = $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s ORDER BY option_name ASC", $prefix ) );
+
+	$items = array();
+	foreach ( is_array( $names ) ? $names : array() as $name ) {
+		$override = hk_storefront_hub_override( substr( (string) $name, strlen( 'hk_category_hub_' ) ) );
+		if ( $override ) {
+			$items[] = $override;
+		}
+	}
+
+	return rest_ensure_response( array( 'items' => $items ) );
+}
+
+/** One category hub override. */
+function hk_storefront_get_hub( WP_REST_Request $request ) {
+	$key = sanitize_key( (string) $request->get_param( 'key' ) );
+	if ( $key === '' ) {
+		return new WP_Error( 'hk_storefront_hub_key_required', 'A category key is required.', array( 'status' => 400 ) );
+	}
+
+	return rest_ensure_response( array( 'override' => hk_storefront_hub_override( $key ) ) );
+}
+
+/**
+ * Saves a category hub override.
+ *
+ * The payload is the same JSON the app's editor already produces, stored as-is
+ * apart from the category key: `hero`, `seo` and `trust_points` are nested
+ * structures whose shape belongs to the content model, and re-declaring that shape
+ * here would be a second definition to keep in step with the first.
+ */
+function hk_storefront_save_hub( WP_REST_Request $request ) {
+	$body = $request->get_json_params() ?: array();
+
+	$key = sanitize_key( (string) ( $body['category_key'] ?? '' ) );
+	if ( $key === '' ) {
+		return new WP_Error( 'hk_storefront_hub_key_required', 'A category key is required.', array( 'status' => 400 ) );
+	}
+
+	$override = array(
+		'category_key' => $key,
+		'hero'         => is_array( $body['hero'] ?? null ) ? $body['hero'] : array(),
+		'seo'          => is_array( $body['seo'] ?? null ) ? $body['seo'] : array(),
+		'trust_points' => is_array( $body['trust_points'] ?? null ) ? $body['trust_points'] : array(),
+		'is_published' => rest_sanitize_boolean( $body['is_published'] ?? false ),
+		'updated_at'   => current_time( 'mysql', true ),
+	);
+
+	update_option( hk_storefront_hub_option( $key ), $override, false );
+
+	return rest_ensure_response( array( 'ok' => true, 'override' => $override ) );
+}
+
+/* -------------------------------------------------------------------------
+ * First-party storefront events
+ * ---------------------------------------------------------------------- */
+
+/** Per-column caps, so a public endpoint cannot be used to store bulk text. */
+function hk_storefront_event_caps() {
+	return array(
+		'event'        => 64,
+		'path'         => 2048,
+		'referrer'     => 2048,
+		'visitor_id'   => 64,
+		'session_id'   => 64,
+		'device'       => 16,
+		'utm_source'   => 256,
+		'utm_medium'   => 256,
+		'utm_campaign' => 256,
+	);
+}
+
+/** A trimmed, length-capped string from the request body. */
+function hk_storefront_event_text( $raw, $max ) {
+	if ( ! is_string( $raw ) ) {
+		return '';
+	}
+	$trimmed = trim( $raw );
+	return $trimmed === '' ? '' : mb_substr( $trimmed, 0, $max );
+}
+
+/** Records one event. */
+function hk_storefront_record_event( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$body  = $request->get_json_params() ?: array();
+	$caps  = hk_storefront_event_caps();
+	$event = hk_storefront_event_text( $body['event'] ?? '', $caps['event'] );
+	$path  = hk_storefront_event_text( $body['path'] ?? '', $caps['path'] );
+
+	if ( $event === '' || $path === '' ) {
+		return new WP_Error(
+			'hk_storefront_event_incomplete',
+			'event and path are required.',
+			array( 'status' => 400 )
+		);
+	}
+
+	$item_ids = array();
+	if ( isset( $body['item_ids'] ) && is_array( $body['item_ids'] ) ) {
+		foreach ( $body['item_ids'] as $item ) {
+			if ( is_scalar( $item ) ) {
+				$item_ids[] = mb_substr( (string) $item, 0, 64 );
+			}
+		}
+	}
+
+	$row = array(
+		'event'        => $event,
+		'path'         => $path,
+		'referrer'     => hk_storefront_event_text( $body['referrer'] ?? '', $caps['referrer'] ),
+		'visitor_id'   => hk_storefront_event_text( $body['visitor_id'] ?? '', $caps['visitor_id'] ),
+		'session_id'   => hk_storefront_event_text( $body['session_id'] ?? '', $caps['session_id'] ),
+		'device'       => hk_storefront_event_text( $body['device'] ?? '', $caps['device'] ),
+		'utm_source'   => hk_storefront_event_text( $body['utm_source'] ?? '', $caps['utm_source'] ),
+		'utm_medium'   => hk_storefront_event_text( $body['utm_medium'] ?? '', $caps['utm_medium'] ),
+		'utm_campaign' => hk_storefront_event_text( $body['utm_campaign'] ?? '', $caps['utm_campaign'] ),
+		'item_ids'     => implode( ',', $item_ids ),
+		'currency'     => hk_storefront_event_text( $body['currency'] ?? '', 8 ),
+		'occurred_at'  => current_time( 'mysql', true ),
+	);
+
+	$value = $body['value'] ?? null;
+	if ( is_numeric( $value ) ) {
+		$row['value'] = (float) $value;
+	}
+
+	$inserted = $wpdb->insert( hk_storefront_events_table(), $row );
+	if ( false === $inserted ) {
+		return new WP_Error( 'hk_storefront_event_not_saved', 'The event could not be recorded.', array( 'status' => 500 ) );
+	}
+
+	return rest_ensure_response( array( 'ok' => true, 'id' => (int) $wpdb->insert_id ) );
+}
+
+/** One stored event as the app reads it. */
+function hk_storefront_event_row( $row ) {
+	$items = isset( $row->item_ids ) && $row->item_ids !== '' ? explode( ',', (string) $row->item_ids ) : array();
+	return array(
+		'id'            => (int) $row->id,
+		'event'         => (string) $row->event,
+		'path'          => (string) $row->path,
+		'referrer'      => (string) $row->referrer,
+		'visitor_id'    => (string) $row->visitor_id,
+		'session_id'    => (string) $row->session_id,
+		'device'        => (string) $row->device,
+		'utm_source'    => (string) $row->utm_source,
+		'utm_medium'    => (string) $row->utm_medium,
+		'utm_campaign'  => (string) $row->utm_campaign,
+		'item_ids'      => $items,
+		'value'         => isset( $row->value ) && $row->value !== null ? (float) $row->value : null,
+		'currency'      => (string) $row->currency,
+		'occurred_at'   => (string) $row->occurred_at,
+	);
+}
+
+/**
+ * Aggregates events by path and event name, with 7/30/90-day windows.
+ *
+ * Aggregated in SQL rather than by shipping rows to the app: this table grows with
+ * traffic, and "views per product" is what the analytics screens ask for — pulling
+ * twenty thousand rows across HTTP to count them in JavaScript is the shape this
+ * endpoint exists to avoid.
+ */
+function hk_storefront_event_summary( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$events = $request->get_param( 'events' );
+	$names  = array();
+	if ( is_string( $events ) && $events !== '' ) {
+		foreach ( explode( ',', $events ) as $name ) {
+			$name = sanitize_key( trim( $name ) );
+			if ( $name !== '' ) {
+				$names[] = $name;
+			}
+		}
+	}
+
+	$table = hk_storefront_events_table();
+	$where = '';
+	$args  = array();
+	if ( $names ) {
+		$where = 'WHERE event IN (' . implode( ', ', array_fill( 0, count( $names ), '%s' ) ) . ')';
+		$args  = $names;
+	}
+
+	$sql = "SELECT path, event,
+			COUNT(*) AS total,
+			SUM(occurred_at >= %s) AS w7,
+			SUM(occurred_at >= %s) AS w30,
+			SUM(occurred_at >= %s) AS w90
+		FROM {$table} {$where}
+		GROUP BY path, event";
+
+	$params = array_merge(
+		array(
+			gmdate( 'Y-m-d H:i:s', time() - 7 * DAY_IN_SECONDS ),
+			gmdate( 'Y-m-d H:i:s', time() - 30 * DAY_IN_SECONDS ),
+			gmdate( 'Y-m-d H:i:s', time() - 90 * DAY_IN_SECONDS ),
+		),
+		$args
+	);
+
+	// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared immediately below; table name is ours.
+	$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) );
+
+	$summary = array();
+	foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+		$summary[] = array(
+			'path'  => (string) $row->path,
+			'event' => (string) $row->event,
+			'total' => (int) $row->total,
+			'w7'    => (int) $row->w7,
+			'w30'   => (int) $row->w30,
+			'w90'   => (int) $row->w90,
+		);
+	}
+
+	return rest_ensure_response( array( 'summary' => $summary ) );
+}
+
+/**
+ * Raw events, newest first — the admin traffic dashboard aggregates these.
+ *
+ * The cap is 5000 rather than 100 because the dashboard charts per-day and
+ * per-device series that the grouped summary cannot answer, so it needs rows. A hard
+ * cap still applies, and the app reports truncation rather than presenting a partial
+ * window as the whole one.
+ */
+function hk_storefront_list_events( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$limit  = (int) $request->get_param( 'limit' );
+	$limit  = $limit > 0 ? min( $limit, 5000 ) : 1000;
+	$since  = (string) $request->get_param( 'since' );
+	$events = (string) $request->get_param( 'events' );
+
+	$table  = hk_storefront_events_table();
+	$where  = array();
+	$params = array();
+
+	if ( $since !== '' ) {
+		$where[]  = 'occurred_at >= %s';
+		$params[] = preg_replace( '/[^0-9\-: ]/', '', $since );
+	}
+
+	$names = array_filter( array_map( 'sanitize_key', explode( ',', $events ) ) );
+	if ( $names ) {
+		$where[] = 'event IN (' . implode( ', ', array_fill( 0, count( $names ), '%s' ) ) . ')';
+		$params  = array_merge( $params, array_values( $names ) );
+	}
+
+	$params[] = $limit;
+	$sql      = "SELECT * FROM {$table}"
+		. ( $where ? ' WHERE ' . implode( ' AND ', $where ) : '' )
+		. ' ORDER BY occurred_at DESC, id DESC LIMIT %d';
+
+	// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- prepared immediately below; table name is ours.
+	$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ) );
+
+	return rest_ensure_response(
+		array(
+			'items' => array_map( 'hk_storefront_event_row', is_array( $rows ) ? $rows : array() ),
+		)
+	);
+}
+
+/* -------------------------------------------------------------------------
+ * Newsletter subscribers and contact submissions
+ * ---------------------------------------------------------------------- */
+
+/** Records a newsletter subscriber. Idempotent on the email. */
+function hk_storefront_subscribe( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$body  = $request->get_json_params() ?: array();
+	$email = sanitize_email( (string) ( $body['email'] ?? '' ) );
+	$src   = hk_storefront_event_text( $body['source'] ?? '', 100 );
+
+	if ( ! is_email( $email ) ) {
+		return new WP_Error( 'hk_storefront_email_invalid', 'Enter a valid email address.', array( 'status' => 400 ) );
+	}
+
+	$table = hk_storefront_newsletter_table();
+
+	// INSERT IGNORE against the UNIQUE key rather than SELECT-then-INSERT: the
+	// duplicate check and the write are one statement, so two tabs (or a retry)
+	// cannot produce two rows for one address.
+	// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is built from $wpdb->prefix.
+	$wpdb->query(
+		$wpdb->prepare(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is built from $wpdb->prefix.
+			"INSERT IGNORE INTO {$table} (email, source) VALUES (%s, %s)",
+			$email,
+			$src
+		)
+	);
+
+	// `created` is false when the address was already subscribed — reported rather
+	// than hidden, so "thanks, you are on the list" never claims a new signup.
+	return rest_ensure_response( array( 'ok' => true, 'created' => $wpdb->rows_affected > 0 ) );
+}
+
+/** Subscribers, newest first. */
+function hk_storefront_list_subscribers( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$limit = (int) $request->get_param( 'limit' );
+	$limit = $limit > 0 ? min( $limit, 500 ) : 200;
+
+	$table = hk_storefront_newsletter_table();
+	// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is built from $wpdb->prefix.
+	$rows = $wpdb->get_results( $wpdb->prepare( "SELECT id, email, source, created_at FROM {$table} ORDER BY created_at DESC, id DESC LIMIT %d", $limit ) );
+
+	return rest_ensure_response(
+		array(
+			'items' => array_map(
+				function ( $row ) {
+					return array(
+						'id'         => (int) $row->id,
+						'email'      => (string) $row->email,
+						'source'     => (string) $row->source,
+						'created_at' => (string) $row->created_at,
+					);
+				},
+				is_array( $rows ) ? $rows : array()
+			),
+		)
+	);
+}
+
+/** Stores a contact-form submission. */
+function hk_storefront_submit_contact( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$body    = $request->get_json_params() ?: array();
+	$name    = hk_storefront_event_text( $body['name'] ?? '', 200 );
+	$email   = sanitize_email( (string) ( $body['email'] ?? '' ) );
+	$phone   = hk_storefront_event_text( $body['phone'] ?? '', 50 );
+	$subject = hk_storefront_event_text( $body['subject'] ?? '', 200 );
+	$message = hk_storefront_event_text( $body['message'] ?? '', 5000 );
+
+	$missing = array();
+	foreach ( array( 'name' => $name, 'email' => $email, 'subject' => $subject, 'message' => $message ) as $field => $value ) {
+		if ( $value === '' ) {
+			$missing[] = $field;
+		}
+	}
+	if ( $missing ) {
+		return new WP_Error(
+			'hk_storefront_contact_incomplete',
+			'Name, email, subject and message are required.',
+			array( 'status' => 400 )
+		);
+	}
+	if ( ! is_email( $email ) ) {
+		return new WP_Error( 'hk_storefront_email_invalid', 'Enter a valid email address.', array( 'status' => 400 ) );
+	}
+
+	$inserted = $wpdb->insert(
+		hk_storefront_contact_table(),
+		array(
+			'name'    => $name,
+			'email'   => $email,
+			'phone'   => $phone,
+			'subject' => $subject,
+			'message' => $message,
+		),
+		array( '%s', '%s', '%s', '%s', '%s' )
+	);
+
+	if ( false === $inserted ) {
+		return new WP_Error( 'hk_storefront_contact_not_saved', 'The message could not be saved.', array( 'status' => 500 ) );
+	}
+
+	return rest_ensure_response( array( 'ok' => true, 'id' => (int) $wpdb->insert_id ) );
+}
+
+/** Contact submissions, newest first. */
+function hk_storefront_list_contacts( WP_REST_Request $request ) {
+	global $wpdb;
+
+	$limit = (int) $request->get_param( 'limit' );
+	$limit = $limit > 0 ? min( $limit, 500 ) : 200;
+
+	$table = hk_storefront_contact_table();
+	// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is built from $wpdb->prefix.
+	$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table} ORDER BY created_at DESC, id DESC LIMIT %d", $limit ) );
+
+	return rest_ensure_response(
+		array(
+			'items' => array_map(
+				function ( $row ) {
+					return array(
+						'id'         => (int) $row->id,
+						'name'       => (string) $row->name,
+						'email'      => (string) $row->email,
+						'phone'      => (string) $row->phone,
+						'subject'    => (string) $row->subject,
+						'message'    => (string) $row->message,
+						'created_at' => (string) $row->created_at,
+					);
+				},
+				is_array( $rows ) ? $rows : array()
+			),
+		)
+	);
+}
+
+/*
+ * Registrations. A third `rest_api_init` hook, for the same reason the customer
+ * block has its own: this section reads as one addition rather than a diff to the
+ * wishlist routes. Every route requires `manage_options`; the app's server is the
+ * only caller, with an administrator application password.
+ */
+add_action(
+	'rest_api_init',
+	function () {
+		$manage = 'hk_storefront_can_manage';
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/settings',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => 'hk_storefront_get_settings',
+					'permission_callback' => $manage,
+					'args'                => array( 'category' => array( 'required' => true ) ),
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => 'hk_storefront_save_settings',
+					'permission_callback' => $manage,
+				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => 'hk_storefront_delete_setting',
+					'permission_callback' => $manage,
+				),
+			)
+		);
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/category-hubs',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => 'hk_storefront_list_hubs',
+					'permission_callback' => $manage,
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => 'hk_storefront_save_hub',
+					'permission_callback' => $manage,
+				),
+			)
+		);
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/category-hubs/one',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'hk_storefront_get_hub',
+				'permission_callback' => $manage,
+				'args'                => array( 'key' => array( 'required' => true ) ),
+			)
+		);
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/events',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => 'hk_storefront_list_events',
+					'permission_callback' => $manage,
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => 'hk_storefront_record_event',
+					'permission_callback' => $manage,
+				),
+			)
+		);
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/events/summary',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'hk_storefront_event_summary',
+				'permission_callback' => $manage,
+			)
+		);
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/newsletter',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => 'hk_storefront_list_subscribers',
+					'permission_callback' => $manage,
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => 'hk_storefront_subscribe',
+					'permission_callback' => $manage,
+				),
+			)
+		);
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/contact',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => 'hk_storefront_list_contacts',
+					'permission_callback' => $manage,
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => 'hk_storefront_submit_contact',
+					'permission_callback' => $manage,
+				),
+			)
+		);
+	}
+);

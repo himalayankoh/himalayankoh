@@ -1,11 +1,30 @@
 import { Download, ExternalLink, Loader2, Printer, Truck } from 'lucide-react';
-import type { AdminOrder } from '../../lib/supabase/api/admin';
 import { formatShippoLabelError } from '../../lib/shippo/carrierErrors';
 import { AdminChip, AdminNotice } from './AdminUI';
 import { BUTTON, SURFACE } from './adminTheme';
 
+/**
+ * What a label panel needs from an order — and nothing else.
+ *
+ * Declared here rather than imported from the admin order API: this block renders the
+ * payment state, the carrier and the tracking keys, so it should depend on those five
+ * fields and not on a row from whichever database used to hold orders. The WooCommerce
+ * order the routes send is a superset, so it fits without adaptation.
+ */
+export interface LabelOrder {
+  id: string;
+  status: string;
+  payment_status: string;
+  shipping_carrier: string | null;
+  tracking_number: string | null;
+  tracking_url: string | null;
+  label_url: string | null;
+  /** Present on the labels worklist; not read by this block. */
+  profile?: { full_name?: string | null } | null;
+}
+
 interface ShippingLabelPanelProps {
-  order: AdminOrder;
+  order: LabelOrder;
   shippoEnabled: boolean;
   labelCreating?: boolean;
   labelError?: string | null;

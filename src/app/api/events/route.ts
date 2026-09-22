@@ -1,81 +1,45 @@
 /**
- * First-party traffic events — the only way the browser touches this table.
+ * First-party storefront events — the one way the browser records traffic.
  *
- * ## Why the browser stopped talking to Supabase
+ * ## Two backends ago
  *
  * `services/siteEvents.ts` used to POST straight to
- * `<project>.supabase.co/rest/v1/site_events` with the anon key. That had two
- * costs the storefront paid on every page: it put the Supabase project URL and
- * key in the client bundle, and it pulled Supabase code (the config resolver) onto
- * the product detail page, because that page's campaign path reaches
- * `lib/marketing`, which imports the recorder. The storefront does not otherwise
- * need Supabase at all, so the credential and the code both moved here.
+ * `<project>.supabase.co/rest/v1/site_events` with the anon key, which put the
+ * Supabase project URL and key in the client bundle and pulled the config resolver
+ * onto a product page. That moved here. The events now belong to WordPress, in the
+ * `hk_site_events` table behind `hk-storefront/v1/events`, and this route is the
+ * only caller — so the browser still sees one same-origin endpoint and no credential.
  *
- * ## Two callers
+ * ## A public write with no session
  *
- *   POST  public and fire-and-forget: a visitor records an event. This used to be
- *         done with a *public* key against an INSERT-only RLS policy; it is now
- *         rate-limited and field-allowlisted, which is strictly tighter than the
- *         public key allowed.
- *   GET   admin only, through the same `verifyAdminRequest` the admin routes use.
+ * This is the storefront's only unauthenticated write, so it is deliberately narrow:
+ * rate-limited per IP, and every field is allowlisted and capped before it reaches
+ * WordPress. That is stricter than the public anon key it replaces, which could
+ * insert any column of the table.
  *
- * ## The revenue columns
+ * ## Never an error the visitor can see
  *
- * Migration 043 creates `value` and `currency`, and may not have been applied to
- * a given database. The write therefore tries with them and retries without on a
- * missing-column error, caching the answer — the same "analytics never stops
- * because a migration is pending" behaviour the browser-side probe had. The read
- * needs no such dance: `select('*')` returns whatever columns exist, and the
- * dashboard already renders an absent `value` as unavailable.
- *
- * The row shapes are declared here rather than pulled from
- * `lib/supabase/database.types.ts` — `site_events` is not in that file (the
- * browser used to write it through PostgREST by hand), and every call site in
- * this app already casts around those types because the generated shape lacks the
- * `Views`/`Functions` sections this supabase-js version infers from. Regenerating
- * that file is its own job; this route should not hand-extend it.
+ * Analytics is best-effort: a throttled request, an unreachable WordPress and a
+ * rejected row all answer `{ ok: true, recorded: false }` with HTTP 200, because the
+ * caller is a fire-and-forget beacon whose failure mode must not be a console full of
+ * red or a page that waits. `recorded` is the honest half of that answer.
  */
 
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
-import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
+import { siteEventsApi } from '@/lib/wordpress/siteContent';
 
 export const dynamic = 'force-dynamic';
 
 /** Per-field caps, so a public endpoint cannot be used to store bulk text. */
 const MAX = { event: 64, path: 2048, referrer: 2048, id: 64, device: 16, utm: 256 };
 
-interface SiteEventInsert {
-  event: string;
-  path: string;
-  referrer: string | null;
-  visitor_id: string | null;
-  session_id: string | null;
-  device: string | null;
-  utm_source: string | null;
-  utm_medium: string | null;
-  utm_campaign: string | null;
-  item_ids: string[] | null;
-  value?: number | null;
-  currency?: string | null;
-}
-
-interface SiteEventRow extends Omit<SiteEventInsert, 'value' | 'currency'> {
-  id: string;
-  value: number | null;
-  currency: string | null;
-  occurred_at: string;
-}
-
-/** Null when migration 043's revenue columns have not been applied yet. */
-let supportsRevenue: boolean | null = null;
-
-function isMissingColumn(error: { code?: string; message?: string } | null): boolean {
-  if (!error) return false;
-  if (error.code === 'PGRST204' || error.code === '42703') return true;
-  return /column .* does not exist|schema cache|could not find the .* column/i.test(error.message ?? '');
-}
+/**
+ * The most rows one read returns. Above this the dashboard's window is partial, and
+ * saying so is better than charting a truncated series as if it were complete.
+ */
+const READ_LIMIT = 5000;
 
 function text(value: unknown, max: number): string | null {
   if (typeof value !== 'string') return null;
@@ -96,7 +60,6 @@ export async function POST(request: Request) {
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   const rate = checkRateLimit(`events:${ip}`, { limit: 120, windowMs: 60_000 });
   if (!rate.allowed) {
-    // Analytics is best-effort; a throttled visitor must not see an error.
     return NextResponse.json({ ok: true, recorded: false });
   }
 
@@ -115,57 +78,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'event and path are required.' }, { status: 400 });
   }
 
-  const row: SiteEventInsert = {
-    event,
-    path,
-    referrer: text(payload.referrer, MAX.referrer),
-    visitor_id: text(payload.visitor_id, MAX.id),
-    session_id: text(payload.session_id, MAX.id),
-    device: text(payload.device, MAX.device),
-    utm_source: text(payload.utm_source, MAX.utm),
-    utm_medium: text(payload.utm_medium, MAX.utm),
-    utm_campaign: text(payload.utm_campaign, MAX.utm),
-    item_ids: Array.isArray(payload.item_ids) ? payload.item_ids.slice(0, 20).map(String) : null,
-  };
-
-  const value = numberOrNull(payload.value);
-  const currency = text(payload.currency, 8);
-  const sendsRevenue = value !== null || currency !== null;
-  if (sendsRevenue && supportsRevenue !== false) {
-    row.value = value;
-    row.currency = currency;
-  }
-
-  let client;
   try {
-    client = getSupabaseAdmin();
-  } catch {
-    // No service key on this deployment. The caller is fire-and-forget by design,
-    // so this is a quiet no-op rather than a 500 it would never look at.
+    await siteEventsApi.record({
+      event,
+      path,
+      referrer: text(payload.referrer, MAX.referrer),
+      visitor_id: text(payload.visitor_id, MAX.id),
+      session_id: text(payload.session_id, MAX.id),
+      device: text(payload.device, MAX.device),
+      utm_source: text(payload.utm_source, MAX.utm),
+      utm_medium: text(payload.utm_medium, MAX.utm),
+      utm_campaign: text(payload.utm_campaign, MAX.utm),
+      item_ids: Array.isArray(payload.item_ids) ? payload.item_ids.slice(0, 20).map(String) : [],
+      value: numberOrNull(payload.value),
+      currency: text(payload.currency, 8),
+    });
+    return NextResponse.json({ ok: true, recorded: true });
+  } catch (error) {
+    // Unconfigured WordPress, an unreachable origin or a rejected row: reported as
+    // "not recorded" rather than thrown at a beacon that has nobody to tell.
+    console.warn('Site event could not be recorded:', error);
     return NextResponse.json({ ok: true, recorded: false });
   }
-
-  const { error } = await client.from('site_events').insert(row as never);
-
-  if (!error) {
-    if (sendsRevenue) supportsRevenue = true;
-    return NextResponse.json({ ok: true, recorded: true });
-  }
-
-  // Only the revenue columns can be the missing ones; retry the base insert so a
-  // pending migration costs the event's revenue, not the event.
-  if (isMissingColumn(error) && 'value' in row) {
-    supportsRevenue = false;
-    delete row.value;
-    delete row.currency;
-    const retry = await client.from('site_events').insert(row as never);
-    return NextResponse.json({ ok: true, recorded: !retry.error });
-  }
-
-  console.warn('Site event insert failed:', error);
-  return NextResponse.json({ ok: true, recorded: false });
 }
 
+/**
+ * The admin traffic dashboard's window.
+ *
+ * Raw rows rather than the grouped summary, because the dashboard charts per-day and
+ * per-device series that a (path, event) count cannot answer. Admin-only, and it asks
+ * for a bounded window so a busy month cannot turn one request into the whole table.
+ */
 export async function GET(request: Request) {
   const auth = await verifyAdminRequest(request);
   if (!auth.ok) {
@@ -173,35 +116,18 @@ export async function GET(request: Request) {
   }
 
   const days = Number(new URL(request.url).searchParams.get('days') ?? '30') || 30;
-  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 19).replace('T', ' ');
 
-  let client;
   try {
-    client = getSupabaseAdmin();
-  } catch {
-    return NextResponse.json({ error: 'Traffic analytics is not configured on this deployment.' }, { status: 503 });
-  }
-
-  const { data, error } = await client
-    .from('site_events')
-    .select('*')
-    // Newest-first so the cap keeps the most recent events — ascending would keep
-    // the OLDEST once a window exceeds it, which reads as a stale dashboard.
-    .gte('occurred_at', since)
-    .order('occurred_at', { ascending: false })
-    .limit(50_000);
-
-  if (error) {
+    const events = await siteEventsApi.list({ since, limit: READ_LIMIT });
+    return NextResponse.json({
+      events,
+      // Newest-first, so hitting the cap keeps the most recent events; the flag is
+      // what stops the dashboard from drawing a partial window as a complete one.
+      truncated: events.length >= READ_LIMIT,
+    });
+  } catch (error) {
     console.error('Traffic event read failed:', error);
     return NextResponse.json({ error: 'Could not load traffic events.' }, { status: 502 });
   }
-
-  const events = (data ?? []) as unknown as SiteEventRow[];
-  return NextResponse.json({
-    events: events.map((row) => ({
-      ...row,
-      value: row.value ?? null,
-      currency: row.currency ?? null,
-    })),
-  });
 }

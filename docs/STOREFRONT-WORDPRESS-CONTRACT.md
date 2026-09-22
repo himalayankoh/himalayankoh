@@ -446,7 +446,36 @@ agreed on the WordPress side — it is a WordPress-side decision, not app work.
 
 ---
 
-## 8. Rollback
+## 8. Site content, settings and telemetry (plugin 1.3.0)
+
+The same plugin now serves the app's own content and telemetry, so this half of the
+contract is written down in one place instead of being discovered route by route:
+
+| Route | Methods | What it is |
+| --- | --- | --- |
+| `/settings` | GET, POST, DELETE | App settings the console edits. WordPress options, one option per category; a POST writes a whole category so a form save is all-or-nothing |
+| `/category-hubs` | GET, POST | Category-hub overrides (option per category key) |
+| `/category-hubs/one` | GET | One override. The *published* filter is applied by the app, not here |
+| `/events` | GET, POST | First-party storefront events (`hk_site_events`). POST is write-only and field-capped; GET is the traffic dashboard's window |
+| `/events/summary` | GET | Events grouped by path and name with 7/30/90-day windows, aggregated in SQL |
+| `/newsletter` | GET, POST | Subscribers (`hk_newsletter_subscribers`, UNIQUE on email so a repeat signup keeps one row). POST reports `created: false` for a repeat |
+| `/contact` | GET, POST | Contact submissions (`hk_contact_submissions`) |
+
+Like every other route in this namespace they require `manage_options`, so the app's
+server is the only caller and the browser never reaches them directly. The browser's
+access is the app's own same-origin routes (`/api/events`, `/api/newsletter`,
+`/api/contact`, `/api/category-hub`).
+
+The HK blog fields are **post meta**, not a route: `hk_hero_image_url`,
+`hk_hero_image_alt`, `hk_seo_title`, `hk_meta_description`, `hk_target_keyword`,
+`hk_secondary_keywords`, `hk_search_intent`, `hk_tags`, `hk_faq_json`, registered with
+`show_in_rest` so they travel in the post object through `wp/v2/posts`. Storing them as
+meta rather than a parallel table is what makes WordPress's own revision system
+snapshot them with the content, which is what the console's "Restore" then restores.
+
+---
+
+## 9. Rollback
 
 The cart and wishlist have no dual code path: the Supabase cart/wishlist modules
 were deleted rather than kept behind the data-source flag. Rollback is

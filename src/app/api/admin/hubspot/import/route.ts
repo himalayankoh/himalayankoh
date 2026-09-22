@@ -1,52 +1,70 @@
+/**
+ * Imports HubSpot contacts into the CRM.
+ *
+ * The CRM inbox reads WordPress (`crm/v1/leads`, via `lib/leados/crm`), and this route
+ * used to write to a Supabase `crm_leads` table — so a contact imported here landed
+ * somewhere the console could not see. It writes through the same plugin the inbox
+ * reads now, which is the whole fix: one CRM, one place leads live.
+ *
+ * Dedupe is by email against the leads the plugin already holds. `skipped` reports the
+ * contacts that were already there plus the ones HubSpot did not return an email for,
+ * because "imported 3 of 100" is only useful next to the reason for the other 97.
+ */
+
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { listContacts, HubspotNotConfiguredError } from '@/lib/hubspot/client';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
+import { createCrmLead, listCrmLeads } from '@/lib/leados/crm';
+
+export const dynamic = 'force-dynamic';
+
+const IMPORT_LIMIT = 100;
 
 export async function POST(request: Request) {
   const auth = await verifyAdminRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
-    const contacts = await listContacts(100);
+    const contacts = await listContacts(IMPORT_LIMIT);
     if (contacts.length === 0) {
       return NextResponse.json({ ok: true, imported: 0, skipped: 0 });
     }
 
-    const supabase = getSupabaseAdmin();
+    // A HubSpot contact without an email address cannot be deduped or contacted, and
+    // the plugin rejects it anyway — counted as skipped rather than attempted.
+    const withEmail = contacts.filter((contact) => Boolean(contact.email?.trim()));
 
-    // Dedupe against existing CRM leads by email.
-    const emails = contacts.map((c) => c.email.toLowerCase());
-    const { data: existing } = await supabase
-      .from('crm_leads')
-      .select('email')
-      .in('email', emails);
-
-    const existingSet = new Set(
-      ((existing ?? []) as { email: string }[]).map((r) => r.email.toLowerCase()),
-    );
-
-    const toInsert = contacts
-      .filter((c) => !existingSet.has(c.email.toLowerCase()))
-      .map((c) => ({
-        name: [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || c.email,
-        email: c.email,
-        phone: c.phone,
-        company: c.company,
-        source: 'other' as const,
-        subject: 'Imported from HubSpot',
-      }));
+    const existing = await listCrmLeads();
+    const known = new Set(existing.map((lead) => lead.email.trim().toLowerCase()));
 
     let imported = 0;
-    if (toInsert.length > 0) {
-      const { error } = await supabase.from('crm_leads').insert(toInsert as never);
-      if (error) throw error;
-      imported = toInsert.length;
+
+    for (const contact of withEmail) {
+      const email = contact.email.trim().toLowerCase();
+      if (known.has(email)) continue;
+
+      try {
+        await createCrmLead({
+          email,
+          name: [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() || email,
+          phone: contact.phone,
+          company: contact.company,
+          source: 'other',
+          page_url: null,
+        });
+        known.add(email);
+        imported += 1;
+      } catch (error) {
+        // One rejected contact must not abandon the rest of the import; the count of
+        // what did not land is what the caller reports.
+        console.warn(`HubSpot contact ${email} could not be imported:`, error);
+      }
     }
 
     return NextResponse.json({
       ok: true,
       imported,
+      // Already-present contacts, contacts with no email, and any the CRM refused.
       skipped: contacts.length - imported,
     });
   } catch (error) {

@@ -14,7 +14,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { categoryHubApi } from '@/lib/supabase/api/categoryHub';
+import { categoryHubApi } from '@/lib/categoryContent/hubOverrides';
 import { isCategoryContentKey } from '@/lib/categoryContent/keys';
 
 export const dynamic = 'force-dynamic';

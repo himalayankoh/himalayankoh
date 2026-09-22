@@ -1,12 +1,23 @@
-import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
-import { checkRateLimit } from '@/lib/rateLimit';
+/**
+ * Newsletter signup.
+ *
+ * The address is stored by WordPress now, in the `hk_newsletter_subscribers` table
+ * behind `hk-storefront/v1/newsletter`, with a UNIQUE key on the email doing the
+ * dedupe. That table used to be Supabase's `newsletter_subscribers`, and the write
+ * lived here because a public form must not hold a server credential — the same
+ * reason it still does.
+ *
+ * `success` means the address is on the list, and it is only returned after
+ * WordPress accepted it: a signup that could not be stored answers 500 with a
+ * readable message rather than a fake thank-you, because silently losing a
+ * subscriber is the one failure this endpoint exists to prevent.
+ */
 
-// The hand-written database.types.ts does not model every table with the full
-// generated shape supabase-js expects, so server-side writes into newer tables
-// use an untyped client (same convention as lib/settings/serverSettings.ts).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyClient = any;
+import { NextResponse } from 'next/server';
+import { checkRateLimit } from '@/lib/rateLimit';
+import { newsletterApi } from '@/lib/wordpress/siteContent';
+
+export const dynamic = 'force-dynamic';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -41,17 +52,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const supabase: AnyClient = getSupabaseAdmin();
-    // Idempotent subscribe: re-subscribing the same address keeps the original
-    // row rather than erroring or duplicating.
-    const { error } = await supabase.from('newsletter_subscribers').upsert(
-      { email, source },
-      { onConflict: 'email', ignoreDuplicates: true }
-    );
-
-    if (error) throw error;
-
-    return NextResponse.json({ success: true });
+    // Idempotent subscribe: re-subscribing keeps the original row. `created` is
+    // reported so a repeat signup is distinguishable from a new one.
+    const created = await newsletterApi.subscribe(email, source);
+    return NextResponse.json({ success: true, created });
   } catch (error) {
     console.error('Newsletter subscription failed:', error);
     return NextResponse.json(

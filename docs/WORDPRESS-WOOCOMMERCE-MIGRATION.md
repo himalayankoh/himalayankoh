@@ -469,12 +469,106 @@ With no override the app runs the `supabase` default. What to expect on each:
 | 6 | Images from WordPress media | ✅ Real staging images render. No `next.config.ts` change is actually needed: the storefront never uses `next/image` (40 plain `<img>` elements), so absolute staging URLs load directly. `images.remotePatterns` only matters if the app later migrates to `next/image`. |
 | 7 | Cart & checkout | ✅ **Cart** to `wc/store/v1`, **wishlist** to the `hk-storefront/v1` plugin, and **orders** to WooCommerce: the checkout reserves the Woo order before the PaymentIntent (its id travels in Stripe metadata), the webhook marks it paid, and Shippo tracking, the emails, customer history and the admin console all read and write that order. `stripe_checkout_sessions` is deleted. See `ORDERS-WOOCOMMERCE-MIGRATION.md` §7 for what is implemented and what is not (the historical import). |
 | 8 | Customer accounts / CRM | ⏸ Not started — **production customers untouched** |
-| 9 | Supabase removal | ⚠️ Started and measured. Runtime imports **24 modules** (from 33), server-side 19. **Blog reads** moved to WordPress (`/wp/v2/posts`); blog *admin writes* and Storage are the remaining half. **Orders** are off Supabase for the new-order lifecycle; only a read-only legacy adapter for pre-migration orders remains. Detail: The cart, wishlist, YouTube, admin auth, LeadOS/CRM, **customer accounts, saved addresses, password reset and traffic events** have left the app. The **storefront no longer ships the Supabase SDK or its config, on any route** — `npm run check:client-supabase` against a production build reports **5 of 73 routes**, down from 31, and every one of the 5 is `/admin/*`, which the owner asked to leave alone (`/products/[slug]` was the last storefront leak: the campaign path reached `lib/marketing` → `services/siteEvents`, which POSTed to Supabase with the anon key; it now posts to `/api/events`). `orders`, `order_items`, `products`, `profiles`, `blog_posts` and the rest are still read and written **server-side**. The `carts`/`cart_items`/`wishlists`/`addresses`/`notifications` tables are now unused but **kept** until the WordPress path has run in production — they hold the only copy of existing data. What is left is server-side and the admin console; orders is the bulk of it, designed in `ORDERS-WOOCOMMERCE-MIGRATION.md`. |
+| 9 | Supabase removal | ⚠️ Started and measured. Runtime imports **11 modules** (from 33; 24 before this pass), server-side 9, and the two browser modules left are `/admin/categories` and `/admin/category-hubs`. The whole site-content block — **settings, category-hub overrides, first-party events, newsletter, contact submissions, blog admin writes, blog media, product/media uploads, the label worklist and the dashboard analytics** — now reads and writes WordPress/WooCommerce (`hk-storefront/v1`, `wp/v2/posts`, `wp/v2/media`, `wc/v3`); see §10. What is left is the legacy admin catalog (`features/catalog/repository.ts`, `lib/backend/adminCatalog.ts`, `lib/backend/products.ts` Supabase branches), `lib/seo/server.ts`, `lib/hermes/evidenceStore.ts`, `lib/shippo/server/rates.ts`'s packing lookup, and the read-only historical-orders adapter — each named in §10.3. Earlier steps: Runtime imports **24 modules** (from 33), server-side 19. **Blog reads** moved to WordPress (`/wp/v2/posts`); blog *admin writes* and Storage are the remaining half. **Orders** are off Supabase for the new-order lifecycle; only a read-only legacy adapter for pre-migration orders remains. Detail: The cart, wishlist, YouTube, admin auth, LeadOS/CRM, **customer accounts, saved addresses, password reset and traffic events** have left the app. The **storefront no longer ships the Supabase SDK or its config, on any route** — `npm run check:client-supabase` against a production build reports **5 of 73 routes**, down from 31, and every one of the 5 is `/admin/*`, which the owner asked to leave alone (`/products/[slug]` was the last storefront leak: the campaign path reached `lib/marketing` → `services/siteEvents`, which POSTed to Supabase with the anon key; it now posts to `/api/events`). `orders`, `order_items`, `products`, `profiles`, `blog_posts` and the rest are still read and written **server-side**. The `carts`/`cart_items`/`wishlists`/`addresses`/`notifications` tables are now unused but **kept** until the WordPress path has run in production — they hold the only copy of existing data. What is left is server-side and the admin console; orders is the bulk of it, designed in `ORDERS-WOOCOMMERCE-MIGRATION.md`. |
 | 10 | Demo-data separation | ⏸ Not started |
 | 11 | Cloudflare hosting | ⏸ Not started |
 | 12 | Environment configuration | ⚠️ Documented in §6, needs manual file edit |
 | 13 | Safety rules | ✅ Observed throughout |
 | 14 | First milestone | ⛔ Blocked on §1 |
+
+---
+
+## 10. Site content, settings and telemetry are WordPress's now (this pass)
+
+### 10.1 The WordPress surface, and where each piece lives
+
+One new module talks to it: `src/lib/wordpress/siteContent.ts`. Its endpoints are
+registered by the **existing** `hk-storefront` plugin (version 1.3.0, one deploy
+step, no third plugin):
+
+| What | WordPress home | Endpoint |
+| --- | --- | --- |
+| Admin settings the console edits | WordPress options, one option per category | `hk-storefront/v1/settings` |
+| Category-hub overrides | WordPress options, one per category key | `hk-storefront/v1/category-hubs` |
+| First-party storefront events | new `hk_site_events` table | `hk-storefront/v1/events`, `/events/summary` |
+| Newsletter subscribers | new `hk_newsletter_subscribers` table (UNIQUE on email) | `hk-storefront/v1/newsletter` |
+| Contact submissions | new `hk_contact_submissions` table | `hk-storefront/v1/contact` |
+| HK blog fields (SEO, hero image, tags, FAQ) | registered post meta | read/written through `wp/v2/posts` |
+| Blog posts, revisions | WordPress posts and its own revisions | `wp/v2/posts`, `/revisions` |
+| Blog hero images, product images | WordPress Media Library | `wp/v2/media` |
+
+Options rather than tables for settings and hubs because both are small whole-value
+documents read as a unit — and that inherits WordPress's caching and backup path
+instead of inventing a parallel one. A table for events because traffic is
+append-only and read in aggregate; tables for newsletter and contact because losing
+a subscriber or a customer's message is the one failure those endpoints exist to
+prevent.
+
+What the app calls, and the route that fronts it:
+
+| App route | WordPress call |
+| --- | --- |
+| `POST /api/events` | `hk-storefront/v1/events` (public write, rate-limited, field-allowlisted) |
+| `GET /api/events` | the same namespace, admin-only, for the traffic dashboard |
+| `POST /api/newsletter`, `POST /api/contact` | the plugin's tables |
+| `/api/category-hub` | `hk-storefront/v1/category-hubs/one` (published filter applied in the app) |
+| `/api/admin/blog/posts[/…]` | `wp/v2/posts` with the administrator application password |
+| `/api/upload-image`, `/api/admin/media/import-url` | `wp/v2/media` |
+| `/api/admin/labels` | `wc/v3/orders` |
+| `/api/admin/analytics` | `wc/v3/orders`, `wc/v3/customers`, the inventory report |
+| `POST /api/admin/hubspot/import` | `crm/v1/leads` (it wrote to Supabase while the inbox read WordPress) |
+
+### 10.2 Two real defects this fixed
+
+- **HubSpot imports went somewhere the console could not see.** The route inserted
+  into a Supabase `crm_leads` while the CRM inbox read the LeadOS plugin. It writes
+  through the plugin now, deduping against the leads the inbox actually holds.
+- **A paid WooCommerce order could be missing from the label bench.** The worklist
+  read the app's own `orders` table; it reads WooCommerce now, so an order paid in
+  the store is on the bench. `shipping_carrier` and `tracking_number` come from the
+  meta the label step writes, so a label bought here appears immediately.
+
+### 10.3 What is still on Supabase, individually
+
+Measured with `npm run audit:supabase` after this pass (11 runtime modules):
+
+| Module(s) | Why it is still there | The WooCommerce/WordPress replacement |
+| --- | --- | --- |
+| `features/catalog/repository.ts` (and its callers `CatalogAdmin`, `AdminSection`, `AIImportPanel`, `ListingTaskAdmin`, `HermesIntel`), `services/db.ts` Supabase adapter | The legacy admin catalog CRUD. In the `vinext` build `import.meta.env.VITE_SUPABASE_*` is statically replaced, so this path is live on the Worker — it is not dead code | `lib/woo/productWrite.ts`, `lib/woo/taxonomyWrite.ts`, `lib/woo/coupons.ts`, `lib/woo/inventory.ts` — all of which exist and are already used by the newer admin routes. This is the largest single block left |
+| `lib/backend/products.ts`, `lib/backend/adminCatalog.ts` | Their `supabase` source branches, selected by `NEXT_PUBLIC_DATA_SOURCE`. On this deployment the flag is `woocommerce`, so the branch is unreachable — but it is still imported, so the SDK and `lib/supabase/*` stay in the graph | Delete the branch and the flag: WooCommerce becomes the only catalog source |
+| `views/admin/AdminCategories.tsx` | Its Supabase category editor, shown only while the flag is `supabase` | The WooCommerce editor *already exists in the same file* (`/api/admin/categories`, `/api/admin/categories/[id]`) |
+| `views/admin/AdminCategoryHubs.tsx` | **Fixed in this pass** — the last gate and notice are gone | — |
+| `lib/seo/server.ts` | Reads SEO metadata through a Supabase client created during server render | `wp/v2/posts` + Yoast's REST fields (already read by `lib/blog/wordpressBlog.ts`) and `wc/v3` product fields |
+| `lib/hermes/evidenceStore.ts` | `hermes_evidence` table, with an in-memory fallback | A plugin table (the storefront plugin already owns tables) or WooCommerce order notes for order-scoped evidence |
+| `lib/shippo/server/rates.ts` (+ `lib/shippo/packing/enrichLineItems.ts`) | Reads packing profiles from Supabase to compute rate packages | WooCommerce product weight/dimensions + a plugin packing-profile option — the profile is per product, which is what product meta is for |
+| `lib/orders/legacyOrders.ts`, `/api/admin/orders/legacy` | **Intentional**, read-only, for pre-migration orders | `scripts/import-historical-orders.mjs` (Phase P) is the design; it is not run yet, so the adapter stays and is clearly marked |
+| `lib/stripe/server/supabaseAdmin.ts`, `lib/supabase/*` | The plumbing the rows above still import | Deleted with the last importer |
+
+### 10.4 Phase L — the plugin blocker, measured
+
+`npm run check:wordpress` (read-only) now probes both HK namespaces and the public
+namespace index, so "the plugin is not active" is a stated fact rather than an
+inference from scattered feature failures:
+
+```
+HK WordPress plugins
+  credential: absent
+  registered: hk-storefront/v1 = no · crm/v1 = no
+  ABSENT GET /hk-storefront/v1/events — HTTP 404
+         The hk-storefront/v1 namespace is not registered on this site.
+         Blocks: wishlist, saved addresses, cart across devices, customer sign-in and password resets
+  ABSENT GET /crm/v1/leads — HTTP 404
+         Blocks: the CRM inbox and LeadOS
+```
+
+**Blocked, and it needs one human step**: the plugin files have to reach
+`wp-content/plugins/` on the WordPress host. Nothing in the Worker deployment puts
+them there, and `POST /wp/v2/plugins` installs from the wordpress.org directory only,
+so a private plugin cannot be installed through REST. Once the files are present,
+activation *is* a single authenticated call (`POST /wp/v2/plugins/<plugin>` with
+`{"status":"active"}`), which the check script prints. Everything above that depends
+on these namespaces is correct in code and untested live until that happens — stated
+rather than claimed.
 
 ---
 

@@ -1,261 +1,32 @@
 // ============================================================================
-// LUXEDGE — BLOG CMS SERVICE (client)
+// HIMALAYAN KOH — BLOG CMS CLIENT
 //
-// The single source of truth for blog content is the Supabase `blog_posts`
-// table, NOT INIT_BLOGS in src/App.tsx. This module:
-//   * loadPublishedBlogs()  — READ published posts for the storefront. Uses the
-//     public anon key; RLS returns only published (scheduled_at <= now()) posts.
-//     Returns NULL on genuine failure (unconfigured / unreachable / table not
-//     migrated) and [] on a reachable-but-empty DB, so callers can decide the
-//     migration/rollback fallback policy.
-//   * admin*() methods       — authenticated READ/WRITE for the Admin Blog
-//     Manager (draft/edit/publish/schedule/unpublish/archive/restore/delete),
-//     always authorizing with the SIGNED-IN admin's JWT so RLS governs every
-//     write. No service-role key ever reaches the browser.
+// The blog is WordPress's. Posts, revisions and media live there
+// (`lib/blog/wordpressAdminBlog.ts`), and this module is the console's client for
+// them: every call goes to `/api/admin/blog/*`, which verifies the signed-in
+// admin's session and then talks to WordPress with a credential the browser never
+// sees.
 //
-// SECURITY: anon key + the caller's own JWT only. Blog automation writes are
-// deliberately NOT exposed here — they happen server-side via /blog-automation.
+// It used to be a Supabase client that reached `blog_posts` and `blog_revisions`
+// directly from the browser, which meant the console could only edit what one
+// database held and the storefront needed its own read path. Now there is one
+// article store, one editor (WordPress's, reachable through this console) and one
+// published read.
+//
+// The exported types are declared in the server module and imported with
+// `import type`, so they are erased at compile time — this file adds no server code
+// to a browser bundle.
 // ============================================================================
 
-import { getDb } from './db';
-import type { DbAdapter } from './db';
-import { getFreshAccessToken } from './wordpressAdminAuth';
 import type { BlogPost } from '../App';
-import { isHeldBlog } from '../content/reviewHolds';
+import type { BlogPostWithAuthor } from '../lib/blog/types';
+import { getFreshAccessToken } from './wordpressAdminAuth';
+import type { CmsBlogRow, CmsBlogRevision } from '../lib/blog/wordpressAdminBlog';
 
-/** Raw Supabase `blog_posts` row (snake_case DB columns). */
-export interface CmsBlogRow {
-  id: string;
-  slug: string;
-  title: string;
-  excerpt: string | null;
-  content: string | null;
-  hero_image_url: string | null;
-  hero_image_alt: string | null;
-  tags: string[] | null;
-  author_name: string | null;
-  author_id: string | null;
-  status: 'draft' | 'scheduled' | 'published' | 'archived';
-  created_at: string;
-  updated_at: string;
-  scheduled_at: string | null;
-  published_at: string | null;
-  date_label?: string | null;
-  seo_title?: string | null;
-  meta_description?: string | null;
-  target_keyword?: string | null;
-  secondary_keywords?: string[] | null;
-  search_intent?: string | null;
-  faq?: { q: string; a: string }[] | null;
-  internal_links?: unknown[] | null;
-  quality_score?: number | null;
-  generated_by?: string | null;
-  automation_run_id?: string | null;
-  automation_locked?: boolean | null;
-}
+export type { CmsBlogRow, CmsBlogRevision };
 
-export type BlogStatus = CmsBlogRow['status'];
-
-// Column-scoped public reads — every column MUST exist on blog_posts (the
-// schema contract is enforced by __tests__/select-schema.test.ts against
-// supabase/migrations/*.sql; a missing column 400s the whole query).
-export const BLOG_LIST_PUBLIC_SELECT =
-  'id,slug,title,excerpt,hero_image_url,hero_image_alt,tags,author_name,author_id,status,created_at,updated_at,published_at,date_label';
-export const BLOG_DETAIL_PUBLIC_SELECT = `${BLOG_LIST_PUBLIC_SELECT},content,faq`;
-
-const PUBLIC_BLOG_CACHE_TTL_MS = 5 * 60 * 1000;
-
-function readBlogCache(): BlogPost[] | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage.getItem('luxedge:published-blogs:v2');
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { ts?: number; data?: BlogPost[] };
-    if (!parsed.ts || Date.now() - parsed.ts > PUBLIC_BLOG_CACHE_TTL_MS) return null;
-    return Array.isArray(parsed.data) ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeBlogCache(posts: BlogPost[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.sessionStorage.setItem('luxedge:published-blogs:v2', JSON.stringify({ ts: Date.now(), data: posts }));
-  } catch {
-    /* storage unavailable - live request already succeeded */
-  }
-}
-
-const rowStatusToBlog = (status: CmsBlogRow['status']): BlogPost['status'] => {
-  if (status === 'published') return 'published';
-  if (status === 'scheduled') return 'pending'; // visible to author only pre-date
-  return 'draft';
-};
-
-/** Map a DB row onto the storefront BlogPost shape (nothing invented). */
-export function mapRowToBlogPost(r: CmsBlogRow): BlogPost {
-  const primary = r.hero_image_url || '';
-  return {
-    id: r.id,
-    slug: r.slug,
-    title: r.title,
-    excerpt: r.excerpt || r.title || '',
-    content: r.content || '',
-    image: primary,
-    images: primary ? [primary] : [],
-    tags: Array.isArray(r.tags) ? r.tags.filter((t): t is string => typeof t === 'string') : [],
-    authorId: r.author_id || '',
-    authorName: r.author_name || 'Himalayan Koh Editorial Team',
-    status: rowStatusToBlog(r.status),
-    date: r.date_label || (r.published_at || r.created_at || '').slice(0, 10),
-    faq: Array.isArray(r.faq) && r.faq.length ? r.faq : undefined,
-  };
-}
-
-/**
- * READ published posts for the storefront.
- *
- * SECURITY: this is a PUBLIC read and must always run as the anon role. The
- * shared Supabase adapter's access token is sticky — any admin operation
- * (blog save, catalog edit, product scout) leaves the signed-in admin JWT on
- * it, and with that token RLS returns drafts/scheduled/archived posts too.
- * We therefore clear the token for this read AND pass an explicit
- * status=published filter, so a draft can never leak to visitors even if a
- * future RLS or role change regresses.
- */
-export async function loadPublishedBlogs(opts: { forceFresh?: boolean } = {}): Promise<BlogPost[] | null> {
-  if (!opts.forceFresh) {
-    const cached = readBlogCache();
-    if (cached) return cached;
-  }
-  const db = getDb();
-  try {
-    if ('setAccessToken' in db && typeof (db as { setAccessToken: (t: string | null) => void }).setAccessToken === 'function') {
-      (db as { setAccessToken: (t: string | null) => void }).setAccessToken(null);
-    }
-    const rows = await db.list<CmsBlogRow>('blog_posts', { select: BLOG_LIST_PUBLIC_SELECT, orderBy: 'published_at.desc', filters: { status: 'published' } });
-    if (!Array.isArray(rows)) return null;
-    const posts = rows.filter((row) => !isHeldBlog(row.slug)).map(mapRowToBlogPost);
-    writeBlogCache(posts);
-    return posts;
-  } catch {
-    // Unreachable / table not migrated yet -> null (caller keeps its fallback).
-    return null;
-  }
-}
-
-
-export async function loadPublishedBlogBySlug(slug: string): Promise<BlogPost | null> {
-  if (isHeldBlog(slug)) return null;
-  const db = getDb();
-  try {
-    if ('setAccessToken' in db && typeof (db as { setAccessToken: (t: string | null) => void }).setAccessToken === 'function') {
-      (db as { setAccessToken: (t: string | null) => void }).setAccessToken(null);
-    }
-    const rows = await db.list<CmsBlogRow>('blog_posts', {
-      select: BLOG_DETAIL_PUBLIC_SELECT,
-      limit: 1,
-      filters: { status: 'published', slug },
-    });
-    if (!Array.isArray(rows) || !rows[0]) return null;
-    return mapRowToBlogPost(rows[0]);
-  } catch {
-    return null;
-  }
-}
-// ---------------------------------------------------------------------------
-// Admin (authenticated JWT — RLS sees the admin role)
-// ---------------------------------------------------------------------------
-
-async function withAdmin<T>(fn: (db: DbAdapter) => Promise<T>): Promise<T> {
-  const db = getDb();
-  const token = await getFreshAccessToken();
-  if ('setAccessToken' in db && typeof (db as { setAccessToken: (t: string | null) => void }).setAccessToken === 'function') {
-    (db as { setAccessToken: (t: string | null) => void }).setAccessToken(token);
-  }
-  try {
-    return await fn(db);
-  } finally {
-    // Never leave the admin JWT on the shared adapter: after the op completes
-    // the next storefront read must run as anon again (RLS published-only),
-    // not as the admin who could see drafts/scheduled/archived posts.
-    if ('setAccessToken' in db && typeof (db as { setAccessToken: (t: string | null) => void }).setAccessToken === 'function') {
-      (db as { setAccessToken: (t: string | null) => void }).setAccessToken(null);
-    }
-  }
-}
-
-function maxRevision(revs: CmsBlogRevision[]): number {
-  return revs.reduce((m, r) => Math.max(m, Number(r.revision) || 0), 0);
-}
-
-export interface CmsBlogRevision {
-  id: string;
-  blog_id: string;
-  revision: number;
-  previous: unknown | null;
-  next: unknown | null;
-  action: string;
-  actor: string;
-  actor_email?: string | null;
-  created_at: string;
-}
-
-function revisionRow(
-  blog_id: string,
-  revision: number,
-  action: string,
-  previous: unknown,
-  next: unknown,
-  actor: 'admin' | 'automation',
-  actor_email?: string | null,
-): Record<string, unknown> {
-  return { blog_id, revision, action, previous, next, actor, actor_email: actor_email || null };
-}
-
-/** Normalize arbitrary or malformed rows from the database. */
-export function normalizeBlogRow(r: CmsBlogRow): CmsBlogRow {
-  let status: CmsBlogRow['status'] = 'draft';
-  const rawStatus = String(r.status || '').toLowerCase().trim();
-  if (rawStatus === 'published' || rawStatus === 'publish') status = 'published';
-  else if (rawStatus === 'scheduled') status = 'scheduled';
-  else if (rawStatus === 'archived' || rawStatus === 'trash') status = 'archived';
-  else status = 'draft';
-
-  return {
-    ...r,
-    status,
-    title: r.title || 'Untitled Post',
-    slug: r.slug || r.id,
-    tags: Array.isArray(r.tags) ? r.tags : [],
-  };
-}
-
-/** All posts for the manager (admins see drafts/scheduled/archived too). */
-export async function adminListAll(): Promise<CmsBlogRow[]> {
-  return withAdmin(async (db) => {
-    const rows = await db.list<CmsBlogRow>('blog_posts', { orderBy: 'updated_at.desc' });
-    return (Array.isArray(rows) ? rows : []).map(normalizeBlogRow);
-  });
-}
-
-export async function adminGet(id: string): Promise<CmsBlogRow | null> {
-  return withAdmin((db) => db.get<CmsBlogRow>('blog_posts', id));
-}
-
-export async function adminGetBySlug(slug: string): Promise<CmsBlogRow | null> {
-  return withAdmin((db) => db.findFirst<CmsBlogRow>('blog_posts', 'slug', slug));
-}
-
-/** True when a post (other than `excludeId`) already uses `slug`. */
-export async function adminCheckSlug(slug: string, excludeId?: string): Promise<boolean> {
-  const hit = await adminGetBySlug(slug);
-  return !!hit && hit.id !== excludeId;
-}
-
-/** Create a NEW draft post. Returns the created row. */
-export async function adminCreate(input: {
+/** The console's create payload. */
+export interface CmsBlogCreateInput {
   slug: string;
   title: string;
   content: string;
@@ -272,154 +43,172 @@ export async function adminCreate(input: {
   faq?: { q: string; a: string }[];
   internalLinks?: unknown[];
   scheduleAt?: string | null;
-}): Promise<CmsBlogRow> {
-  const { slug } = input;
-  if (await adminCheckSlug(slug)) throw new Error(`Slug "${slug}" is already in use.`);
-  const created = await withAdmin(async (db) => {
-    const row: CmsBlogRow & { id: string } = {
-      id: crypto.randomUUID(),
-      slug,
-      title: input.title,
-      excerpt: input.excerpt || null,
-      content: input.content,
-      hero_image_url: input.heroImageUrl || null,
-      hero_image_alt: input.heroImageAlt || null,
-      tags: input.tags || [],
-      author_name: input.authorName || 'Himalayan Koh Editorial Team',
-      author_id: null,
-      status: 'draft',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      scheduled_at: null,
-      published_at: null,
-      seo_title: input.seoTitle || null,
-      meta_description: input.metaDescription || null,
-      target_keyword: input.targetKeyword || null,
-      secondary_keywords: input.secondaryKeywords || [],
-      search_intent: input.searchIntent || null,
-      faq: input.faq || [],
-      internal_links: input.internalLinks || [],
-      generated_by: 'manual',
-      automation_locked: false,
-    };
-    await db.insert<CmsBlogRow & { id: string }>('blog_posts', row);
-    await db.insertRaw('blog_revisions', revisionRow(row.id, 1, 'create', null, { ...row }, 'admin'));
-    return row;
-  });
-  return created;
 }
 
-/** Save an existing post (edit/draft). Returns the updated row. */
-export async function adminUpdate(
-  id: string,
-  patch: Partial<Omit<CmsBlogRow, 'id'>>,
-): Promise<CmsBlogRow> {
-  if (patch.slug) {
-    const taken = await adminCheckSlug(patch.slug, id);
-    if (taken) throw new Error(`Slug "${patch.slug}" is already in use.`);
+/** The console's edit payload — the row's own fields, minus the id. */
+export type CmsBlogPatch = Partial<Omit<CmsBlogRow, 'id'>>;
+
+/** The wire shape the admin routes accept (camelCase, only what was supplied). */
+type BlogWireInput = Record<string, unknown>;
+
+const POSTS_PATH = '/api/admin/blog/posts';
+
+/** A request with the admin's session attached. Throws a readable error otherwise. */
+async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = await getFreshAccessToken();
+  if (!token) throw new Error('Sign in as an administrator to manage the blog.');
+
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(init.headers ?? {}),
+    },
+    cache: 'no-store',
+  });
+
+  const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    throw new Error(typeof body.error === 'string' ? body.error : `Request failed (HTTP ${response.status}).`);
   }
-  return withAdmin(async (db) => {
-    const before = await db.get<CmsBlogRow>('blog_posts', id);
-    if (!before) throw new Error('Post not found.');
-    const updated = await db.update<CmsBlogRow>('blog_posts', id, patch);
-    if (!updated) throw new Error('Save failed.');
-    const revs = await db.list<CmsBlogRevision>('blog_revisions');
-    const revision = maxRevision(revs.filter((r) => r.blog_id === id)) + 1;
-    await db.insertRaw(
-      'blog_revisions',
-      revisionRow(id, revision, 'edit', { ...before }, { ...updated }, 'admin'),
-    );
-    return updated;
-  });
+  return body as T;
 }
 
-/** Lifecycle transitions — publish/schedule/unpublish/archive/restore. */
+/** A console row patch as the wire payload, sending only the fields it carried. */
+function toWire(patch: CmsBlogPatch): BlogWireInput {
+  const wire: BlogWireInput = {};
+  if ('slug' in patch) wire.slug = patch.slug;
+  if ('title' in patch) wire.title = patch.title;
+  if ('content' in patch) wire.content = patch.content;
+  if ('excerpt' in patch) wire.excerpt = patch.excerpt ?? '';
+  if ('hero_image_url' in patch) wire.heroImageUrl = patch.hero_image_url ?? '';
+  if ('hero_image_alt' in patch) wire.heroImageAlt = patch.hero_image_alt ?? '';
+  if ('tags' in patch) wire.tags = patch.tags ?? [];
+  if ('author_name' in patch) wire.authorName = patch.author_name ?? '';
+  if ('seo_title' in patch) wire.seoTitle = patch.seo_title ?? '';
+  if ('meta_description' in patch) wire.metaDescription = patch.meta_description ?? '';
+  if ('target_keyword' in patch) wire.targetKeyword = patch.target_keyword ?? '';
+  if ('secondary_keywords' in patch) wire.secondaryKeywords = patch.secondary_keywords ?? [];
+  if ('search_intent' in patch) wire.searchIntent = patch.search_intent ?? '';
+  if ('faq' in patch) wire.faq = patch.faq ?? [];
+  return wire;
+}
+
+/** Every post, drafts and archive included. */
+export async function adminListAll(): Promise<CmsBlogRow[]> {
+  const body = await call<{ posts?: CmsBlogRow[] }>(POSTS_PATH);
+  return Array.isArray(body.posts) ? body.posts : [];
+}
+
+/** Creates a draft. WordPress returns it with its own id and timestamps. */
+export async function adminCreate(input: CmsBlogCreateInput): Promise<CmsBlogRow> {
+  const body = await call<{ post: CmsBlogRow }>(POSTS_PATH, {
+    method: 'POST',
+    body: JSON.stringify({
+      slug: input.slug,
+      title: input.title,
+      content: input.content,
+      excerpt: input.excerpt ?? '',
+      heroImageUrl: input.heroImageUrl ?? '',
+      heroImageAlt: input.heroImageAlt ?? '',
+      tags: input.tags ?? [],
+      authorName: input.authorName ?? '',
+      seoTitle: input.seoTitle ?? '',
+      metaDescription: input.metaDescription ?? '',
+      targetKeyword: input.targetKeyword ?? '',
+      secondaryKeywords: input.secondaryKeywords ?? [],
+      searchIntent: input.searchIntent ?? '',
+      faq: input.faq ?? [],
+    }),
+  });
+  return body.post;
+}
+
+/** Saves an edit. Only the fields the patch carried are sent. */
+export async function adminUpdate(id: string, patch: CmsBlogPatch): Promise<CmsBlogRow> {
+  const body = await call<{ post: CmsBlogRow }>(`${POSTS_PATH}/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(toWire(patch)),
+  });
+  return body.post;
+}
+
+/** publish / schedule / unpublish / archive / restore. */
 export async function adminSetLifecycle(
   id: string,
   action: 'publish' | 'schedule' | 'unpublish' | 'archive' | 'restore',
-  patch: Partial<Omit<CmsBlogRow, 'id'>> = {},
+  patch: { scheduled_at?: string | null } = {}
 ): Promise<CmsBlogRow> {
-  return withAdmin(async (db) => {
-    const before = await db.get<CmsBlogRow>('blog_posts', id);
-    if (!before) throw new Error('Post not found.');
-    // Restore always returns to draft so Salman decides the next state.
-    let delta: Partial<Omit<CmsBlogRow, 'id'>>;
-    const now = new Date().toISOString();
-    const scheduledAt = patch.scheduled_at || null;
-    switch (action) {
-      case 'publish':
-        delta = { status: 'published', published_at: now, scheduled_at: null };
-        break;
-      case 'schedule':
-        delta = { status: 'scheduled', scheduled_at: scheduledAt || null, published_at: null };
-        break;
-      case 'unpublish':
-        delta = { status: 'draft', published_at: null, scheduled_at: null };
-        break;
-      case 'archive':
-        delta = { status: 'archived', published_at: null, scheduled_at: null };
-        break;
-      case 'restore':
-        delta = { status: 'draft', published_at: null, scheduled_at: null };
-        break;
-      default:
-        throw new Error('Unknown lifecycle action.');
-    }
-    const updated = await db.update<CmsBlogRow>('blog_posts', id, { ...delta, ...patch });
-    if (!updated) throw new Error('Action failed.');
-    const revs = await db.list<CmsBlogRevision>('blog_revisions');
-    const revision = maxRevision(revs.filter((r) => r.blog_id === id)) + 1;
-    await db.insertRaw(
-      'blog_revisions',
-      revisionRow(id, revision, action, { ...before, status: before.status }, { ...updated }, 'admin'),
-    );
-    return updated;
+  const body = await call<{ post: CmsBlogRow }>(`${POSTS_PATH}/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    body: JSON.stringify({ action, scheduledAt: patch.scheduled_at ?? null }),
   });
+  return body.post;
 }
 
-/** Restore a post to an earlier revision's content (full recovery). */
-export async function adminRestoreRevision(blogId: string, revision: number): Promise<CmsBlogRow> {
-  return withAdmin(async (db) => {
-    const revs = await db.list<CmsBlogRevision>('blog_revisions');
-    const rev = revs.find((r) => r.blog_id === blogId && Number(r.revision) === Number(revision) && r.next);
-    if (!rev || !rev.next) throw new Error('Revision not found.');
-    const snapshot = rev.next as Omit<CmsBlogRow, 'id' | 'created_at'>;
-    const { id: _id, created_at: _c, ...restorable } = snapshot as CmsBlogRow & Record<string, unknown>;
-    void _id; void _c;
-    const restored = await db.update<CmsBlogRow>('blog_posts', blogId, restorable as Partial<Omit<CmsBlogRow, 'id'>>);
-    if (!restored) throw new Error('Restore failed.');
-    const all = await db.list<CmsBlogRevision>('blog_revisions');
-    const nextRev = maxRevision(all.filter((r) => r.blog_id === blogId)) + 1;
-    await db.insertRaw(
-      'blog_revisions',
-      revisionRow(blogId, nextRev, 'restore', rev.next, { ...restored }, 'admin'),
-    );
-    return restored;
-  });
-}
-
-export async function adminListRevisions(blogId: string): Promise<CmsBlogRevision[]> {
-  return withAdmin(async (db) => {
-    const revs = await db.list<CmsBlogRevision>('blog_revisions');
-    return (Array.isArray(revs) ? revs : [])
-      .filter((r) => r.blog_id === blogId)
-      .sort((a, b) => (Number(b.revision) || 0) - (Number(a.revision) || 0));
-  });
-}
-
-/** Soft delete = archive. Permanent delete only behind explicit confirmation. */
+/** Soft delete (archive) by default; `permanent` is WordPress's force delete. */
 export async function adminDelete(blogId: string, permanent = false): Promise<void> {
-  return withAdmin(async (db) => {
-    if (!permanent) {
-      const before = await db.get<CmsBlogRow>('blog_posts', blogId);
-      if (!before) throw new Error('Post not found.');
-      const updated = await db.update<CmsBlogRow>('blog_posts', blogId, { status: 'archived' });
-      const revs = await db.list<CmsBlogRevision>('blog_revisions');
-      const revision = maxRevision(revs.filter((r) => r.blog_id === blogId)) + 1;
-      await db.insertRaw('blog_revisions', revisionRow(blogId, revision, 'archive', { ...before }, { ...(updated || before) }, 'admin'));
-      return;
-    }
-    await db.remove('blog_posts', blogId);
-    // Revisions cascade via FK on delete.
+  await call(`${POSTS_PATH}/${encodeURIComponent(blogId)}${permanent ? '?permanent=1' : ''}`, {
+    method: 'DELETE',
   });
+}
+
+/** WordPress's revision history for one post, newest first. */
+export async function adminListRevisions(blogId: string): Promise<CmsBlogRevision[]> {
+  const body = await call<{ revisions?: CmsBlogRevision[] }>(
+    `${POSTS_PATH}/${encodeURIComponent(blogId)}/revisions`
+  );
+  return Array.isArray(body.revisions) ? body.revisions : [];
+}
+
+/** Restores a post to one of its revisions. */
+export async function adminRestoreRevision(blogId: string, revision: number): Promise<CmsBlogRow> {
+  const body = await call<{ post: CmsBlogRow }>(
+    `${POSTS_PATH}/${encodeURIComponent(blogId)}/revisions`,
+    { method: 'POST', body: JSON.stringify({ revision }) }
+  );
+  return body.post;
+}
+
+// ---------------------------------------------------------------------------
+// The published read used by the media hub's related-articles strip
+// ---------------------------------------------------------------------------
+
+/** A published WordPress post, in the storefront's `BlogPost` shape. */
+function toBlogPost(post: BlogPostWithAuthor): BlogPost {
+  const image = post.featured_image ?? '';
+  return {
+    id: post.id,
+    slug: post.slug,
+    title: post.title,
+    excerpt: post.excerpt || post.title,
+    content: post.content || '',
+    image,
+    images: image ? [image] : [],
+    tags: post.tags,
+    authorId: post.author_id ?? '',
+    authorName: post.author?.full_name || 'Himalayan Koh Editorial Team',
+    status: post.is_published ? 'published' : 'draft',
+    date: (post.published_at || post.created_at || '').slice(0, 10),
+  };
+}
+
+/**
+ * Published posts for a storefront surface that needs the list.
+ *
+ * Returns null on a failed read and [] on a reachable-but-empty one — the same
+ * contract this function has always had, so a caller keeps its own fallback policy
+ * without re-learning it.
+ */
+export async function loadPublishedBlogs(): Promise<BlogPost[] | null> {
+  try {
+    const response = await fetch('/api/blog/articles', { cache: 'no-store' });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { posts?: BlogPostWithAuthor[] };
+    if (!Array.isArray(body.posts)) return null;
+    return body.posts.map(toBlogPost);
+  } catch {
+    return null;
+  }
 }

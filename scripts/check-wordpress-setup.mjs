@@ -112,7 +112,8 @@ function report(label, result, { required = false } = {}) {
 
 console.log('WordPress core');
 const core = [];
-core.push(report('GET /wp-json/', await probe('/')));
+const coreRoot = await probe('/');
+core.push(report('GET /wp-json/', coreRoot));
 core.push(report('GET /wp/v2/pages', await probe('/wp/v2/pages?per_page=1')));
 core.push(report('GET /wp/v2/posts', await probe('/wp/v2/posts?per_page=1')));
 core.push(report('GET /wp/v2/product', await probe('/wp/v2/product?per_page=1')));
@@ -191,6 +192,147 @@ if (productsResult.fatal) {
   console.log('    WooCommerce → Settings → Advanced → REST API → Add key (Read permission),');
   console.log('    then set WOOCOMMERCE_CONSUMER_KEY / WOOCOMMERCE_CONSUMER_SECRET in .env.local.');
   console.log('    That enables /wc/v3/products, which returns price, SKU and stock today.');
+}
+
+/*
+ * HK plugins.
+ *
+ * These two namespaces are the app's own WordPress half, and every route in them
+ * requires `manage_options` — so they are probed with the WordPress administrator
+ * application password (a different credential from the WooCommerce key above; the
+ * consumer key does not authenticate them).
+ *
+ * A 404 here is the single most consequential fact this script can report: saved
+ * addresses, wishlist persistence, cart binding across devices, password resets,
+ * LeadOS and the CRM inbox all read and write through these plugins, and when they
+ * are not installed the features fail one at a time with nothing naming the cause.
+ */
+console.log('\nHK WordPress plugins');
+
+const wpUser = process.env.WORDPRESS_ADMIN_USER || '';
+const wpAppPassword = (process.env.WORDPRESS_ADMIN_APP_PASSWORD || '').replace(/\s+/g, '');
+const hasAdminCredential = Boolean(wpUser && wpAppPassword);
+console.log(`  credential: ${hasAdminCredential ? `present (${wpUser})` : 'absent'}`);
+
+/** One GET with the administrator application password. Never throws. */
+async function probeAdmin(path) {
+  if (!hasAdminCredential) {
+    return { status: 0, ms: 0, detail: 'No administrator application password is configured.', body: '' };
+  }
+
+  const started = Date.now();
+  try {
+    const response = await fetch(`${apiRoot}${path}`, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': UA,
+        Authorization: `Basic ${Buffer.from(`${wpUser}:${wpAppPassword}`).toString('base64')}`,
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const body = await response.text();
+    let json = null;
+    try {
+      json = JSON.parse(body);
+    } catch {
+      /* not JSON */
+    }
+    return {
+      status: response.status,
+      ms: Date.now() - started,
+      fatal: looksLikeWordPressFatal(body),
+      html: looksLikeHtml(body),
+      detail: json?.message ? `${json.code || response.status}: ${json.message}` : `HTTP ${response.status}`,
+      json,
+      body,
+    };
+  } catch (error) {
+    return {
+      status: 0,
+      ms: Date.now() - started,
+      detail: error.name === 'TimeoutError' ? `timed out after ${timeoutMs}ms` : error.message,
+      body: '',
+    };
+  }
+}
+
+const storefrontPlugin = await probeAdmin('/hk-storefront/v1/events?limit=1');
+const crmPlugin = await probeAdmin('/crm/v1/leads?search=');
+
+/*
+ * The namespace list is public, so it answers "is the plugin registered at all"
+ * without any credential — which is the question that matters when no administrator
+ * password is configured. A namespace that is not listed is a plugin that is not
+ * active, whatever a credentialed probe would have said.
+ */
+const namespaceList = coreRoot?.json?.namespaces;
+const namespaces = Array.isArray(namespaceList) ? namespaceList.map(String) : [];
+const namespacesKnown = namespaces.length > 0;
+const storefrontRegistered = namespaces.includes('hk-storefront/v1');
+const crmRegistered = namespaces.includes('crm/v1');
+
+if (namespacesKnown) {
+  console.log(`  registered: hk-storefront/v1 = ${storefrontRegistered ? 'yes' : 'no'} · crm/v1 = ${crmRegistered ? 'yes' : 'no'}`);
+}
+
+// A namespace the index does not list is 'ABSENT' even when the credentialed probe
+// could not run — that is an observation, not a guess.
+if (namespacesKnown && !storefrontRegistered && storefrontPlugin.status === 0) {
+  storefrontPlugin.status = 404;
+  storefrontPlugin.detail = 'The hk-storefront/v1 namespace is not registered on this site.';
+}
+if (namespacesKnown && !crmRegistered && crmPlugin.status === 0) {
+  crmPlugin.status = 404;
+  crmPlugin.detail = 'The crm/v1 namespace is not registered on this site.';
+}
+
+const pluginsPass =
+  (storefrontPlugin.status >= 200 && storefrontPlugin.status < 300) &&
+  (crmPlugin.status >= 200 && crmPlugin.status < 300);
+
+function reportPlugin(label, result, dependsOn) {
+  let marker;
+  if (result.status >= 200 && result.status < 300) marker = 'PASS ';
+  else if (result.fatal) marker = 'FATAL';
+  else if (result.status === 401 || result.status === 403) marker = 'AUTH ';
+  else if (result.status === 404) marker = 'ABSENT';
+  else marker = 'FAIL ';
+
+  console.log(`  ${marker} ${label} — HTTP ${result.status || 'ERR'} · ${result.ms}ms`);
+  if (marker !== 'PASS ') {
+    console.log(`         ${result.detail}`);
+    if (marker === 'ABSENT' || marker === 'AUTH ') console.log(`         Blocks: ${dependsOn}`);
+  }
+}
+
+reportPlugin(
+  'GET /hk-storefront/v1/events',
+  storefrontPlugin,
+  'wishlist, saved addresses, cart across devices, customer sign-in and password resets'
+);
+reportPlugin('GET /crm/v1/leads', crmPlugin, 'the CRM inbox and LeadOS');
+
+if (!pluginsPass) {
+  console.log('');
+  console.log('  The plugins are part of this repository (`wordpress/himalayan-koh-storefront.php`,');
+  console.log('  `wordpress/himalayan-koh-leados.php`) and are installed on WordPress, not deployed');
+  console.log('  with the Worker. To resolve:');
+  console.log('');
+  if (!hasAdminCredential) {
+    console.log('    1. Create a WordPress application password for an administrator');
+    console.log('       (Users -> Profile -> Application Passwords) and set');
+    console.log('       WORDPRESS_ADMIN_USER / WORDPRESS_ADMIN_APP_PASSWORD in the server env.');
+  }
+  console.log('    2. Copy each plugin onto the site:');
+  console.log('       wp-content/plugins/himalayan-koh-storefront/himalayan-koh-storefront.php');
+  console.log('       wp-content/plugins/himalayan-koh-leados/himalayan-koh-leados.php');
+  console.log('       (or zip the folder and upload it under Plugins -> Add New -> Upload Plugin)');
+  console.log('    3. Activate both. Re-running this script should then print PASS for each.');
+  console.log('');
+  console.log('    If an administrator application password is configured and the plugins are');
+  console.log('    already installed but inactive, activation is a single authenticated call:');
+  console.log('       POST /wp-json/wp/v2/plugins/himalayan-koh-storefront/himalayan-koh-storefront');
+  console.log('            { "status": "active" }');
 }
 
 const critical =

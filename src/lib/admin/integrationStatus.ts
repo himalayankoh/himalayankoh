@@ -26,7 +26,7 @@ import { backendConfig } from '../backend/config';
 import { credentialsForRequest } from '../backend/credentials';
 import { wordpressRequestSafe } from '../backend/wordpress';
 import { getSetting } from '../settings/serverSettings';
-import { isSupabaseConfigured } from '../supabase/client';
+import { wordpressCredentials } from '../backend/wordpressCredentials';
 
 export type IntegrationState = 'CONNECTED' | 'NOT CONFIGURED' | 'INVALID' | 'OWNER ACTION REQUIRED';
 export type IntegrationMode = 'TEST' | 'LIVE' | 'UNKNOWN' | null;
@@ -135,24 +135,78 @@ export async function readIntegrationStatuses(options: { probe?: boolean } = {})
     });
   }
 
-  /* --- Supabase: identity, sessions, app data ------------------------------ */
-  const supabaseConfigured = isSupabaseConfigured();
-  const serviceRole = Boolean((process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim());
-  integrations.push({
-    id: 'supabase',
-    label: 'Supabase',
-    state: supabaseConfigured ? 'CONNECTED' : 'NOT CONFIGURED',
-    mode: null,
-    source: supabaseConfigured ? 'environment' : 'none',
-    detail: supabaseConfigured
-      ? `Authentication, sessions and the app's own records (cart, CRM, campaign drafts, console settings).${
-          serviceRole
-            ? ''
-            : ' The server-side service key is missing, so admin API routes that need it will refuse.'
-        }`
-      : 'Supabase is not configured, so nobody can sign in and the admin routes cannot authorize.',
-    overridden: false,
-  });
+  /* --- WordPress plugins: storefront account state and the lead engine ----- */
+  //
+  // These replace the Supabase row that used to sit here. Both namespaces are guarded
+  // by `manage_options`, so they are probed with the administrator application
+  // password — the same credential the app's server uses. Reported as their own row
+  // because "the plugin is not active" was previously invisible from inside the
+  // console: features that depend on it (saved addresses, wishlist, password resets,
+  // LeadOS, CRM) simply failed, with nothing on this screen to point at the cause.
+  const adminCredential = wordpressCredentials();
+  if (!backendConfig.wordpressApiRoot) {
+    integrations.push({
+      id: 'hk-plugins',
+      label: 'HK plugins',
+      state: 'NOT CONFIGURED',
+      mode: null,
+      source: 'none',
+      detail: 'No WordPress origin is configured, so the plugins cannot be reached.',
+      overridden: false,
+    });
+  } else if (!adminCredential) {
+    integrations.push({
+      id: 'hk-plugins',
+      label: 'HK plugins',
+      state: 'NOT CONFIGURED',
+      mode: null,
+      source: 'none',
+      detail:
+        'No WordPress administrator application password is configured, so the storefront plugin (saved addresses, wishlist, password resets) and the LeadOS/CRM plugin cannot be reached.',
+      overridden: false,
+    });
+  } else if (options.probe === false) {
+    integrations.push({
+      id: 'hk-plugins',
+      label: 'HK plugins',
+      state: 'CONNECTED',
+      mode: 'UNKNOWN',
+      source: 'environment',
+      detail: 'An administrator credential is configured. The plugins were not contacted for this read.',
+      overridden: false,
+    });
+  } else {
+    const [storefront, leados] = await Promise.all([
+      wordpressRequestSafe<unknown>('/hk-storefront/v1/events', {
+        credentials: adminCredential,
+        params: { limit: 1 },
+        timeoutMs: 15_000,
+      }),
+      wordpressRequestSafe<unknown>('/crm/v1/leads', {
+        credentials: adminCredential,
+        params: { search: '' },
+        timeoutMs: 15_000,
+      }),
+    ]);
+
+    const missing = [
+      storefront.error ? 'hk-storefront' : null,
+      leados.error ? 'himalayan-koh-leados' : null,
+    ].filter((name): name is string => name !== null);
+
+    integrations.push({
+      id: 'hk-plugins',
+      label: 'HK plugins',
+      state: missing.length === 0 ? 'CONNECTED' : 'OWNER ACTION REQUIRED',
+      mode: 'UNKNOWN',
+      source: 'environment',
+      detail:
+        missing.length === 0
+          ? 'Both plugins answered: storefront account state (wishlist, saved addresses, cart binding, password resets) and the lead engine (LeadOS, CRM) are reachable.'
+          : `${missing.join(' and ')} did not answer. Saved addresses, wishlist persistence, password resets and the lead inbox depend on it — the plugin has to be installed and active in WordPress.`,
+      overridden: false,
+    });
+  }
 
   /* --- Gemini: staff SEO assistant ---------------------------------------- */
   const gemini = await effective('gemini', 'api_key', 'GEMINI_API_KEY');

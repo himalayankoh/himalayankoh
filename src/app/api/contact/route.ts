@@ -1,6 +1,21 @@
+/**
+ * Contact form.
+ *
+ * The message is stored by WordPress now, in `hk_contact_submissions` behind
+ * `hk-storefront/v1/contact`. It used to be Supabase's `contact_submissions` table;
+ * the write lived in this route then for the same reason it does now — a public form
+ * must not hold a server credential.
+ *
+ * A message the owner never receives is worse than a visible error, so `success` is
+ * returned only after WordPress stored the row, and a failure answers 500 with a
+ * readable message plus a server-side log rather than a silent no-op.
+ */
+
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { contactApi } from '@/lib/wordpress/siteContent';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
@@ -38,17 +53,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const supabase = getSupabaseAdmin();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any).from('contact_submissions').insert({
+    await contactApi.submit({
       name: name.slice(0, 200),
       email: email.slice(0, 300),
-      phone: phone ? phone.slice(0, 50) : null,
+      phone: phone.slice(0, 50),
       subject: subject.slice(0, 200),
       message: message.slice(0, 5000),
     });
-
-    if (error) throw error;
 
     return NextResponse.json({ success: true });
   } catch (error) {
