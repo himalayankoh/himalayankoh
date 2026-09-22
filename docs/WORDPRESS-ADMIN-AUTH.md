@@ -19,6 +19,17 @@ Several accounts are comma-separated:
 ADMIN_LOGIN_ACCOUNTS=admin@himalayankoh.com:<hash>,8002salman@gmail.com:<hash>
 ```
 
+An optional third field is the **display name** the console shows in the header
+and the account menu:
+
+```
+ADMIN_LOGIN_ACCOUNTS=admin@himalayankoh.com:<hash>:Salman Bashir
+```
+
+Leave it off and the console shows the identifier instead — the session is never
+minted with an invented name. The identifier stays the login either way, and the
+name may contain spaces and colons.
+
 Rules:
 
 - The identifier is case-insensitive. A password never is.
@@ -33,11 +44,12 @@ Rules:
 Generate an entry:
 
 ```
-npm run admin:hash -- "your password" "admin@himalayankoh.com"
+npm run admin:hash -- "your password" "admin@himalayankoh.com" "Salman Bashir"
 ```
 
-It prints the whole `identifier:hash` ready to paste. Passwords shorter than 8
-characters are refused — this is the password on the owner's admin console.
+It prints the whole `identifier:hash:display name` ready to paste (the name is
+optional — omit it for `identifier:hash`). Passwords shorter than 8 characters
+are refused — this is the password on the owner's admin console.
 
 ## 2. WordPress administrators — application passwords
 

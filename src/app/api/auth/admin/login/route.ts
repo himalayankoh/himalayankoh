@@ -133,13 +133,16 @@ export async function POST(request: Request) {
 
   const configuredAdmin = await verifyAdminAccount(username, password);
   if (configuredAdmin) {
+    const { identifier, name } = configuredAdmin;
     return issueSession({
-      id: configuredAdmin,
-      username: configuredAdmin,
+      id: identifier,
+      username: identifier,
       // A configured login may be a WordPress-style login name rather than an
       // address; only fill `email` when it actually is one.
-      email: configuredAdmin.includes('@') ? configuredAdmin : '',
-      name: configuredAdmin,
+      email: identifier.includes('@') ? identifier : '',
+      // The entry's own display name when it has one, otherwise the identifier —
+      // the console must never invent a name for whoever signed in.
+      name: name || identifier,
     });
   }
 

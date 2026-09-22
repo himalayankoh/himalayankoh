@@ -1,8 +1,10 @@
 // Generate a hashed admin login for ADMIN_LOGIN_ACCOUNTS.
 //
-//   npm run admin:hash -- "the password" "8002salman@gmail.com"
+//   npm run admin:hash -- "the password" "8002salman@gmail.com" "Salman Bashir"
 //
-// prints the whole `identifier:hash` entry to paste into the environment.
+// prints the whole `identifier:hash[:display name]` entry to paste into the
+// environment. The display name is what the console header shows; leave it off
+// and the console shows the identifier itself.
 //
 //   npm run admin:hash -- "the password"
 //
@@ -17,11 +19,11 @@ import { createHash } from 'node:crypto';
 
 const MIN_PASSWORD_LENGTH = 8;
 
-const [, , password, identifier] = process.argv;
+const [, , password, identifier, displayName] = process.argv;
 
 if (!password) {
-  console.error('Usage: npm run admin:hash -- "the password" [identifier]');
-  console.error('  e.g. npm run admin:hash -- "S3cret-pass" "8002salman@gmail.com"');
+  console.error('Usage: npm run admin:hash -- "the password" [identifier] [display name]');
+  console.error('  e.g. npm run admin:hash -- "S3cret-pass" "8002salman@gmail.com" "Salman Bashir"');
   process.exit(1);
 }
 
@@ -37,7 +39,8 @@ const hash = createHash('sha256').update(password, 'utf8').digest('hex');
 
 console.log('');
 if (identifier) {
-  const entry = `${identifier.trim().toLowerCase()}:${hash}`;
+  const name = (displayName || '').trim();
+  const entry = `${identifier.trim().toLowerCase()}:${hash}${name ? `:${name}` : ''}`;
   console.log('Add this entry to ADMIN_LOGIN_ACCOUNTS (comma-separate several):');
   console.log('');
   console.log(`  ${entry}`);

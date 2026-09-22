@@ -60,6 +60,24 @@ export function pickSupabaseConfig(
 }
 
 /**
+ * The public Supabase variables, each one read *literally*.
+ *
+ * These must stay written out individually. A bundler replaces only the full
+ * `process.env.NEXT_PUBLIC_X` spelling; handing it `process.env` itself compiles
+ * to an empty object in a browser bundle. That is what made this deployment log
+ * "Supabase is not configured" while `.env.local` held both values and the server
+ * resolved them fine: the client was not reading a missing variable, it was
+ * reading nothing at all. Proven against the build — with the object form the
+ * configured URL appeared in no client chunk; with these reads it does.
+ */
+const PUBLIC_ENV: Record<string, string | undefined> = {
+  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL,
+  VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY,
+};
+
+/**
  * The deployment's Supabase configuration, read from the ambient environment.
  *
  * The anon key is public by design (it is the key the browser is *meant* to
@@ -69,7 +87,5 @@ export function pickSupabaseConfig(
 export function getSupabaseConfig(): SupabaseConfig | null {
   const metaEnv =
     (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, string> }).env) || {};
-  const procEnv =
-    (typeof process !== 'undefined' && (process.env as Record<string, string | undefined>)) || {};
-  return pickSupabaseConfig(metaEnv, procEnv);
+  return pickSupabaseConfig(metaEnv, PUBLIC_ENV);
 }

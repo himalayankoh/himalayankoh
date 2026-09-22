@@ -27,6 +27,36 @@ describe('Supabase SDK client configuration', () => {
 });
 
 /**
+ * The resolver has to survive the browser bundle.
+ *
+ * This is the failure the client's own prose describes and then repeated: a
+ * bundler replaces only the full `process.env.NEXT_PUBLIC_X` spelling, so reading
+ * `process.env` as an object compiles to `{}` in the client. A configured
+ * deployment then logs "Supabase is not configured" and builds its client against
+ * a placeholder project. The behaviour is a build outcome, so it is pinned here on
+ * the source rather than in a unit test that would pass either way.
+ */
+describe('the Supabase config resolver reaches the browser bundle', () => {
+  const resolver = sourceOf('./config.ts');
+
+  it('reads each public variable literally, so a bundler can replace it', () => {
+    for (const key of [
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+      'VITE_SUPABASE_URL',
+      'VITE_SUPABASE_ANON_KEY',
+    ]) {
+      expect(resolver).toContain(`${key}: process.env.${key}`);
+    }
+    expect(resolver).not.toContain('process.env as Record');
+  });
+
+  it('never hands the whole environment object to the resolver', () => {
+    expect(resolver).not.toContain('pickSupabaseConfig(metaEnv, procEnv)');
+  });
+});
+
+/**
  * One home per backend.
  *
  * `src/services/supabase.ts` used to be both the Supabase config resolver and the

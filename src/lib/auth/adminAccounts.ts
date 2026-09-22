@@ -11,6 +11,12 @@
  *
  *   ADMIN_LOGIN_ACCOUNTS=8002salman@gmail.com:<sha256>,basco.pk@gmail.com:<sha256>
  *
+ * A third field is an optional display name for the console — what the header
+ * and the account menu show. Without it the identifier is shown, so an
+ * un-named account reads as its own email address rather than a made-up name:
+ *
+ *   ADMIN_LOGIN_ACCOUNTS=admin@himalayankoh.com:<sha256>:Salman Bashir
+ *
  * Generate a hash with `npm run admin:hash -- "the password"`. Only the digest
  * is configured — the password itself is never written to an environment file,
  * never logged, and cannot be read back out of the deployment by anyone,
@@ -40,6 +46,11 @@ export interface AdminAccount {
   identifier: string;
   /** Lower-cased SHA-256 hex digest of the password. */
   passwordHash: string;
+  /**
+   * Optional display name for the console, exactly as configured. Absent when the
+   * entry has no third field — callers then fall back to the identifier.
+   */
+  name?: string;
 }
 
 /**
@@ -71,19 +82,37 @@ export function listAdminAccounts(raw: string = process.env[ENV_VAR] || ''): Adm
     const trimmed = entry.trim();
     if (!trimmed) continue;
 
-    // lastIndexOf, so an identifier that itself contains a colon (a URI-style
-    // login name) still splits at the hash.
-    const separator = trimmed.lastIndexOf(':');
-    if (separator <= 0) continue;
+    // The digest is the anchor, because it is the only field with a fixed shape.
+    // Locating it is what lets the identifier keep its own colons *and* leaves
+    // room for the optional display name after it. Splitting at the last colon
+    // (the previous rule) would read "Salman Bashir" as part of the digest.
+    const fields = trimmed.split(':');
+    const hashAt = lastHashField(fields);
+    if (hashAt < 1) continue;
 
-    const identifier = trimmed.slice(0, separator).trim().toLowerCase();
-    const passwordHash = trimmed.slice(separator + 1).trim().toLowerCase();
+    const identifier = fields.slice(0, hashAt).join(':').trim().toLowerCase();
+    const passwordHash = fields[hashAt].trim().toLowerCase();
+    // A person's name: spaces and colons are kept, and so is its case.
+    const name = fields.slice(hashAt + 1).join(':').trim();
 
-    if (!identifier || !/^[0-9a-f]{64}$/.test(passwordHash)) continue;
-    accounts.push({ identifier, passwordHash });
+    if (!identifier) continue;
+    accounts.push(name ? { identifier, passwordHash, name } : { identifier, passwordHash });
   }
 
   return accounts;
+}
+
+/**
+ * Index of the digest field: the *last* colon-separated field shaped like a
+ * SHA-256 hex digest. Last, not first, so an identifier that is itself 64 hex
+ * characters still parses; the digest precedes the optional name, never follows
+ * it.
+ */
+function lastHashField(fields: string[]): number {
+  for (let index = fields.length - 1; index >= 0; index -= 1) {
+    if (/^[0-9a-f]{64}$/i.test(fields[index].trim())) return index;
+  }
+  return -1;
 }
 
 /** True when at least one deployment login exists. */
@@ -97,7 +126,10 @@ export function adminAccountIdentifiers(): string[] {
 }
 
 /**
- * Verifies an identifier + password. Returns the matched identifier, or null.
+ * Verifies an identifier + password. Returns the matched account (identifier,
+ * digest and any configured display name), or null. The whole account is
+ * returned so a caller never has to look the identifier up a second time just to
+ * learn the name configured beside it.
  *
  * Every account is compared on every attempt — no early return — so an attacker
  * cannot learn which identifiers exist from how long a rejection takes.
@@ -105,7 +137,7 @@ export function adminAccountIdentifiers(): string[] {
 export async function verifyAdminAccount(
   identifier: string,
   password: string
-): Promise<string | null> {
+): Promise<AdminAccount | null> {
   const accounts = listAdminAccounts();
   if (accounts.length === 0) return null;
 
@@ -114,11 +146,11 @@ export async function verifyAdminAccount(
 
   const candidate = await hashAdminPassword(password);
 
-  let matched: string | null = null;
+  let matched: AdminAccount | null = null;
   for (const account of accounts) {
     const identifierMatches = timingSafeEqual(account.identifier, wanted);
     const passwordMatches = timingSafeEqual(account.passwordHash, candidate);
-    if (identifierMatches && passwordMatches) matched = account.identifier;
+    if (identifierMatches && passwordMatches) matched = account;
   }
 
   return matched;

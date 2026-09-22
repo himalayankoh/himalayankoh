@@ -91,6 +91,31 @@ describe('POST /api/auth/admin/login — the owner’s configured login', () => 
     expect(wp.calls).toHaveLength(0);
   });
 
+  it('carries the account’s configured display name into the session', async () => {
+    useWordPress([]);
+    process.env.ADMIN_LOGIN_ACCOUNTS = `${ADMIN_EMAIL}:${adminDigest}:Salman Bashir`;
+
+    const response = await POST(loginRequest({ username: ADMIN_EMAIL, password: ADMIN_PASSWORD }));
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      token: string;
+      user: { id: string; email: string; name: string };
+    };
+
+    // The console header reads `user.name`; the identifier stays the identity, so
+    // naming an account never renames the login.
+    expect(payload.user).toMatchObject({
+      id: ADMIN_EMAIL,
+      email: ADMIN_EMAIL,
+      name: 'Salman Bashir',
+    });
+
+    const session = await verifyAdminSessionToken(payload.token);
+    expect(session?.username).toBe(ADMIN_EMAIL);
+    expect(session?.name).toBe('Salman Bashir');
+  });
+
   it('accepts the identifier case-insensitively', async () => {
     useWordPress([]);
 

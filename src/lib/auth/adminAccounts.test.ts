@@ -47,6 +47,34 @@ describe('listAdminAccounts', () => {
     expect(accounts).toEqual([{ identifier: 'you@example.com', passwordHash: 'a'.repeat(64) }]);
   });
 
+  it('parses an identifier, digest and display name', () => {
+    const accounts = listAdminAccounts(
+      `admin@himalayankoh.com:${'a'.repeat(64)}:Salman Bashir`
+    );
+
+    expect(accounts).toEqual([
+      { identifier: 'admin@himalayankoh.com', passwordHash: 'a'.repeat(64), name: 'Salman Bashir' },
+    ]);
+  });
+
+  it('keeps a display name verbatim and lets it contain colons', () => {
+    const accounts = listAdminAccounts(`urn:admin:me:${'c'.repeat(64)}:Ops: night shift`);
+
+    expect(accounts[0]).toMatchObject({ identifier: 'urn:admin:me', name: 'Ops: night shift' });
+  });
+
+  it('omits the name entirely when the entry has no third field', () => {
+    const accounts = listAdminAccounts(`you@example.com:${'a'.repeat(64)}`);
+
+    expect(accounts[0]).not.toHaveProperty('name');
+  });
+
+  it('still parses an identifier that is itself a digest-shaped string', () => {
+    const accounts = listAdminAccounts(`${'f'.repeat(64)}:${'a'.repeat(64)}:Owner`);
+
+    expect(accounts[0]).toMatchObject({ identifier: 'f'.repeat(64), name: 'Owner' });
+  });
+
   it('parses several accounts and lower-cases identifiers', () => {
     const accounts = listAdminAccounts(
       `ONE@Example.com:${'a'.repeat(64)}, two@example.com:${'b'.repeat(64)}`
@@ -81,15 +109,24 @@ describe('listAdminAccounts', () => {
 
 describe('verifyAdminAccount', () => {
   it('accepts the configured identifier and password', async () => {
-    await expect(verifyAdminAccount('8002salman@gmail.com', PASSWORD)).resolves.toBe(
-      '8002salman@gmail.com'
-    );
+    await expect(verifyAdminAccount('8002salman@gmail.com', PASSWORD)).resolves.toMatchObject({
+      identifier: '8002salman@gmail.com',
+    });
+  });
+
+  it('returns the display name configured beside the account', async () => {
+    process.env.ADMIN_LOGIN_ACCOUNTS = `admin@himalayankoh.com:${passwordHash}:Salman Bashir`;
+
+    await expect(verifyAdminAccount('admin@himalayankoh.com', PASSWORD)).resolves.toMatchObject({
+      identifier: 'admin@himalayankoh.com',
+      name: 'Salman Bashir',
+    });
   });
 
   it('accepts the identifier case-insensitively', async () => {
-    await expect(verifyAdminAccount('8002SALMAN@GMAIL.com', PASSWORD)).resolves.toBe(
-      '8002salman@gmail.com'
-    );
+    await expect(verifyAdminAccount('8002SALMAN@GMAIL.com', PASSWORD)).resolves.toMatchObject({
+      identifier: '8002salman@gmail.com',
+    });
   });
 
   it('rejects a wrong password, and never treats it as case-insensitive', async () => {
@@ -109,16 +146,18 @@ describe('verifyAdminAccount', () => {
   it('accepts a login name that is not an email address', async () => {
     process.env.ADMIN_LOGIN_ACCOUNTS = `salman:${passwordHash}`;
 
-    await expect(verifyAdminAccount('salman', PASSWORD)).resolves.toBe('salman');
+    await expect(verifyAdminAccount('salman', PASSWORD)).resolves.toMatchObject({
+      identifier: 'salman',
+    });
   });
 
   it('matches whichever of several accounts was configured', async () => {
     const second = await hashAdminPassword('another-password');
     process.env.ADMIN_LOGIN_ACCOUNTS = `one@example.com:${passwordHash},two@example.com:${second}`;
 
-    await expect(verifyAdminAccount('two@example.com', 'another-password')).resolves.toBe(
-      'two@example.com'
-    );
+    await expect(verifyAdminAccount('two@example.com', 'another-password')).resolves.toMatchObject({
+      identifier: 'two@example.com',
+    });
     // The first account's password must not open the second account.
     await expect(verifyAdminAccount('two@example.com', PASSWORD)).resolves.toBeNull();
   });
