@@ -15,7 +15,7 @@ import {
   Info,
 } from 'lucide-react';
 import { useAuthContext } from '../../context/AuthContext';
-import { getFreshAccessToken } from '../../services/supabase';
+import { getFreshAccessToken } from '../../services/wordpressAdminAuth';
 import { NICHE_SECTIONS } from '../../lib/catalog/nicheSections';
 
 interface ProductItem {

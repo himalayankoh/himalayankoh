@@ -21,7 +21,7 @@ import { listTrendsJobs, latestTrendsEvidence, type TrendsJobView } from '../fea
 import { fetchPageContent } from '../features/ai/importer';
 import { queueHermesFallback } from '../features/scout/persist';
 import { getDb } from '../services/db';
-import { getAccessToken } from '../services/supabase';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 
 const STATUS_BADGE: Record<SourceStatus, string> = {
   AVAILABLE: 'bg-green-100 text-green-700',

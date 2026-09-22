@@ -24,7 +24,7 @@ import {
   MagnifyingGlass, Play, CheckCircle,
 } from '@phosphor-icons/react';
 import { useApp } from '../App';
-import { getAccessToken } from '../services/supabase';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 import {
   adminMediaListAll, adminMediaCreate, adminMediaUpdate, adminMediaDelete,
   slugifyMediaTitle, youtubeIdFromUrl, mediaThumbnail,

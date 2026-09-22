@@ -27,7 +27,7 @@ import {
   parseHtmlPage, buildScrapedEvidenceProduct, findDuplicateProduct, extractAliExpressItemId,
   buildImportImages, buildStorageImageInputs, buildImportVariants, importProductImagesToStorage,
 } from '../features/ai/importer';
-import { getAccessToken, getFreshAccessToken } from '../services/supabase';
+import { getAccessToken, getFreshAccessToken } from '../services/wordpressAdminAuth';
 
 const I = 'w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all';
 const L = 'block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1';

@@ -13,7 +13,7 @@
 // ============================================================================
 
 import { getDb, type DbAdapter } from '../../services/db';
-import { getFreshAccessToken } from '../../services/supabase';
+import { getFreshAccessToken } from '../../services/wordpressAdminAuth';
 import { singleFlight } from '../../lib/admin/singleFlight';
 import {
   CatalogProduct, CatalogCategory, CatalogImage, CatalogVariant, Coupon,

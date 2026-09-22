@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plug, CheckCircle, XCircle, ArrowClockwise, Globe } from '@phosphor-icons/react';
-import { getAccessToken } from '../services/supabase';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 
 const CARD = 'bg-white rounded-2xl border border-gray-100 shadow-sm p-5';
 const BTN = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-all duration-200 disabled:opacity-50';

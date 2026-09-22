@@ -43,6 +43,38 @@ export type StockStatus = 'in_stock' | 'out_of_stock' | 'on_backorder' | 'unknow
  * `missing` names the fields the source failed to supply so the UI can render
  * "unknown" deliberately rather than by accident.
  */
+
+/**
+ * One option a variable product actually sells.
+ *
+ * This is WooCommerce's own vocabulary rather than a second one of ours: `value`
+ * is the term slug the store's cart expects (`coarse-grain`), `label` is what the
+ * shopper reads (`Coarse Grain`), and `attribute` is the axis those two belong to
+ * (`pa_grain-size`). A cart line has to name an option the store can price, so it
+ * is addressed by the pair — never by anything the browser invented.
+ */
+export interface ProductVariationOption {
+  /** The store's variation id. */
+  id: number;
+  /** The axis, as the store's cart names it: a global attribute's slug. */
+  attribute: string;
+  /** The option as the store names it, for display. */
+  label: string;
+  /** The option's value for the cart. */
+  value: string;
+  /** What this option costs, or null when the store reports no price for it. */
+  price: number | null;
+  sku: string | null;
+  inStock: boolean;
+}
+
+/** The variation axis a shopper picks from, e.g. Grain Size. */
+export interface ProductVariations {
+  /** The axis's display name, e.g. `Grain Size`. */
+  attributeLabel: string;
+  options: ProductVariationOption[];
+}
+
 export interface Product {
   id: number | string;
   slug: string;
@@ -61,6 +93,14 @@ export interface Product {
   category: string;
   description?: string;
   grainSizes?: string[];
+  /**
+   * The store's real variation options, when the product is variable.
+   *
+   * `grainSizes` stays as well because it is the *display* form (the labels, and
+   * what an order line prints); this is the *addressing* form (what the cart is
+   * told). Both come from one read so they cannot disagree.
+   */
+  variations?: ProductVariations;
   inStock: boolean;
   metaTitle?: string;
   metaDescription?: string;

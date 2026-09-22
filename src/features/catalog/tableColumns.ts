@@ -7,7 +7,7 @@
 // fallback. Helpers take a Storage-like object so they are unit-testable
 // without a browser.
 // ============================================================================
-import { getFreshAccessToken } from '../../services/supabase';
+import { getFreshAccessToken } from '../../services/wordpressAdminAuth';
 
 const SERVER_URL = '/api/admin/table-columns';
 

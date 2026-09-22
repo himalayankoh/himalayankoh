@@ -10,7 +10,7 @@
 
 import type { AIProvider } from './types';
 import { loadProviderSettings, resolveProviderChain, DEFAULT_AI_PROVIDERS } from './providers';
-import { getAccessToken } from '../../services/supabase';
+import { getAccessToken } from '../../services/wordpressAdminAuth';
 
 const API_BASE = '/api';
 

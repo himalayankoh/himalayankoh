@@ -1,14 +1,9 @@
 import { isWooCommerceDataSource } from '@/lib/backend/dataSource';
 import { isRealCatalogProduct } from '@/lib/supabase/api/products';
 import { HK_META, createWooOrder, orderWithItemsFromWoo } from '@/lib/woo/orders';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
-import {
-  calculateOrderTotals,
-  supportedCoupons,
-  type CreateOrderData,
-  type ShippingMethod,
-} from '@/lib/supabase/api/orders';
-import type { CartWithItems, Json, Order, OrderItem, OrderWithItems } from '@/lib/supabase/database.types';
+import { clearStoreCart, mapStoreCart, readStoreCart, type StoreCartLine } from '@/lib/woo/storeCart';
+import type { CreateOrderData, ShippingMethod } from '@/lib/supabase/api/orders';
+import type { OrderWithItems } from '@/lib/supabase/database.types';
 import { dispatchOrderCreatedNotifications } from '@/lib/orders/notifyOrderEvents';
 import { resolveShippoConfigError } from '@/lib/shippo/config';
 import { fetchShippoRatesForOrder, pickRateForShippingMethod } from '@/lib/shippo/server/rates';
@@ -59,13 +54,52 @@ export async function resolveServerShippingCost(params: {
 }
 
 /**
- * Re-prices every cart line from the products table immediately before order
- * creation. Cart_items.unit_price is client-writable (see cartApi.addToCart)
- * and must never be trusted for money math — this is the single source of
- * truth for what a customer actually gets charged.
+ * A cart line, as the checkout guards need to see it.
+ *
+ * Structural rather than the old Supabase row type: the cart is WooCommerce's
+ * now, and these guards ask questions about *shape* — is the product still
+ * sellable, is the quantity available, what does the line cost — not about which
+ * database stored it. Keeping the type local is what let the read move to
+ * WooCommerce while the guards, and the tests that pin them, stayed put.
+ */
+export interface CheckoutCartItem {
+  id: string;
+  product_id: string;
+  quantity: number;
+  grain_size: string | null;
+  unit_price: number;
+  product: {
+    id: string;
+    name: string;
+    price: number;
+    thumbnail?: string | null;
+    is_active: boolean;
+    tags?: string[] | null;
+    inventory?: {
+      track_inventory?: boolean;
+      allow_backorder?: boolean;
+      quantity?: number;
+      reserved_quantity?: number;
+    } | null;
+  } | null;
+}
+
+/** A cart, as the checkout needs it. `id` is the WooCommerce cart token. */
+export interface CheckoutCart {
+  id: string;
+  cart_items: CheckoutCartItem[];
+}
+
+/**
+ * Every cart line that must not be charged for, judged from the cart alone.
+ *
+ * Prices are no longer readable from the cart and trusted: they *are* the cart's
+ * prices. WooCommerce prices each line when it is added, so the browser no longer
+ * writes a unit price anywhere — the client-writable `cart_items.unit_price` this
+ * comment used to warn about is gone with the table.
  */
 export function checkoutCartIssues(
-  cartItems: CartWithItems['cart_items'],
+  cartItems: CheckoutCartItem[],
 ): Array<{ cartItemId: string; message: string }> {
   const issues: Array<{ cartItemId: string; message: string }> = [];
   for (const item of cartItems) {
@@ -93,7 +127,7 @@ export function checkoutCartIssues(
 }
 
 export function validateCheckoutCartItems(
-  cartItems: CartWithItems['cart_items'],
+  cartItems: CheckoutCartItem[],
 ): void {
   const issues = checkoutCartIssues(cartItems);
   if (issues.length > 0) {
@@ -101,7 +135,7 @@ export function validateCheckoutCartItems(
   }
 }
 
-export function priceCartItems(cartItems: CartWithItems['cart_items']) {
+export function priceCartItems(cartItems: CheckoutCartItem[]) {
   validateCheckoutCartItems(cartItems);
   return cartItems.map((item) => {
     const product = item.product;
@@ -112,51 +146,76 @@ export function priceCartItems(cartItems: CartWithItems['cart_items']) {
   });
 }
 
-export function cartFingerprint(cartItems: CartWithItems['cart_items']): string {
+export function cartFingerprint(cartItems: CheckoutCartItem[]): string {
   return cartItems
     .map((item) => `${item.product_id}:${item.grain_size || ''}:${item.quantity}`)
     .sort()
     .join('|');
 }
 
-export async function loadCartForCheckout(
-  userId: string | null,
-  cartSessionId: string | null
-): Promise<CartWithItems | null> {
-  const supabase = getSupabaseAdmin();
+/**
+ * The cart, read from WooCommerce.
+ *
+ * `cartToken` is the value of the cart cookie (`lib/cart/cookies.ts`). The Stripe
+ * webhook has no browser and therefore no cookie, which is why the token rather
+ * than the cookie is what identifies the cart here: the checkout session records
+ * it when the payment starts and hands it back when the payment succeeds.
+ *
+ * Null means "no cart", the same answer the previous Supabase read gave for a
+ * missing row, so every caller's empty-cart handling is unchanged.
+ */
+export async function loadCartForCheckout(cartToken: string | null): Promise<CheckoutCart | null> {
+  if (!cartToken) return null;
 
-  let query = supabase.from('carts').select(`
-    *,
-    cart_items(
-      *,
-      product:products(*, inventory(*))
-    )
-  `);
+  const { cart } = await readStoreCart({ cartToken, nonce: null });
+  const view = mapStoreCart(cart);
+  if (!view.items.length) return null;
 
-  if (userId) {
-    query = query.eq('user_id', userId);
-  } else if (cartSessionId) {
-    query = query.eq('session_id', cartSessionId);
-  } else {
-    return null;
-  }
+  return { id: cartToken, cart_items: view.items.map(toCheckoutItem) };
+}
 
-  const { data, error } = await query.maybeSingle();
-  if (error) throw error;
-  return data as CartWithItems | null;
+/**
+ * A WooCommerce cart line, in the shape the guards and the order writer expect.
+ *
+ * `price` is the line's own price rather than a fresh catalog read: it is what
+ * WooCommerce will charge, and a second opinion read from the catalog is how a
+ * cart and the checkout that charges it start disagreeing.
+ */
+function toCheckoutItem(line: StoreCartLine): CheckoutCartItem {
+  return {
+    id: line.key,
+    product_id: line.productId,
+    quantity: line.quantity,
+    // A WooCommerce cart line carries no grain size — see
+    // docs/STOREFRONT-WORDPRESS-CONTRACT.md for why the storefront's grain
+    // selector cannot reach a WooCommerce cart.
+    grain_size: null,
+    unit_price: line.unitPrice ?? 0,
+    product: {
+      id: line.productId,
+      name: line.name,
+      price: line.unitPrice ?? 0,
+      thumbnail: line.image || null,
+      // The store is holding this line in its own cart, so it considers the
+      // product purchasable. Stock is left unknown on purpose: WooCommerce owns
+      // the count and enforces it when the order is written.
+      is_active: true,
+      tags: null,
+      inventory: null,
+    },
+  };
 }
 
 export async function serverCreateOrder(
   data: CreateOrderData,
-  options: { userId?: string | null; cartSessionId?: string | null }
+  options: { userId?: string | null; cartToken?: string | null }
 ): Promise<OrderWithItems> {
-  const cart = await loadCartForCheckout(options.userId ?? null, options.cartSessionId ?? null);
+  const cart = await loadCartForCheckout(options.cartToken ?? null);
 
   if (!cart || !cart.cart_items?.length) {
     throw new Error('Cart is empty. Add products again and retry checkout.');
   }
 
-  const supabase = getSupabaseAdmin();
   const pricedItems = priceCartItems(cart.cart_items);
 
   // Recompute shipping server-side; never trust data.shippingCostOverride.
@@ -171,19 +230,6 @@ export async function serverCreateOrder(
       quantity: item.quantity,
     })),
   });
-
-  const totals = calculateOrderTotals(
-    pricedItems.map((item) => ({
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-    })),
-    {
-      couponCode: data.couponCode,
-      shippingMethod,
-      shippingCostOverride: resolvedShipping.shippingCostOverride,
-    }
-  );
-  const normalizedCoupon = data.couponCode?.trim().toUpperCase();
 
   const resolvedRateId = resolvedShipping.shippoRateId;
   const resolvedCarrier = resolvedShipping.carrier ?? data.shippingCarrier ?? null;
@@ -233,11 +279,10 @@ export async function serverCreateOrder(
     });
 
     if (data.clearCart !== false) {
-      const { error: clearError } = await supabase
-        .from('cart_items')
-        .delete()
-        .eq('cart_id', cart.id);
-      if (clearError) throw clearError;
+      // Emptied in WooCommerce, where the cart actually lives. The response is
+      // discarded on purpose: the cart token outlives the items, so the shopper's
+      // next read simply finds an empty cart.
+      await clearStoreCart({ cartToken: cart.id, nonce: null });
     }
 
     const projected = orderWithItemsFromWoo(wooOrder);
@@ -245,75 +290,13 @@ export async function serverCreateOrder(
     return projected as OrderWithItems;
   }
 
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert({
-      user_id: options.userId || null,
-      email: data.email,
-      phone: data.phone || null,
-      status: 'pending',
-      payment_status: data.paymentStatus || 'pending',
-      subtotal: totals.subtotal,
-      shipping_cost: totals.shippingCost,
-      tax_amount: totals.taxAmount,
-      discount_amount: totals.discountAmount,
-      total: totals.total,
-      shipping_address: data.shippingAddress as unknown as Json,
-      billing_address: {
-        ...(data.billingAddress || data.shippingAddress),
-        shippingMethod: data.shippingMethod || 'standard',
-        shippoRateId: resolvedRateId,
-        shippingCarrier: resolvedCarrier,
-        shippingService: resolvedService,
-      } as unknown as Json,
-      shippo_rate_id: resolvedRateId,
-      shipping_carrier: resolvedCarrier,
-      shipping_service: resolvedService,
-      payment_method: data.paymentMethod || data.paymentProvider || null,
-      stripe_payment_intent_id: data.paymentIntentId || null,
-      notes: [
-        data.notes,
-        normalizedCoupon && supportedCoupons[normalizedCoupon] ? `Coupon: ${normalizedCoupon}` : null,
-        data.paymentIntentId ? `Stripe payment intent: ${data.paymentIntentId}` : null,
-      ]
-        .filter(Boolean)
-        .join('\n') || null,
-    } as never)
-    .select()
-    .single();
-
-  if (orderError) throw orderError;
-
-  const orderItems = pricedItems.map((item) => ({
-    order_id: (order as Order).id,
-    product_id: item.product_id,
-    product_name: item.product?.name || 'Unknown Product',
-    product_image: item.product?.thumbnail || null,
-    quantity: item.quantity,
-    grain_size: item.grain_size,
-    unit_price: item.unitPrice,
-    total_price: item.unitPrice * item.quantity,
-  }));
-
-  const { data: createdItems, error: itemsError } = await supabase
-    .from('order_items')
-    .insert(orderItems as never)
-    .select();
-
-  if (itemsError) throw itemsError;
-
-  if (data.clearCart !== false) {
-    const { error: clearError } = await supabase
-      .from('cart_items')
-      .delete()
-      .eq('cart_id', cart.id);
-    if (clearError) throw clearError;
-  }
-
-  dispatchOrderCreatedNotifications((order as Order).id);
-
-  return {
-    ...(order as Order),
-    order_items: createdItems as OrderItem[],
-  };
+  // Refused rather than fallen back to. The cart read above can only have
+  // produced WooCommerce product ids (it reads `wc/store/v1/cart`), and inserting
+  // those into Supabase `order_items` would attach an order to products that do
+  // not exist there — a silent corruption in exchange for keeping a code path
+  // alive. It cannot read a cart any more, because the cart is not in Supabase.
+  // The Supabase order path is deleted with the rest of it in the orders phase.
+  throw new Error(
+    'Orders are written to WooCommerce: the storefront cart is WooCommerce\'s, so the Supabase order path has no cart to read. Set NEXT_PUBLIC_DATA_SOURCE=woocommerce.'
+  );
 }

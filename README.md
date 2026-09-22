@@ -72,6 +72,8 @@ Created by `npm run setup` (and refreshed by `npm run reset`):
 - `npm run dev` / `npm run build` / `npm run start` / `npm run lint` — standard Next.js scripts
 - `npm run verify:rls` / `npm run verify:phase0` — narrower legacy verification scripts, superseded day-to-day by `npm run verify`
 - `npm run check:stripe` / `npm run check:shippo` / `npm run check:packing` — third-party integration checks
+- `npm run check:wordpress` — is the WordPress backend answering, and how does each route fail
+- `npm run diagnose:store-products` — read-only, GET-only: narrows the Store API product fatal to its trigger and prints the WordPress-side change set that follows
 
 ## Database migrations
 

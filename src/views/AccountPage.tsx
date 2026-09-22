@@ -7,8 +7,11 @@ import { useToast } from '../context/ToastContext';
 import DashboardSidebar from '../components/account/DashboardSidebar';
 import OrdersSection from '../components/account/OrdersSection';
 import { useAuthContext } from '../context/AuthContext';
-import { addressesApi, notificationsApi, ordersApi, wishlistApi } from '../lib/supabase/api';
-import { supabase, isSupabaseConfigured, clearSupabaseSession } from '../lib/supabase/client';
+import { addressesApi, notificationsApi, ordersApi } from '../lib/supabase/api';
+import { wishlistApi } from '../lib/wishlist/client';
+import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
+import { signOutOfBrowser } from '../lib/auth/browserSignOut';
+import { getCustomerAccessToken } from '../lib/auth/customerClient';
 import type { Address, Notification, OrderWithItems } from '../lib/supabase/database.types';
 
 // The account portal is the only customer account screen. `/orders` was a
@@ -86,7 +89,7 @@ export default function AccountPage() {
       try {
         const [{ orders }, wishlistCount, notifications, addresses] = await Promise.all([
           ordersApi.getUserOrders(user.id, { limit: 3 }),
-          wishlistApi.getWishlistCount(user.id),
+          wishlistApi.getWishlistCount(),
           notificationsApi.getNotifications(user.id),
           addressesApi.getUserAddresses(user.id),
         ]);
@@ -261,8 +264,9 @@ export default function AccountPage() {
 
     setDeleting(true);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
+      // The signed-in shopper's credential is their WooCommerce-keyed session — a
+      // Supabase session is no longer what a customer account is.
+      const token = getCustomerAccessToken();
       const response = await fetch('/api/account/delete', {
         method: 'POST',
         headers: {
@@ -275,7 +279,9 @@ export default function AccountPage() {
       if (!response.ok) throw new Error(body.error || 'Unable to delete account.');
 
       toast.success('Account deleted.');
-      clearSupabaseSession();
+      // A deleted account must not leave a session behind — same one owner every
+      // other sign-out uses, so the admin token goes with the customer one.
+      signOutOfBrowser();
       window.location.assign('/');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Unable to delete account.');

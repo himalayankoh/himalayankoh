@@ -33,6 +33,7 @@
     "check:packing": "node scripts/check-shippo-packing.mjs",
     "check:packing-splits": "node scripts/check-packing-splits.mjs",
     "check:wordpress": "node scripts/check-wordpress-setup.mjs",
+    "diagnose:store-products": "node scripts/diagnose-store-products-fatal.mjs",
     "migrate:leados": "node scripts/migrate-leados-to-wordpress.mjs",
     "admin:hash": "node scripts/hash-admin-password.mjs",
     "dev:vinext": "node scripts/clean-next-route-types.mjs && vinext dev --port 3001",

@@ -7,7 +7,7 @@
 // with the legacy gift-drop claim form schema — do not remove these columns.
 // ============================================================================
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-import { getAccessToken } from '../services/supabase';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 
 interface ClaimView {
   id: string;

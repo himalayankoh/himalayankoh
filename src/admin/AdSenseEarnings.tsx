@@ -9,7 +9,7 @@
 // link to the Google Payments page instead of fabricating a balance.
 // ============================================================================
 import { useEffect, useState, useCallback } from 'react';
-import { getAccessToken } from '../services/supabase';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 import { ArrowClockwise, LinkSimple, Megaphone, CheckCircle, Warning, SpinnerGap } from '@phosphor-icons/react';
 
 interface EarningsRange {

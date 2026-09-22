@@ -12,7 +12,14 @@ export function shouldFinalizeSuccessfulPayment(eventType: string): boolean {
 
 export interface CheckoutSessionData extends CreateOrderData {
   userId?: string | null;
-  cartSessionId?: string | null;
+  /**
+   * The WooCommerce cart this payment was started for.
+   *
+   * Recorded because the webhook that creates the order runs without a browser
+   * and therefore without the cart cookie — this is how it finds the same cart to
+   * price and empty. The value is a cart token, not the old guest session id.
+   */
+  cartToken?: string | null;
 }
 
 export interface CheckoutSession {
@@ -117,7 +124,7 @@ export async function finalizeCheckoutSession(
       },
       {
         userId: session.data.userId || null,
-        cartSessionId: session.data.cartSessionId || null,
+        cartToken: session.data.cartToken || null,
       },
     );
     const { error } = await (supabase as any)

@@ -5,7 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { verifyCustomerRequest } from '@/lib/auth/verifyCustomerRequest';
+import { verifyCustomerRequest } from '@/lib/auth/customerRequest';
 import {
   WooOrderError,
   listWooOrdersForEmail,
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   const perPage = Number(url.searchParams.get('perPage') ?? url.searchParams.get('limit') ?? '10') || 10;
 
   try {
-    const result = await listWooOrdersForEmail(auth.user.email, {
+    const result = await listWooOrdersForEmail(auth.customer.email, {
       page,
       perPage,
       includeGuests: true,

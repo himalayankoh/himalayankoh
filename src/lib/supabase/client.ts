@@ -1,10 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
-import { getSupabaseConfig } from '@/services/supabase';
+import { getSupabaseConfig } from './config';
 
-// Use the same public config resolver as the working auth client. The old
-// process.env-only check was compiled to an empty object in the browser bundle,
-// so it logged a false warning even while Supabase auth was configured.
+// The customer path's own resolver (`./config`), which reads both the Vite-era and
+// the Next-era variable spellings. A process.env-only check compiled to an empty
+// object in the browser bundle and logged a false "not configured" warning even
+// while Supabase auth was configured.
 const supabaseConfig = getSupabaseConfig();
 const supabaseUrl = supabaseConfig?.url || '';
 const supabaseAnonKey = supabaseConfig?.anonKey || '';

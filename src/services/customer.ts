@@ -18,7 +18,7 @@
 // ============================================================================
 
 import { getDb, getDbMode } from './db';
-import { getAccessToken } from './supabase';
+import { getAccessToken } from './wordpressAdminAuth';
 
 export interface CustomerSyncResult {
   ok: boolean;

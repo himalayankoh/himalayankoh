@@ -6,7 +6,7 @@ import {
   Play, PencilSimple, FloppyDisk, GearSix,
 } from '@phosphor-icons/react';
 import { useApp } from '../App';
-import { getFreshAccessToken } from '../services/supabase';
+import { getFreshAccessToken } from '../services/wordpressAdminAuth';
 
 // ---------------------------------------------------------------------------
 // Types

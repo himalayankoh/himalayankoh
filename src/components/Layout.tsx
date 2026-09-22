@@ -8,7 +8,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Search, ShoppingCart, User, Menu, X, Phone, MessageCircle, LogOut } from 'lucide-react';
 import { useCart } from '../store/cartStore';
 import { useAuthContext } from '../context/AuthContext';
-import { clearSupabaseSession } from '../lib/supabase/client';
+import { signOutOfBrowser } from '../lib/auth/browserSignOut';
 import CartDrawer from './CartDrawer';
 import SearchModal from './SearchModal';
 import AuthModal from './AuthModal';
@@ -74,10 +74,10 @@ export default function Layout({ children }: LayoutProps) {
   }, []);
 
   const handleSignOut = () => {
-    // Client-side sign-out: wipe the persisted session synchronously, close the
-    // menu, hard-navigate home. See AdminLayout — we don't call
-    // supabase.auth.signOut() (it can hang and can re-persist the session).
-    clearSupabaseSession();
+    // Both credentials this browser holds are cleared synchronously by their one
+    // owner (`lib/auth/browserSignOut`), then we hard-navigate home. We do not
+    // call supabase.auth.signOut(): it can hang and can re-persist the session.
+    signOutOfBrowser();
     setUserMenuOpen(false);
     window.location.assign('/');
   };

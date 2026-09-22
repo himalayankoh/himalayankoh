@@ -20,7 +20,7 @@ import {
   supplierBrandForUrl, rulesForCategory, effectiveStatusForImport,
   type ListingPlaybook, type PlaybookImportHistoryEntry,
 } from '../features/catalog/listingPlaybook';
-import { getFreshAccessToken } from '../services/supabase';
+import { getFreshAccessToken } from '../services/wordpressAdminAuth';
 import {
   ArrowClockwise, ArrowLeft, CheckCircle, Clipboard, ClockCounterClockwise,
   CurrencyDollar, FileText, Globe, Image as ImageIcon, LinkSimple, MagicWand,

@@ -121,6 +121,34 @@ values of server-side variables and fails the build on a hit.
   a stopgap in the same session; the hashed account list replaces them and does
   not put a plaintext password in the environment.
 
+## Signing out — one owner
+
+A browser can hold **two** credentials at once, in two different stores:
+
+| Credential | Store | Owner |
+|---|---|---|
+| Admin session | `luxedge_sb_session` (localStorage) | `services/wordpressAdminAuth.ts` |
+| Customer Supabase session | `sb-*` keys + cookie | `lib/supabase/client.ts` |
+
+Neither module may clear the other's store, so the composed operation has its own
+single home: **`lib/auth/browserSignOut.ts` → `signOutOfBrowser()`**. Every screen
+that offers a sign-out calls it (console account menu, console sidebar, storefront
+header menu, account deletion, `AuthContext.signOut`), and nothing else may. The
+suite enforces that — `browserSignOut.test.ts` fails if a second file starts
+calling `clearSupabaseSession()`.
+
+It is **synchronous on purpose**. Clearing storage after an `await`, or after the
+caller has already navigated, leaves the token on disk; the next page load reads
+it back, restores the session, and — because `/login` sends an authenticated
+visitor to their role's landing page — bounces the admin straight into `/admin`.
+That was the bug: the console cleared only the Supabase keys, so the admin token
+was never touched and sign-out appeared not to work.
+
+Server-side, the token stays valid until it expires (it is stateless, and the
+app cannot revoke it without a store of used tokens). Sign-out is therefore
+*this browser* discarding the credential. To revoke every admin session at once,
+rotate `ADMIN_SESSION_SECRET`.
+
 ## Where Supabase still authenticates
 
 Customer auth is untouched by this document — sign-up, customer sign-in,

@@ -7,7 +7,7 @@ import {
   EyeSlash, FloppyDisk
 } from '@phosphor-icons/react';
 import { CjSupplierAdapter } from '../features/suppliers/cj/adapter';
-import { getAccessToken } from '../services/supabase';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 
 /* ── Types ── */
 type Health = 'not_configured' | 'online' | 'offline' | 'rate_limited' | 'configured';

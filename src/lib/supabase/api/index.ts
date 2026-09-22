@@ -1,12 +1,13 @@
 export { authApi } from './auth';
 export { productsApi } from './products';
-export { cartApi } from './cart';
 export { ordersApi } from './orders';
-export { wishlistApi } from './wishlist';
 export { blogApi } from './blog';
 export { notificationsApi } from './notifications';
 export { adminApi } from './admin';
 export { addressesApi } from './addresses';
+// cartApi and wishlistApi are gone, and the cart/wishlist moved with them:
+// the cart is WooCommerce's (see lib/cart/cartClient.ts) and the wishlist is a
+// WordPress table (see lib/wishlist/client.ts).
 // crmApi is gone: the CRM lead inbox moved to WordPress (see lib/leados/crm.ts).
 
 
@@ -14,7 +15,6 @@ export { addressesApi } from './addresses';
 export type { SignUpData, SignInData } from './auth';
 export type { ProductFilters } from './products';
 export type { CreateOrderData, OrderFilters } from './orders';
-export type { WishlistWithProduct } from './wishlist';
 export type { BlogPostWithAuthor, BlogFilters } from './blog';
 export type {
   ProductFormData,

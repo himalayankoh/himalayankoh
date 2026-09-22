@@ -14,11 +14,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { GET as getOrdersList } from './route';
 import { GET as getOrderDetail } from './[id]/route';
 import { POST as cancelOrder } from './[id]/cancel/route';
-import * as verifyAuth from '@/lib/auth/verifyCustomerRequest';
+import * as verifyAuth from '@/lib/auth/customerRequest';
 import * as wooOrders from '@/lib/woo/orders';
 import type { Order, OrderItem } from '@/lib/supabase/database.types';
 
-vi.mock('@/lib/auth/verifyCustomerRequest');
+vi.mock('@/lib/auth/customerRequest');
 vi.mock('@/lib/woo/orders');
 
 type MockOrder = Order & { order_items: OrderItem[] };
@@ -35,20 +35,20 @@ describe('Customer WooCommerce Orders API', () => {
       vi.spyOn(verifyAuth, 'verifyCustomerRequest').mockResolvedValueOnce({
         ok: false,
         status: 401,
-        error: 'Customer authentication required.',
+        error: 'Sign in to your account to continue.',
       });
 
       const request = new Request('https://preview.himalayankoh.com/api/account/orders');
       const response = await getOrdersList(request);
       expect(response.status).toBe(401);
       const json = await response.json();
-      expect(json.error).toBe('Customer authentication required.');
+      expect(json.error).toBe('Sign in to your account to continue.');
     });
 
     it('returns own orders for authenticated customer', async () => {
       vi.spyOn(verifyAuth, 'verifyCustomerRequest').mockResolvedValueOnce({
         ok: true,
-        user: { id: 'cust-123', email: customerEmail },
+        customer: { id: 123, email: customerEmail, name: 'Test Customer' },
       });
 
       vi.spyOn(wooOrders, 'listWooOrdersForEmail').mockResolvedValueOnce({
@@ -89,7 +89,7 @@ describe('Customer WooCommerce Orders API', () => {
     it('returns empty list when customer has no orders', async () => {
       vi.spyOn(verifyAuth, 'verifyCustomerRequest').mockResolvedValueOnce({
         ok: true,
-        user: { id: 'cust-new', email: customerEmail },
+        customer: { id: 456, email: customerEmail, name: 'New Customer' },
       });
 
       vi.spyOn(wooOrders, 'listWooOrdersForEmail').mockResolvedValueOnce({
@@ -113,7 +113,7 @@ describe('Customer WooCommerce Orders API', () => {
     it('returns 400 for malformed order ID', async () => {
       vi.spyOn(verifyAuth, 'verifyCustomerRequest').mockResolvedValueOnce({
         ok: true,
-        user: { id: 'cust-123', email: customerEmail },
+        customer: { id: 123, email: customerEmail, name: 'Test Customer' },
       });
 
       const request = new Request('https://preview.himalayankoh.com/api/account/orders/abc');
@@ -126,7 +126,7 @@ describe('Customer WooCommerce Orders API', () => {
     it('returns 404 when trying to access another customer’s order', async () => {
       vi.spyOn(verifyAuth, 'verifyCustomerRequest').mockResolvedValueOnce({
         ok: true,
-        user: { id: 'cust-123', email: customerEmail },
+        customer: { id: 123, email: customerEmail, name: 'Test Customer' },
       });
 
       // getWooOrderForEmail returns null when billing email does not match
@@ -142,7 +142,7 @@ describe('Customer WooCommerce Orders API', () => {
     it('returns own order details when authorized', async () => {
       vi.spyOn(verifyAuth, 'verifyCustomerRequest').mockResolvedValueOnce({
         ok: true,
-        user: { id: 'cust-123', email: customerEmail },
+        customer: { id: 123, email: customerEmail, name: 'Test Customer' },
       });
 
       vi.spyOn(wooOrders, 'getWooOrderForEmail').mockResolvedValueOnce({
@@ -174,7 +174,7 @@ describe('Customer WooCommerce Orders API', () => {
     it('cancels pending order for customer', async () => {
       vi.spyOn(verifyAuth, 'verifyCustomerRequest').mockResolvedValueOnce({
         ok: true,
-        user: { id: 'cust-123', email: customerEmail },
+        customer: { id: 123, email: customerEmail, name: 'Test Customer' },
       });
 
       vi.spyOn(wooOrders, 'getWooOrderForEmail').mockResolvedValueOnce({
@@ -208,7 +208,7 @@ describe('Customer WooCommerce Orders API', () => {
     it('rejects cancellation when order is already shipped/processing', async () => {
       vi.spyOn(verifyAuth, 'verifyCustomerRequest').mockResolvedValueOnce({
         ok: true,
-        user: { id: 'cust-123', email: customerEmail },
+        customer: { id: 123, email: customerEmail, name: 'Test Customer' },
       });
 
       vi.spyOn(wooOrders, 'getWooOrderForEmail').mockResolvedValueOnce({
@@ -231,7 +231,7 @@ describe('Customer WooCommerce Orders API', () => {
     it('returns 404 when trying to cancel an order belonging to another customer', async () => {
       vi.spyOn(verifyAuth, 'verifyCustomerRequest').mockResolvedValueOnce({
         ok: true,
-        user: { id: 'cust-123', email: customerEmail },
+        customer: { id: 123, email: customerEmail, name: 'Test Customer' },
       });
 
       vi.spyOn(wooOrders, 'getWooOrderForEmail').mockResolvedValueOnce(null);

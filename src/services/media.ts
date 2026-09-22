@@ -18,7 +18,7 @@
 import { getDb } from './db';
 import { isHeldMedia } from '../content/reviewHolds';
 import type { DbAdapter } from './db';
-import { getFreshAccessToken } from './supabase';
+import { getFreshAccessToken } from './wordpressAdminAuth';
 
 /** Storefront-facing shape (nothing invented — maps DB columns 1:1). */
 export interface MediaVideo {

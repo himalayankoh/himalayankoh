@@ -36,7 +36,7 @@ import {
   CaretDown,
 } from '@phosphor-icons/react';
 import { useAuthContext } from '../../context/AuthContext';
-import { clearSupabaseSession } from '../../lib/supabase/client';
+import { signOutOfBrowser } from '../../lib/auth/browserSignOut';
 import { useApp } from '@/App';
 
 export interface AdminLayoutProps {
@@ -167,7 +167,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   }, [userMenuOpen]);
 
   const handleSignOut = () => {
-    clearSupabaseSession();
+    // One owner for ending a session (`lib/auth/browserSignOut`), and it runs
+    // before the navigation. Clearing only the Supabase keys used to leave the
+    // admin token behind, so `/login` restored the session and sent the admin
+    // straight back into the console.
+    signOutOfBrowser();
     window.location.assign('/login');
   };
 

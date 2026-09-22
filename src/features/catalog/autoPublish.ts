@@ -6,7 +6,7 @@
 // devices. This module only carries the flag; the actual promotion happens in
 // the editor save path when the setting is on.
 // ============================================================================
-import { getFreshAccessToken } from '../../services/supabase';
+import { getFreshAccessToken } from '../../services/wordpressAdminAuth';
 
 /** Current auto-publish flag (false on any failure — never blocks saving). */
 export async function getAutoPublishEnabled(): Promise<boolean> {

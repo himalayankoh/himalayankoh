@@ -19,7 +19,7 @@
 
 import { getDb } from './db';
 import type { DbAdapter } from './db';
-import { getFreshAccessToken } from './supabase';
+import { getFreshAccessToken } from './wordpressAdminAuth';
 import type { BlogPost } from '../App';
 import { isHeldBlog } from '../content/reviewHolds';
 

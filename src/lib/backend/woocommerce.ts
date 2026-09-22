@@ -24,6 +24,11 @@ import { collectMissingCatalogFields, priceDisplayFromRange } from '../products/
 import { productSlugFromName } from '../products/slug';
 import { resolveCuratedProductImages } from '../products/curatedImages';
 import { variationPriceRange, type WooVariationLike } from '../woo/productPayload';
+import {
+  productVariations,
+  variationOptionLabels,
+  type RestV3Attribute,
+} from '../woo/variationOptions';
 import { backendConfig } from './config';
 import { hasWooCommerceCredentials } from './credentials';
 import {
@@ -110,6 +115,8 @@ export interface RestV3Product {
   type?: string;
   /** Variation ids, present only on a variable product. */
   variations?: number[];
+  /** Declared attributes; the ones with `variation: true` are what a shopper picks. */
+  attributes?: RestV3Attribute[];
 }
 
 /** WordPress core product (public; no price or stock, used only as fallback). */
@@ -125,6 +132,23 @@ export interface WpCoreProduct {
   product_cat?: number[];
   _embedded?: Record<string, Array<{ source_url?: string; alt_text?: string }>>;
 }
+
+/**
+ * Storefront slugs a merged product retired, and what sells them now.
+ *
+ * Two maps exist for one retirement because two servers publish the same product:
+ * the WordPress-served `/product/<slug>` is covered by
+ * `hk_storefront_retired_product_slugs()` in the plugin, and the storefront's own
+ * `/products/<slug>` is covered here — this app never sees the plugin's redirect,
+ * and the plugin never sees this route. Keep them in step when a merge retires a
+ * product; a retired slug with no entry here is a dead link on the storefront.
+ */
+export const RETIRED_PRODUCT_SLUGS: Record<string, string> = {
+  'himalayan-salt-fine-grain-6-lbs': 'himalayan-salt-6-lbs',
+  'himalayan-salt-coarse-grain-6-lbs': 'himalayan-salt-6-lbs',
+  'himalayan-pink-edible-salt-fine-grain-16-oz-jar': 'himalayan-pink-edible-salt-16-oz-jar',
+  'himalayan-pink-edible-salt-coarse-grain-16-oz-jar': 'himalayan-pink-edible-salt-16-oz-jar',
+};
 
 /**
  * Category name the catalog model carries when a source reported none.
@@ -399,7 +423,9 @@ export async function fetchStoreProductsSafe(
  * Variable products are the reason this is more than a map: WooCommerce keeps
  * their prices on the variations, so the parent row reports an empty
  * `regular_price` even though the product is priced. Without the extra read the
- * storefront showed "Price unavailable" on products a customer could buy.
+ * storefront showed "Price unavailable" on products a customer could buy — and
+ * with grain now a variation axis, the same read is what tells the storefront
+ * which options exist at all.
  */
 export async function fetchAdminProducts(query: ProductQuery = {}): Promise<Product[] | null> {
   if (!hasWooCommerceCredentials()) return null;
@@ -410,7 +436,7 @@ export async function fetchAdminProducts(query: ProductQuery = {}): Promise<Prod
     signal: query.signal,
   });
   const rows = Array.isArray(raw) ? raw : [];
-  return withVariationPricing(rows, rows.map(mapRestV3Product), query.signal);
+  return withVariations(rows, rows.map(mapRestV3Product), query.signal);
 }
 
 /** Authenticated REST v3 single-product lookup by slug. */
@@ -427,6 +453,18 @@ export async function fetchAdminProductBySlug(
   });
   let rows = Array.isArray(exact) ? exact : [];
 
+  // A slug a merge retired resolves to the product that replaced it, so an old
+  // storefront URL lands on something buyable rather than on a 404.
+  const successor = RETIRED_PRODUCT_SLUGS[slug];
+  if (rows.length === 0 && successor) {
+    const resolved = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
+      params: { slug: successor, status: 'publish', per_page: 1 },
+      useCredentials: true,
+      signal,
+    });
+    rows = Array.isArray(resolved) ? resolved : [];
+  }
+
   // Admin-generated slugs historically used the product title while Woo kept a
   // shorter legacy slug. Resolve that safe alias server-side instead of making
   // every admin View link land on a false 404.
@@ -441,20 +479,25 @@ export async function fetchAdminProductBySlug(
     ).slice(0, 1);
   }
 
-  const [product] = await withVariationPricing(rows, rows.map(mapRestV3Product), signal);
+  const [product] = await withVariations(rows, rows.map(mapRestV3Product), signal);
   return product ?? null;
 }
 
 /**
- * Fills in the price range of variable products whose parent reports none.
+ * Reads a variable product's variations once, for both things they carry.
  *
- * Only those rows are read: a priced product needs no extra request, and the
- * fetches run in parallel so a catalog page costs one round trip plus one per
- * variable product rather than a serial chain. A failure here leaves the price
- * unknown — never zero — because an unavailable price and a free product are
- * very different things to advertise.
+ * The price range is filled only when the parent reports none — a variable product
+ * whose variations all cost the same reports its own price, and needs no arithmetic.
+ * The variation *options* are set whatever the parent's price is, because they are
+ * what a shopper chooses between: a single-priced variable product with a grain
+ * selector still has to tell the storefront which grains exist.
+ *
+ * Only variable products are read, and in parallel, so a catalog page costs one
+ * round trip plus one per variable product rather than a serial chain. A failure
+ * here leaves the price unknown and the options absent — never invented, because
+ * an unavailable price and a free product are very different things to advertise.
  */
-async function withVariationPricing(
+async function withVariations(
   rows: RestV3Product[],
   products: Product[],
   signal?: AbortSignal
@@ -465,7 +508,6 @@ async function withVariationPricing(
       (entry): entry is { row: RestV3Product; product: Product } =>
         Boolean(entry.product) &&
         entry.row.type === 'variable' &&
-        (entry.product.priceMin === null || entry.product.priceMin <= 0) &&
         (entry.row.variations?.length ?? 0) > 0
     );
 
@@ -489,6 +531,17 @@ async function withVariationPricing(
         }
       );
       if (!data) return;
+
+      // What the shopper can choose. Both forms come from this one read, so the
+      // labels the selector shows and the pairs the cart is told cannot disagree.
+      const variations = productVariations(row.attributes, data);
+      if (variations) {
+        product.variations = variations;
+        product.grainSizes = variationOptionLabels(variations);
+      }
+
+      // A parent that prices itself needs no range derived from its variations.
+      if (product.priceMin !== null && product.priceMin > 0) return;
 
       const range = variationPriceRange(data);
       if (!range) return;

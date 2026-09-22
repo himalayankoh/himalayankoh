@@ -21,7 +21,7 @@ import {
 import { useApp, Modal, fetchPageContent } from '../App';
 import { useNavigate } from 'react-router-dom';
 import { getDb } from '../services/db';
-import { getAccessToken } from '../services/supabase';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 import type { DbAdapter } from '../services/db';
 import { runScoutResearch, runMarketIntelligenceJob, qaCandidate, cjMarketContextFor } from '../features/scout/engine';
 import type { QAOutcome } from '../features/scout/engine';

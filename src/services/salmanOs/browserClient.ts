@@ -16,7 +16,7 @@ import type {
   SalmanOsStatus, SalmanOsIntelligenceItem, SalmanOsIntelligenceKind,
   SalmanOsJob, SalmanOsJobKind,
 } from './types';
-import { getAccessToken } from '../supabase';
+import { getAccessToken } from '../wordpressAdminAuth';
 
 const API_BASE = '/api/salman-os';
 
@@ -59,7 +59,7 @@ export async function getValidAccessToken(): Promise<string | null> {
   const stored = getStoredSupabaseToken();
   if (stored) return stored;
 
-  // 2. Synchronous read from services/supabase
+  // 2. Synchronous read from the admin client (services/wordpressAdminAuth)
   const direct = getAccessToken();
   if (direct) return direct;
 

@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getErrorMessage } from '@/lib/errors';
+import { readCartSession } from '@/lib/cart/cookies';
 import { serverCreateOrder } from '@/lib/orders/serverCreateOrder';
 import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
 import type { CreateOrderData, ShippingMethod } from '@/lib/supabase/api/orders';
 
-type CreateOrderBody = CreateOrderData & {
-  cartSessionId?: string;
-};
+type CreateOrderBody = CreateOrderData;
 
 function parseBody(body: unknown): { ok: true; data: CreateOrderBody } | { ok: false; error: string } {
   if (!body || typeof body !== 'object') {
@@ -58,8 +57,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const { cartSessionId, ...orderData } = parsed.data;
+  const orderData = parsed.data;
   const userId = await resolveUserId(request, (parsed.data as { userId?: string }).userId);
+  // The cart is identified by the cookie the browser already holds, so no cart
+  // identifier arrives in the body. That is also why the old "cart session
+  // missing" precondition is gone: with no cookie there is simply no cart, and
+  // `serverCreateOrder` answers that with "Cart is empty" — the accurate answer,
+  // instead of a request-shape complaint.
+  const { cartToken } = await readCartSession();
 
   // Public checkout must never create an order before Stripe confirms payment.
   // The signed Stripe webhook calls serverCreateOrder directly after payment;
@@ -75,20 +80,13 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!userId && !cartSessionId?.trim()) {
-    return NextResponse.json(
-      { error: 'Cart session missing. Refresh the page and try again.' },
-      { status: 400 }
-    );
-  }
-
   try {
     const order = await serverCreateOrder(
       {
         ...orderData,
         shippingMethod: (orderData.shippingMethod || 'standard') as ShippingMethod,
       },
-      { userId, cartSessionId: cartSessionId?.trim() || null }
+      { userId, cartToken }
     );
 
     return NextResponse.json(order);

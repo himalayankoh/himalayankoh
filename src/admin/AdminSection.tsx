@@ -9,7 +9,7 @@ import { useApp, Modal, CAT_LIST, loadAIProviders, saveAIProviders, callAIProvid
 import { SOCIAL_PROFILES } from '../content/socialProfiles';
 import { SITE_ORIGIN } from '../lib/site/origin';
 import { useAuthStore } from '../store/authStore';
-import { getAccessToken } from '../services/supabase';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { listCategories, createCategory, updateCategory, deleteCategory, listProducts, setDbToken } from '../features/catalog/repository';
 import type { CatalogProduct } from '../features/catalog/types';
@@ -36,7 +36,7 @@ import type {
   SEOData, SocialSEO, ContentData, SEOScore, StructuredSchemas,
   ProviderStatus, ProviderStatusMap,
 } from '../App';
-import { clearSupabaseSession } from '../lib/supabase/client';
+import { signOutOfBrowser } from '../lib/auth/browserSignOut';
 import {
   activeModeLabel, AD_SLOT_RE, clearPreviewConfig, CLIENT_ID_RE, fetchGlobalConfig,
   getCachedPreview, hasPreviewConfig, PLACEMENT_KEYS, PLACEMENT_LABELS,
@@ -60,7 +60,7 @@ import {
 // ADMIN PANEL - FULL WORKING SYSTEM
 // ============================================================================
 export function AdminLayout({ children }: { children: ReactNode }) {
-  const { user, isAdmin, ready, signOut } = useAuthStore();
+  const { user, isAdmin, ready } = useAuthStore();
   const nav = useNavigate();
   const loc = useLocation();
   const [mobSide, setMobSide] = useState(false);
@@ -202,7 +202,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         <Link to="/" className="flex items-center gap-2 text-[11px] text-[#b6c3bc] hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-white/5 transition-colors">
           <span className="w-[26px] h-[26px] rounded-md bg-white/5 flex items-center justify-center"><ArrowLeft size={12} /></span>Storefront
         </Link>
-        <button onClick={() => { void signOut().then(() => nav('/admin/login')); }}
+        <button onClick={() => { signOutOfBrowser(); nav('/login'); }}
           className="flex items-center gap-2 text-[11px] text-rose-300 hover:text-rose-200 px-2.5 py-1.5 rounded-lg hover:bg-rose-500/10 w-full transition-colors">
           <span className="w-[26px] h-[26px] rounded-md bg-rose-500/10 flex items-center justify-center"><SignOut size={12} /></span>Logout
         </button>
@@ -2266,7 +2266,9 @@ const [open, setOpen] = useState<Record<string, boolean>>({
               <button
                 type="button"
                 onClick={() => {
-                  clearSupabaseSession();
+                  // `clearSupabaseSession` alone left the admin token in place —
+                  // the one owner ends both credentials instead.
+                  signOutOfBrowser();
                   window.location.assign('/login');
                 }}
                 className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"

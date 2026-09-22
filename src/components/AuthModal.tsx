@@ -4,7 +4,6 @@ import { X, Mail, Lock, User, Eye, EyeOff, Loader2, ArrowRight, UserRound } from
 import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../context/AuthContext';
 import { authApi } from '../lib/supabase/api';
-import { isSupabaseConfigured } from '../lib/supabase/client';
 import { useToast } from '../context/ToastContext';
 
 interface Props {
@@ -14,33 +13,34 @@ interface Props {
 
 type AuthMode = 'login' | 'signup' | 'forgot';
 
-// Demo credentials only exist at all in a development build. Checking
-// process.env.NODE_ENV directly lets the production minifier prove this
-// function always returns null and strip the credential literals below as
-// dead code — not just skip rendering them, so they can't be scraped out of
-// the shipped production JS either.
-function getDemoAccounts(): { customer: { email: string; password: string }; admin: { email: string; password: string } } | null {
+/**
+ * The development convenience — and only the part of it that is true.
+ *
+ * The "Demo Customer" / "Demo Admin" buttons used to fill two passwords, and
+ * both were false: the customer account was never seeded, and the admin password
+ * here was not the configured account's password, so the filled credential
+ * answered 401. This modal and the sign-in page advertised the same pair; both
+ * now offer the admin email alone, which is true and public, and leave the
+ * password to whoever holds it.
+ *
+ * Development builds only — checking `process.env.NODE_ENV` directly lets the
+ * production minifier prove this returns null and strip it.
+ */
+function devAdminEmail(): string | null {
   if (process.env.NODE_ENV !== 'development') return null;
-  return {
-    customer: {
-      email: 'customer@himalayankoh.com',
-      password: 'Customer@123',
-    },
-    admin: {
-      email: 'admin@himalayankoh.com',
-      password: 'Admin@123',
-    },
-  };
+  return 'admin@himalayankoh.com';
 }
 
-const demoAccounts = getDemoAccounts();
+const devAdmin = devAdminEmail();
 
 export default function AuthModal({ isOpen, onClose }: Props) {
   const [mode, setMode] = useState<AuthMode>('login');
   const [showPassword, setShowPassword] = useState(false);
+  // The email only: this form used to open holding a demo customer's password,
+  // so the first Sign In click always failed.
   const [formData, setFormData] = useState({
-    email: demoAccounts?.customer.email ?? '',
-    password: demoAccounts?.customer.password ?? '',
+    email: devAdmin ?? '',
+    password: '',
     fullName: '',
   });
   const [localLoading, setLocalLoading] = useState(false);
@@ -48,7 +48,6 @@ export default function AuthModal({ isOpen, onClose }: Props) {
   const { signIn, signUp } = useAuthContext();
   const navigate = useNavigate();
   const toast = useToast();
-  const supabaseReady = isSupabaseConfigured();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,14 +86,10 @@ export default function AuthModal({ isOpen, onClose }: Props) {
     navigate(`/${page}`);
   };
 
-  const fillDemoAccount = (type: 'customer' | 'admin') => {
-    if (!demoAccounts) return;
+  const fillAdminEmail = () => {
+    if (!devAdmin) return;
     setMode('login');
-    setFormData({
-      ...formData,
-      email: demoAccounts[type].email,
-      password: demoAccounts[type].password,
-    });
+    setFormData({ ...formData, email: devAdmin });
   };
 
   return (
@@ -144,14 +139,6 @@ export default function AuthModal({ isOpen, onClose }: Props) {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="p-6 pt-0 space-y-4">
-              {!supabaseReady && mode === 'login' && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
-                  {demoAccounts
-                    ? 'Supabase is not configured. Add Vercel env vars before demo login will work.'
-                    : 'Supabase is not configured. Sign-in is unavailable until it is.'}
-                </div>
-              )}
-
               {mode === 'login' && (
                 <div>
                   <button
@@ -168,23 +155,14 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                 </div>
               )}
 
-              {mode === 'login' && demoAccounts && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('customer')}
-                    className="p-2.5 rounded-lg bg-himalayan-lighter text-himalayan text-xs font-semibold hover:bg-himalayan/15 transition-colors"
-                  >
-                    Demo Customer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('admin')}
-                    className="p-2.5 rounded-lg bg-charcoal text-white text-xs font-semibold hover:bg-charcoal-light transition-colors"
-                  >
-                    Demo Admin
-                  </button>
-                </div>
+              {mode === 'login' && devAdmin && (
+                <button
+                  type="button"
+                  onClick={fillAdminEmail}
+                  className="w-full p-2.5 rounded-lg bg-charcoal text-white text-xs font-semibold hover:bg-charcoal-light transition-colors"
+                >
+                  Fill in the admin email
+                </button>
               )}
 
               {mode === 'signup' && (

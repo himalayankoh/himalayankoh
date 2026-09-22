@@ -26,7 +26,6 @@ export function validateCreatePaymentIntentBody(body: unknown) {
   const email = nonEmpty(record.email) || '';
   const shippingAddress = address(record.shippingAddress);
   const billingAddress = record.billingAddress ? address(record.billingAddress) : shippingAddress;
-  const cartSessionId = nonEmpty(record.cartSessionId);
   const userId = nonEmpty(record.userId);
   const couponCode = nonEmpty(record.couponCode) || '';
   const shippingMethod = record.shippingMethod === 'expedited' ? 'expedited' as const : 'standard' as const;
@@ -42,9 +41,9 @@ export function validateCreatePaymentIntentBody(body: unknown) {
   if (!billingAddress) {
     return { ok: false as const, status: 400, error: 'A complete billing address is required.' };
   }
-  if (!cartSessionId && !userId) {
-    return { ok: false as const, status: 400, error: 'Cart session is required.' };
-  }
+  // No cart-identifier check here any more. The cart is identified by the request's
+  // own cookie, which this validator cannot see and must not ask the browser to
+  // assert — an empty cart is answered by the route, as "Cart is empty".
 
   return {
     ok: true as const,
@@ -53,7 +52,6 @@ export function validateCreatePaymentIntentBody(body: unknown) {
       phone: nonEmpty(record.phone) || undefined,
       shippingAddress,
       billingAddress,
-      cartSessionId,
       userId,
       couponCode,
       shippingMethod,

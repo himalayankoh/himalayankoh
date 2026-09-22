@@ -13,7 +13,12 @@
 // Recording is fire-and-forget and must NEVER break the storefront.
 // ============================================================================
 
-import { getSupabaseConfig, getFreshAccessToken } from './supabase';
+// Two backends, two owners, and this is the only module that legitimately needs
+// both: the *events* still live in Supabase (the customer path's config), while
+// the reader's credential is the admin session, which is WordPress's. Neither
+// import resolves the other backend's configuration.
+import { getSupabaseConfig } from '../lib/supabase/config';
+import { getFreshAccessToken } from './wordpressAdminAuth';
 
 const VID_KEY = 'luxedge_vid';
 const SID_KEY = 'luxedge_sid';

@@ -17,7 +17,7 @@ import {
 import Modal from '../components/common/Modal';
 import Popover from '../components/common/Popover';
 import { useApp } from '../App';
-import { getFreshAccessToken, getSession } from '../services/supabase';
+import { getFreshAccessToken, getSession } from '../services/wordpressAdminAuth';
 import {
   setDbToken, listProducts, getProduct, createProduct, updateProduct, setProductStatus,
   archiveProduct, hardDeleteProduct, duplicateProduct, saveProductImages, saveProductVariants,

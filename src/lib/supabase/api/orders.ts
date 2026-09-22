@@ -1,7 +1,6 @@
 import { supabase } from '../client';
 import type { Order, OrderItem, OrderWithItems, Json } from '../database.types';
 import { getErrorMessage } from '@/lib/errors';
-import { cartApi, getCartSessionId } from './cart';
 
 export const TAX_RATE = 0.0825;
 export const FREE_SHIPPING_THRESHOLD = 50;
@@ -116,12 +115,13 @@ async function createOrderViaApi(data: CreateOrderData, userId?: string): Promis
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      ...data,
-      cartSessionId: getCartSessionId(),
-      userId,
-    }),
+    },      // No cart identifier travels with this request any more: the cart is the
+      // cookie the server already holds, so there is nothing here a caller could
+      // point at somebody else's basket.
+      body: JSON.stringify({
+        ...data,
+        userId,
+      }),
   });
 
   const body = (await response.json().catch(() => ({}))) as OrderWithItems & { error?: string };
@@ -154,97 +154,21 @@ async function getOrderByIdViaApi(orderId: string, userId?: string): Promise<Ord
 }
 
 export const ordersApi = {
-  // Create a new order from cart (server API — bypasses guest RLS on insert return)
+  /**
+   * Places an order.
+   *
+   * Client-side only. The previous server-side branch inserted an order and its
+   * items straight into Supabase, which meant an order could exist without a
+   * confirmed payment — the exact thing `/api/orders/create` refuses (it demands
+   * `paymentStatus: 'paid'` from the signed Stripe webhook). No server caller
+   * existed, so with the cart gone from Supabase the branch had nothing left to
+   * read and is deleted rather than re-pointed at a cart it cannot see.
+   */
   async createOrder(data: CreateOrderData, userId?: string): Promise<OrderWithItems> {
-    if (typeof window !== 'undefined') {
-      return createOrderViaApi(data, userId);
+    if (typeof window === 'undefined') {
+      throw new Error('Orders are placed from the checkout page, not from the server.');
     }
-
-    const cart = await cartApi.getCartWithItems(userId);
-
-    if (!cart || cart.cart_items.length === 0) {
-      throw new Error('Cart is empty');
-    }
-
-    const totals = calculateOrderTotals(
-      cart.cart_items.map((item) => ({
-        quantity: item.quantity,
-        unitPrice: item.unit_price,
-      })),
-      {
-        couponCode: data.couponCode,
-        shippingMethod: data.shippingMethod,
-        shippingCostOverride: data.shippingCostOverride,
-      }
-    );
-    const normalizedCoupon = data.couponCode?.trim().toUpperCase();
-
-    // Create order
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        user_id: userId || null,
-        email: data.email,
-        phone: data.phone || null,
-        status: 'pending',
-        payment_status: data.paymentStatus || 'pending',
-        subtotal: totals.subtotal,
-        shipping_cost: totals.shippingCost,
-        tax_amount: totals.taxAmount,
-        discount_amount: totals.discountAmount,
-        total: totals.total,
-        shipping_address: data.shippingAddress as unknown as Json,
-        billing_address: {
-          ...(data.billingAddress || data.shippingAddress),
-          shippingMethod: data.shippingMethod || 'standard',
-          shippoRateId: data.shippoRateId || null,
-          shippingCarrier: data.shippingCarrier || null,
-          shippingService: data.shippingService || null,
-        } as unknown as Json,
-        shippo_rate_id: data.shippoRateId || null,
-        shipping_carrier: data.shippingCarrier || null,
-        shipping_service: data.shippingService || null,
-        payment_method: data.paymentMethod || data.paymentProvider || null,
-        notes: [
-          data.notes,
-          normalizedCoupon && supportedCoupons[normalizedCoupon] ? `Coupon: ${normalizedCoupon}` : null,
-          data.paymentIntentId ? `Stripe payment intent: ${data.paymentIntentId}` : null,
-        ].filter(Boolean).join('\n') || null,
-      } as never)
-      .select()
-      .single();
-
-    if (orderError) {
-      throw new Error(getErrorMessage(orderError, 'Unable to create order.'));
-    }
-
-    // Create order items
-    const orderItems = cart.cart_items.map((item) => ({
-      order_id: (order as Order).id,
-      product_id: item.product_id,
-      product_name: item.product?.name || 'Unknown Product',
-      product_image: item.product?.thumbnail || null,
-      quantity: item.quantity,
-      grain_size: item.grain_size,
-      unit_price: item.unit_price,
-      total_price: item.unit_price * item.quantity,
-    }));
-
-    const { data: createdItems, error: itemsError } = await supabase
-      .from('order_items')
-      .insert(orderItems as never)
-      .select();
-
-    if (itemsError) throw itemsError;
-
-    if (data.clearCart !== false) {
-      await cartApi.clearCart(userId);
-    }
-
-    return {
-      ...(order as Order),
-      order_items: createdItems as OrderItem[],
-    };
+    return createOrderViaApi(data, userId);
   },
 
   // Get user's orders

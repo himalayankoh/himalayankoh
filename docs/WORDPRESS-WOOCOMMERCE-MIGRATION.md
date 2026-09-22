@@ -1,6 +1,10 @@
 # Supabase → WordPress + WooCommerce migration
 
-Status: **Phases 0–1 complete · Phase 3 product read paths ROUTED through the backend layer · real price/stock still BLOCKED on a staging fault**
+Status: **Phases 0–1 complete · Phase 3 product read paths ROUTED through the backend layer · cart and wishlist persistence MOVED off Supabase · real price/stock still BLOCKED on a staging fault**
+
+Latest: the storefront cart is WooCommerce's (`wc/store/v1`) and the wishlist is a
+WordPress table — see `STOREFRONT-WORDPRESS-CONTRACT.md`, which also re-measures
+exactly what the Store API product fatal still blocks now that the cart is off it.
 
 Target architecture:
 
@@ -62,10 +66,19 @@ a cache artefact.
 **Why this is a server-side problem, not a client bug:** WooCommerce is clearly
 loaded and healthy — `cart`, `categories`, `attributes`, `collection-data`,
 `reviews` and the whole `wc/v3`, `wc-analytics` and `wc-admin` namespaces all
-register and respond. Only the product **response** pipeline fatals, which
-points at a filter/hook on WooCommerce product data — typically a plugin
-returning the wrong type, most often an image, gallery or page-builder plugin
-mutating product payloads.
+register and respond. Only the product **response** pipeline fatals.
+
+**Narrowed further by `npm run diagnose:store-products`** (read-only, GET only,
+idempotent): the trigger is the per-product response builder, shown as a pair rather
+than argued — queries that match no products answer `200 []` while every query that
+matches at least one fails, including `_fields=id`. All 10 published products fail,
+across `simple` and `variable`, so it is not one bad record; `collection-data` runs
+the same query and price aggregation and answers 200, so it is not the query. That
+leaves **WooCommerce 7.7.0 on WordPress 6.7.2 (PHP 7.4.33)** as one candidate and **a
+filter on product data** as the other, and the error log is what separates them.
+The `Content-Type: text/html` in the body above is the rendering for a request that
+does not ask for JSON — the same failure returns the REST JSON envelope when `Accept:
+application/json`, so a probe's `Accept` header decides which shape gets reported.
 
 ### Resolving it (owner action — not done by this migration)
 
@@ -77,10 +90,16 @@ Two options, neither of which this repository can perform safely on its own:
    `/wc/v3/products` then returns price, regular/sale price, SKU and
    `stock_status`/`stock_quantity` immediately, and the adapter pivots to it
    automatically — it is already implemented and is tried first.
-2. **Fix the fatal at the source.** Enable `WP_DEBUG_LOG`, read
-   `wp-content/debug.log` right after hitting the route, and bisect the plugins
-   listed in §5. This restores the public Store API, which is the correct
-   long-term source for a headless storefront.
+2. **Fix the fatal at the source.** One request, then
+   `grep -n "PHP Fatal" wp-content/debug.log` (needs `WP_DEBUG` + `WP_DEBUG_LOG`) or
+   the host's PHP error log — that names the file and line, and it is the only step
+   that distinguishes WooCommerce's own code from a plugin filtering product data.
+   Then either **update WooCommerce** (a path under `plugins/woocommerce/`; take a
+   database backup) or **update the plugin the log names** — rather than bisecting the
+   44 active plugins, of which about 11 touch product output at all. This restores the
+   public Store API, which is the correct long-term source for a headless storefront.
+   `npm run diagnose:store-products` prints this order and re-checks the result;
+   re-run it after any change.
 
 Per the migration safety rules, **no fake or placeholder data has been
 introduced to work around this.** Price and stock are reported as `unknown`.
@@ -420,9 +439,9 @@ With no override the app runs the `supabase` default. What to expect on each:
 | 4 | WordPress content pages | ⏸ Not started — no code written. The speculative WordPress page/post mapper was removed as unused surface rather than left as untested groundwork. |
 | 5 | SEO from WordPress + Yoast | ⏸ Not started |
 | 6 | Images from WordPress media | ✅ Real staging images render. No `next.config.ts` change is actually needed: the storefront never uses `next/image` (40 plain `<img>` elements), so absolute staging URLs load directly. `images.remotePatterns` only matters if the app later migrates to `next/image`. |
-| 7 | Cart & checkout | ⏸ Not started — **existing Stripe/Shippo untouched** |
+| 7 | Cart & checkout | ⚠️ **Cart moved** to `wc/store/v1` and its Supabase table is unused (verified end to end); wishlist moved to the `hk-storefront/v1` plugin. Orders and Stripe/Shippo **untouched** — see `STOREFRONT-WORDPRESS-CONTRACT.md`. |
 | 8 | Customer accounts / CRM | ⏸ Not started — **production customers untouched** |
-| 9 | Supabase removal | ⏸ Not started — **Supabase fully intact, nothing deleted** |
+| 9 | Supabase removal | ⚠️ Started: the cart, wishlist, YouTube, admin auth and LeadOS/CRM modules are gone from the app. `orders`, `order_items`, `products`, `profiles`, `blog_posts` and the rest are still read and written. The `carts`/`cart_items`/`wishlists` tables are now unused but **kept** until the WordPress path has run in production — they hold the only copy of existing data. |
 | 10 | Demo-data separation | ⏸ Not started |
 | 11 | Cloudflare hosting | ⏸ Not started |
 | 12 | Environment configuration | ⚠️ Documented in §6, needs manual file edit |

@@ -27,8 +27,15 @@
  * runtime this app also ships to.
  */
 
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
+import { openToken, signToken } from './sessionToken';
+
+/**
+ * Re-exported from `./sessionToken`, which now owns the encoding. Existing callers
+ * read these from here (`adminAccounts`, `verifyAdminRequest`), and the bearer
+ * reader is deliberately the same function for both identities — a request does
+ * not become easier to read because the session behind it is a shopper's.
+ */
+export { readBearerToken, timingSafeEqual } from './sessionToken';
 
 /** Default admin session lifetime: one working day. */
 const DEFAULT_TTL_HOURS = 12;
@@ -55,36 +62,6 @@ export interface AdminIdentity {
   username: string;
   email: string;
   name: string;
-}
-
-// ---------------------------------------------------------------------------
-// Base64url (no Buffer / btoa padding differences between runtimes)
-// ---------------------------------------------------------------------------
-
-function base64UrlEncode(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function base64UrlDecode(value: string): Uint8Array {
-  const normalised = value.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = normalised + '='.repeat((4 - (normalised.length % 4)) % 4);
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-/**
- * Length-independent comparison — a signature check must not leak, through
- * timing, how many leading characters were right.
- */
-export function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,18 +98,6 @@ export function adminSessionTtlMs(): number {
 // Sign / verify
 // ---------------------------------------------------------------------------
 
-async function hmac(data: string, secret: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    textEncoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, textEncoder.encode(data));
-  return base64UrlEncode(new Uint8Array(signature));
-}
-
 /**
  * Mint a signed admin session. Throws when `ADMIN_SESSION_SECRET` is missing —
  * the caller (the login route) turns that into a 503 rather than issuing a
@@ -157,9 +122,8 @@ export async function createAdminSession(
     exp: issuedAt + adminSessionTtlMs(),
   };
 
-  const body = base64UrlEncode(textEncoder.encode(JSON.stringify(payload)));
-  const signature = await hmac(body, secret);
-  return { token: `${body}.${signature}`, payload };
+  const token = await signToken(payload, secret);
+  return { token, payload };
 }
 
 /**
@@ -171,42 +135,17 @@ export async function verifyAdminSessionToken(token: string): Promise<AdminSessi
   const secret = adminSessionSecret();
   if (!secret) return null;
 
-  const separator = token.indexOf('.');
-  if (separator <= 0 || separator === token.length - 1) return null;
+  // The frame and signature are `./sessionToken`'s business; the claims are this
+  // module's, because only this module knows what an admin session may claim.
+  const raw = await openToken(token, secret);
+  if (!raw) return null;
 
-  const body = token.slice(0, separator);
-  const signature = token.slice(separator + 1);
-
-  let expected: string;
-  try {
-    expected = await hmac(body, secret);
-  } catch {
-    return null;
-  }
-  if (!timingSafeEqual(expected, signature)) return null;
-
-  let payload: AdminSessionPayload;
-  try {
-    payload = JSON.parse(textDecoder.decode(base64UrlDecode(body))) as AdminSessionPayload;
-  } catch {
-    return null;
-  }
-
-  if (!payload || payload.role !== 'admin') return null;
+  const payload = raw as unknown as AdminSessionPayload;
+  if (payload.role !== 'admin') return null;
   if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp)) return null;
   if (payload.exp <= Date.now()) return null;
 
   return payload;
 }
 
-/**
- * The Bearer credential on a request, or null. Accepts the `Bearer` prefix
- * case-insensitively because the admin console and `fetch` callers do not agree
- * on capitalisation.
- */
-export function readBearerToken(request: Request): string | null {
-  const header = (request.headers.get('authorization') || '').trim();
-  const match = /^Bearer\s+(.+)$/i.exec(header);
-  const token = match?.[1]?.trim();
-  return token ? token : null;
-}
+

@@ -9,7 +9,7 @@
 import type { AIExtractedProduct } from './types';
 import type { ProductInput, CatalogImageInput, CatalogVariantInput } from '../catalog/repository';
 import type { CommerceReadiness } from '../catalog/commerceReadiness';
-import { getAccessToken } from '../../services/supabase';
+import { getAccessToken } from '../../services/wordpressAdminAuth';
 
 function looksLikeBotPage(raw: string): boolean {
   const lower = raw.toLowerCase();

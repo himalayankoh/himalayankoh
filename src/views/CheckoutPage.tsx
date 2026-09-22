@@ -14,7 +14,6 @@ import type { OrderWithItems } from '../lib/supabase/database.types';
 import { isSupabaseConfigured } from '../lib/supabase/client';
 import { publicEnv } from '../lib/env';
 import { useCart } from '../store/cartStore';
-import { getCartSessionId } from '../lib/supabase/api/cart';
 import { getStripeClientConfig, type StripePublicConfig } from '../lib/stripe/clientConfig';
 import { getShippoClientConfig } from '../lib/shippo/clientConfig';
 import {
@@ -179,8 +178,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
 
   useEffect(() => {
     const onCartWarning = (event: Event) => {
+      // The store's own words. It no longer claims the line was removed, because
+      // nothing removes it: WooCommerce refuses the line when the order is written,
+      // and the customer can still see and adjust it in their cart.
       const detail = (event as CustomEvent<Array<{ message: string }>>).detail || [];
-      if (detail.length > 0) setError(detail.map((item) => `${item.message} It has been removed from your cart.`).join(' '));
+      if (detail.length > 0) setError(detail.map((item) => item.message).join(' '));
     };
     window.addEventListener('cart-validation-warning', onCartWarning);
     return () => window.removeEventListener('cart-validation-warning', onCartWarning);
@@ -476,7 +478,6 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         shippingService: useLiveShippoRates ? selectedShippoRate?.serviceName : undefined,
         notes: form.notes || undefined,
         userId: user?.id,
-        cartSessionId: getCartSessionId(),
         items,
       });
 

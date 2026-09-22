@@ -5,26 +5,27 @@ import { SkeletonProductGrid } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
 import DashboardSidebar from '../components/account/DashboardSidebar';
 import { useAuthContext } from '../context/AuthContext';
-import { wishlistApi } from '../lib/supabase/api';
-import { isSupabaseConfigured } from '../lib/supabase/client';
-import type { WishlistWithProduct } from '../lib/supabase/api';
+import { wishlistApi } from '../lib/wishlist/client';
+import type { WishlistItem } from '../lib/wishlist/client';
 import { useCart } from '../store/cartStore';
 
 export default function WishlistPage() {
   const { user, profile } = useAuthContext();
   const { addItem } = useCart();
-  const [wishlist, setWishlist] = useState<WishlistWithProduct[]>([]);
+  const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchWishlist = async () => {
-      if (!user?.id || !isSupabaseConfigured()) {
+      // Wait for the session before asking: the wishlist route identifies the
+      // owner from it, so a signed-out request would only be told to sign in.
+      if (!user?.id) {
         setLoading(false);
         return;
       }
 
       try {
-        setWishlist(await wishlistApi.getWishlist(user.id));
+        setWishlist(await wishlistApi.getWishlist());
       } catch (err) {
         console.error('Failed to fetch wishlist:', err);
       } finally {
@@ -35,18 +36,20 @@ export default function WishlistPage() {
     fetchWishlist();
   }, [user?.id]);
 
-  const handleRemove = async (productId: string) => {
+  const handleRemove = async (productId: number) => {
     if (!user?.id) return;
-    await wishlistApi.removeFromWishlist(user.id, productId);
+    await wishlistApi.removeFromWishlist(productId);
     setWishlist((current) => current.filter((item) => item.product_id !== productId));
   };
 
-  const handleAddToCart = async (item: WishlistWithProduct) => {
+  const handleAddToCart = async (item: WishlistItem) => {
     await addItem({
-      id: item.product.id,
+      id: String(item.product.id),
       name: item.product.name,
-      price: item.product.price,
-      image: item.product.thumbnail || item.product.images?.[0] || '',
+      // Display only: the cart is WooCommerce's and prices the line itself, so a
+      // product whose price the catalog cannot report still adds cleanly.
+      price: item.product.priceMin ?? 0,
+      image: item.product.image || '/images/placeholder-product.svg',
     });
   };
 
@@ -103,7 +106,7 @@ export default function WishlistPage() {
                 {wishlist.map((item) => (
                   <div key={item.id} className="bg-white rounded-2xl shadow-md overflow-hidden">
                     <img
-                      src={item.product.thumbnail || item.product.images?.[0] || '/images/placeholder-product.svg'}
+                      src={item.product.image || '/images/placeholder-product.svg'}
                       alt={item.product.name}
                       className="w-full aspect-square object-cover bg-gray-100"
                     />
@@ -111,7 +114,11 @@ export default function WishlistPage() {
                       <h3 className="font-semibold text-charcoal text-sm leading-snug line-clamp-2 mb-2">
                         {item.product.name}
                       </h3>
-                      <p className="text-himalayan font-bold mb-5">${item.product.price.toFixed(2)}</p>
+                      {/* The catalog's own display string, so an unreported price
+                          reads as unknown rather than as $0.00. */}
+                      <p className="text-himalayan font-bold mb-5">
+                        {item.product.price || 'Price unavailable'}
+                      </p>
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleAddToCart(item)}

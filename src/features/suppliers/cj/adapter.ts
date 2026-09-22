@@ -12,7 +12,7 @@ import type {
   SupplierProductRecord, SupplierShippingEvidence, SupplierHealthResult,
   SupplierPointUsage,
 } from '../types';
-import { getAccessToken } from '../../../services/supabase';
+import { getAccessToken } from '../../../services/wordpressAdminAuth';
 import { cjSafeStatusFromHealth } from './health';
 import { CJ_POINTS_BUDGET_PER_RUN, CJ_POINTS_HARD_MAX } from './points';
 

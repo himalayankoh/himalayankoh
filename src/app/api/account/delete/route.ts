@@ -1,15 +1,38 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { verifyCustomerRequest } from '@/lib/auth/customerRequest';
+import { verifyWordPressCustomerCredentials } from '@/lib/auth/wordpressCustomerAuth';
 
 /**
- * Self-service account deletion. Requires the caller's session (Bearer token)
- * AND their current password, then deletes the auth user. FK cascades remove
- * the profile, addresses, carts, wishlists and reviews; orders are retained
- * and anonymized (orders.user_id is ON DELETE SET NULL) so fulfilment history
- * stays auditable.
+ * Self-service account deletion — authorised with the new identity, and honest
+ * about the one step that still has no implementation.
+ *
+ * ## What changed, and why the old body is gone
+ *
+ * This route used to authenticate a Supabase session and then delete the Supabase
+ * auth user. Customer sign-in no longer mints a Supabase session — it mints a
+ * **WooCommerce-keyed** one (`lib/auth/customerSession.ts`) — so that lookup could
+ * only ever answer 401 to a shopper who was, in fact, signed in. The Supabase
+ * deletion code was therefore unreachable, and it is deleted rather than left in
+ * place looking live.
+ *
+ * ## Why it still cannot delete
+ *
+ * Deleting a customer means deleting a **WordPress user** (`wp_delete_user` and its
+ * WooCommerce record). Only WordPress can do that: the app holds no database
+ * credential for it, and it must not. So the request is authorised here exactly as a
+ * real deletion will be — session, then the password re-checked in WordPress — and
+ * the last step is reported by name instead of simulated.
+ *
+ * `/hk-storefront/v1/customer/delete` is the seam. When the plugin grows it, this
+ * handler calls it, the plugin drops that owner's wishlist rows and cart binding in
+ * the same request (it owns both tables), and the response becomes `{ success: true }`.
  */
+
+const NOT_AVAILABLE_YET =
+  'Deleting an account is not available yet. It needs the WordPress customer-delete route ' +
+  '(hk-storefront/v1/customer/delete), which does not exist yet — ask support to close the account instead.';
+
 export async function POST(request: Request) {
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   const rl = checkRateLimit(`account-delete:${ip}`, { limit: 5, windowMs: 60_000 });
@@ -17,19 +40,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
   }
 
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
-  }
-  const token = authHeader.slice(7).trim();
-  if (!token) {
-    return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
-  }
-
-  const admin = getSupabaseAdmin();
-  const { data: sessionUser, error: userError } = await admin.auth.getUser(token);
-  if (userError || !sessionUser.user) {
-    return NextResponse.json({ error: 'Invalid or expired session.' }, { status: 401 });
+  const verified = await verifyCustomerRequest(request);
+  if (!verified.ok) {
+    return NextResponse.json({ error: verified.error }, { status: verified.status });
   }
 
   let body: unknown;
@@ -45,31 +58,18 @@ export async function POST(request: Request) {
   if (!email || !password) {
     return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
   }
-  if (sessionUser.user.email?.toLowerCase() !== email) {
+  if (email !== verified.customer.email) {
     return NextResponse.json({ error: 'Email does not match this account.' }, { status: 403 });
   }
 
-  // Re-verify the password with a plain anon client (the service-role client
-  // does not authenticate credentials the same way).
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
-    return NextResponse.json({ error: 'Account service is not configured.' }, { status: 503 });
+  // Re-check the password in WordPress — the session proves the caller is signed in,
+  // but a deletion should require the credential itself, not just the token. The
+  // check goes through the same plugin route sign-in uses, so "wrong password" and
+  // "the plugin is not active" stay distinguishable.
+  const check = await verifyWordPressCustomerCredentials(email, password);
+  if (!check.ok) {
+    return NextResponse.json({ error: check.error }, { status: check.status });
   }
 
-  const anon = createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { error: signInError } = await anon.auth.signInWithPassword({ email, password });
-  if (signInError) {
-    return NextResponse.json({ error: 'Current password is incorrect.' }, { status: 401 });
-  }
-
-  const { error: deleteError } = await admin.auth.admin.deleteUser(sessionUser.user.id);
-  if (deleteError) {
-    console.error('Account deletion failed:', deleteError);
-    return NextResponse.json({ error: 'Unable to delete account. Please contact support.' }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ error: NOT_AVAILABLE_YET }, { status: 501 });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getStripeClient, getStripeMode, stripeConfigError } from '@/lib/stripe/server/stripe';
 import { validateCreatePaymentIntentBody } from '@/lib/stripe/server/validation';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { readCartSession } from '@/lib/cart/cookies';
 import { createCheckoutSession, attachPaymentIntent } from '@/lib/stripe/server/checkoutSessions';
 import { cartFingerprint, loadCartForCheckout, resolveServerShippingCost, validateCheckoutCartItems } from '@/lib/orders/serverCreateOrder';
 import { calculateOrderTotals, type CreateOrderData } from '@/lib/supabase/api/orders';
@@ -36,7 +37,8 @@ export async function POST(request: Request) {
     const { data: userData, error: userError } = await supabase.auth.getUser(authHeader.slice(7).trim());
     if (userError || userData.user?.id !== verifiedUserId) return NextResponse.json({ error: 'Invalid checkout owner.' }, { status: 403 });
   }
-  const cart = await loadCartForCheckout(verifiedUserId, data.cartSessionId);
+  const cartSession = await readCartSession();
+  const cart = await loadCartForCheckout(cartSession.cartToken);
   if (!cart?.cart_items?.length) return NextResponse.json({ error: 'Cart is empty.' }, { status: 409 });
 
   try {
@@ -59,9 +61,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Order total is below the minimum charge amount.' }, { status: 400 });
     }
 
-    const checkoutData: CreateOrderData & { userId?: string | null; cartSessionId?: string | null } = {
+    const checkoutData: CreateOrderData & { userId?: string | null; cartToken?: string | null } = {
       ...data,
       userId: verifiedUserId,
+      // Recorded so the Stripe webhook can price and empty the *same* cart without
+      // a browser: it is the only place the webhook can learn which cart this
+      // payment was for.
+      cartToken: cartSession.cartToken,
       paymentProvider: 'stripe',
       paymentMethod: 'stripe_card',
       paymentStatus: 'pending',

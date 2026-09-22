@@ -1,17 +1,19 @@
 // ============================================================================
-// LUXEDGE V2 — AUTH STORE (Supabase-backed)
+// AUTH STORE (WordPress admin sessions)
 //
-// Single source of truth for the signed-in user. Sessions come from Supabase
-// Auth (src/services/supabase.ts): access/refresh tokens persist in
-// localStorage and survive refresh; expiry + refresh are handled there.
+// Single source of truth for the signed-in admin. The session comes from
+// `services/wordpressAdminAuth.ts` — the WordPress admin client, which is the only
+// place that token is read or written. The token persists in localStorage and
+// survives a refresh; expiry is handled there, and there is nothing to refresh
+// with, because only the server that signed it can mint another.
 //
 // SECURITY:
-//  - No plaintext passwords anywhere. Passwords are sent once to Supabase and
-//    never stored.
-//  - The role claim comes from the signed JWT (app_metadata.role) — never
-//    accepted from a user-supplied field.
-//  - When Supabase is not configured, sign-in fails with an honest message;
-//    there is NO demo admin password fallback.
+//  - No plaintext passwords anywhere. The application password is sent once, to
+//    the login route, and never stored.
+//  - The role is never invented here: `admin` comes from a token the server
+//    signed after checking the WordPress administrator role.
+//  - When admin sign-in is unavailable, it fails with an honest message; there is
+//    NO demo admin password fallback.
 // ============================================================================
 
 import { create } from 'zustand';
@@ -22,8 +24,8 @@ import {
   signOut as sbSignOut,
   getSession,
   onAuthStateChange,
-  isSupabaseConfigured,
-} from '../services/supabase';
+  isWordPressAdminAuthConfigured,
+} from '../services/wordpressAdminAuth';
 import { ensureCustomerProfile } from '../services/customer';
 
 /** Fire-and-forget: keep a customers row in sync with the auth user. */
@@ -122,10 +124,10 @@ export const useAuthStore = create<AuthStore>()((set) => ({
   },
 
   signIn: async (email, password) => {
-    if (!isSupabaseConfigured()) {
+    if (!isWordPressAdminAuthConfigured()) {
       return {
         success: false,
-        message: 'Sign-in is not configured yet (add VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY). Guest checkout still works.',
+        message: 'Admin sign-in is not available in this environment.',
         user: null,
       };
     }
@@ -141,10 +143,10 @@ export const useAuthStore = create<AuthStore>()((set) => ({
   },
 
   signUp: async (name, email, password) => {
-    if (!isSupabaseConfigured()) {
+    if (!isWordPressAdminAuthConfigured()) {
       return {
         success: false,
-        message: 'Account creation is not configured yet (add VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY). Guest checkout still works.',
+        message: 'Admin sign-in is not available in this environment.',
         user: null,
       };
     }

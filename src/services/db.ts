@@ -13,7 +13,7 @@
 // by design (RLS protects the tables); the service-role key stays server-side.
 // ============================================================================
 
-import { getSession } from './supabase';
+import { getSession } from './wordpressAdminAuth';
 
 export type DbMode = 'local' | 'supabase' | 'unconfigured';
 

@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp, Modal } from '../App';
-import { getFreshAccessToken } from '../services/supabase';
+import { getFreshAccessToken } from '../services/wordpressAdminAuth';
 import { listProducts } from '../features/catalog/repository';
 import type { CatalogProduct } from '../features/catalog/types';
 import type { EvidenceRecord, EvidenceStatus } from '../lib/hermes/types';

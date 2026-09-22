@@ -18,7 +18,7 @@ import {
   ArrowCounterClockwise, MagnifyingGlass, FloppyDisk, CalendarPlus, CheckCircle, Sparkle, Warning,
 } from '@phosphor-icons/react';
 import { useApp } from '../App';
-import { getFreshAccessToken } from '../services/supabase';
+import { getFreshAccessToken } from '../services/wordpressAdminAuth';
 import { generateSeoJson } from '../features/ai/seo';
 import { isBlogPublic } from '../content/reviewHolds';
 import {

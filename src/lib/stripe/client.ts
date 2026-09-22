@@ -25,7 +25,7 @@ export interface CreatePaymentIntentPayload {
   shippingService?: string;
   notes?: string;
   userId?: string;
-  cartSessionId?: string;
+  /** Display only — the server prices the order from the cart, not from here. */
   items: Pick<CartItem, 'id' | 'name' | 'quantity' | 'price' | 'grainSize'>[];
 }
 
@@ -51,7 +51,6 @@ export async function createStripePaymentIntent(
       shippingService: payload.shippingService,
       notes: payload.notes,
       userId: payload.userId,
-      cartSessionId: payload.cartSessionId,
       items: payload.items.map((item) => ({
         id: item.id,
         name: item.name,

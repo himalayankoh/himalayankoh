@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingCart, Heart, Check, Minus, Plus, ChevronRight } from 'lucide-react';
 import type { Product } from '../data/products';
+import { findVariationOption } from '../lib/woo/variationOptions';
 import { formatPriceDisplay, isPriceKnown } from '../lib/products/price';
 import { getProductDisplayName } from '../lib/products/productSeo';
 import { useCart } from '../store/cartStore';
 import { useAuthContext } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { wishlistApi } from '../lib/supabase/api';
-import { isSupabaseConfigured } from '../lib/supabase/client';
+import { wishlistApi } from '../lib/wishlist/client';
 import ProductImageGallery from './ProductImageGallery';
 import {
   buildProductsCategoryPath,
@@ -29,7 +29,11 @@ export default function ProductDetailView({
   onClose,
 }: ProductDetailViewProps) {
   const [qty, setQty] = useState(1);
-  const [selectedGrain, setSelectedGrain] = useState(product.grainSizes?.[0] || '');
+  // The store's real variations when the product is variable, `grainSizes`
+  // otherwise — one list either way, so the selector cannot show an option the
+  // cart cannot name.
+  const grainChoices = product.variations?.options.map((option) => option.label) ?? product.grainSizes ?? [];
+  const [selectedGrain, setSelectedGrain] = useState(grainChoices[0] || '');
   const [addedToCart, setAddedToCart] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
   const { addItem } = useCart();
@@ -45,9 +49,9 @@ export default function ProductDetailView({
 
   useEffect(() => {
     setQty(1);
-    setSelectedGrain(product.grainSizes?.[0] || '');
+    setSelectedGrain(product.variations?.options[0]?.label ?? product.grainSizes?.[0] ?? '');
     setAddedToCart(false);
-  }, [product.id, product.grainSizes]);
+  }, [product.id, product.grainSizes, product.variations]);
 
   // No reported price means the product cannot be sold yet — the cart line
   // needs a real unit price and 0 would allow a free checkout.
@@ -73,6 +77,7 @@ export default function ProductDetailView({
       return;
     }
     try {
+      const option = findVariationOption(product.variations, selectedGrain);
       await addItem(
         {
           id: String(product.id),
@@ -80,6 +85,7 @@ export default function ProductDetailView({
           price: product.priceMin as number,
           image: product.image,
           grainSize: selectedGrain || undefined,
+          ...(option ? { variation: { attribute: option.attribute, value: option.value } } : {}),
         },
         qty
       );
@@ -91,13 +97,21 @@ export default function ProductDetailView({
   };
 
   const handleWishlist = async () => {
-    if (!user?.id || !isSupabaseConfigured()) {
+    // Signed out, there is nothing to save to — the flip is local and the heart
+    // goes back on reload. Unchanged from before; the wishlist has always been an
+    // account feature.
+    if (!user?.id) {
       setWishlisted(!wishlisted);
       return;
     }
 
-    const nextState = await wishlistApi.toggleWishlist(user.id, String(product.id));
-    setWishlisted(nextState);
+    try {
+      // No user id is passed: the route takes the owner from the session, so this
+      // component cannot name an account other than the signed-in one.
+      setWishlisted(await wishlistApi.toggleWishlist(String(product.id)));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Your wishlist could not be updated.');
+    }
   };
 
   const details = (
@@ -226,11 +240,11 @@ export default function ProductDetailView({
             ))}
           </div>
 
-          {product.grainSizes && product.grainSizes.length > 0 && (
+          {grainChoices.length > 0 && (
             <div className="mb-5">
               <label className="block text-sm font-semibold text-charcoal mb-2">Grain Size</label>
               <div className="flex flex-wrap gap-2">
-                {product.grainSizes.map((g) => (
+                {grainChoices.map((g) => (
                   <button
                     key={g}
                     type="button"

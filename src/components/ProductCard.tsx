@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShoppingCart, Heart, Eye } from 'lucide-react';
 import { Product } from '../data/products';
+import { findVariationOption } from '../lib/woo/variationOptions';
 import { formatPriceDisplay, isPriceKnown } from '../lib/products/price';
 import { useCart } from '../store/cartStore';
 import { useAuthContext } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { wishlistApi } from '../lib/supabase/api';
-import { isSupabaseConfigured } from '../lib/supabase/client';
+import { wishlistApi } from '../lib/wishlist/client';
 
 interface Props {
   product: Product;
@@ -20,7 +20,11 @@ interface Props {
 
 export default function ProductCard({ product, index, onQuickView, shopHighlight }: Props) {
   const [qty, setQty] = useState(1);
-  const [selectedGrain, setSelectedGrain] = useState(product.grainSizes?.[0] || '');
+  // The choice list comes from the store's real variations when the product is
+  // variable; `grainSizes` is the same list's labels, and stays the fallback for a
+  // hand-written catalog entry.
+  const grainChoices = product.variations?.options.map((option) => option.label) ?? product.grainSizes ?? [];
+  const [selectedGrain, setSelectedGrain] = useState(grainChoices[0] || '');
   const [wishlisted, setWishlisted] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
   const { addItem } = useCart();
@@ -38,12 +42,16 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
       return;
     }
     try {
+      // The chosen option, addressed the way the cart needs it. A product with a
+      // choice but no matching variation sends none rather than an invented pair.
+      const option = findVariationOption(product.variations, selectedGrain);
       await addItem({
         id: String(product.id),
         name: product.name,
         price: product.priceMin as number,
         image: product.image,
         grainSize: selectedGrain || undefined,
+        ...(option ? { variation: { attribute: option.attribute, value: option.value } } : {}),
       }, qty);
       setAddedToCart(true);
       setTimeout(() => setAddedToCart(false), 2000);
@@ -53,13 +61,21 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
   };
 
   const handleWishlist = async () => {
-    if (!user?.id || !isSupabaseConfigured()) {
+    // Signed out, there is nothing to save to — the flip is local and the heart
+    // goes back on reload. Unchanged from before; the wishlist has always been an
+    // account feature.
+    if (!user?.id) {
       setWishlisted(!wishlisted);
       return;
     }
 
-    const nextState = await wishlistApi.toggleWishlist(user.id, String(product.id));
-    setWishlisted(nextState);
+    try {
+      // No user id is passed: the route takes the owner from the session, so this
+      // component cannot name an account other than the signed-in one.
+      setWishlisted(await wishlistApi.toggleWishlist(String(product.id)));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Your wishlist could not be updated.');
+    }
   };
 
   return (
@@ -129,13 +145,13 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
         </p>
 
         {/* Grain Size Selector */}
-        {product.grainSizes && product.grainSizes.length > 0 && (
+        {grainChoices.length > 0 && (
           <select
             value={selectedGrain}
             onChange={(e) => setSelectedGrain(e.target.value)}
             className="w-full mb-2.5 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
           >
-            {product.grainSizes.map((g) => (
+            {grainChoices.map((g) => (
               <option key={g} value={g}>{g}</option>
             ))}
           </select>

@@ -11,7 +11,7 @@
 // The flagship Pet Gift Drop stays bridged to the legacy config + page.
 // ============================================================================
 import { useEffect, useState } from 'react';
-import { getAccessToken } from '../services/supabase';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 
 type Status = 'draft' | 'scheduled' | 'live' | 'paused' | 'ended' | 'archived';
 

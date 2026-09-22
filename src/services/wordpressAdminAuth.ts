@@ -1,11 +1,22 @@
 /**
  * LUXEDGE — WORDPRESS ADMIN AUTH CLIENT (browser)
  *
- * Replaces the Supabase auth client that used to live in `./supabase`. The admin
- * console signs in with a WordPress username + application password; the server
- * verifies that credential against the WordPress REST API and returns a signed
- * session token (`POST /api/auth/admin/login`, see `lib/auth/adminSession.ts`).
- * That token is what this module persists and hands to every admin write.
+ * Replaces the Supabase auth client that used to live in `./supabase`, which no
+ * longer exists. The admin console signs in with a WordPress username +
+ * application password; the server verifies that credential against the
+ * WordPress REST API and returns a signed session token
+ * (`POST /api/auth/admin/login`, see `lib/auth/adminSession.ts`). That token is
+ * what this module persists and hands to every admin write.
+ *
+ * This is the admin client's **single home**. It used to be reached through
+ * `services/supabase.ts`, which re-exported every name below while also holding
+ * the Supabase config resolver — one file answering for two backends, and two
+ * import paths for one module. Admin code imports from here directly now, and the
+ * Supabase configuration belongs to the customer path (`lib/supabase/config.ts`).
+ *
+ * It is a *client*: the server-side credential check is a different concern and
+ * lives in `lib/auth/wordpressAdminAuth.ts`. This file is never imported by the
+ * server, and touches no secret.
  *
  * SECURITY:
  *  - No password is ever stored. It is sent once, over HTTPS, to the login route
@@ -169,15 +180,6 @@ export function isWordPressAdminAuthConfigured(): boolean {
   return typeof window !== 'undefined';
 }
 
-/**
- * @deprecated Supabase is gone from admin auth. Kept as an alias so the legacy
- * zustand store and older call sites keep compiling; use
- * `isWordPressAdminAuthConfigured`.
- */
-export function isSupabaseConfigured(): boolean {
-  return isWordPressAdminAuthConfigured();
-}
-
 interface AdminLoginResponse {
   token?: string;
   expiresAt?: number;
@@ -263,10 +265,34 @@ export async function signUp(
   );
 }
 
-/** Sign out: discard the local session. The token itself expires on its own. */
-export async function signOut(): Promise<void> {
+/**
+ * End the admin session: remove the stored token and tell every listener.
+ *
+ * This is the only function that removes the admin session, and it is
+ * deliberately synchronous. A sign-out that clears storage *after* an await — or
+ * after the caller has already navigated — leaves the token on disk, and the
+ * next page load reads it back and restores the session. That is precisely how a
+ * signed-out admin ended up back in the console: the console's sign-out handler
+ * cleared the *Supabase* keys, which this token does not live under, and `/login`
+ * then found a live session and redirected to `/admin`.
+ *
+ * Storage is one concern, but a browser can hold two credentials (see
+ * `lib/auth/browserSignOut.ts`, which ends both). This function owns the admin
+ * one and nothing else.
+ */
+export function endSession(): void {
   clearStoredSession();
   emit('SIGNED_OUT');
+}
+
+/**
+ * Sign out: discard the local session. The token itself expires on its own.
+ *
+ * Async because the historical Supabase-shaped API was; the work is synchronous
+ * (see `endSession`), so `await signOut()` can never be observed half-done.
+ */
+export async function signOut(): Promise<void> {
+  endSession();
 }
 
 /**

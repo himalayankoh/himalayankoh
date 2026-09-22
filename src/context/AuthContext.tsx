@@ -8,9 +8,15 @@ import type { Profile } from '../lib/supabase/database.types';
 import {
   readStoredSession as readStoredAdminSession,
   signInWithPassword as signInWithWordPressAdmin,
-  signOut as signOutOfWordPressAdmin,
   type SbUser as WordPressAdmin,
 } from '../services/wordpressAdminAuth';
+import { signOutOfBrowser } from '../lib/auth/browserSignOut';
+import {
+  createCustomerAccount,
+  getCustomerSession,
+  signInWithCustomerPassword,
+  type CustomerUser,
+} from '../lib/auth/customerClient';
 
 interface AuthContextType {
   user: User | null;
@@ -79,6 +85,64 @@ function roleFromUser(user: User | null): 'admin' | 'customer' | null {
  */
 function isWordPressAdminUser(user: User | null): boolean {
   return (user?.app_metadata as { provider?: string } | undefined)?.provider === 'wordpress';
+}
+
+/**
+ * True for an identity that came from a signed token rather than a Supabase row.
+ *
+ * Neither an admin (WordPress) nor a customer (WooCommerce) has a Supabase profile
+ * to fetch — asking for one wastes a request and then falls back to the same session
+ * metadata it would have used anyway.
+ */
+function hasTokenIdentity(user: User | null): boolean {
+  const provider = (user?.app_metadata as { provider?: string } | undefined)?.provider;
+  return provider === 'wordpress' || provider === 'woocommerce';
+}
+
+function customerUserToSessionUser(customer: CustomerUser): User {
+  const now = new Date().toISOString();
+  return {
+    // The WooCommerce customer id, as a string — the account's real identity, and
+    // the one the wishlist and the cart binding are keyed by.
+    id: String(customer.id),
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: customer.email || undefined,
+    email_confirmed_at: now,
+    phone: '',
+    confirmed_at: now,
+    last_sign_in_at: now,
+    app_metadata: { provider: 'woocommerce', providers: ['woocommerce'], role: 'customer' },
+    user_metadata: { role: 'customer', full_name: customer.name, username: customer.username },
+    identities: [],
+    created_at: now,
+    updated_at: now,
+  } as unknown as User;
+}
+
+function customerSessionForUser(customer: CustomerUser, token: string, expiresAt: number): Session {
+  return {
+    access_token: token,
+    refresh_token: '',
+    token_type: 'bearer',
+    expires_in: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)),
+    expires_at: Math.floor(expiresAt / 1000),
+    user: customerUserToSessionUser(customer),
+  } as unknown as Session;
+}
+
+function customerProfileFrom(customer: CustomerUser): Profile {
+  const now = new Date().toISOString();
+  return {
+    id: String(customer.id),
+    email: customer.email || '',
+    full_name: customer.name || null,
+    phone: null,
+    avatar_url: null,
+    role: 'customer',
+    created_at: now,
+    updated_at: now,
+  };
 }
 
 function adminUserToSessionUser(admin: WordPressAdmin): User {
@@ -248,6 +312,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    // A customer session stands on its own in exactly the same way: WordPress
+    // verified the shopper's password, the app signed the token, and there is no
+    // Supabase session involved.
+    const storedCustomer = getCustomerSession();
+    if (storedCustomer) {
+      setUser(customerUserToSessionUser(storedCustomer.user));
+      setSession(
+        customerSessionForUser(
+          storedCustomer.user,
+          storedCustomer.accessToken,
+          storedCustomer.expiresAt
+        )
+      );
+      setProfile(customerProfileFrom(storedCustomer.user));
+      setProfileLoading(false);
+      setProfileError(null);
+      setLoading(false);
+      return;
+    }
+
     if (!isSupabaseConfigured()) {
       setLoading(false);
       return;
@@ -362,11 +446,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [loadProfileForSession]);
 
+  /**
+   * Register a customer account.
+   *
+   * Moved off Supabase with sign-in: a shopper who creates an account gets a
+   * WooCommerce customer, and is signed in with the same session shape a sign-in
+   * produces, so nothing downstream has two cases to handle.
+   */
   const signUp = useCallback(async (data: SignUpData) => {
     setLoading(true);
     setError(null);
     try {
-      await authApi.signUp(data);
+      // Creating the account *is* creating the WooCommerce customer: WordPress makes
+      // the WordPress user, WooCommerce records the customer, and this returns a
+      // session — so there is no "now sign in" second step, and no second identity.
+      const session = await createCustomerAccount({
+        email: data.email.trim(),
+        password: data.password,
+        name: (data.fullName || '').trim(),
+      });
+      profileRequestId.current += 1;
+      setUser(customerUserToSessionUser(session.user));
+      setSession(
+        customerSessionForUser(session.user, session.accessToken, session.expiresAt)
+      );
+      setProfile(customerProfileFrom(session.user));
+      setProfileError(null);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Sign up failed';
       setError(errorMsg);
@@ -381,9 +486,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       // WordPress admins first. An admin signs in with their WordPress username
-      // + application password, which Supabase knows nothing about; when that
-      // route refuses the credential we fall through to the customer path, so a
-      // shopper's email + password still works exactly as before.
+      // + application password, which the customer door knows nothing about.
       try {
         const adminSession = await signInWithWordPressAdmin(data.email, data.password);
         profileRequestId.current += 1;
@@ -404,19 +507,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
       }
 
-      const result = await authApi.signIn(data);
-      setSession(result.session);
-      setUser(result.user);
-      // A successful credential check is enough to navigate to the protected
-      // account area. Fetch the editable profile in the background so a slow
-      // profile request never makes sign-in appear to hang.
+      // Then the customer door: their WordPress/WooCommerce account, verified by
+      // WordPress and answered with a WooCommerce customer id. Supabase is no
+      // longer consulted — customer accounts have moved, so a Supabase failure here
+      // would only replace an honest "wrong password" with a configuration error.
+      const customerSession = await signInWithCustomerPassword(data.email, data.password);
+      profileRequestId.current += 1;
+      setUser(customerUserToSessionUser(customerSession.user));
+      setSession(
+        customerSessionForUser(
+          customerSession.user,
+          customerSession.accessToken,
+          customerSession.expiresAt
+        )
+      );
+      setProfile(customerProfileFrom(customerSession.user));
+      setProfileError(null);
       setLoading(false);
-
-      if (result.user) {
-        void fetchProfile(result.user.id, result.user);
-      } else {
-        setProfile(null);
-      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Sign in failed';
       setError(errorMsg);
@@ -438,11 +545,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfileLoading(false);
     setProfileError(null);
     setSession(null);
+    // The stored credentials go next, synchronously and through their one owner
+    // (`lib/auth/browserSignOut`): the admin token and the Supabase session are
+    // both removed here, *before* the await below, so a slow or hanging revoke
+    // cannot leave a session on disk for the next page load to restore.
+    signOutOfBrowser();
     try {
       await authApi.signOut();
-      // The WordPress admin session is a separate credential with its own storage
-      // key; clear it too, so signing out cannot leave an admin token behind.
-      await signOutOfWordPressAdmin();
     } catch (err) {
       // authApi.signOut already swallows benign errors; log anything else but
       // never re-throw — the user is signed out locally regardless.
@@ -473,9 +582,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // re-trigger the full-page auth spinner on every route it's shared with.
   const refreshProfile = useCallback(async () => {
     if (user) {
-      // A WordPress admin has no Supabase profile row: fetching one would fail
-      // and then fall back to the same session metadata we already hold.
-      if (!isWordPressAdminUser(user)) await fetchProfile(user.id, user);
+      // A token identity — admin or customer — has no Supabase profile row: fetching
+      // one would fail and then fall back to the same session metadata we hold.
+      if (!hasTokenIdentity(user)) await fetchProfile(user.id, user);
     }
   }, [user, fetchProfile]);
 

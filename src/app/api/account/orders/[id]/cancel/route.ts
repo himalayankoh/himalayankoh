@@ -5,7 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { verifyCustomerRequest } from '@/lib/auth/verifyCustomerRequest';
+import { verifyCustomerRequest } from '@/lib/auth/customerRequest';
 import {
   WooOrderError,
   appStatusFromWoo,
@@ -29,7 +29,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   try {
-    const existing = await getWooOrderForEmail(orderId, auth.user.email);
+    const existing = await getWooOrderForEmail(orderId, auth.customer.email);
     if (!existing) {
       return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
     }

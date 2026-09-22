@@ -11,7 +11,7 @@ import {
   ArrowLeft, Plug, CheckCircle, XCircle, ArrowClockwise,
   ShieldCheck, CreditCard, Globe, Key,
 } from '@phosphor-icons/react';
-import { getAccessToken } from '../services/supabase';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 
 /* ── Types ── */
 type ProviderId = 'none' | 'stripe' | 'square' | 'paypal' | 'braintree' | 'payoneer' | 'authorize_net';
