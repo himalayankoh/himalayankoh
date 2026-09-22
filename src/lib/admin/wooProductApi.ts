@@ -10,7 +10,7 @@
  * a write that cannot reach it fails loudly.
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { getAccessToken } from '@/services/wordpressAdminAuth';
 import type {
   AdminProductRecord,
   AdminVariationPatch,
@@ -21,8 +21,7 @@ import type {
 const ENDPOINT = '/api/admin/products';
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = getAccessToken();
   if (!token) throw new Error('Your admin session has expired. Sign in again to save products.');
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }

@@ -12,7 +12,7 @@
  * decisions the owner has to see rather than have smoothed over.
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { getAccessToken } from '@/services/wordpressAdminAuth';
 
 /** A WooCommerce product category as the console edits it. */
 export interface AdminCategory {
@@ -35,8 +35,7 @@ export interface AdminCategoryInput {
 const ENDPOINT = '/api/admin/categories';
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = getAccessToken();
   if (!token) throw new Error('Your admin session has expired. Sign in again to edit categories.');
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }

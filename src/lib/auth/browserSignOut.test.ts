@@ -3,13 +3,12 @@
  *
  * These assertions are about *behaviour* — which keys survive a sign-out — because
  * the defect they cover was a behaviour, not a line of code: the console cleared
- * the Supabase keys and left the admin token in place, so `/login` restored the
- * session and carried the admin back into `/admin`.
+ * one store and left the admin token in place, so `/login` restored the session and
+ * carried the admin back into `/admin`.
  *
  * The environment is node, so the browser is built by hand below. The storages are
  * deliberately plain objects whose enumerable keys *are* the stored entries,
- * because that is what real localStorage looks like to `Object.keys` — and
- * `clearSupabaseSession` enumerates them.
+ * because that is what real localStorage looks like to `Object.keys`.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -21,6 +20,11 @@ import {
   readStoredSession,
   type SbSession,
 } from '../../services/wordpressAdminAuth';
+import {
+  CUSTOMER_SESSION_STORAGE_KEY,
+  getCustomerSession,
+  type CustomerSession,
+} from './customerClient';
 import { signOutOfBrowser } from './browserSignOut';
 
 const ADMIN_SESSION: SbSession = {
@@ -30,6 +34,13 @@ const ADMIN_SESSION: SbSession = {
   user: { id: 'admin@himalayankoh.com', email: 'admin@himalayankoh.com', name: 'Admin', role: 'admin' },
 };
 
+const CUSTOMER_SESSION: CustomerSession = {
+  accessToken: 'signed.customer.token',
+  expiresAt: Date.now() + 3_600_000,
+  user: { id: 42, email: 'ada@example.com', name: 'Ada Lovelace', role: 'customer' },
+};
+
+/** A legacy Supabase key: another store's data, which this module must not touch. */
 const SUPABASE_KEY = 'sb-timpjroyxoafhkwpxiuk-auth-token';
 
 type StorageStub = Record<string, unknown> & { getItem: (key: string) => string | null };
@@ -54,11 +65,10 @@ beforeEach(() => {
   cookieWrites = [];
   localStorageStub = storage({
     [SESSION_STORAGE_KEY]: JSON.stringify(ADMIN_SESSION),
-    [SUPABASE_KEY]: 'customer.session.token',
+    [CUSTOMER_SESSION_STORAGE_KEY]: JSON.stringify(CUSTOMER_SESSION),
+    [SUPABASE_KEY]: 'legacy.session.token',
     'unrelated-preference': 'keep me',
   });
-  // Supabase splits a large session across chunked keys, which an
-  // `endsWith('-auth-token')` filter misses.
   sessionStorageStub = storage({ [`${SUPABASE_KEY}.0`]: 'chunked' });
 
   vi.stubGlobal('window', {
@@ -68,7 +78,7 @@ beforeEach(() => {
   });
   vi.stubGlobal('document', {
     get cookie() {
-      return `sb-other-auth-token=abc; ${SUPABASE_KEY}=xyz; theme=dark`;
+      return `theme=dark`;
     },
     set cookie(value: string) {
       cookieWrites.push(value);
@@ -86,6 +96,7 @@ describe('signOutOfBrowser', () => {
     onAuthStateChange((event) => events.push(event));
 
     expect(readStoredSession()).not.toBeNull();
+    expect(getCustomerSession()).not.toBeNull();
 
     signOutOfBrowser();
 
@@ -95,28 +106,32 @@ describe('signOutOfBrowser', () => {
     expect(readStoredSession()).toBeNull();
     expect(events).toContain('SIGNED_OUT');
 
-    // …and the customer side, from both storages.
-    expect(localStorageStub.getItem(SUPABASE_KEY)).toBeNull();
-    expect(sessionStorageStub.getItem(`${SUPABASE_KEY}.0`)).toBeNull();
+    // …and the customer session, so a leftover customer identity cannot survive
+    // either.
+    expect(localStorageStub.getItem(CUSTOMER_SESSION_STORAGE_KEY)).toBeNull();
+    expect(getCustomerSession()).toBeNull();
   });
 
-  it('expires only the auth cookies, and leaves unrelated storage alone', () => {
+  it('touches only the two stores it owns, and no other storage', () => {
     signOutOfBrowser();
 
     expect(localStorageStub.getItem('unrelated-preference')).toBe('keep me');
-    expect(cookieWrites.length).toBeGreaterThan(0);
-    expect(cookieWrites.every((write) => write.startsWith('sb-'))).toBe(true);
-    expect(cookieWrites.some((write) => write.includes('expires=Thu, 01 Jan 1970'))).toBe(true);
+    // A Supabase session is not this app's to clear any more: the store belonged to
+    // a client that is gone, and wiping keys this module does not own is how a
+    // sign-out breaks something else.
+    expect(localStorageStub.getItem(SUPABASE_KEY)).toBe('legacy.session.token');
+    expect(sessionStorageStub.getItem(`${SUPABASE_KEY}.0`)).toBe('chunked');
+    expect(cookieWrites).toEqual([]);
   });
 });
 
 /**
  * One owner, enforced.
  *
- * `clearSupabaseSession` is not wrong — it is just half a sign-out, and the half
- * that is easy to reach for. Restricting its call sites to the owner is what stops
- * a new screen (or a well-meaning revert) from clearing one store and leaving the
- * other, which is the whole defect.
+ * Clearing one store and leaving the other is the whole defect, and the easy
+ * mistake — a new screen reaching for whichever `clear…` it finds first. Exactly
+ * one module is allowed to clear each store, and nothing but that module may reach
+ * past it.
  */
 describe('sign-out ownership', () => {
   const SRC = fileURLToPath(new URL('../..', import.meta.url));
@@ -127,11 +142,26 @@ describe('sign-out ownership', () => {
       .filter((entry) => /\.tsx?$/.test(entry) && !entry.endsWith('.test.ts') && !entry.endsWith('.test.tsx'));
   }
 
-  it('has exactly one place that clears the customer credentials', () => {
+  it('has exactly one place that ends every credential together', () => {
+    // The *call*, not the definition or the import: `customerClient` owns the
+    // store, and this module owns ending it.
     const callers = sourceFiles().filter((entry) =>
-      readFileSync(`${SRC}/${entry}`, 'utf8').includes('clearSupabaseSession()')
+      readFileSync(`${SRC}/${entry}`, 'utf8').includes('clearStoredCustomerSession();')
     );
+
     expect(callers).toEqual(['lib/auth/browserSignOut.ts']);
+  });
+
+  it('clears no Supabase session anywhere', () => {
+    // Prose may still explain what this replaced. A *call* may not exist: the
+    // Supabase store is not this app's to clear, and reaching for it is how a
+    // sign-out ends up clearing the wrong one.
+    const callers = sourceFiles().filter((entry) => {
+      if (entry.startsWith('lib/supabase/')) return false;
+      return readFileSync(`${SRC}/${entry}`, 'utf8').includes('clearSupabaseSession()');
+    });
+
+    expect(callers).toEqual([]);
   });
 
   it('keeps the owner synchronous, so it finishes before any navigation', () => {

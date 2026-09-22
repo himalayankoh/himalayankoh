@@ -34,7 +34,7 @@ import {
   User,
   House,
 } from '@phosphor-icons/react';
-import { supabase } from '@/lib/supabase/client';
+import { getAccessToken } from '@/services/wordpressAdminAuth';
 import type {
   ScoredLead,
   LeadOSProject,
@@ -318,8 +318,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [emailModalNotice, setEmailModalNotice] = useState<string | null>(null);
 
   const getAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
+    const token = getAccessToken();
     const headers: Record<string, string> = {};
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;

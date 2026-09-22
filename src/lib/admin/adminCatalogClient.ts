@@ -19,7 +19,7 @@
  * order to archive it.
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { getAccessToken } from '@/services/wordpressAdminAuth';
 import type {
   AdminCatalogPage,
   AdminCatalogQuery,
@@ -29,8 +29,7 @@ import type {
 const ENDPOINT = '/api/admin/catalog';
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = getAccessToken();
   if (!token) throw new Error('Your admin session has expired. Sign in again to read the catalog.');
   return { Authorization: `Bearer ${token}` };
 }

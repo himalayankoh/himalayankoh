@@ -13,7 +13,7 @@ import CategoryShopPanel from '../components/category/CategoryShopPanel';
 import { productMatchesCategoryFilter } from '../lib/categoryContent';
 import { getCatalogProducts, invalidateCatalogReads } from '../lib/backend/catalogClient';
 import { isSupabaseDataSource } from '../lib/backend/dataSource';
-import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
+
 
 /**
  * The bundled demo catalog is a Supabase-source-only safety net: it exists so a
@@ -48,9 +48,10 @@ export default function ProductsPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   const [products, setProducts] = useState<Product[]>(initialProducts ?? fallbackProducts);
-  const [loading, setLoading] = useState(
-    initialProducts ? false : USES_SUPABASE_SOURCE ? isSupabaseConfigured() : true
-  );
+  // A server-rendered list is already on screen; anything else is loading until
+  // the catalog read answers. There is no credential to consult: the read goes
+  // through the backend on every source.
+  const [loading, setLoading] = useState(!initialProducts);
   const prevCategoryKey = useRef<string | null>(null);
   const hasLoadedOnce = useRef(Boolean(initialProducts));
   const fetchSeq = useRef(0);
@@ -79,13 +80,6 @@ export default function ProductsPage({
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const fetchProducts = async () => {
-      if (USES_SUPABASE_SOURCE && !isSupabaseConfigured()) {
-        setProducts(fallbackProducts);
-        setLoading(false);
-        hasLoadedOnce.current = true;
-        return;
-      }
-
       // Guard against out-of-order responses: only the latest request may
       // commit state. Prevents an older/slower fetch from overwriting a newer
       // one and causing the list to flip between results.
@@ -128,28 +122,12 @@ export default function ProductsPage({
       fetchProducts();
     }
 
-    // Realtime invalidation is a Supabase feature; the WooCommerce source
-    // refetches through the backend instead.
-    if (!USES_SUPABASE_SOURCE || !isSupabaseConfigured()) {
-      return () => {
-        if (debounceTimer) clearTimeout(debounceTimer);
-      };
-    }
-
-    const invalidateThenFetch = () => {
-      invalidateCatalogReads();
-      scheduleFetch();
-    };
-
-    const channel = supabase
-      .channel('shop-products-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => invalidateThenFetch())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => invalidateThenFetch())
-      .subscribe();
-
+    // No realtime channel: the catalog is read from the store through the backend
+    // on demand, so a changed price arrives on the next read rather than as a
+    // database row event. The Supabase subscription that used to live here only
+    // ever fired for the source that no longer serves this page.
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
-      channel.unsubscribe();
     };
   }, []);
 

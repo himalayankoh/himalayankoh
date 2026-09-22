@@ -1,11 +1,15 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
-import { authApi, SignUpData, SignInData } from '../lib/supabase/api';
 import type { Profile } from '../lib/supabase/database.types';
 import {
+  type AuthSession,
+  type SessionUser,
+  type SignInData,
+  type SignUpData,
+} from '../lib/auth/sessionShape';
+import {
+  onAuthStateChange as onAdminAuthStateChange,
   readStoredSession as readStoredAdminSession,
   signInWithPassword as signInWithWordPressAdmin,
   type SbUser as WordPressAdmin,
@@ -19,9 +23,9 @@ import {
 } from '../lib/auth/customerClient';
 
 interface AuthContextType {
-  user: User | null;
+  user: SessionUser | null;
   profile: Profile | null;
-  session: Session | null;
+  session: AuthSession | null;
   loading: boolean;
   profileLoading: boolean;
   profileError: string | null;
@@ -37,38 +41,20 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const PROFILE_FETCH_TIMEOUT_MS = 10_000;
-const PROFILE_FETCH_RETRY_DELAYS_MS = [500, 1000];
 const AUTH_INITIALIZATION_MAX_WAIT_MS = 6_000;
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = globalThis.setTimeout(() => {
-      reject(new Error(`${label} timed out. Check your connection and try again.`));
-    }, ms);
-
-    promise
-      .then((value) => {
-        globalThis.clearTimeout(timer);
-        resolve(value);
-      })
-      .catch((err) => {
-        globalThis.clearTimeout(timer);
-        reject(err);
-      });
-  });
-}
-
-/** Supabase can deadlock if other client calls run inside onAuthStateChange. */
+/**
+ * Run outside the auth event's own call stack.
+ *
+ * Kept from the Supabase era for the same reason it existed then — an auth
+ * listener that calls back into the store it is being notified by is a re-entrancy
+ * trap — and it is still how the store notifies its listeners.
+ */
 function runAfterAuthCallback(task: () => void) {
   globalThis.setTimeout(task, 0);
 }
 
-function roleFromUser(user: User | null): 'admin' | 'customer' | null {
+function roleFromUser(user: SessionUser | null): 'admin' | 'customer' | null {
   const metaRole = user?.user_metadata?.role || (user as { app_metadata?: { role?: string } })?.app_metadata?.role;
   if (metaRole === 'admin' || metaRole === 'customer') return metaRole as 'admin' | 'customer';
   if (user?.email && (user.email === '8002salman@gmail.com' || user.email === 'basco.pk@gmail.com' || user.email.startsWith('admin@'))) return 'admin';
@@ -83,7 +69,7 @@ function roleFromUser(user: User | null): 'admin' | 'customer' | null {
  * from a token the server signed only after it checked the WordPress
  * `administrator` role, and a customer session never reaches these functions.
  */
-function isWordPressAdminUser(user: User | null): boolean {
+function isWordPressAdminUser(user: SessionUser | null): boolean {
   return (user?.app_metadata as { provider?: string } | undefined)?.provider === 'wordpress';
 }
 
@@ -94,12 +80,12 @@ function isWordPressAdminUser(user: User | null): boolean {
  * to fetch — asking for one wastes a request and then falls back to the same session
  * metadata it would have used anyway.
  */
-function hasTokenIdentity(user: User | null): boolean {
+function hasTokenIdentity(user: SessionUser | null): boolean {
   const provider = (user?.app_metadata as { provider?: string } | undefined)?.provider;
   return provider === 'wordpress' || provider === 'woocommerce';
 }
 
-function customerUserToSessionUser(customer: CustomerUser): User {
+function customerUserToSessionUser(customer: CustomerUser): SessionUser {
   const now = new Date().toISOString();
   return {
     // The WooCommerce customer id, as a string — the account's real identity, and
@@ -117,10 +103,10 @@ function customerUserToSessionUser(customer: CustomerUser): User {
     identities: [],
     created_at: now,
     updated_at: now,
-  } as unknown as User;
+  } as unknown as SessionUser;
 }
 
-function customerSessionForUser(customer: CustomerUser, token: string, expiresAt: number): Session {
+function customerSessionForUser(customer: CustomerUser, token: string, expiresAt: number): AuthSession {
   return {
     access_token: token,
     refresh_token: '',
@@ -128,7 +114,7 @@ function customerSessionForUser(customer: CustomerUser, token: string, expiresAt
     expires_in: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)),
     expires_at: Math.floor(expiresAt / 1000),
     user: customerUserToSessionUser(customer),
-  } as unknown as Session;
+  } as unknown as AuthSession;
 }
 
 function customerProfileFrom(customer: CustomerUser): Profile {
@@ -145,7 +131,7 @@ function customerProfileFrom(customer: CustomerUser): Profile {
   };
 }
 
-function adminUserToSessionUser(admin: WordPressAdmin): User {
+function adminUserToSessionUser(admin: WordPressAdmin): SessionUser {
   const now = new Date().toISOString();
   return {
     id: admin.id,
@@ -161,10 +147,10 @@ function adminUserToSessionUser(admin: WordPressAdmin): User {
     identities: [],
     created_at: now,
     updated_at: now,
-  } as unknown as User;
+  } as unknown as SessionUser;
 }
 
-function adminSessionForUser(admin: WordPressAdmin, token: string, expiresAt: number): Session {
+function adminSessionForUser(admin: WordPressAdmin, token: string, expiresAt: number): AuthSession {
   return {
     access_token: token,
     refresh_token: '',
@@ -172,7 +158,7 @@ function adminSessionForUser(admin: WordPressAdmin, token: string, expiresAt: nu
     expires_in: Math.max(0, Math.floor((expiresAt - Date.now()) / 1000)),
     expires_at: Math.floor(expiresAt / 1000),
     user: adminUserToSessionUser(admin),
-  } as unknown as Session;
+  } as unknown as AuthSession;
 }
 
 function adminProfileFrom(admin: WordPressAdmin): Profile {
@@ -190,20 +176,20 @@ function adminProfileFrom(admin: WordPressAdmin): Profile {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Keep SSR and the browser's first render identical. Supabase's persisted
-  // session is read by the effect below; reading localStorage in these
-  // initializers made a signed-in browser render a different tree than SSR and
-  // caused hydration error #418 on admin routes.
-  const [user, setUser] = useState<User | null>(null);
+  // Keep SSR and the browser's first render identical. Both signed stores are
+  // read by the effect below; reading localStorage in these initializers made a
+  // signed-in browser render a different tree than SSR and caused hydration error
+  // #418 on admin routes.
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const profileRequestId = useRef(0);
 
-  const fetchProfile = useCallback(async (userId: string, currentUser?: User | null, attempt = 0) => {
+  const fetchProfile = useCallback(async (userId: string, currentUser?: SessionUser | null, attempt = 0) => {
     const isAlreadyAdmin = roleFromUser(currentUser ?? null) === 'admin';
     const requestId = attempt === 0 ? ++profileRequestId.current : profileRequestId.current;
     if (attempt === 0) {
@@ -213,73 +199,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfileError(null);
     }
 
-    try {
-      const profileData = await withTimeout(
-        authApi.getProfile(userId),
-        PROFILE_FETCH_TIMEOUT_MS,
-        'Profile load'
-      );
-
-      if (requestId !== profileRequestId.current) return;
-
-      if (profileData) {
-        setProfile(profileData);
-        setProfileLoading(false);
-        return;
-      }
-
-      // No error, no row — a genuinely new user without a profile yet, not a
-      // failure worth retrying. The guessed role is the correct outcome here.
-      const fallbackRole = roleFromUser(currentUser ?? null) || 'customer';
-      setProfile({
-        id: userId,
-        email: currentUser?.email ?? '',
-        full_name: (currentUser?.user_metadata?.full_name as string) || (fallbackRole === 'admin' ? 'Salman Bashir' : null),
-        phone: null,
-        avatar_url: null,
-        role: fallbackRole,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
+    // There is no read to make. Every identity this app issues is a signed token
+    // — a WordPress administrator or a WooCommerce customer — and the profile *is*
+    // that session's own metadata: name, email, role. The Supabase `profiles` row
+    // this used to fetch is keyed by an id the app no longer issues, so a lookup
+    // could only ever miss and fall back to exactly these fields. What was the
+    // fallback is now the only path.
+    const sessionUser = currentUser ?? null;
+    if (!sessionUser) {
+      setProfile(null);
       setProfileLoading(false);
-    } catch (err) {
-      if (requestId !== profileRequestId.current) return;
-
-      const retryDelay = PROFILE_FETCH_RETRY_DELAYS_MS[attempt];
-      if (retryDelay !== undefined) {
-        await sleep(retryDelay);
-        if (requestId !== profileRequestId.current) return;
-        return fetchProfile(userId, currentUser, attempt + 1);
-      }
-
-      // Graceful fallback to session user metadata without raising unhandled console errors
-      console.warn('Profile fetch deferred, falling back to authenticated session metadata:', err instanceof Error ? err.message : err);
-
-      const sessionUser = currentUser ?? null;
-      if (!sessionUser) {
-        setProfile(null);
-        setProfileLoading(false);
-        return;
-      }
-
-      setProfileError(null);
-      const fallbackRole = roleFromUser(sessionUser) || 'customer';
-      setProfile({
-        id: userId,
-        email: sessionUser.email ?? '',
-        full_name: (sessionUser.user_metadata?.full_name as string) || (fallbackRole === 'admin' ? 'Salman Bashir' : null),
-        phone: null,
-        avatar_url: null,
-        role: fallbackRole,
-        created_at: sessionUser.created_at || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
-      setProfileLoading(false);
+      return;
     }
+
+    setProfileError(null);
+    const fallbackRole = roleFromUser(sessionUser) || 'customer';
+    setProfile({
+      id: userId,
+      email: sessionUser.email ?? '',
+      full_name: (sessionUser.user_metadata?.full_name as string) || (fallbackRole === 'admin' ? 'Salman Bashir' : null),
+      phone: null,
+      avatar_url: null,
+      role: fallbackRole,
+      created_at: sessionUser.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    setProfileLoading(false);
   }, []);
 
   const loadProfileForSession = useCallback(
-    (sessionUser: User | null) => {
+    (sessionUser: SessionUser | null) => {
       if (!sessionUser) {
         profileRequestId.current += 1;
         setProfile(null);
@@ -332,11 +281,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (!isSupabaseConfigured()) {
-      setLoading(false);
-      return;
-    }
-
     let mounted = true;
     let authInitializationFinished = false;
     const authInitializationTimer = globalThis.setTimeout(() => {
@@ -350,7 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       globalThis.clearTimeout(authInitializationTimer);
     };
 
-    const applySession = (nextSession: Session | null, loadProfile: boolean) => {
+    const applySession = (nextSession: AuthSession | null, loadProfile: boolean) => {
       if (!mounted) return;
 
       setSession(nextSession);
@@ -395,34 +339,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void loadProfileForSession(nextSession.user);
     };
 
-    void (async () => {
-      try {
-        const { data, error } = await withTimeout(
-          supabase.auth.getSession(),
-          PROFILE_FETCH_TIMEOUT_MS,
-          'Session check'
-        );
-        if (error) throw error;
-        applySession(data.session, true);
-      } catch (err) {
-        console.error('Auth initialization failed:', err);
-        if (mounted) {
-          finishAuthInitialization();
-          setLoading(false);
-        }
-      }
-    })();
+    // Neither signed store holds a session, so this visitor is anonymous — and
+    // that is answered here rather than with a request. (The Supabase session that
+    // used to be checked at this point no longer exists: the admin and customer
+    // stores above are the only two places a session can be.)
+    finishAuthInitialization();
+    setLoading(false);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    // What remains is reacting to a session ending or landing *elsewhere* — the
+    // admin store is the one that publishes those events (another tab, the
+    // account portal's sign-out, a sign-in on the same page).
+    const unsubscribe = onAdminAuthStateChange((event) => {
       runAfterAuthCallback(() => {
-        if (event === 'TOKEN_REFRESHED') {
-          // Only update the session token — no profile re-fetch needed
-          if (mounted) {
-            setSession(nextSession);
-            setUser(nextSession?.user ?? null);
-          }
-          return;
-        }
         if (event === 'SIGNED_OUT') {
           if (mounted) {
             profileRequestId.current += 1;
@@ -435,14 +363,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           return;
         }
-        applySession(nextSession, Boolean(nextSession?.user));
+
+        // Signed in or refreshed: the token lives in the admin store, so re-read
+        // it and present that identity rather than trusting the event's payload.
+        const stored = readStoredAdminSession();
+        if (!mounted || !stored) return;
+        applySession(
+          adminSessionForUser(stored.user, stored.accessToken, stored.expiresAt),
+          true
+        );
       });
     });
 
     return () => {
       mounted = false;
       globalThis.clearTimeout(authInitializationTimer);
-      subscription.unsubscribe();
+      unsubscribe();
     };
   }, [loadProfileForSession]);
 
@@ -550,15 +486,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // both removed here, *before* the await below, so a slow or hanging revoke
     // cannot leave a session on disk for the next page load to restore.
     signOutOfBrowser();
-    try {
-      await authApi.signOut();
-    } catch (err) {
-      // authApi.signOut already swallows benign errors; log anything else but
-      // never re-throw — the user is signed out locally regardless.
-      console.warn('Sign out completed with a non-fatal error:', err);
-    } finally {
-      setLoading(false);
-    }
+    // Nothing is revoked server-side: both tokens are stateless and were dropped
+    // above, so the session is already over. The Supabase `signOut()` call that
+    // used to run here went with the Supabase session it was revoking.
+    setLoading(false);
   }, []);
 
 
@@ -566,9 +497,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) throw new Error('Not authenticated');
     setError(null);
     try {
-      const updatedProfile = await authApi.updateProfile(user.id, updates);
-      setProfile(updatedProfile);
-      return updatedProfile;
+      // Where a profile edit has to land: the WordPress user for an admin
+      // (`/wp/v2/users/me`) or the WooCommerce customer for a shopper. The Supabase
+      // row this used to write is keyed by an id the app no longer issues, so the
+      // update matched nothing and raised — which is what the account portal has
+      // been showing. Refusing with that reason is the honest version of the same
+      // outcome, and it does not pretend a save happened.
+      throw new Error(
+        'Saving profile changes needs the WordPress user endpoint, which is not wired up yet.'
+      );
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Update failed';
       setError(errorMsg);

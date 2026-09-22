@@ -22,6 +22,7 @@ import {
   fetchSalmanOsStatus, fetchSalmanOsJobs, runSalmanOsJob, pauseSalmanOsJob, resumeSalmanOsJob,
 } from '../services/salmanOs/browserClient';
 import { SALMAN_OS_MODULE_IDS } from '../services/salmanOs/types';
+import { onAuthStateChange } from '../services/wordpressAdminAuth';
 import type { SalmanOsStatus, SalmanOsJob, SalmanOsJobKind } from '../services/salmanOs/types';
 
 const MODULES: { kind: SalmanOsJobKind; label: string; hint: string }[] = [
@@ -104,19 +105,11 @@ export default function SalmanOsPanel() {
       }
     });
 
-    // Subscribe to auth state changes so as soon as session hydrates/restores, re-poll immediately
-    let unsubscribe: (() => void) | undefined;
-    import('../lib/supabase/client')
-      .then(({ supabase }) => {
-        if (!alive) return;
-        const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-          if (alive && nextSession?.access_token) {
-            void refresh();
-          }
-        });
-        unsubscribe = () => listener.subscription.unsubscribe();
-      })
-      .catch(() => {});
+    // Re-poll as soon as the admin session appears: the proxy needs it, so the
+    // first poll on a cold load is answered with WAITING until it does.
+    const unsubscribe = onAuthStateChange(() => {
+      if (alive) void refresh();
+    });
 
     return () => {
       alive = false;

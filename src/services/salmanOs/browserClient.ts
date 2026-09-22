@@ -20,64 +20,17 @@ import { getAccessToken } from '../wordpressAdminAuth';
 
 const API_BASE = '/api/salman-os';
 
-export function getStoredSupabaseToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    for (let i = 0; i < window.localStorage.length; i++) {
-      const k = window.localStorage.key(i);
-      if (k && (k.startsWith('sb-') || k.startsWith('supabase.')) && k.includes('token')) {
-        let val = window.localStorage.getItem(k);
-        if (!val && window.localStorage.getItem(`${k}.0`)) {
-          let combined = '';
-          let idx = 0;
-          while (true) {
-            const chunk = window.localStorage.getItem(`${k}.${idx}`);
-            if (!chunk) break;
-            combined += chunk;
-            idx++;
-          }
-          val = combined;
-        }
-        if (val) {
-          try {
-            const parsed = JSON.parse(val);
-            const tok = parsed.access_token || parsed.currentSession?.access_token;
-            const exp = parsed.expires_at || parsed.currentSession?.expires_at;
-            if (tok && (!exp || exp * 1000 > Date.now())) {
-              return tok;
-            }
-          } catch {}
-        }
-      }
-    }
-  } catch {}
-  return null;
-}
-
+/**
+ * The admin session this browser holds, or null.
+ *
+ * One store, read synchronously: `services/wordpressAdminAuth.ts` is the owner of
+ * the admin token, and it already answers "is this session usable". There used to
+ * be three things to try — an `sb-*` scan, this read, and a Supabase
+ * `getSession()` race — which existed only while the session itself lived on
+ * Supabase. The proxy wants one answer, and this is it.
+ */
 export async function getValidAccessToken(): Promise<string | null> {
-  // 1. FAST PATH: Synchronous read from window.localStorage (instant on hard reload)
-  const stored = getStoredSupabaseToken();
-  if (stored) return stored;
-
-  // 2. Synchronous read from the admin client (services/wordpressAdminAuth)
-  const direct = getAccessToken();
-  if (direct) return direct;
-
-  // 3. Fallback: supabase.auth.getSession() with a 2-second timeout
-  try {
-    const { supabase } = await import('@/lib/supabase/client');
-    const res = await Promise.race([
-      supabase.auth.getSession(),
-      new Promise<null>((r) => setTimeout(() => r(null), 2000)),
-    ]);
-    if (res && 'data' in res && res.data?.session?.access_token) {
-      return res.data.session.access_token;
-    }
-  } catch {
-    // ignore
-  }
-
-  return null;
+  return getAccessToken();
 }
 
 async function authHeaders(): Promise<Record<string, string>> {

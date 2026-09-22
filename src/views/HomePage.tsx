@@ -8,7 +8,6 @@ import ProductCard from '@/components/ProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
 import { getFeaturedCatalogProducts } from '@/lib/backend/catalogClient';
 import { isSupabaseDataSource } from '@/lib/backend/dataSource';
-import { isSupabaseConfigured } from '@/lib/supabase/client';
 
 /** Module scope so it stays out of the effect's dependency array. */
 const USES_SUPABASE_SOURCE = isSupabaseDataSource();
@@ -50,14 +49,12 @@ export default function HomePage() {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>(() =>
     storefrontProducts.filter((product) => product.isFeatured).slice(0, 4)
   );
-  const [featuredLoading, setFeaturedLoading] = useState(isSupabaseConfigured());
+  // Loading until the read answers: the catalog comes from the backend on every
+  // source, so there is no credential to check first.
+  const [featuredLoading, setFeaturedLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    if (USES_SUPABASE_SOURCE && !isSupabaseConfigured()) {
-      setFeaturedLoading(false);
-      return;
-    }
 
     getFeaturedCatalogProducts(4)
       .then((rows) => {

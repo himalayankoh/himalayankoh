@@ -1,5 +1,5 @@
 import type { CartItem } from '../../store/cartStore';
-import { supabase } from '../supabase/client';
+import { getCustomerAccessToken } from '../auth/customerClient';
 import { readApiError, toPaymentError } from './errors';
 import type { StripePaymentIntentResult, StripeVerifyPaymentResult } from './types';
 
@@ -32,12 +32,15 @@ export interface CreatePaymentIntentPayload {
 export async function createStripePaymentIntent(
   payload: CreatePaymentIntentPayload
 ): Promise<StripePaymentIntentResult> {
-  const { data: sessionData } = await supabase.auth.getSession();
+  // The signed-in customer's own session, when there is one: it is what ties the
+  // payment to the account. A guest checkout sends no credential and is a
+  // supported path, so a missing token is not an error here.
+  const token = getCustomerAccessToken();
   const response = await fetch('/api/stripe/create-payment-intent', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(sessionData.session?.access_token ? { Authorization: `Bearer ${sessionData.session.access_token}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
       email: payload.email,

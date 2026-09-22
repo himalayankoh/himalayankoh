@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Bell, Heart, LayoutDashboard, MapPin, Package, Shield, User, BarChart3, ShoppingBag, Truck } from 'lucide-react';
 import type { Profile } from '../../lib/supabase/database.types';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
+import type { SessionUser } from '../../lib/auth/sessionShape';
 
 /**
  * Customer nav — every entry is a tab of the one account portal (`/account`).
@@ -29,7 +29,7 @@ const adminNavItems = [
 
 interface DashboardSidebarProps {
   profile: Profile | null;
-  user: SupabaseUser | null;
+  user: SessionUser | null;
 }
 
 export default function DashboardSidebar({ profile, user }: DashboardSidebarProps) {

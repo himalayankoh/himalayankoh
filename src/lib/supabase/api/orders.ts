@@ -1,4 +1,5 @@
 import { supabase } from '../client';
+import { getCustomerAccessToken } from '@/lib/auth/customerClient';
 import type { Order, OrderItem, OrderWithItems, Json } from '../database.types';
 import { getErrorMessage } from '@/lib/errors';
 
@@ -107,8 +108,9 @@ export interface OrderFilters {
 }
 
 async function createOrderViaApi(data: CreateOrderData, userId?: string): Promise<OrderWithItems> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData.session?.access_token;
+  // The customer's own signed session, when there is one. A guest checkout sends
+  // no credential — the route is written for both.
+  const token = getCustomerAccessToken();
 
   const response = await fetch('/api/orders/create', {
     method: 'POST',
@@ -132,8 +134,7 @@ async function createOrderViaApi(data: CreateOrderData, userId?: string): Promis
 }
 
 async function getOrderByIdViaApi(orderId: string, userId?: string): Promise<OrderWithItems | null> {
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData.session?.access_token;
+  const token = getCustomerAccessToken();
 
   const response = await fetch('/api/orders/get', {
     method: 'POST',

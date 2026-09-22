@@ -16,12 +16,11 @@
  *    implying they came from the same place.
  */
 
-import { supabase } from '@/lib/supabase/client';
+import { getAccessToken } from '@/services/wordpressAdminAuth';
 import type { Order, OrderItem, Profile } from '@/lib/supabase/database.types';
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = getAccessToken();
   if (!token) throw new Error('Your admin session has expired. Sign in again.');
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
