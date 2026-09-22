@@ -82,6 +82,19 @@ the folder and use **Plugins → Add New → Upload Plugin**, then **activate** 
 Activation creates `{prefix}hk_wishlists` via `dbDelta`. Deactivation does not drop
 the table.
 
+The uploadable ZIP is built from that one tracked file, so the artifact and the
+source cannot drift:
+
+```
+npm run pack:plugins      # deploy/himalayan-koh-storefront-<version>.zip
+```
+
+It prints the ZIP's byte count and SHA-256, taken from the plugin header's own
+version — a ZIP that says one version while the plugin says another is how the
+wrong code ends up active. `deploy/` is gitignored: the ZIP is a build artifact,
+not source. There is no REST route for installing a plugin, so uploading it through
+wp-admin is the one step that cannot be automated from here.
+
 Then create the app credential: **Users → Profile → Application Passwords → Add
 New**, and set it on the app's server (never `NEXT_PUBLIC_`):
 

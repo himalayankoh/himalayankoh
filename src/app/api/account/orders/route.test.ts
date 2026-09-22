@@ -16,7 +16,7 @@ import { GET as getOrderDetail } from './[id]/route';
 import { POST as cancelOrder } from './[id]/cancel/route';
 import * as verifyAuth from '@/lib/auth/customerRequest';
 import * as wooOrders from '@/lib/woo/orders';
-import type { Order, OrderItem } from '@/lib/commerce/databaseTypes';
+import type { Order, OrderItem } from '@/lib/commerce/types';
 
 vi.mock('@/lib/auth/customerRequest');
 vi.mock('@/lib/woo/orders');

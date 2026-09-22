@@ -12,7 +12,7 @@
  * belong here and not with the writer.
  */
 
-import type { Order } from '@/lib/commerce/databaseTypes';
+import type { Order } from '@/lib/commerce/types';
 
 export const TAX_RATE = 0.0825;
 export const FREE_SHIPPING_THRESHOLD = 50;

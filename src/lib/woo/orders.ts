@@ -41,12 +41,12 @@
 
 import { WordPressApiError, wordpressRequest, wordpressRequestWithMeta } from '../backend/wordpress';
 import { requireWooCredentials } from '../backend/credentials';
-import type { Json, Order, OrderItem } from '../commerce/databaseTypes';
+import type { Json, Order, OrderItem } from '../commerce/types';
 
 /**
  * The app's own order types, re-exported so a caller can name the shape it receives
- * without importing the generated database types — those exist only to describe the
- * store that no longer owns orders.
+ * without reaching for the model module — and so one order shape serves both the
+ * store's orders and the pre-migration ones carried by the archive.
  */
 export type { Order, OrderItem };
 

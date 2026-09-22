@@ -15,7 +15,7 @@
  */
 
 import { getCustomerAccessToken } from '@/lib/auth/customerClient';
-import type { OrderWithItems } from '@/lib/commerce/databaseTypes';
+import type { OrderWithItems } from '@/lib/commerce/types';
 import type { CreateOrderData } from './totals';
 
 async function createOrderViaApi(data: CreateOrderData): Promise<OrderWithItems> {

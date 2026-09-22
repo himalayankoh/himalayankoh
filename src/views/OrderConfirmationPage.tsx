@@ -12,7 +12,7 @@ import {
 } from '../lib/orders/status';
 import { trackOrderPageUrl } from '../lib/orders/tracking';
 import { ordersApi } from '../lib/orders/client';
-import type { Json, OrderWithItems } from '../lib/commerce/databaseTypes';
+import type { Json, OrderWithItems } from '../lib/commerce/types';
 
 interface LocationState {
   order?: OrderWithItems;

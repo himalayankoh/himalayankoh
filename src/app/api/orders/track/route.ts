@@ -24,7 +24,7 @@ import {
   orderFromWoo,
   type WooOrderLike,
 } from '@/lib/woo/orders';
-import type { OrderWithItems } from '@/lib/commerce/databaseTypes';
+import type { OrderWithItems } from '@/lib/commerce/types';
 
 export const dynamic = 'force-dynamic';
 

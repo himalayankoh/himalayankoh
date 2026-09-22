@@ -11,7 +11,7 @@ import { Package, ChevronRight, Truck, Check, Clock, XCircle, ShoppingCart } fro
 import { SkeletonOrderList } from '../ui/Skeleton';
 import EmptyState from '../ui/EmptyState';
 import { useAuthContext } from '../../context/AuthContext';
-import type { OrderWithItems } from '../../lib/commerce/databaseTypes';
+import type { OrderWithItems } from '../../lib/commerce/types';
 import { useCart } from '../../store/cartStore';
 import { useToast } from '../../context/ToastContext';
 

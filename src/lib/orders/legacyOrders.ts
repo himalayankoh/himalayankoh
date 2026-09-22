@@ -46,7 +46,7 @@
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Order, OrderItem, OrderWithItems } from '@/lib/commerce/databaseTypes';
+import type { Order, OrderItem, OrderWithItems } from '@/lib/commerce/types';
 
 /** A legacy order row plus its line items, exactly as the export wrote it. */
 type ArchivedOrder = Omit<OrderWithItems, 'order_items'> & {

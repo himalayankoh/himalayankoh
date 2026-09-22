@@ -23,9 +23,10 @@ import { describe, expect, it } from 'vitest';
  *             worth 26 routes.
  *   pages     the storefront's own screens.
  *
- * `lib/commerce/databaseTypes` is deliberately not in the forbidden set: it
- * exports types only, TypeScript erases those imports, and roughly twenty
- * screens read its `Order`/`Address` shapes.
+ * `lib/commerce/types` is deliberately not in the forbidden set: it exports types
+ * only, TypeScript erases those imports, and roughly twenty screens read its
+ * `Order`/`Profile` shapes. It is hand-written now — the generated schema file it
+ * came from is gone.
  *
  * Every module in the forbidden list has since been deleted — the SDK client, the
  * config resolver and the whole `lib/supabase/api` tree are gone. This test now

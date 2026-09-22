@@ -49,8 +49,15 @@ const showAllTables = process.argv.includes('--tables');
  */
 const SUPABASE_IMPORT = /from\s+['"][^'"]*supabase[^'"]*['"]|\/rest\/v1\/|\/storage\/v1\/|@supabase\/supabase-js/;
 
-/** The generated database types, by whatever path they are imported from. */
-const GENERATED_TYPES = /from\s+['"][^'"]*databaseTypes['"]/;
+/**
+ * The schema-shaped type module, if one is ever brought back.
+ *
+ * `src/lib/commerce/types.ts` is deliberately NOT it: those shapes are written by
+ * hand now, because they are the model the application works in rather than a
+ * transcription of a database it no longer has. This pattern exists so that
+ * re-introducing a generated schema file is visible in the audit's output.
+ */
+const GENERATED_TYPES = /from\s+['"][^'"]*(databaseTypes|supabase)[^'"]*['"]/;
 
 /**
  * Value import or types only?
@@ -130,7 +137,7 @@ for (const file of runtimeFiles) {
 }
 
 const supabaseLibLines = files
-  .filter((file) => /^src\/lib\/(supabase|commerce)\/databaseTypes\.ts$/.test(relative(file)))
+  .filter((file) => /^src\/lib\/(supabase|commerce)\/(databaseTypes|types)\.ts$/.test(relative(file)))
   .reduce((sum, file) => sum + fs.readFileSync(file, 'utf8').split('\n').length, 0);
 
 /** Tables and Storage buckets are both `.from('x')` — the receiver tells them apart. */
@@ -200,13 +207,14 @@ console.log(`\nTYPES ONLY — ${typesOnlyFiles.length} module(s), erased at comp
 console.log('  no bundle cost and no runtime dependency: these disappear with the type file itself');
 for (const file of typesOnlyFiles.map(relative).sort()) console.log(`    ${file.replace(/^src\//, '')}`);
 
-/** Types are only "Supabase" by provenance: nothing here runs. Kept as its own number. */
-const generatedTypeImporters = files.filter((file) => GENERATED_TYPES.test(fs.readFileSync(file, 'utf8')));
-console.log(`\nGENERATED TYPES (type-only) — ${generatedTypeImporters.length} module(s)`);
-console.log(`  src/lib/commerce/databaseTypes.ts: ${supabaseLibLines} lines, imported as types only.`);
-console.log('  TypeScript erases these imports, so they are not a runtime dependency — but the');
-console.log('  file is a Supabase schema, and it goes when the last reader is re-pointed at the');
-console.log('  WooCommerce order model.');
+/** A schema-shaped type file re-appearing is the thing this counts. */
+const generatedTypeImporters = files.filter((file) => GENERATED_TYPES.test(codeOf(file)));
+console.log(`\nSCHEMA-SHAPED TYPE IMPORTS — ${generatedTypeImporters.length} module(s)`);
+if (!generatedTypeImporters.length) console.log('    (none)');
+for (const file of generatedTypeImporters.map(relative).sort()) console.log(`    ${file.replace(/^src\//, '')}`);
+console.log(`\n  src/lib/commerce/types.ts: ${supabaseLibLines} lines — hand-written, type-only.`);
+console.log('  Order, OrderItem, OrderWithItems and Profile as this application defines them;');
+console.log('  WooCommerce is projected into them, and TypeScript erases every import.');
 
 const rawRest = files.filter((file) => /\/rest\/v1\/|\/storage\/v1\/|supabase\.co/.test(codeOf(file)));
 console.log(`\nRAW SUPABASE CALLS (no SDK import) — ${rawRest.length} module(s)`);

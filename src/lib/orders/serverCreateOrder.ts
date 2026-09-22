@@ -8,7 +8,7 @@ import {
 } from '@/lib/woo/orders';
 import { clearStoreCart, mapStoreCart, readStoreCart, type StoreCartLine } from '@/lib/woo/storeCart';
 import type { CreateOrderData, ShippingMethod } from '@/lib/orders/totals';
-import type { OrderWithItems } from '@/lib/commerce/databaseTypes';
+import type { OrderWithItems } from '@/lib/commerce/types';
 import { resolveShippoConfigError } from '@/lib/shippo/config';
 import { fetchShippoRatesForOrder, pickRateForShippingMethod } from '@/lib/shippo/server/rates';
 import type { CheckoutShippingAddress, RatesLineItem } from '@/lib/shippo/types';

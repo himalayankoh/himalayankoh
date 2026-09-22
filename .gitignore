@@ -41,3 +41,6 @@ supabase/.temp/
 .freebuff/
 scratch/
 
+
+# WordPress plugin release artifacts (built by scripts/pack-plugins.mjs)
+deploy/

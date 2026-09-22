@@ -16,8 +16,6 @@ import {
   type StoreApiProduct,
   type WpCoreProduct,
 } from './woocommerce';
-import { mapSupabaseProduct } from '../products/mapProduct';
-import type { ProductWithCategory } from '../commerce/databaseTypes';
 
 /** The real body staging returns for /wc/store/v1/products. */
 const WORDPRESS_FATAL_BODY = `<!DOCTYPE html>
@@ -99,126 +97,6 @@ describe('htmlToText', () => {
     expect(htmlToText(undefined)).toBe('');
     expect(htmlToText('<ul><li>Fine</li><li>Coarse</li></ul>')).toBe('Fine Coarse');
     expect(htmlToText(undefined)).toBe('');
-  });
-});
-
-describe('Product view model — one definition, one price meaning', () => {
-  function supabaseRow(over: Partial<ProductWithCategory> = {}): ProductWithCategory {
-    return {
-      id: 'p1',
-      name: 'Himalayan Salt Block 30 lbs',
-      slug: 'himalayan-salt-block-30-lbs',
-      description: 'A natural block.',
-      short_description: 'Big block.',
-      price: 49.95,
-      compare_at_price: null,
-      cost_price: 12,
-      sku: 'HK-LB-30LBS',
-      barcode: null,
-      weight: 30,
-      weight_unit: 'lbs',
-      category_id: 'c1',
-      images: ['https://example.test/block.webp'],
-      thumbnail: 'https://example.test/block-thumb.webp',
-      is_active: true,
-      is_featured: true,
-      grain_sizes: ['Coarse'],
-      tags: ['packing_profile:x'],
-      meta_title: 'Salt Block',
-      meta_description: 'A block of salt.',
-      pack_size: null,
-      lead_time_days: null,
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-08-19T11:56:27Z',
-      category: { id: 'c1', name: 'Bulk Order' } as ProductWithCategory['category'],
-      inventory: null,
-      ...over,
-    } as ProductWithCategory;
-  }
-
-  it('reads compare_at_price as the top of a VARIANT RANGE, never a discount', () => {
-    const product = mapSupabaseProduct(supabaseRow({ price: 9.95, compare_at_price: 17.95 }));
-
-    expect(product.priceRange).toBe(true);
-    expect(product.priceMin).toBe(9.95);
-    expect(product.priceMax).toBe(17.95);
-    // The range separator and shape are the long-standing storefront output.
-    expect(product.price).toBe('$9.95 - $17.95');
-  });
-
-  it('does not invent a sale when there is no compare_at_price', () => {
-    const product = mapSupabaseProduct(supabaseRow());
-
-    expect(product.priceRange).toBe(false);
-    expect(product.priceMax).toBeUndefined();
-    expect(product.price).toBe('$49.95');
-    expect(product.priceMin).toBe(49.95);
-  });
-
-  it('surfaces the real SKU and stock the row already had', () => {
-    const product = mapSupabaseProduct(
-      supabaseRow({
-        inventory: {
-          id: 'i1',
-          product_id: 'p1',
-          quantity: 5,
-          reserved_quantity: 1,
-          low_stock_threshold: 2,
-          track_inventory: true,
-          allow_backorder: false,
-          created_at: '2026-01-01T00:00:00Z',
-          updated_at: '2026-08-19T11:56:27Z',
-        },
-      })
-    );
-
-    expect(product.sku).toBe('HK-LB-30LBS');
-    expect(product.stockStatus).toBe('in_stock');
-    // Reserved units are not available units: 5 on hand with 1 reserved leaves 4
-    // the storefront may sell, which is the ceiling the PDP caps a cart line at.
-    expect(product.stockQuantity).toBe(4);
-    expect(product.updatedAt).toBe('2026-08-19T11:56:27Z');
-    // SKU is present, so it must not be reported as missing (the old adapter
-    // hardcoded `missing: []` while emitting `sku: null`).
-    expect(product.missing).not.toContain('sku');
-  });
-
-  it('reports stock as unknown when the row has no inventory at all', () => {
-    // The old default asserted in-stock here, and Add to Cart acted on it. No
-    // inventory row means the source reported nothing, so nothing is claimed.
-    const product = mapSupabaseProduct(supabaseRow({ inventory: null }));
-
-    expect(product.stockStatus).toBe('unknown');
-    expect(product.stockQuantity).toBeNull();
-    expect(product.inStock).toBe(false);
-  });
-
-  it('reports no count for a row that tracks stock without numbers yet', () => {
-    const product = mapSupabaseProduct(
-      supabaseRow({
-        inventory: {
-          id: 'i2',
-          product_id: 'p1',
-          quantity: 3,
-          reserved_quantity: 0,
-          low_stock_threshold: 2,
-          track_inventory: false,
-          allow_backorder: false,
-          created_at: '2026-01-01T00:00:00Z',
-          updated_at: '2026-08-19T11:56:27Z',
-        },
-      })
-    );
-
-    // Turned off tracking is not a reported unit count, so no ceiling is set.
-    expect(product.stockQuantity).toBeNull();
-  });
-
-  it('deliberately does not populate `images`, preserving the single-image PDP', () => {
-    // ProductDetailView renders `product.images?.length ? product.images : [product.image]`,
-    // so populating this would change the rendered gallery.
-    expect(mapSupabaseProduct(supabaseRow()).images).toBeUndefined();
-    expect(mapSupabaseProduct(supabaseRow()).image).toBe('https://example.test/block-thumb.webp');
   });
 });
 
