@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, Clock, Loader2, Search, Tag, User } from 'lucide-react';
-import type { BlogPostWithAuthor } from '../lib/supabase/api';
+import type { BlogPostWithAuthor } from '../lib/blog/types';
 import { resolveLegacyImageSrc } from '../lib/images/legacyAssets';
 
 interface BlogPageProps {

@@ -7,10 +7,6 @@ import { storefrontProducts, Product } from '@/data/products';
 import ProductCard from '@/components/ProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
 import { getFeaturedCatalogProducts } from '@/lib/backend/catalogClient';
-import { isSupabaseDataSource } from '@/lib/backend/dataSource';
-
-/** Module scope so it stays out of the effect's dependency array. */
-const USES_SUPABASE_SOURCE = isSupabaseDataSource();
 
 /**
  * The storefront's opening pitch, restored to the wording the owner approved on

@@ -26,7 +26,6 @@ export function validateCreatePaymentIntentBody(body: unknown) {
   const email = nonEmpty(record.email) || '';
   const shippingAddress = address(record.shippingAddress);
   const billingAddress = record.billingAddress ? address(record.billingAddress) : shippingAddress;
-  const userId = nonEmpty(record.userId);
   const couponCode = nonEmpty(record.couponCode) || '';
   const shippingMethod = record.shippingMethod === 'expedited' ? 'expedited' as const : 'standard' as const;
   const shippoRateId = nonEmpty(record.shippoRateId) || undefined;
@@ -52,7 +51,9 @@ export function validateCreatePaymentIntentBody(body: unknown) {
       phone: nonEmpty(record.phone) || undefined,
       shippingAddress,
       billingAddress,
-      userId,
+      // A `userId` in the body is deliberately not read: identity comes from the
+      // caller's verified session, so a browser cannot name the account it is
+      // paying as. See `lib/auth/customerRequest`.
       couponCode,
       shippingMethod,
       shippoRateId,

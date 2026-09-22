@@ -1,19 +1,12 @@
 import { normalizeProductSlug, productSlugFromName, slugsMatch } from '../../products/slug';
+import { isRealCatalogProduct } from '../../catalog/realProduct';
 import { supabase } from '../client';
 import type { Product, Category, ProductWithCategory } from '../database.types';
 
-// Products created through the production shipping-ready workflow include an
-// encoded packing profile tag. Legacy/demo products do not, so they remain
-// available to admins for reference but never appear in the real storefront.
-const PACKING_PROFILE_TAG_PREFIX = 'packing_profile:';
-
-// Exported so Admin → Products can tell an admin, per listing, whether it is
-// actually visible on the storefront — the previous UI only warned about a
-// missing weight, which is not what gates visibility here and left admins
-// believing an active product was live when it was not.
-export function isRealCatalogProduct(product: { tags?: string[] | null }): boolean {
-  return Array.isArray(product.tags) && product.tags.some((tag) => tag.startsWith(PACKING_PROFILE_TAG_PREFIX));
-}
+// The storefront-visibility rule lives in `lib/catalog/realProduct` — it is a pure
+// predicate, and keeping it here meant every caller that only wanted to ask "is
+// this listing real?" imported a module with a Supabase client at its top. The
+// callers that only need the rule import it from there.
 
 // Callers that resolve a product by slug fall back to the bundled demo
 // catalog when Supabase has no visible row — that fallback exists so a

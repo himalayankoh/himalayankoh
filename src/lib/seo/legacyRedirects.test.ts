@@ -75,7 +75,6 @@ const APP_OWNED_PATHS = [
   '/signup',
   '/terms',
   '/track',
-  '/verify-email',
   '/wishlist',
 ];
 

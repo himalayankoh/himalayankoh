@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Bell, Heart, LayoutDashboard, MapPin, Package, Shield, User, BarChart3, ShoppingBag, Truck } from 'lucide-react';
+import { Heart, LayoutDashboard, MapPin, Package, Shield, User, BarChart3, ShoppingBag, Truck } from 'lucide-react';
 import type { Profile } from '../../lib/supabase/database.types';
 import type { SessionUser } from '../../lib/auth/sessionShape';
 
@@ -14,7 +14,6 @@ const customerNavItems = [
   { label: 'Addresses', path: '/account?tab=addresses', icon: MapPin },
   { label: 'Password', path: '/account?tab=security', icon: Shield },
   { label: 'Dashboard', path: '/account?tab=dashboard', icon: LayoutDashboard },
-  { label: 'Notifications', path: '/account?tab=notifications', icon: Bell },
   { label: 'Track a Package', path: '/track', icon: Truck },
   { label: 'Wishlist', path: '/wishlist', icon: Heart },
 ];

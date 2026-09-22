@@ -6,12 +6,11 @@ import { useAuthContext } from '../context/AuthContext';
 import StripePaymentForm from '../components/checkout/StripePaymentForm';
 import {
   calculateOrderTotals,
-  ordersApi,
   supportedCoupons,
   type ShippingMethod,
-} from '../lib/supabase/api/orders';
+} from '../lib/orders/totals';
+import { ordersApi } from '../lib/orders/client';
 import type { OrderWithItems } from '../lib/supabase/database.types';
-import { isSupabaseConfigured } from '../lib/supabase/client';
 import { publicEnv } from '../lib/env';
 import { useCart } from '../store/cartStore';
 import { getStripeClientConfig, type StripePublicConfig } from '../lib/stripe/clientConfig';
@@ -164,7 +163,6 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     retailOnly &&
     paymentMethod === 'stripe' &&
     stripeEnabled &&
-    isSupabaseConfigured() &&
     items.length > 0 &&
     shippingSelected &&
     shippingReadyForPayment &&
@@ -481,9 +479,12 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         items,
       });
 
+      // The order is the store's own, reserved before this payment — so the id
+      // shown here is already the real one, not a placeholder the webhook swaps
+      // for a different one later.
       const pendingOrder = {
-        id: paymentIntent.checkoutSessionId,
-        order_number: paymentIntent.checkoutSessionId,
+        id: paymentIntent.reservedOrderId,
+        order_number: paymentIntent.reservedOrderId,
         total: paymentIntent.amount / 100,
       } as OrderWithItems;
       setStripeSession({
@@ -492,7 +493,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         paymentIntentId: paymentIntent.paymentIntentId,
       });
       savePendingStripeCheckout({
-        checkoutSessionId: paymentIntent.checkoutSessionId,
+        reservedOrderId: paymentIntent.reservedOrderId,
         paymentIntentId: paymentIntent.paymentIntentId,
       });
       requestAnimationFrame(() => {
@@ -527,11 +528,6 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-
-    if (!isSupabaseConfigured()) {
-      setError('Checkout requires Supabase configuration.');
-      return;
-    }
 
     if (items.length === 0) {
       setError('Your cart is empty.');
@@ -572,7 +568,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
           paymentProvider: 'invoice',
           paymentMethod: 'invoice',
           paymentStatus: 'pending',
-        }, user?.id);
+        });
         await clearCart();
         navigate(orderConfirmationUrl(order.id), { state: { order } });
         return;
@@ -664,21 +660,14 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
-        {(!isSupabaseConfigured() || (paymentMethod === 'stripe' && !stripeEnabled)) && (
+        {paymentMethod === 'stripe' && !stripeEnabled && (
           <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             <p className="font-semibold">Payments not configured on this machine</p>
             <ul className="mt-2 list-disc pl-5 space-y-1">
-              {!isSupabaseConfigured() && (
-                <li>
-                  Add Supabase keys to <code className="text-xs">.env.local</code> (URL + anon key + service role).
-                </li>
-              )}
-              {paymentMethod === 'stripe' && !stripeEnabled && (
-                <li>
-                  Add Stripe test keys to <code className="text-xs">.env.local</code> or Supabase site settings, then restart with{' '}
-                  <code className="text-xs">npm run dev:clean</code>.
-                </li>
-              )}
+              <li>
+                Add Stripe test keys to <code className="text-xs">.env.local</code>, then restart with{' '}
+                <code className="text-xs">npm run dev:clean</code>.
+              </li>
             </ul>
           </div>
         )}

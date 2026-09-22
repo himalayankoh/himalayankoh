@@ -1,7 +1,8 @@
 const STORAGE_KEY = 'himalayan_koh_stripe_checkout';
 
 export interface PendingStripeCheckout {
-  checkoutSessionId: string;
+  /** The WooCommerce order the checkout reserved, as its own id. */
+  reservedOrderId: string;
   paymentIntentId: string;
 }
 
@@ -18,7 +19,7 @@ export function loadPendingStripeCheckout(): PendingStripeCheckout | null {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PendingStripeCheckout;
-    if (!parsed?.checkoutSessionId || !parsed?.paymentIntentId) return null;
+    if (!parsed?.reservedOrderId || !parsed?.paymentIntentId) return null;
     return parsed;
   } catch {
     return null;

@@ -15,7 +15,8 @@ export interface StripePaymentIntentResult {
   amount: number;
   currency: 'usd';
   mode: 'test' | 'live';
-  checkoutSessionId: string;
+  /** The WooCommerce order this payment is for — reserved before the payment. */
+  reservedOrderId: string;
 }
 
 export interface StripeVerifyPaymentResult {

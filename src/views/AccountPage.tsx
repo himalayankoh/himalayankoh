@@ -1,28 +1,48 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Loader2, Shield, Bell, Package, Heart, MapPin, Clock, FileText } from 'lucide-react';
+import { User, Mail, Phone, Loader2, Shield, Package, Heart, MapPin, Clock, FileText } from 'lucide-react';
 import { SkeletonDashboard } from '../components/ui/Skeleton';
 import { useToast } from '../context/ToastContext';
 import DashboardSidebar from '../components/account/DashboardSidebar';
 import OrdersSection from '../components/account/OrdersSection';
 import { useAuthContext } from '../context/AuthContext';
-import { addressesApi, notificationsApi, ordersApi } from '../lib/supabase/api';
+import { addressesApi } from '../lib/account/addresses';
 import { wishlistApi } from '../lib/wishlist/client';
-import { supabase, isSupabaseConfigured } from '../lib/supabase/client';
 import { signOutOfBrowser } from '../lib/auth/browserSignOut';
 import { getCustomerAccessToken } from '../lib/auth/customerClient';
-import type { Address, Notification, OrderWithItems } from '../lib/supabase/database.types';
+import type { SavedAddress } from '../lib/account/addresses';
+import type { OrderWithItems } from '../lib/supabase/database.types';
 
 // The account portal is the only customer account screen. `/orders` was a
 // second one with its own layout and its own copy of the orders list; it is now
 // this portal's first tab and redirects here (see `LEGACY_ACCOUNT_REDIRECTS`).
-type TabType = 'orders' | 'dashboard' | 'profile' | 'security' | 'notifications' | 'addresses';
+type TabType = 'orders' | 'dashboard' | 'profile' | 'security' | 'addresses';
 
-const validTabs: TabType[] = ['orders', 'dashboard', 'profile', 'security', 'notifications', 'addresses'];
+const validTabs: TabType[] = ['orders', 'dashboard', 'profile', 'security', 'addresses'];
 
 /** The tab the portal opens on: the customer's orders, which is why they came. */
 const DEFAULT_TAB: TabType = 'orders';
+
+/**
+ * The customer's most recent orders, from WooCommerce — the store's own order
+ * records, and the same read the Orders tab uses.
+ *
+ * This used to query a Supabase `orders` table by the signed-in user's id, which
+ * stopped being the same id when customer accounts moved to WooCommerce: a
+ * shopper's id is now their WooCommerce customer id, and no Supabase order row
+ * carries one. The summary never showed a customer their own orders as a result.
+ */
+async function fetchRecentOrders(limit = 3): Promise<OrderWithItems[]> {
+  const token = getCustomerAccessToken();
+  const response = await fetch(`/api/account/orders?limit=${limit}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) throw new Error(`Unable to load your orders (${response.status}).`);
+
+  const body = (await response.json()) as { orders?: OrderWithItems[] };
+  return body.orders ?? [];
+}
 
 export default function AccountPage() {
   const { profile, updateProfile, user, loading: authLoading, isAdmin } = useAuthContext();
@@ -35,8 +55,7 @@ export default function AccountPage() {
   const [saving, setSaving] = useState(false);
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
   const [wishlistCount, setWishlistCount] = useState(0);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addressForm, setAddressForm] = useState({
@@ -81,22 +100,20 @@ export default function AccountPage() {
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      if (!user?.id || !isSupabaseConfigured()) {
+      if (!user?.id) {
         setDashboardLoading(false);
         return;
       }
 
       try {
-        const [{ orders }, wishlistCount, notifications, addresses] = await Promise.all([
-          ordersApi.getUserOrders(user.id, { limit: 3 }),
+        const [recentOrders, wishlistCount, addresses] = await Promise.all([
+          fetchRecentOrders(),
           wishlistApi.getWishlistCount(),
-          notificationsApi.getNotifications(user.id),
-          addressesApi.getUserAddresses(user.id),
+          addressesApi.getAddresses(),
         ]);
 
-        setOrders(orders);
+        setOrders(recentOrders);
         setWishlistCount(wishlistCount);
-        setNotifications(notifications);
         setAddresses(addresses);
       } catch (err) {
         console.error('Failed to fetch dashboard data:', err);
@@ -117,23 +134,15 @@ export default function AccountPage() {
   }, [profile?.full_name, profile?.phone]);
 
   const recentActivity = useMemo(() => {
-    return [
-      ...orders.map((order) => ({
+    return orders
+      .map((order) => ({
         id: order.id,
         label: `Order ${order.order_number} is ${order.status}`,
         date: order.created_at,
-      })),
-      ...notifications.slice(0, 3).map((notification) => ({
-        id: notification.id,
-        label: notification.title,
-        date: notification.created_at,
-      })),
-    ]
+      }))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 5);
-  }, [notifications, orders]);
-
-  const unreadCount = notifications.filter((notification) => !notification.is_read).length;
+  }, [orders]);
 
   const setTab = (tab: TabType) => {
     setActiveTab(tab);
@@ -180,21 +189,27 @@ export default function AccountPage() {
     setSaving(true);
 
     try {
-      const { error: verifyError } = await supabase.auth.signInWithPassword({
-        email: user?.email ?? '',
-        password: passwordData.currentPassword,
+      // WordPress checks the current password and writes the new one; the route
+      // takes the account from the session, so the form cannot change anybody
+      // else's password. This used to be a Supabase pair
+      // (signInWithPassword + updateUser), which had stopped working entirely.
+      const customerToken = getCustomerAccessToken();
+      const response = await fetch('/api/account/password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(customerToken ? { Authorization: `Bearer ${customerToken}` } : {}),
+        },
+        body: JSON.stringify({
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        }),
       });
 
-      if (verifyError) {
-        toast.error('Current password is incorrect');
-        return;
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || 'Failed to update password');
       }
-
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: passwordData.newPassword,
-      });
-
-      if (updateError) throw updateError;
 
       toast.success('Password updated successfully!');
       setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -207,12 +222,13 @@ export default function AccountPage() {
 
   const handleAddressSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.id) return;
 
     setSaving(true);
 
     try {
-      const address = await addressesApi.createAddress(user.id, {
+      // No user id: the route derives the owner from the customer session, so a
+      // signed-out save fails with "sign in" instead of writing to nobody.
+      const address = await addressesApi.createAddress({
         label: addressForm.label || undefined,
         full_name: addressForm.full_name,
         phone: addressForm.phone || undefined,
@@ -245,7 +261,7 @@ export default function AccountPage() {
     }
   };
 
-  const handleDeleteAddress = async (addressId: string) => {
+  const handleDeleteAddress = async (addressId: number) => {
     try {
       await addressesApi.deleteAddress(addressId);
       setAddresses((current) => current.filter((address) => address.id !== addressId));
@@ -289,26 +305,12 @@ export default function AccountPage() {
     }
   };
 
-  const handleMarkAsRead = async (notificationId: string) => {
-    try {
-      await notificationsApi.markAsRead(notificationId);
-      setNotifications((current) => current.map((notification) => (
-        notification.id === notificationId
-          ? { ...notification, is_read: true, read_at: new Date().toISOString() }
-          : notification
-      )));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update notification');
-    }
-  };
-
   const tabs = [
     { id: 'orders' as TabType, label: 'My Orders', icon: Package },
     { id: 'profile' as TabType, label: 'Account Details', icon: User },
     { id: 'addresses' as TabType, label: 'Addresses', icon: MapPin },
     { id: 'security' as TabType, label: 'Password', icon: Shield },
     { id: 'dashboard' as TabType, label: 'Dashboard', icon: FileText },
-    { id: 'notifications' as TabType, label: 'Notifications', icon: Bell },
   ];
 
   return (
@@ -375,10 +377,9 @@ export default function AccountPage() {
                     <SkeletonDashboard />
                   ) : (
                     <>
-                      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                      <div className="grid sm:grid-cols-3 gap-4 mb-8">
                         <SummaryCard icon={<Package size={20} />} label="Recent Orders" value={orders.length} />
                         <SummaryCard icon={<Heart size={20} />} label="Wishlist" value={wishlistCount} />
-                        <SummaryCard icon={<Bell size={20} />} label="Unread Alerts" value={unreadCount} />
                         <SummaryCard icon={<MapPin size={20} />} label="Addresses" value={addresses.length} />
                       </div>
 
@@ -639,48 +640,6 @@ export default function AccountPage() {
                       >
                         Delete Account
                       </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Notifications Tab */}
-              {activeTab === 'notifications' && (
-                <div>
-                  <h2 className="font-serif text-xl font-bold text-charcoal mb-6">
-                    Notifications
-                  </h2>
-                  <div className="space-y-4">
-                    {notifications.length === 0 ? (
-                      <div className="text-center py-12 text-charcoal-light">
-                        <Bell size={48} className="mx-auto mb-4 opacity-30" />
-                        <p>No notifications yet</p>
-                      </div>
-                    ) : (
-                      notifications.map((notification) => (
-                        <div
-                          key={notification.id}
-                          className={`flex items-start justify-between gap-4 p-4 rounded-xl transition-colors ${
-                            notification.is_read ? 'bg-gray-50' : 'bg-himalayan-lighter'
-                          }`}
-                        >
-                          <div>
-                            <p className="font-medium text-charcoal">{notification.title}</p>
-                            <p className="text-sm text-charcoal-light">{notification.message}</p>
-                            <p className="text-xs text-charcoal-light mt-1">
-                              {new Date(notification.created_at).toLocaleString()}
-                            </p>
-                          </div>
-                          {!notification.is_read && (
-                            <button
-                              onClick={() => handleMarkAsRead(notification.id)}
-                              className="text-sm font-semibold text-himalayan hover:text-himalayan-dark"
-                            >
-                              Mark read
-                            </button>
-                          )}
-                        </div>
-                      ))
                     )}
                   </div>
                 </div>

@@ -1,10 +1,15 @@
 import { isWooCommerceDataSource } from '@/lib/backend/dataSource';
-import { isRealCatalogProduct } from '@/lib/supabase/api/products';
-import { HK_META, createWooOrder, orderWithItemsFromWoo } from '@/lib/woo/orders';
+import { isRealCatalogProduct } from '@/lib/catalog/realProduct';
+import {
+  HK_META,
+  createWooOrder,
+  findPendingWooOrderByFingerprint,
+  orderWithItemsFromWoo,
+  type WooOrderLike,
+} from '@/lib/woo/orders';
 import { clearStoreCart, mapStoreCart, readStoreCart, type StoreCartLine } from '@/lib/woo/storeCart';
-import type { CreateOrderData, ShippingMethod } from '@/lib/supabase/api/orders';
+import type { CreateOrderData, ShippingMethod } from '@/lib/orders/totals';
 import type { OrderWithItems } from '@/lib/supabase/database.types';
-import { dispatchOrderCreatedNotifications } from '@/lib/orders/notifyOrderEvents';
 import { resolveShippoConfigError } from '@/lib/shippo/config';
 import { fetchShippoRatesForOrder, pickRateForShippingMethod } from '@/lib/shippo/server/rates';
 import type { CheckoutShippingAddress, RatesLineItem } from '@/lib/shippo/types';
@@ -158,8 +163,8 @@ export function cartFingerprint(cartItems: CheckoutCartItem[]): string {
  *
  * `cartToken` is the value of the cart cookie (`lib/cart/cookies.ts`). The Stripe
  * webhook has no browser and therefore no cookie, which is why the token rather
- * than the cookie is what identifies the cart here: the checkout session records
- * it when the payment starts and hands it back when the payment succeeds.
+ * than the cookie is what identifies the cart here: the reserved Woo order records
+ * it, and the webhook reads it back when the payment succeeds.
  *
  * Null means "no cart", the same answer the previous Supabase read gave for a
  * missing row, so every caller's empty-cart handling is unchanged.
@@ -206,17 +211,95 @@ function toCheckoutItem(line: StoreCartLine): CheckoutCartItem {
   };
 }
 
-export async function serverCreateOrder(
+export interface ReserveOrderOptions {
+  /**
+   * The WooCommerce customer id, taken from the verified session — never from the
+   * request body. Null is a guest, and a supported path.
+   */
+  customerId: number | null;
+  /** The WooCommerce cart token, recorded so the webhook can empty the cart. */
+  cartToken: string | null;
+  /**
+   * The payment method to record up front. Set for an invoice order (there is no
+   * payment to wait for); left unset for Stripe, where the webhook records how the
+   * order was actually paid.
+   */
+  paymentMethod?: string;
+  paymentMethodTitle?: string;
+}
+
+export interface ReservedOrder {
+  order: OrderWithItems;
+  /**
+   * The store's own order record, for callers that need its meta (the payment
+   * reference, the cart token) rather than the projection the screens render.
+   */
+  raw: WooOrderLike;
+  /** True when this call reused the pending order an earlier attempt created. */
+  reused: boolean;
+  /** The cart token the reservation recorded, when there was a cart. */
+  cartToken: string | null;
+}
+
+/**
+ * Reserves the WooCommerce order for a checkout, once per cart.
+ *
+ * ## Why the order exists before the payment
+ *
+ * The store's order id is the identifier every later step needs — Stripe metadata,
+ * the webhook, the tracking page, the customer's history — so it is created first
+ * and the payment is attached to it. That also makes idempotency a property of the
+ * store rather than of a session row this app has to keep: a second attempt at the
+ * same cart finds the pending order the first attempt reserved (matched on
+ * `_hk_cart_fingerprint`) and reuses it, so a double-click cannot become two
+ * orders. Nothing here touches Supabase.
+ *
+ * ## What the server decides
+ *
+ * The cart is read from WooCommerce and priced from its own lines, the shipping
+ *amount is re-quoted server-side, and the identity is the customer id the caller's
+ * session proved. Every number on the order is the store's.
+ *
+ * The cart is **not** emptied here: an abandoned payment must leave the shopper's
+ * cart intact. The webhook empties it once the money is confirmed.
+ */
+export async function reserveOrderForCheckout(
   data: CreateOrderData,
-  options: { userId?: string | null; cartToken?: string | null }
-): Promise<OrderWithItems> {
-  const cart = await loadCartForCheckout(options.cartToken ?? null);
+  options: ReserveOrderOptions
+): Promise<ReservedOrder> {
+  const cart = await loadCartForCheckout(options.cartToken);
 
   if (!cart || !cart.cart_items?.length) {
     throw new Error('Cart is empty. Add products again and retry checkout.');
   }
 
   const pricedItems = priceCartItems(cart.cart_items);
+  const fingerprint = cartFingerprint(cart.cart_items);
+
+  // A previous attempt at this same cart may already hold a pending order.
+  const existing = await findPendingWooOrderByFingerprint({
+    fingerprint,
+    email: data.email,
+    customerId: options.customerId,
+  });
+  if (existing) {
+    return {
+      order: orderWithItemsFromWoo(existing) as OrderWithItems,
+      raw: existing,
+      reused: true,
+      cartToken: cart.id,
+    };
+  }
+
+  if (!isWooCommerceDataSource()) {
+    // Refused rather than fallen back to. The cart read above can only have
+    // produced WooCommerce product ids (it reads `wc/store/v1/cart`), and writing
+    // those into a Supabase `order_items` table would attach an order to products
+    // that do not exist there.
+    throw new Error(
+      'Orders are written to WooCommerce: the storefront cart is WooCommerce\'s, so there is no other order store to write to. Set NEXT_PUBLIC_DATA_SOURCE=woocommerce.'
+    );
+  }
 
   // Recompute shipping server-side; never trust data.shippingCostOverride.
   const shippingMethod = (data.shippingMethod || 'standard') as ShippingMethod;
@@ -231,72 +314,78 @@ export async function serverCreateOrder(
     })),
   });
 
-  const resolvedRateId = resolvedShipping.shippoRateId;
-  const resolvedCarrier = resolvedShipping.carrier ?? data.shippingCarrier ?? null;
-  const resolvedService = resolvedShipping.service ?? data.shippingService ?? null;
-
-  if (isWooCommerceDataSource()) {
-    const wooOrder = await createWooOrder({
+  const wooOrder = await createWooOrder({
+    email: data.email,
+    phone: data.phone,
+    billing: {
+      first_name: data.billingAddress?.fullName?.split(' ')[0] || data.shippingAddress.fullName.split(' ')[0] || '',
+      last_name: data.billingAddress?.fullName?.split(' ').slice(1).join(' ') || data.shippingAddress.fullName.split(' ').slice(1).join(' ') || '',
+      address_1: data.billingAddress?.addressLine1 || data.shippingAddress.addressLine1,
+      address_2: data.billingAddress?.addressLine2 || data.shippingAddress.addressLine2,
+      city: data.billingAddress?.city || data.shippingAddress.city,
+      state: data.billingAddress?.state || data.shippingAddress.state,
+      postcode: data.billingAddress?.postalCode || data.shippingAddress.postalCode,
+      country: data.billingAddress?.country || data.shippingAddress.country || 'US',
       email: data.email,
       phone: data.phone,
-      billing: {
-        first_name: data.billingAddress?.fullName?.split(' ')[0] || data.shippingAddress.fullName.split(' ')[0] || '',
-        last_name: data.billingAddress?.fullName?.split(' ').slice(1).join(' ') || data.shippingAddress.fullName.split(' ').slice(1).join(' ') || '',
-        address_1: data.billingAddress?.addressLine1 || data.shippingAddress.addressLine1,
-        address_2: data.billingAddress?.addressLine2 || data.shippingAddress.addressLine2,
-        city: data.billingAddress?.city || data.shippingAddress.city,
-        state: data.billingAddress?.state || data.shippingAddress.state,
-        postcode: data.billingAddress?.postalCode || data.shippingAddress.postalCode,
-        country: data.billingAddress?.country || data.shippingAddress.country || 'US',
-        email: data.email,
-        phone: data.phone,
-      },
-      shipping: {
-        first_name: data.shippingAddress.fullName.split(' ')[0] || '',
-        last_name: data.shippingAddress.fullName.split(' ').slice(1).join(' ') || '',
-        address_1: data.shippingAddress.addressLine1,
-        address_2: data.shippingAddress.addressLine2,
-        city: data.shippingAddress.city,
-        state: data.shippingAddress.state,
-        postcode: data.shippingAddress.postalCode,
-        country: data.shippingAddress.country || 'US',
-      },
-      lineItems: pricedItems.map((item) => ({
-        productId: Number(item.product_id),
-        quantity: item.quantity,
-        price: item.unitPrice,
-      })),
-      shippingMethod,
-      couponCode: data.couponCode,
-      customerNote: data.notes,
-      status: 'pending',
-      meta: {
-        [HK_META.userId]: options.userId || null,
-        [HK_META.shippoRateId]: resolvedRateId,
-        [HK_META.carrier]: resolvedCarrier,
-        [HK_META.service]: resolvedService,
-      },
-    });
+    },
+    shipping: {
+      first_name: data.shippingAddress.fullName.split(' ')[0] || '',
+      last_name: data.shippingAddress.fullName.split(' ').slice(1).join(' ') || '',
+      address_1: data.shippingAddress.addressLine1,
+      address_2: data.shippingAddress.addressLine2,
+      city: data.shippingAddress.city,
+      state: data.shippingAddress.state,
+      postcode: data.shippingAddress.postalCode,
+      country: data.shippingAddress.country || 'US',
+    },
+    lineItems: pricedItems.map((item) => ({
+      productId: Number(item.product_id),
+      quantity: item.quantity,
+      price: item.unitPrice,
+    })),
+    shippingMethod,
+    couponCode: data.couponCode,
+    customerNote: data.notes,
+    // The store's own customer record, so the order appears under the customer in
+    // WooCommerce's admin — not only in this app's meta.
+    customerId: options.customerId ?? undefined,
+    status: 'pending',
+    paymentMethod: options.paymentMethod,
+    paymentMethodTitle: options.paymentMethodTitle,
+    meta: {
+      [HK_META.userId]: options.customerId ? String(options.customerId) : null,
+      [HK_META.cartFingerprint]: fingerprint,
+      [HK_META.cartToken]: cart.id,
+      [HK_META.shippoRateId]: resolvedShipping.shippoRateId,
+      [HK_META.carrier]: resolvedShipping.carrier ?? data.shippingCarrier ?? null,
+      [HK_META.service]: resolvedShipping.service ?? data.shippingService ?? null,
+      // Recorded so the label step knows which rate/speed the customer paid for;
+      // it is a fact about the order, not about the checkout that made it.
+      [HK_META.shippingMethod]: shippingMethod,
+    },
+  });
 
-    if (data.clearCart !== false) {
-      // Emptied in WooCommerce, where the cart actually lives. The response is
-      // discarded on purpose: the cart token outlives the items, so the shopper's
-      // next read simply finds an empty cart.
-      await clearStoreCart({ cartToken: cart.id, nonce: null });
-    }
+  return {
+    order: orderWithItemsFromWoo(wooOrder) as OrderWithItems,
+    raw: wooOrder,
+    reused: false,
+    cartToken: cart.id,
+  };
+}
 
-    const projected = orderWithItemsFromWoo(wooOrder);
-    dispatchOrderCreatedNotifications(projected.id);
-    return projected as OrderWithItems;
+/**
+ * Empties the cart a reserved order was placed from.
+ *
+ * Called by the webhook once payment is confirmed, and by the invoice route once
+ * the order exists. Best-effort on purpose: a cart that fails to clear must not
+ * turn a paid order into an error the customer sees.
+ */
+export async function clearReservedCart(cartToken: string | null): Promise<void> {
+  if (!cartToken) return;
+  try {
+    await clearStoreCart({ cartToken, nonce: null });
+  } catch (error) {
+    console.error('[Order] The cart could not be emptied after checkout:', error);
   }
-
-  // Refused rather than fallen back to. The cart read above can only have
-  // produced WooCommerce product ids (it reads `wc/store/v1/cart`), and inserting
-  // those into Supabase `order_items` would attach an order to products that do
-  // not exist there — a silent corruption in exchange for keeping a code path
-  // alive. It cannot read a cart any more, because the cart is not in Supabase.
-  // The Supabase order path is deleted with the rest of it in the orders phase.
-  throw new Error(
-    'Orders are written to WooCommerce: the storefront cart is WooCommerce\'s, so the Supabase order path has no cart to read. Set NEXT_PUBLIC_DATA_SOURCE=woocommerce.'
-  );
 }

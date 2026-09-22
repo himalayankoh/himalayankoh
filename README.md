@@ -74,6 +74,8 @@ Created by `npm run setup` (and refreshed by `npm run reset`):
 - `npm run check:stripe` / `npm run check:shippo` / `npm run check:packing` — third-party integration checks
 - `npm run check:wordpress` — is the WordPress backend answering, and how does each route fail
 - `npm run diagnose:store-products` — read-only, GET-only: narrows the Store API product fatal to its trigger and prints the WordPress-side change set that follows
+- `npm run check:client-supabase` — which built routes still download Supabase to the browser. Needs a build and a running server (`--base-url`, default `http://127.0.0.1:3999`); exits 1 while any route is dirty
+- `npm run audit:supabase` — how much of the app still depends on Supabase: modules by tier (browser UI / server routes / libs), value imports vs types-only, every table and Storage bucket, and how many modules already use each WordPress/WooCommerce backend. Read-only, no build or network needed
 
 ## Database migrations
 

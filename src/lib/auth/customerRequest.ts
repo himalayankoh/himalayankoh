@@ -72,3 +72,17 @@ export async function verifyCustomerRequest(request: Request): Promise<CustomerV
     },
   };
 }
+
+/**
+ * The verified caller, or null when there is no session at all.
+ *
+ * For routes that serve signed-in customers **and** guests — checkout is the one
+ * that matters — a missing session is not a refusal, it is a guest. A forged or
+ * expired token is treated the same as none, because this route must never accept
+ * an identity it cannot verify and must never turn an unverifiable token into a
+ * guest's *account* order.
+ */
+export async function optionalCustomerRequest(request: Request): Promise<CustomerIdentity | null> {
+  const result = await verifyCustomerRequest(request);
+  return result.ok ? result.customer : null;
+}

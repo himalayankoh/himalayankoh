@@ -1,8 +1,21 @@
+/**
+ * Buying a shipping label for an order.
+ *
+ * The order is read from WooCommerce — its shipping address, its line items and the
+ * rate/method the customer chose — and everything the carrier returns is written
+ * back to *that* order: the tracking number and label in order meta (which is where
+ * this app's other order facts live), the fulfilment state as the app status, and
+ * the label's cost as a WooCommerce order note, which is where an operator already
+ * reads an order's history.
+ *
+ * Nothing here needs Supabase. It used to read and write the app's own order row,
+ * which is why a label bought for a WooCommerce order was invisible in the store.
+ */
+
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { dispatchOrderShippedNotifications } from '@/lib/orders/notifyOrderEvents';
 import { UnsupportedPackingProductsError } from '@/lib/shippo/packing/errors';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
 import { resolveShippoConfigError } from '@/lib/shippo/config';
 import { formatShippoLabelError, isRetryableLabelError } from '@/lib/shippo/carrierErrors';
 import { normalizeOrderShippingAddress } from '@/lib/shippo/normalizeAddress';
@@ -13,27 +26,23 @@ import {
   splitShippoRateIds,
 } from '@/lib/shippo/server/rates';
 import type { CheckoutShippingAddress, RatesLineItem, ShippoLabelResult } from '@/lib/shippo/types';
+import {
+  HK_META,
+  addWooOrderNote,
+  getWooOrder,
+  orderFromWoo,
+  readWooOrderMeta,
+  setWooOrderShipping,
+  updateWooOrderStatus,
+  type WooOrderLike,
+} from '@/lib/woo/orders';
 
-interface OrderRow {
-  id: string;
-  email: string;
-  order_number: string;
-  shipping_address: CheckoutShippingAddress;
-  billing_address: { shippingMethod?: string } | null;
-  shippo_rate_id: string | null;
-  tracking_number: string | null;
-  label_url: string | null;
-  notes: string | null;
-  order_items: { quantity: number; product_id: string }[] | null;
-}
-
-function buildOrderLineItems(orderItems: OrderRow['order_items']): RatesLineItem[] {
-  if (!Array.isArray(orderItems)) return [];
-
-  return orderItems
-    .map((item) => ({
-      productId: typeof item.product_id === 'string' ? item.product_id : '',
-      quantity: Math.max(1, Math.floor(Number(item.quantity) || 0)),
+/** The order's shippable lines, as the rate engine wants them. */
+function buildOrderLineItems(order: WooOrderLike): RatesLineItem[] {
+  return (order.line_items ?? [])
+    .map((line) => ({
+      productId: String(line.variation_id ?? line.product_id ?? ''),
+      quantity: Math.max(1, Math.floor(Number(line.quantity) || 0)),
     }))
     .filter((item) => item.productId && item.quantity > 0);
 }
@@ -57,47 +66,34 @@ export async function POST(request: Request) {
   }
 
   const record = body as Record<string, unknown>;
-  const orderId = typeof record.orderId === 'string' ? record.orderId.trim() : '';
+  const rawOrderId = typeof record.orderId === 'string' ? record.orderId.trim() : String(record.orderId ?? '');
+  const orderId = Number(rawOrderId);
 
-  if (!orderId) {
-    return NextResponse.json({ error: 'orderId is required.' }, { status: 400 });
+  if (!Number.isInteger(orderId) || orderId <= 0) {
+    return NextResponse.json(
+      { error: 'A WooCommerce order id is required. Orders are read from the store, so their ids are the store’s own.' },
+      { status: 400 }
+    );
   }
 
   try {
-    const supabase = getSupabaseAdmin();
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .select(`
-        id,
-        email,
-        order_number,
-        shipping_address,
-        billing_address,
-        shippo_rate_id,
-        tracking_number,
-        label_url,
-        notes,
-        order_items(quantity, product_id)
-      `)
-      .eq('id', orderId)
-      .maybeSingle();
+    const order = await getWooOrder(orderId);
+    const projected = orderFromWoo(order);
 
-    if (orderError) throw orderError;
-    if (!order) {
-      return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
-    }
-
-    const row = order as unknown as OrderRow;
-    if (row.tracking_number && row.label_url) {
+    const existingTracking = projected.tracking_number;
+    const existingLabel = projected.label_url;
+    if (existingTracking && existingLabel) {
       return NextResponse.json({
         ok: true,
         alreadyCreated: true,
-        trackingNumber: row.tracking_number,
-        labelUrl: row.label_url,
+        trackingNumber: existingTracking,
+        labelUrl: existingLabel,
       });
     }
 
-    const shippingAddress = normalizeOrderShippingAddress(row.shipping_address);
+    const shippingAddress = normalizeOrderShippingAddress(
+      projected.shipping_address as unknown as CheckoutShippingAddress
+    );
     if (!shippingAddress) {
       return NextResponse.json(
         { error: 'Order shipping address is incomplete. Update the order address before creating a label.' },
@@ -105,21 +101,21 @@ export async function POST(request: Request) {
       );
     }
 
-    const lineItems = buildOrderLineItems(row.order_items);
+    const lineItems = buildOrderLineItems(order);
     if (lineItems.length === 0) {
       return NextResponse.json(
-        { error: 'Order has no shippable line items. Check order items in the database.' },
+        { error: 'Order has no shippable line items. Check the order items in WooCommerce.' },
         { status: 422 },
       );
     }
 
-    const shippingMethod =
-      row.billing_address?.shippingMethod === 'expedited' ? 'expedited' : 'standard';
+    const shippingMethod = readWooOrderMeta(order, HK_META.shippingMethod) === 'expedited' ? 'expedited' : 'standard';
+    const checkoutRateId = readWooOrderMeta(order, HK_META.shippoRateId);
 
     // Each box is rated and labeled separately (USPS rejects multi-parcel
     // shipments and boxes over 70 lbs), so no consolidation here.
     const rates = await fetchShippoRatesForOrder({
-      email: row.email,
+      email: projected.email,
       shippingAddress,
       lineItems,
       consolidateParcels: false,
@@ -151,7 +147,7 @@ export async function POST(request: Request) {
       const purchased: ShippoLabelResult[] = [];
       try {
         for (const rateId of rateIds) {
-          purchased.push(await purchaseShippoLabel(rateId, row.id));
+          purchased.push(await purchaseShippoLabel(rateId, String(orderId)));
         }
         labels = purchased;
         usedRateId = candidateId;
@@ -178,41 +174,38 @@ export async function POST(request: Request) {
     }
 
     const pickedRate = rates.find((rate) => rate.objectId === usedRateId);
-    const usedFallback = usedRateId !== row.shippo_rate_id;
+    const usedFallback = usedRateId !== checkoutRateId;
     const primary = labels[0];
     const trackingNumbers = labels.map((label) => label.trackingNumber);
 
-    const costNote = pickedRate
-      ? `Shipping label cost: $${pickedRate.amount.toFixed(2)} via ${primary.carrier} ${primary.serviceName}` +
-        (labels.length > 1 ? ` (${labels.length} boxes)` : '')
-      : null;
-    const notes = costNote ? [row.notes, costNote].filter(Boolean).join('\n') : row.notes;
+    // The tracking number is what the customer's tracker reads, so it is written
+    // first and its failure is fatal to this request; the store's fulfilment state
+    // follows it.
+    await setWooOrderShipping(orderId, {
+      trackingNumber: trackingNumbers.join(', '),
+      trackingUrl: primary.trackingUrl,
+      labelUrl: primary.labelUrl,
+      shippoRateId: usedRateId,
+      shippoTransactionId: labels.map((label) => label.transactionId).join(','),
+      carrier: primary.carrier,
+      service: primary.serviceName,
+    });
+    await updateWooOrderStatus(orderId, { status: 'shipped' });
 
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({
-        status: 'shipped',
-        tracking_number: trackingNumbers.join(', '),
-        shippo_transaction_id: labels.map((label) => label.transactionId).join(','),
-        shippo_rate_id: usedRateId,
-        shipping_carrier: primary.carrier,
-        shipping_service: primary.serviceName,
-        label_url: primary.labelUrl,
-        tracking_url: primary.trackingUrl,
-        notes,
-        shipped_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      } as never)
-      .eq('id', row.id);
+    if (pickedRate) {
+      await addWooOrderNote(
+        orderId,
+        `Shipping label cost: $${pickedRate.amount.toFixed(2)} via ${primary.carrier} ${primary.serviceName}` +
+          (labels.length > 1 ? ` (${labels.length} boxes)` : '')
+      );
+    }
 
-    if (updateError) throw updateError;
-
-    dispatchOrderShippedNotifications(row.id);
+    dispatchOrderShippedNotifications(String(orderId));
 
     return NextResponse.json({
       ok: true,
-      orderId: row.id,
-      orderNumber: row.order_number,
+      orderId: String(orderId),
+      orderNumber: projected.order_number,
       trackingNumber: trackingNumbers.join(', '),
       trackingNumbers,
       trackingUrl: primary.trackingUrl,

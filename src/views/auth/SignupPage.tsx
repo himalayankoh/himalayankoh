@@ -87,16 +87,22 @@ export default function SignupPage() {
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Check size={32} className="text-green-600" />
           </div>
-          <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Check Your Email</h1>
+          <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Welcome to Himalayan Koh</h1>
           <p className="text-charcoal-light mb-6">
-            We&apos;ve sent a verification link to <strong>{formData.email}</strong>.
-            Please check your inbox and click the link to verify your account.
+            Your account is ready, and you are signed in. We&apos;ve also emailed{' '}
+            <strong>{formData.email}</strong> a confirmation for your records.
           </p>
+          {/*
+            * "Go to My Account", not "Go to Login": creating the account *is*
+            * signing in here (see `signUp` in AuthContext), so a button labelled
+            * "Login" would send a customer who is already signed in back to a form
+            * asking for the password they just chose.
+            */}
           <Link
-            to="/login"
+            to="/account"
             className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors"
           >
-            Go to Login
+            Go to My Account
           </Link>
         </motion.div>
       </div>

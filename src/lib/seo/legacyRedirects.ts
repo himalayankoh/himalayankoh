@@ -57,6 +57,12 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   { source: '/return-policy', destination: '/returns', permanent: true },
   { source: '/refund-policy', destination: '/returns', permanent: true },
   { source: '/faq', destination: '/faqs', permanent: true },
+  // `/verify-email` was this app's own Supabase-era page and is retired: a
+  // WooCommerce account is usable the moment it is created, and
+  // `wc_create_new_customer` mails a welcome, not a verification link — so there
+  // was nothing left for the page to verify. Any link still in an inbox lands on
+  // sign-in, which is where somebody who was told to "verify" should end up.
+  { source: '/verify-email', destination: '/login', permanent: false },
   // `/my-account` used to send everyone to /login, which was right for a guest
   // and wrong for a signed-in customer. It now routes to the account portal
   // (`LEGACY_ACCOUNT_REDIRECTS` in lib/auth/roleRouting.ts), whose own guard

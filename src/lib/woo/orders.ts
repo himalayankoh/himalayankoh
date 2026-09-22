@@ -39,7 +39,7 @@
  * so that is the number the console shows.
  */
 
-import { wordpressRequest, wordpressRequestWithMeta } from '../backend/wordpress';
+import { WordPressApiError, wordpressRequest, wordpressRequestWithMeta } from '../backend/wordpress';
 import { requireWooCredentials } from '../backend/credentials';
 import type { Json, Order, OrderItem } from '../supabase/database.types';
 
@@ -53,6 +53,18 @@ export const HK_META = {
   userId: '_hk_user_id',
   couponCode: '_hk_coupon',
   paymentIntent: '_hk_payment_intent',
+  /**
+   * The checkout that reserved this order, so a double-click reuses it.
+   *
+   * A pending order is created *before* payment is attempted (see
+   * `lib/orders/reserveOrder`), so the idempotency question is "has this cart
+   * already reserved an order?" — which is answered by comparing this value.
+   * It is the cart's shape (`product:grain:qty`, sorted), not its token, so the
+   * same basket from a refreshed browser still matches.
+   */
+  cartFingerprint: '_hk_cart_fingerprint',
+  /** The WooCommerce cart token, so the webhook can empty the right cart. */
+  cartToken: '_hk_cart_token',
   trackingNumber: '_hk_tracking_number',
   trackingUrl: '_hk_tracking_url',
   labelUrl: '_hk_label_url',
@@ -60,6 +72,8 @@ export const HK_META = {
   shippoTransactionId: '_hk_shippo_transaction_id',
   carrier: '_hk_shipping_carrier',
   service: '_hk_shipping_service',
+  /** The shipping method the customer chose (`standard` | `expedited`). */
+  shippingMethod: '_hk_shipping_method',
   shippedAt: '_hk_shipped_at',
   deliveredAt: '_hk_delivered_at',
 } as const;
@@ -177,6 +191,11 @@ function metaString(order: WooOrderLike, key: string): string | null {
   if (value === undefined || value === null) return null;
   const text = String(value).trim();
   return text || null;
+}
+
+/** One `_hk_*` meta value from a Woo order, or null. Never throws. */
+export function readWooOrderMeta(order: WooOrderLike, key: string): string | null {
+  return metaString(order, key);
 }
 
 function money(value: string | number | undefined | null): number {
@@ -391,6 +410,59 @@ export async function listWooOrders(query: WooOrderQuery = {}): Promise<{
   };
 }
 
+/**
+ * The pending order a cart already reserved, if any.
+ *
+ * This is the idempotency read for checkout: a shopper who double-clicks, or a
+ * browser that retries a timed-out request, asks to reserve the *same* cart and
+ * must land on the order the first attempt created rather than a second one.
+ * Only pending orders are eligible — a paid or cancelled order for the same cart
+ * is a different event, and a fresh reservation is correct for it.
+ *
+ * The billing email is matched too, so two shoppers who happen to build an
+ * identical cart do not share an order.
+ */
+export async function findPendingWooOrderByFingerprint(input: {
+  fingerprint: string;
+  email: string;
+  customerId?: number | null;
+}): Promise<WooOrderLike | null> {
+  requireWooCredentials();
+  if (!input.fingerprint) return null;
+  const email = input.email.trim().toLowerCase();
+
+  const page = await listWooOrders({ status: 'pending', perPage: 100 });
+  const match = page.orders.find((order) => {
+    if (metaString(order, HK_META.cartFingerprint) !== input.fingerprint) return false;
+    const owner = String(order.billing?.email ?? '').trim().toLowerCase();
+    if (email && owner !== email) return false;
+    if (input.customerId) {
+      const orderCustomer = Number(order.customer_id ?? 0);
+      if (orderCustomer && orderCustomer !== input.customerId) return false;
+    }
+    return true;
+  });
+  return match ?? null;
+}
+
+/**
+ * True when a WooCommerce failure means "there is no such order".
+ *
+ * WooCommerce answers an unknown order id with its own error code
+ * (`woocommerce_rest_shop_order_invalid_id`) rather than a clean 404, so a status
+ * check alone is not enough — and a caller that treats "no such order" as a store
+ * outage refuses a legitimate 404. One predicate, so the read, the lookup route and
+ * the tracker cannot disagree about what a miss is.
+ */
+export function isWooOrderNotFound(error: unknown): boolean {
+  if (error instanceof WooOrderError) return error.status === 404;
+  if (error instanceof WordPressApiError) {
+    return error.status === 404 || error.code === 'woocommerce_rest_shop_order_invalid_id';
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /HTTP 404|does not exist|invalid id/i.test(message);
+}
+
 /** One order by id. Throws a 404-shaped error when the store has no such order. */
 export async function getWooOrder(id: number): Promise<WooOrderLike> {
   requireWooCredentials();
@@ -401,12 +473,11 @@ export async function getWooOrder(id: number): Promise<WooOrderLike> {
       timeoutMs: READ_TIMEOUT,
     });
   } catch (error) {
+    if (isWooOrderNotFound(error)) {
+      throw new WooOrderError(`No order ${id} exists in the store.`, 404);
+    }
     const message = error instanceof Error ? error.message : String(error);
-    const notFound = /HTTP 404/.test(message);
-    throw new WooOrderError(
-      notFound ? `No order ${id} exists in the store.` : `Order ${id} could not be read: ${message}`,
-      notFound ? 404 : 502
-    );
+    throw new WooOrderError(`Order ${id} could not be read: ${message}`);
   }
 }
 
@@ -549,6 +620,39 @@ export async function updateWooOrderStatus(
   }
 }
 
+/**
+ * Records the PaymentIntent a checkout reserved for an order.
+ *
+ * Written at payment-intent time, before any money moves. It is what makes a
+ * second attempt at the same order reuse the intent it already has rather than
+ * creating another one that could also be confirmed — the double-charge guard that
+ * does not expire (Stripe's own idempotency keys last 24 hours; this lasts as long
+ * as the order does).
+ */
+export async function setWooOrderPaymentIntent(
+  id: number,
+  input: { paymentIntentId: string; paymentMethod?: string; paymentMethodTitle?: string }
+): Promise<WooOrderLike> {
+  requireWooCredentials();
+  const body: Record<string, unknown> = {
+    meta_data: metaPayload({ [HK_META.paymentIntent]: input.paymentIntentId }),
+  };
+  if (input.paymentMethod) body.payment_method = input.paymentMethod;
+  if (input.paymentMethodTitle) body.payment_method_title = input.paymentMethodTitle;
+
+  try {
+    return await wordpressRequest<WooOrderLike>(`${REST_V3}/orders/${id}`, {
+      useCredentials: true,
+      method: 'PUT',
+      body,
+      timeoutMs: 30_000,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new WooOrderError(`Order ${id} could not record its payment reference: ${message}`);
+  }
+}
+
 /** Marks an order paid, recording the payment intent that paid it. */
 export async function markWooOrderPaid(
   id: number,
@@ -614,6 +718,31 @@ export async function setWooOrderShipping(
   }
 }
 
+/**
+ * Adds a private note to an order.
+ *
+ * WooCommerce's own note stream is where an operator already reads an order's
+ * history, so operational facts this app records (a label's cost, why a carrier was
+ * swapped) belong here rather than in a table of their own.
+ */
+export async function addWooOrderNote(id: number, note: string): Promise<void> {
+  requireWooCredentials();
+  if (!note.trim()) return;
+  try {
+    await wordpressRequest<unknown>(`${REST_V3}/orders/${id}/notes`, {
+      useCredentials: true,
+      method: 'POST',
+      body: { note, customer_note: false },
+      timeoutMs: 30_000,
+    });
+  } catch (error) {
+    // A note is an annotation, not part of the order's truth — never fail the
+    // operation that produced it because the annotation could not be written.
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Order ${id} note could not be written: ${message}`);
+  }
+}
+
 export interface CreateWooOrderInput {
   email: string;
   phone?: string;
@@ -633,6 +762,15 @@ export interface CreateWooOrderInput {
   customerId?: number;
   meta?: Record<string, string | null>;
   status?: AppOrderStatus;
+  /**
+   * The payment method the store records on the order (`invoice`, `stripe_card`).
+   *
+   * WooCommerce owns this field, so the console and the store's own order screen
+   * agree about how an order is meant to be paid. Left unset for an ordinary
+   * Stripe order until the webhook records the paid intent.
+   */
+  paymentMethod?: string;
+  paymentMethodTitle?: string;
 }
 
 /**
@@ -655,6 +793,8 @@ export async function createWooOrder(input: CreateWooOrderInput): Promise<WooOrd
     status: plan.status,
     currency: 'USD',
     customer_id: input.customerId,
+    payment_method: input.paymentMethod,
+    payment_method_title: input.paymentMethodTitle,
     billing: input.billing
       ? { ...input.billing, email: input.billing.email || input.email, phone: input.billing.phone || input.phone }
       : { email: input.email, phone: input.phone },

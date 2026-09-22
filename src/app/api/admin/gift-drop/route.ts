@@ -1,12 +1,23 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { getSetting, upsertSettings } from '@/lib/settings/serverSettings';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
+import { orderFromWoo, listWooOrders } from '@/lib/woo/orders';
 
 export const dynamic = 'force-dynamic';
 
 const CATEGORY = 'campaigns';
 const KEY = 'gift_drop_campaign_v1';
+
+/**
+ * How many recent orders the claims list is counted from.
+ *
+ * WooCommerce's REST v3 cannot search by order-number substring, so a claim is
+ * found by reading a recent window and matching its number. The window is stated on
+ * the response for the same reason the store dashboard states its own: a count that
+ * silently reports a sample as a total is worse than one that says how far it
+ * looked.
+ */
+const CLAIM_WINDOW = 100;
 
 export async function GET(request: Request) {
   const auth = await verifyAdminRequest(request);
@@ -22,40 +33,48 @@ export async function GET(request: Request) {
     campaign = null;
   }
 
-  // Load claims from database if table exists, otherwise return clean empty list
+  // Claims are orders in the store, read the same way every other order screen
+  // reads them. A store that cannot be reached yields no claims rather than a
+  // fabricated list.
   let claims: unknown[] = [];
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const supabase: any = getSupabaseAdmin();
-    const { data } = await supabase
-      .from('orders')
-      .select('*')
-      .ilike('order_number', '%GIFT%')
-      .order('created_at', { ascending: false })
-      .limit(100);
+    const { orders } = await listWooOrders({ perPage: CLAIM_WINDOW, page: 1 });
+    const giftOrders = orders.filter((order) => {
+      const number = String(order.number ?? order.id);
+      return /gift/i.test(number) || order.line_items?.some((line) => /gift/i.test(line.name ?? ''));
+    });
 
-    if (Array.isArray(data)) {
-      claims = data.map((o) => ({
-        id: o.id,
-        orderNumber: o.order_number || String(o.id).slice(0, 8),
-        email: o.email || o.customer_email || '—',
-        name: o.shipping_name || o.customer_name || 'Recipient',
-        status: o.status || 'pending',
-        createdAt: o.created_at,
+    claims = giftOrders.map((wooOrder) => {
+      // The store's own projection, so a gift claim shows the same status, total
+      // and tracking an ordinary order does.
+      const order = orderFromWoo(wooOrder);
+      const address = (order.shipping_address ?? {}) as Record<string, string | undefined>;
+      return {
+        id: order.id,
+        orderNumber: order.order_number,
+        email: order.email || '—',
+        name: address.fullName || 'Recipient',
+        status: order.status,
+        createdAt: order.created_at,
         address: {
-          line1: o.shipping_address_line1 || o.address_line1 || '',
-          city: o.shipping_city || o.city || '',
-          state: o.shipping_state || o.state || '',
-          zip: o.shipping_postal_code || o.postal_code || '',
+          line1: address.addressLine1 || '',
+          city: address.city || '',
+          state: address.state || '',
+          zip: address.postalCode || '',
         },
-        giftName: o.items?.[0]?.name || campaign?.giftName || 'Promotional Gift Drop',
-        payment: 'Free ($0.00)',
-        isTest: Boolean(o.is_test),
-        tracking: o.tracking_number ? { carrier: o.carrier || 'USPS', number: o.tracking_number } : null,
-        totalCents: 0,
-      }));
-    }
-  } catch {
+        // The gift is the order's first line — WooCommerce has no separate
+        // "campaign gift" field, and inventing one would be a second truth.
+        giftName: wooOrder.line_items?.[0]?.name || campaign?.giftName || 'Promotional Gift Drop',
+        payment: order.payment_status === 'paid' ? 'Paid' : 'Free ($0.00)',
+        isTest: false,
+        tracking: order.tracking_number
+          ? { carrier: order.shipping_carrier || 'USPS', number: order.tracking_number }
+          : null,
+        totalCents: Math.round(order.total * 100),
+      };
+    });
+  } catch (error) {
+    console.error('Gift-drop claims could not be read from the store:', error);
     claims = [];
   }
 
@@ -70,6 +89,8 @@ export async function GET(request: Request) {
       total,
       claimed,
       remaining,
+      // How many recent orders the claimed figure was counted from.
+      window: CLAIM_WINDOW,
     },
   });
 }

@@ -1,15 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import type {
-  BlogPost,
   Database,
   ProductWithCategory,
-  Profile,
 } from '@/lib/supabase/database.types';
 import type { Product } from '@/data/products';
 import { lookupCatalogProduct } from '@/lib/backend/serverCatalog';
-import { isRealCatalogProduct } from '@/lib/supabase/api/products';
+import { isRealCatalogProduct } from '@/lib/catalog/realProduct';
 import { filterNicheBlogPosts } from '@/lib/catalog/nicheBlog';
-import { publicEnv } from '@/lib/env';
+import type { BlogPostWithAuthor } from '@/lib/blog/types';
+import { wordpressBlog } from '@/lib/blog/wordpressBlog';
 import { SITE_ORIGIN } from '@/lib/site/origin';
 
 /**
@@ -22,9 +21,13 @@ let cached: ReturnType<typeof createClient<Database>> | null = null;
 
 export function getSeoSupabase() {
   if (cached) return cached;
+  // Read the variables directly rather than through `publicEnv`: this module is
+  // server-only, and the client-safe object must not carry Supabase keys any
+  // more — it lives in the root layout, so its fields reach every route's
+  // bundle. Both spellings are accepted for the Vite-era migration.
   cached = createClient<Database>(
-    publicEnv.supabaseUrl || 'https://disabled.supabase.co',
-    publicEnv.supabaseAnonKey || 'disabled-anon-key',
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://disabled.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'disabled-anon-key',
     { auth: { persistSession: false, autoRefreshToken: false } }
   );
   return cached;
@@ -154,56 +157,53 @@ export interface SeoBlogPost {
   updated_at: string | null;
 }
 
-/** Server-side published blog-post-by-slug fetch for metadata + JSON-LD. */
+/**
+ * Server-side published blog-post-by-slug fetch for metadata + JSON-LD.
+ *
+ * Read from WordPress; only the metadata fields are taken from the fuller post, so
+ * this stays the light read it always was rather than pulling a whole article body
+ * into a `<head>`.
+ */
 export async function fetchSeoBlogPost(slug: string): Promise<SeoBlogPost | null> {
-  const normalized = slug?.trim().toLowerCase();
+  const normalized = slug?.trim();
   if (!normalized) return null;
 
   return safeSeoRead(
     `blog post ${normalized}`,
     async () => {
-      const { data } = await getSeoSupabase()
-        .from('blog_posts')
-        .select(
-          'title, slug, excerpt, featured_image, meta_title, meta_description, published_at, updated_at'
-        )
-        .eq('slug', normalized)
-        .eq('is_published', true)
-        .abortSignal(seoFetchDeadline())
-        .maybeSingle();
-
-      return (data as SeoBlogPost | null) ?? null;
+      const post = await wordpressBlog.getPostBySlug(normalized);
+      if (!post) return null;
+      return {
+        title: post.title,
+        slug: post.slug,
+        excerpt: post.excerpt,
+        featured_image: post.featured_image,
+        meta_title: post.meta_title,
+        meta_description: post.meta_description,
+        published_at: post.published_at,
+        updated_at: post.updated_at,
+      };
     },
     null
   );
 }
 
 /** Same shape the client blog API returns, so the view can be seeded with it directly. */
-export type SeoBlogPostFull = BlogPost & {
-  author: Pick<Profile, 'id' | 'full_name' | 'avatar_url'> | null;
-};
+export type SeoBlogPostFull = BlogPostWithAuthor;
 
 /**
  * Full published post including body content and author, for server rendering
  * the article into the initial HTML. Returns null when unpublished or missing.
+ *
+ * Read from WordPress, which owns the blog — see `lib/blog/wordpressBlog.ts`.
  */
 export async function fetchSeoBlogPostFull(slug: string): Promise<SeoBlogPostFull | null> {
-  const normalized = slug?.trim().toLowerCase();
+  const normalized = slug?.trim();
   if (!normalized) return null;
 
   return safeSeoRead(
     `blog article ${normalized}`,
-    async () => {
-      const { data } = await getSeoSupabase()
-        .from('blog_posts')
-        .select('*, author:profiles(id, full_name, avatar_url)')
-        .eq('slug', normalized)
-        .eq('is_published', true)
-        .abortSignal(seoFetchDeadline())
-        .maybeSingle();
-
-      return (data as unknown as SeoBlogPostFull | null) ?? null;
-    },
+    async () => wordpressBlog.getPostBySlug(normalized),
     null
   );
 }
@@ -217,15 +217,7 @@ export async function fetchSeoBlogPosts(limit = 24): Promise<SeoBlogPostFull[]> 
   return safeSeoRead(
     'blog index',
     async () => {
-      const { data } = await getSeoSupabase()
-        .from('blog_posts')
-        .select('*, author:profiles(id, full_name, avatar_url)')
-        .eq('is_published', true)
-        .order('published_at', { ascending: false })
-        .limit(limit)
-        .abortSignal(seoFetchDeadline());
-
-      const posts = (data as unknown as SeoBlogPostFull[] | null) ?? [];
+      const posts = await wordpressBlog.getFeaturedPosts(limit);
 
       // The store is Himalayan pink salt. Articles written for the livestock and
       // pet trade are still in the blog store from the old site, and listing them

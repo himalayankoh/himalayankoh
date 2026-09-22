@@ -11,7 +11,7 @@ import {
   orderStatusBadgeClass,
 } from '../lib/orders/status';
 import { trackOrderPageUrl } from '../lib/orders/tracking';
-import { ordersApi } from '../lib/supabase/api/orders';
+import { ordersApi } from '../lib/orders/client';
 import type { Json, OrderWithItems } from '../lib/supabase/database.types';
 
 interface LocationState {
@@ -54,7 +54,7 @@ export default function OrderConfirmationPage() {
     setLoadError(null);
 
     void ordersApi
-      .getOrderById(orderId, user?.id)
+      .getOrderById(orderId)
       .then((fetched) => {
         if (cancelled) return;
         if (fetched) {

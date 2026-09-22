@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2, CheckCircle } from 'lucide-react';
 import { useAuthContext } from '../context/AuthContext';
-import { ordersApi } from '../lib/supabase/api/orders';
+import { ordersApi } from '../lib/orders/client';
 import { verifyStripeOrderPayment } from '../lib/payments/stripe';
 import {
   clearPendingStripeCheckout,
@@ -65,7 +65,7 @@ export default function CheckoutSuccessPage() {
 
         if (cancelled) return;
 
-        const order = await ordersApi.getOrderById(verifyResult.orderId, user?.id);
+        const order = await ordersApi.getOrderById(verifyResult.orderId);
         navigate(orderConfirmationUrl(verifyResult.orderId), {
           replace: true,
           state: {

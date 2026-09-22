@@ -1,12 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
-
-// calculateOrderTotals is pure — decouple it from the real Supabase client so
-// the test never constructs a network client or reads env config.
-vi.mock('../client', () => ({
-  supabase: {},
-  isSupabaseConfigured: () => false,
-  clearSupabaseSession: () => {},
-}));
+import { describe, expect, it } from 'vitest';
 
 import {
   calculateOrderTotals,
@@ -14,7 +6,7 @@ import {
   FREE_SHIPPING_THRESHOLD,
   STANDARD_SHIPPING_COST,
   TAX_RATE,
-} from './orders';
+} from './totals';
 
 describe('calculateOrderTotals', () => {
   it('charges flat-rate standard shipping on an empty cart', () => {

@@ -26,7 +26,7 @@ import type { Product as CatalogProduct, StockStatus } from '../../data/products
 import type { Category, Inventory, Product as SupabaseProduct } from '../supabase/database.types';
 import { ADMIN_CATALOG_PER_PAGE } from '../admin/catalogPageSize';
 import { adminApi } from '../supabase/api/admin';
-import { isRealCatalogProduct } from '../supabase/api/products';
+import { isRealCatalogProduct } from '../catalog/realProduct';
 import { isSupabaseConfigured } from '../supabase/client';
 import { priceDisplayFromRange } from '../products/price';
 import { countOffNicheProducts, isNicheProduct } from '../catalog/niche';

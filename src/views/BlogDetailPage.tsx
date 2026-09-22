@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowUpRight, Clock, Loader2, Tag, User } from 'lucide-react';
-import { blogApi, BlogPostWithAuthor } from '../lib/supabase/api';
-import { isSupabaseConfigured } from '../lib/supabase/client';
+import { blogPostApi } from '../lib/blog/client';
+import type { BlogPostWithAuthor } from '../lib/blog/client';
 import { resolveLegacyImageSrc } from '../lib/images/legacyAssets';
 
 interface BlogDetailPageProps {
@@ -23,13 +23,13 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
 
   useEffect(() => {
     const fetchPost = async () => {
-      if (!slug || !isSupabaseConfigured()) {
+      if (!slug) {
         setLoading(false);
         return;
       }
 
       try {
-        const fetched = await blogApi.getPostBySlug(slug);
+        const fetched = await blogPostApi.getPostBySlug(slug);
 
         // Keep the server-rendered post if the client refetch comes back empty,
         // so a transient failure never blanks out content already on screen.
@@ -39,7 +39,7 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
 
         const current = fetched ?? initialPost;
         if (current) {
-          setRelatedPosts(await blogApi.getRelatedPosts(current.id, current.category, 3));
+          setRelatedPosts(await blogPostApi.getRelatedPosts(current.id, current.category, 3));
         }
       } catch (err) {
         console.error('Failed to fetch blog post:', err);

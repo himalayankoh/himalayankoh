@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Loader2, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { SkeletonProductGrid } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
 import { products as fallbackProducts, Product } from '../data/products';
@@ -11,7 +11,7 @@ import CategoryFilterNav from '../components/category/CategoryFilterNav';
 import CategoryHubLayout from '../components/category/CategoryHubLayout';
 import CategoryShopPanel from '../components/category/CategoryShopPanel';
 import { productMatchesCategoryFilter } from '../lib/categoryContent';
-import { getCatalogProducts, invalidateCatalogReads } from '../lib/backend/catalogClient';
+import { getCatalogProducts } from '../lib/backend/catalogClient';
 import { isSupabaseDataSource } from '../lib/backend/dataSource';
 
 
@@ -57,7 +57,7 @@ export default function ProductsPage({
   const fetchSeq = useRef(0);
   const serverCatalogRef = useRef(Boolean(initialProducts));
 
-  const { content: categoryContent, loading: hubContentLoading } = useCategoryHubContent(categoryKey);
+  const { content: categoryContent } = useCategoryHubContent(categoryKey);
 
   const isCategoryHub = Boolean(categoryKey && categoryContent);
 
@@ -77,8 +77,6 @@ export default function ProductsPage({
   }, [categoryKey]);
 
   useEffect(() => {
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
     const fetchProducts = async () => {
       // Guard against out-of-order responses: only the latest request may
       // commit state. Prevents an older/slower fetch from overwriting a newer
@@ -105,19 +103,8 @@ export default function ProductsPage({
       }
     };
 
-    // Coalesce bursts of realtime events into a single refetch so the grid
-    // doesn't re-render (and re-animate) on every individual row change.
-    const scheduleFetch = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        fetchProducts();
-      }, 400);
-    };
-
     // The server already sent this request's catalogue, so there is nothing to
-    // fetch on mount. A realtime event still schedules a read — and drops the
-    // shared cache first, so that read is fresh rather than served from the
-    // window the catalogue was read in.
+    // fetch on mount.
     if (!serverCatalogRef.current) {
       fetchProducts();
     }
@@ -126,9 +113,6 @@ export default function ProductsPage({
     // on demand, so a changed price arrives on the next read rather than as a
     // database row event. The Supabase subscription that used to live here only
     // ever fired for the source that no longer serves this page.
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-    };
   }, []);
 
   const filteredProducts = useMemo(() => {
@@ -178,12 +162,6 @@ export default function ProductsPage({
       categoryLabel={activeFilter}
       productCount={filteredProducts.length}
     >
-      {hubContentLoading && (
-        <div className="flex items-center gap-2 text-xs text-charcoal-light">
-          <Loader2 size={14} className="animate-spin text-himalayan" />
-          Updating…
-        </div>
-      )}
       {productList}
     </CategoryShopPanel>
   ) : (

@@ -1,9 +1,32 @@
+/**
+ * Creates an order that is not waiting on a card payment.
+ *
+ * ## What is left on this route
+ *
+ * Stripe orders are no longer created here. The card checkout reserves its
+ * WooCommerce order before the PaymentIntent exists — the store's order id is what
+ * Stripe's metadata carries — so this route would only ever be a second, competing
+ * creation path for the same order. It refuses Stripe outright rather than letting
+ * one be created without a payment behind it.
+ *
+ * What remains is the **invoice** checkout: an order the owner bills separately.
+ * It has no payment to wait for, so the order is created (pending) and the customer
+ * is sent to its confirmation.
+ *
+ * ## Identity
+ *
+ * The customer id comes from the caller's verified session, never from the body —
+ * a body-supplied id is one a browser can choose. A guest checkout simply has no
+ * session, and the order is written with the billing email it was given.
+ */
+
 import { NextResponse } from 'next/server';
 import { getErrorMessage } from '@/lib/errors';
 import { readCartSession } from '@/lib/cart/cookies';
-import { serverCreateOrder } from '@/lib/orders/serverCreateOrder';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
-import type { CreateOrderData, ShippingMethod } from '@/lib/supabase/api/orders';
+import { optionalCustomerRequest } from '@/lib/auth/customerRequest';
+import { reserveOrderForCheckout, clearReservedCart } from '@/lib/orders/serverCreateOrder';
+import { dispatchOrderCreatedNotifications } from '@/lib/orders/notifyOrderEvents';
+import type { CreateOrderData, ShippingMethod } from '@/lib/orders/totals';
 
 type CreateOrderBody = CreateOrderData;
 
@@ -26,24 +49,6 @@ function parseBody(body: unknown): { ok: true; data: CreateOrderBody } | { ok: f
   return { ok: true, data: body as CreateOrderBody };
 }
 
-async function resolveUserId(request: Request, bodyUserId?: string): Promise<string | null> {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return bodyUserId || null;
-  }
-
-  const token = authHeader.slice(7).trim();
-  if (!token) return bodyUserId || null;
-
-  const supabase = getSupabaseAdmin();
-  const { data: userData, error } = await supabase.auth.getUser(token);
-  if (error || !userData.user) {
-    return null;
-  }
-
-  return userData.user.id;
-}
-
 export async function POST(request: Request) {
   let body: unknown;
   try {
@@ -58,38 +63,44 @@ export async function POST(request: Request) {
   }
 
   const orderData = parsed.data;
-  const userId = await resolveUserId(request, (parsed.data as { userId?: string }).userId);
-  // The cart is identified by the cookie the browser already holds, so no cart
-  // identifier arrives in the body. That is also why the old "cart session
-  // missing" precondition is gone: with no cookie there is simply no cart, and
-  // `serverCreateOrder` answers that with "Cart is empty" — the accurate answer,
-  // instead of a request-shape complaint.
-  const { cartToken } = await readCartSession();
 
-  // Public checkout must never create an order before Stripe confirms payment.
-  // The signed Stripe webhook calls serverCreateOrder directly after payment;
-  // this endpoint is deliberately not an unpaid-order shortcut.
-  if (
-    orderData.paymentProvider !== 'stripe' ||
-    orderData.paymentStatus !== 'paid' ||
-    !orderData.paymentIntentId
-  ) {
+  // Only the invoice path writes an order here. A Stripe order is reserved by the
+  // card checkout, against the PaymentIntent that pays it.
+  if (orderData.paymentProvider !== 'invoice') {
     return NextResponse.json(
-      { error: 'Payment must succeed before an order can be created.' },
+      {
+        error:
+          'Card orders are created by the card checkout, against the payment that pays them. Use the card payment flow.',
+      },
       { status: 402 },
     );
   }
 
+  const customer = await optionalCustomerRequest(request);
+  const { cartToken } = await readCartSession();
+
   try {
-    const order = await serverCreateOrder(
+    const reserved = await reserveOrderForCheckout(
       {
         ...orderData,
         shippingMethod: (orderData.shippingMethod || 'standard') as ShippingMethod,
       },
-      { userId, cartToken }
+      {
+        customerId: customer?.id ?? null,
+        cartToken,
+        paymentMethod: 'invoice',
+        paymentMethodTitle: 'Invoice',
+      }
     );
 
-    return NextResponse.json(order);
+    // Only for a genuinely new order: a reused reservation has already announced
+    // itself, and a retried invoice submit must not email the buyer twice.
+    if (!reserved.reused) {
+      dispatchOrderCreatedNotifications(reserved.order.id);
+    }
+    await clearReservedCart(reserved.cartToken);
+
+    return NextResponse.json(reserved.order);
   } catch (error) {
     console.error('Create order failed:', error);
     return NextResponse.json(

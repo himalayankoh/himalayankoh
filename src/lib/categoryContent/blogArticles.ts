@@ -1,6 +1,5 @@
 import { legacyImage } from '@/lib/images/legacyAssets';
-import { blogApi, type BlogPostWithAuthor } from '../supabase/api/blog';
-import { isSupabaseConfigured } from '../supabase/client';
+import type { BlogPostWithAuthor } from '@/lib/blog/types';
 import { CATEGORY_BLOG_MAPPING } from './blogMapping';
 import { enrichArticleList, stripHtmlToText } from './enrichArticle';
 import type { CategoryContentKey } from './keys';
@@ -53,8 +52,8 @@ function mergeWithPlaceholders(
 /**
  * Load published blog posts for a shop category hub.
  *
- * Two sources, in order: the blog store (Supabase), then the hub's own editorial
- * registry, which is real pink-salt copy maintained with the shelf.
+ * Two sources, in order: the blog store, then the hub's own editorial registry,
+ * which is real pink-salt copy maintained with the shelf.
  *
  * There used to be a third: a bundled corpus of ranch-industry posts mapped onto
  * the shelves. It is gone. Those posts were written for a livestock audience, and
@@ -62,6 +61,13 @@ function mergeWithPlaceholders(
  * horses" was advertising a niche the store had left — on a page whose whole job
  * is to say what the shelf is for. A shelf with no published article now falls
  * back to its own guides, and if it has none it says so.
+ *
+ * The blog store is read through `/api/blog/articles`, not a database client: this
+ * module is reachable from the storefront shell (the footer links the hub pages,
+ * which pull it in through `./index`), so a client import here was downloaded by
+ * every page in the `(main)` group. `isSupabaseConfigured` is gone with it — it
+ * only ever gated that read, and an absent blog is answered by the fallback below
+ * rather than by asking whether a database exists.
  */
 export async function loadCategoryArticles(
   key: CategoryContentKey,
@@ -69,26 +75,29 @@ export async function loadCategoryArticles(
 ): Promise<{ articles: CategoryArticleCard[]; source: 'blog' | 'placeholder' }> {
   const mapping = CATEGORY_BLOG_MAPPING[key];
 
-  if (isSupabaseConfigured()) {
-    try {
-      const posts = await blogApi.getPostsForCategoryHub({
-        categories: mapping.blogCategories,
-        tags: mapping.blogTags,
-        limit: mapping.maxArticles,
-      });
+  try {
+    const query = new URLSearchParams({
+      categories: mapping.blogCategories.join(','),
+      tags: mapping.blogTags.join(','),
+      limit: String(mapping.maxArticles),
+    });
+    const response = await fetch(`/api/blog/articles?${query}`);
+    const body = response.ok
+      ? ((await response.json()) as { posts?: BlogPostWithAuthor[] })
+      : {};
+    const posts = body.posts ?? [];
 
-      if (posts.length > 0) {
-        const blogCards = posts.map(mapBlogPostToCategoryArticle);
-        return {
-          articles: enrichArticleList(
-            mergeWithPlaceholders(blogCards, placeholderArticles, mapping.maxArticles)
-          ),
-          source: 'blog',
-        };
-      }
-    } catch (error) {
-      console.warn('Category blog fetch failed, using fallbacks:', error);
+    if (posts.length > 0) {
+      const blogCards = posts.map(mapBlogPostToCategoryArticle);
+      return {
+        articles: enrichArticleList(
+          mergeWithPlaceholders(blogCards, placeholderArticles, mapping.maxArticles)
+        ),
+        source: 'blog',
+      };
     }
+  } catch (error) {
+    console.warn('Category blog fetch failed, using fallbacks:', error);
   }
 
   return {

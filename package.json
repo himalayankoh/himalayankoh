@@ -30,6 +30,8 @@
     "info": "node scripts/info.mjs",
     "check:stripe": "node scripts/check-stripe-setup.mjs",
     "check:shippo": "node scripts/check-shippo-setup.mjs",
+    "check:client-supabase": "node scripts/check-client-supabase.mjs",
+    "audit:supabase": "node scripts/audit-supabase-remaining.mjs",
     "check:packing": "node scripts/check-shippo-packing.mjs",
     "check:packing-splits": "node scripts/check-packing-splits.mjs",
     "check:wordpress": "node scripts/check-wordpress-setup.mjs",

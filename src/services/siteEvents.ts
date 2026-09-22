@@ -2,43 +2,25 @@
 // SITE EVENTS — first-party traffic analytics
 //
 // The storefront records lightweight events (page_view, view_item, add_to_cart,
-// begin_checkout, purchase, search, ...) into Supabase so the Admin "Traffic
-// Overview" can show real visitor numbers and charts. This is independent of
-// Google: GA4 still receives the same events via gtag, but our dashboard reads
-// from this table.
+// begin_checkout, purchase, search, ...) so the Admin "Traffic Overview" can show
+// real visitor numbers and charts. This is independent of Google: GA4 still
+// receives the same events via gtag, but our dashboard reads from this table.
 //
-// SECURITY (see supabase/migrations/0023_site_events.sql):
-//   * Any visitor records events with the ANON key (INSERT only; RLS).
-//   * Only an authenticated admin role may SELECT for the dashboard.
-// Recording is fire-and-forget and must NEVER break the storefront.
+// The events themselves live in Supabase, and this browser module no longer knows
+// that. It used to POST to `<project>.supabase.co/rest/v1/site_events` with the
+// anon key, which put the project URL and key in the client bundle and pulled the
+// Supabase config resolver into the product detail page — because that page's
+// campaign path reaches `lib/marketing`, which imports the recorder. Both calls
+// now go to `/api/events`, which owns the credential, the table and the schema
+// probe. Recording is fire-and-forget and must NEVER break the storefront.
 // ============================================================================
 
-// Two backends, two owners, and this is the only module that legitimately needs
-// both: the *events* still live in Supabase (the customer path's config), while
-// the reader's credential is the admin session, which is WordPress's. Neither
-// import resolves the other backend's configuration.
-import { getSupabaseConfig } from '../lib/supabase/config';
 import { getFreshAccessToken } from './wordpressAdminAuth';
 
 const VID_KEY = 'luxedge_vid';
 const SID_KEY = 'luxedge_sid';
 
-// Schema-probe cache: the recorder/reader include revenue fields (value,
-// currency) only when migration 0024 has been applied. null = unknown.
-let supportsRevenue: boolean | null = null;
-
-/** Test-only hook: reset the module-level schema-probe cache. */
-export function __resetSiteEventsForTests(): void {
-  supportsRevenue = null;
-}
-
-function isMissingColumnResponse(res: Response): Promise<boolean> {
-  return res
-    .clone()
-    .text()
-    .then((t) => /PGRST204/.test(t) || /42703/.test(t) || /schema cache/i.test(t) || /does not exist/i.test(t))
-    .catch(() => false);
-}
+const EVENTS_PATH = '/api/events';
 
 function makeId(): string {
   try {
@@ -88,14 +70,12 @@ export interface TrackParams {
 
 /**
  * Record an event for first-party analytics. Fire-and-forget: swallows every
- * error (network, storage, missing table) so analytics can never break the
- * storefront. Admin paths and the admin panel itself are never recorded.
+ * error (network, storage, an unconfigured server) so analytics can never break
+ * the storefront. Admin paths and the admin panel itself are never recorded.
  */
 export function recordSiteEvent(name: string, params: TrackParams = {}): void {
   try {
     if (typeof window === 'undefined') return;
-    const cfg = getSupabaseConfig();
-    if (!cfg) return;
 
     const path = window.location.pathname + window.location.search;
     if (path.startsWith('/admin')) return; // keep public traffic honest
@@ -113,7 +93,10 @@ export function recordSiteEvent(name: string, params: TrackParams = {}): void {
     const items = params.items;
     let item_ids: string[] | null = null;
     if (Array.isArray(items)) {
-      item_ids = items.map((i) => String((i as { item_id?: unknown; id?: unknown })?.item_id ?? (i as { id?: unknown })?.id ?? '')).filter(Boolean).slice(0, 20);
+      item_ids = items
+        .map((i) => String((i as { item_id?: unknown; id?: unknown })?.item_id ?? (i as { id?: unknown })?.id ?? ''))
+        .filter(Boolean)
+        .slice(0, 20);
     }
     if (item_ids && item_ids.length === 0) item_ids = null;
 
@@ -130,45 +113,28 @@ export function recordSiteEvent(name: string, params: TrackParams = {}): void {
       item_ids: item_ids || null,
     };
 
-    // Revenue fields (migration 0024). Only sent once the columns exist;
-    // if the first probe 400s, fall back to the base insert so analytics
-    // recording NEVER stops just because a migration is pending.
-    const wantsRevenue = supportsRevenue !== false;
-    if (wantsRevenue) {
-      const v = typeof params.value === 'number' && Number.isFinite(params.value) ? params.value
-        : typeof params.value === 'string' && params.value.trim() !== '' ? Number(params.value) : NaN;
-      if (!Number.isNaN(v)) body.value = v;
-      if (typeof params.currency === 'string' && params.currency.trim()) body.currency = params.currency.trim();
-    }
+    // Revenue fields (migration 0024). Whether those columns exist is the route's
+    // question to answer — it holds the schema probe this module used to keep,
+    // because the answer is the same for every visitor rather than per browser.
+    const value =
+      typeof params.value === 'number' && Number.isFinite(params.value)
+        ? params.value
+        : typeof params.value === 'string' && params.value.trim() !== ''
+          ? Number(params.value)
+          : NaN;
+    if (!Number.isNaN(value)) body.value = value;
+    if (typeof params.currency === 'string' && params.currency.trim()) body.currency = params.currency.trim();
 
-    const send = (b: Record<string, unknown>) =>
-      fetch(`${cfg.url}/rest/v1/site_events`, {
-        method: 'POST',
-        headers: {
-          apikey: cfg.anonKey,
-          Authorization: `Bearer ${cfg.anonKey}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify(b),
-      }).catch(() => {
-        /* ignore — best-effort analytics */
-      });
-
-    send(body).then((res) => {
-      if (res && res.status === 400 && wantsRevenue) {
-        isMissingColumnResponse(res).then((missing) => {
-          if (missing) {
-            supportsRevenue = false;
-            const base = { ...body };
-            delete base.value;
-            delete base.currency;
-            send(base); // retry without revenue fields — never lose the event
-          }
-        });
-      } else if (res && res.ok) {
-        supportsRevenue = true;
-      }
+    void fetch(EVENTS_PATH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      // Nothing waits on this, and `keepalive` lets an event outlive the
+      // navigation that triggered it — a plain fetch can lose the last
+      // page_view of a session to the unload, which is the one worth having.
+      keepalive: true,
+    }).catch(() => {
+      /* ignore — best-effort analytics */
     });
   } catch {
     /* never throw, never break the storefront */
@@ -192,54 +158,32 @@ export interface SiteEventRow {
 }
 
 /**
- * Fetch the last `days` of events as a signed-in admin. Throws on auth
- * failure or an unreadable response (e.g. the table is not migrated yet).
+ * Fetch the last `days` of events as a signed-in admin. Throws on auth failure
+ * or an unreadable response (e.g. the table is not migrated yet).
  */
 export async function fetchSiteEvents(days = 30): Promise<SiteEventRow[]> {
-  const cfg = getSupabaseConfig();
-  if (!cfg) throw new Error('Traffic analytics is not configured (Supabase missing).');
   const token = await getFreshAccessToken();
   if (!token) throw new Error('Sign in as admin to view traffic analytics.');
 
-  const since = new Date(Date.now() - days * 86400000).toISOString();
-  // Newest-first so the 50k cap keeps the most recent events (asc would keep
-  // the OLDEST once a window exceeds 50k — stale dashboard).
-  const select = supportsRevenue === false
-    ? 'event,path,referrer,visitor_id,session_id,device,utm_source,utm_medium,utm_campaign,item_ids,occurred_at'
-    : 'event,path,referrer,visitor_id,session_id,device,utm_source,utm_medium,utm_campaign,item_ids,value,currency,occurred_at';
-  const url =
-    `${cfg.url}/rest/v1/site_events?select=${encodeURIComponent(select)}` +
-    `&occurred_at=gte.${encodeURIComponent(since)}&order=occurred_at.desc&limit=50000`;
+  const response = await fetch(`${EVENTS_PATH}?days=${encodeURIComponent(String(days))}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
-  const read = async (u: string): Promise<Response> =>
-    fetch(u, { headers: { apikey: cfg.anonKey, Authorization: `Bearer ${token}` } });
-
-  let res = await read(url);
-  // Migration 0024 not applied yet — every missing-column 400 falls back to the
-  // base select so the dashboard still works (revenue shows as unavailable).
-  // Deliberately NOT gated on `supportsRevenue !== false`: under concurrent
-  // calls (day-range switches, remounts) one call can flip the module flag to
-  // false while another in-flight FULL select is still pending; gating the
-  // retry on the flag then makes that loser throw the raw 400. A 400 that is
-  // a missing-column error must always recover.
-  if (res.status === 400) {
-    const missing = await isMissingColumnResponse(res);
-    if (missing) {
-      supportsRevenue = false;
-      const baseSelect = 'event,path,referrer,visitor_id,session_id,device,utm_source,utm_medium,utm_campaign,item_ids,occurred_at';
-      res = await read(
-        `${cfg.url}/rest/v1/site_events?select=${encodeURIComponent(baseSelect)}` +
-        `&occurred_at=gte.${encodeURIComponent(since)}&order=occurred_at.desc&limit=50000`,
-      );
-    }
-  }
-  if (res.status === 404) {
-    throw new Error('Analytics table is not ready (run migration 0023).');
-  }
-  if (res.status === 401 || res.status === 403) {
+  if (response.status === 401 || response.status === 403) {
     throw new Error('Sign in as admin to view traffic analytics.');
   }
-  if (!res.ok) throw new Error(`Could not load analytics (HTTP ${res.status}).`);
-  const rows = (await res.json()) as SiteEventRow[];
-  return rows.map((r) => ({ ...r, value: r.value ?? null, currency: r.currency ?? null }));
+  if (response.status === 503) {
+    throw new Error('Traffic analytics is not configured on this deployment.');
+  }
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `Could not load analytics (HTTP ${response.status}).`);
+  }
+
+  const body = (await response.json()) as { events?: SiteEventRow[] };
+  return (body.events ?? []).map((row) => ({
+    ...row,
+    value: row.value ?? null,
+    currency: row.currency ?? null,
+  }));
 }

@@ -200,6 +200,34 @@ mattered for the first milestone were concentrated in three modules:
 
 ---
 
+### 2.4 Retired: email verification and notifications
+
+Two Supabase-era features had **no live path at all** after the identity move, so
+they were removed rather than ported — porting dead code would have built a backend
+for a feature nobody could reach.
+
+**Email verification.** Supabase sent the confirmation link; the storefront route
+was `/verify-email`. Customer sign-in now goes through the `hk-storefront` plugin
+and WordPress owns the account, so there is no confirmation link for this app to
+consume, and nothing could ever arrive at that page. The page, its client and the
+Supabase flow were deleted, and `/verify-email` is now a legacy redirect. WordPress's
+own account tooling covers verification if it is ever wanted; this app has no
+replacement endpoint, deliberately.
+
+**Notifications.** `notifications` rows were written only by admin actions and were
+read only by admins — a customer never had a `user_id` matching the profile id the
+app now signs in with, so the customer-facing bell could not fire. The in-app path
+(`src/lib/supabase/api/notifications.ts`, `lib/notifications/adminNotify.ts`) and
+the table's reader were removed. The delivered alert for a customer is now the
+**order email** (see `lib/email/orderEmails.ts`), which reaches them where they
+already look. If an in-app inbox is wanted later it should be built fresh on the
+customer session, not restored from the inert path.
+
+Both retirements are recorded in the feature table that `npm run audit:supabase`
+prints (`retired`, never `remaining`).
+
+---
+
 ## 3. Phase 1 — backend adapter layer (implemented)
 
 `src/lib/backend/` is the seam. Views should import from here rather than from
@@ -439,9 +467,9 @@ With no override the app runs the `supabase` default. What to expect on each:
 | 4 | WordPress content pages | ⏸ Not started — no code written. The speculative WordPress page/post mapper was removed as unused surface rather than left as untested groundwork. |
 | 5 | SEO from WordPress + Yoast | ⏸ Not started |
 | 6 | Images from WordPress media | ✅ Real staging images render. No `next.config.ts` change is actually needed: the storefront never uses `next/image` (40 plain `<img>` elements), so absolute staging URLs load directly. `images.remotePatterns` only matters if the app later migrates to `next/image`. |
-| 7 | Cart & checkout | ⚠️ **Cart moved** to `wc/store/v1` and its Supabase table is unused (verified end to end); wishlist moved to the `hk-storefront/v1` plugin. Orders and Stripe/Shippo **untouched** — see `STOREFRONT-WORDPRESS-CONTRACT.md`. |
+| 7 | Cart & checkout | ✅ **Cart** to `wc/store/v1`, **wishlist** to the `hk-storefront/v1` plugin, and **orders** to WooCommerce: the checkout reserves the Woo order before the PaymentIntent (its id travels in Stripe metadata), the webhook marks it paid, and Shippo tracking, the emails, customer history and the admin console all read and write that order. `stripe_checkout_sessions` is deleted. See `ORDERS-WOOCOMMERCE-MIGRATION.md` §7 for what is implemented and what is not (the historical import). |
 | 8 | Customer accounts / CRM | ⏸ Not started — **production customers untouched** |
-| 9 | Supabase removal | ⚠️ Started: the cart, wishlist, YouTube, admin auth and LeadOS/CRM modules are gone from the app. `orders`, `order_items`, `products`, `profiles`, `blog_posts` and the rest are still read and written. The `carts`/`cart_items`/`wishlists` tables are now unused but **kept** until the WordPress path has run in production — they hold the only copy of existing data. |
+| 9 | Supabase removal | ⚠️ Started and measured. Runtime imports **24 modules** (from 33), server-side 19. **Blog reads** moved to WordPress (`/wp/v2/posts`); blog *admin writes* and Storage are the remaining half. **Orders** are off Supabase for the new-order lifecycle; only a read-only legacy adapter for pre-migration orders remains. Detail: The cart, wishlist, YouTube, admin auth, LeadOS/CRM, **customer accounts, saved addresses, password reset and traffic events** have left the app. The **storefront no longer ships the Supabase SDK or its config, on any route** — `npm run check:client-supabase` against a production build reports **5 of 73 routes**, down from 31, and every one of the 5 is `/admin/*`, which the owner asked to leave alone (`/products/[slug]` was the last storefront leak: the campaign path reached `lib/marketing` → `services/siteEvents`, which POSTed to Supabase with the anon key; it now posts to `/api/events`). `orders`, `order_items`, `products`, `profiles`, `blog_posts` and the rest are still read and written **server-side**. The `carts`/`cart_items`/`wishlists`/`addresses`/`notifications` tables are now unused but **kept** until the WordPress path has run in production — they hold the only copy of existing data. What is left is server-side and the admin console; orders is the bulk of it, designed in `ORDERS-WOOCOMMERCE-MIGRATION.md`. |
 | 10 | Demo-data separation | ⏸ Not started |
 | 11 | Cloudflare hosting | ⏸ Not started |
 | 12 | Environment configuration | ⚠️ Documented in §6, needs manual file edit |

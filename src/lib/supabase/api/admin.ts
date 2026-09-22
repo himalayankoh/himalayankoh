@@ -87,16 +87,9 @@ export type AdminOrder = OrderWithItems & {
   profile: Profile | null;
 };
 
-export interface AdminOrderAnalytics {
-  totalOrders: number;
-  pendingOrders: number;
-  processingOrders: number;
-  shippedOrders: number;
-  deliveredOrders: number;
-  cancelledOrders: number;
-  refundRequests: number;
-  totalRevenue: number;
-}
+// AdminOrderAnalytics was the shape of a Supabase aggregate over `orders`; the
+// only reader of that aggregate was `getOrderAnalytics`, which is gone with the
+// order writers above. Order figures now come from `statsFromWooOrders`.
 
 export interface AdminBlogFilters {
   search?: string;
@@ -709,41 +702,6 @@ export const adminApi = {
 
   // ==================== DASHBOARD STATS ====================
 
-  /**
-   * Order-source summary for the dashboard.
-   *
-   * Product and category facts are deliberately absent: they belong to the
-   * catalog, and `lib/backend/adminCatalog` is their single owner. Two owners is
-   * exactly what let the dashboard count one catalog while the storefront served
-   * another.
-   */
-  async getDashboardStats(): Promise<{
-    recentOrders: number;
-    totalRevenue: number;
-  }> {
-    // Get recent orders (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const { count: recentOrders } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', thirtyDaysAgo.toISOString());
-
-    // Get total revenue
-    const { data: revenueData } = await supabase
-      .from('orders')
-      .select('total')
-      .eq('payment_status', 'paid');
-
-    const totalRevenue = (revenueData as { total: number }[] || []).reduce((sum, o) => sum + (o.total || 0), 0);
-
-    return {
-      recentOrders: recentOrders || 0,
-      totalRevenue,
-    };
-  },
-
   async getDashboardAnalytics(): Promise<AdminDashboardAnalytics> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -936,76 +894,11 @@ export const adminApi = {
     };
   },
 
-  async getOrderAnalytics(): Promise<AdminOrderAnalytics> {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('status,payment_status,total');
-
-    if (error) throw error;
-
-    const orders = data as Pick<Order, 'status' | 'payment_status' | 'total'>[];
-
-    return {
-      totalOrders: orders.length,
-      pendingOrders: orders.filter((order) => order.status === 'pending').length,
-      processingOrders: orders.filter((order) => order.status === 'processing').length,
-      shippedOrders: orders.filter((order) => order.status === 'shipped').length,
-      deliveredOrders: orders.filter((order) => order.status === 'delivered').length,
-      cancelledOrders: orders.filter((order) => order.status === 'cancelled').length,
-      refundRequests: orders.filter((order) => order.payment_status === 'refunded' || order.status === 'refunded').length,
-      totalRevenue: orders
-        .filter((order) => order.status !== 'cancelled' && order.status !== 'refunded')
-        .reduce((sum, order) => sum + (order.total || 0), 0),
-    };
-  },
-
-  async updateOrderStatus(
-    orderId: string,
-    status: Order['status'],
-    trackingNumber?: string,
-  ): Promise<Order> {
-    const updates: Partial<Order> = {
-      status,
-      tracking_number: trackingNumber || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (status === 'shipped') {
-      updates.shipped_at = new Date().toISOString();
-    }
-
-    if (status === 'delivered') {
-      updates.delivered_at = new Date().toISOString();
-    }
-
-    const { data, error } = await supabase
-      .from('orders')
-      .update(updates as never)
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data as Order;
-  },
-
-  async updateOrderPaymentStatus(
-    orderId: string,
-    paymentStatus: Order['payment_status'],
-  ): Promise<Order> {
-    const { data, error } = await supabase
-      .from('orders')
-      .update({
-        payment_status: paymentStatus,
-        updated_at: new Date().toISOString(),
-      } as never)
-      .eq('id', orderId)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data as Order;
-  },
+  // The three order writers that lived here — `updateOrderStatus`,
+  // `updateOrderPaymentStatus` and the order-status analytics aggregate — were
+  // removed with the migration rather than re-pointed: an order is written through
+  // `lib/woo/orders` now (the console, the webhook and the label step all use it),
+  // and nothing had called these since. `getDashboardStats` went the same way.
 
   // ==================== BLOG POSTS ====================
 

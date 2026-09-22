@@ -1,9 +1,50 @@
+/**
+ * Order tracking — by order number and email.
+ *
+ * The order is read from WooCommerce, where new orders live. An order number that
+ * is the store's own id is read directly; anything else is searched, and the
+ * billing email must match either way, so knowing an order number is not enough to
+ * read somebody's order.
+ *
+ * A pre-migration order is not in the store, so a Woo miss falls through to the
+ * read-only legacy adapter (`lib/orders/legacyOrders`) and the same email check
+ * applies there.
+ */
+
 import { NextResponse } from 'next/server';
 import { resolveTrackingUrl } from '@/lib/orders/tracking';
 import { fetchShippoTracking } from '@/lib/shippo/server/tracking';
 import { resolveShippoConfigError } from '@/lib/shippo/config';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { getLegacyOrderByNumberForViewer } from '@/lib/orders/legacyOrders';
+import {
+  getWooOrder,
+  isWooOrderNotFound,
+  listWooOrders,
+  orderFromWoo,
+  type WooOrderLike,
+} from '@/lib/woo/orders';
+import type { OrderWithItems } from '@/lib/supabase/database.types';
+
+export const dynamic = 'force-dynamic';
+
+/** The store's order for an order number, or null when it holds none. */
+async function findWooOrderByNumber(orderNumber: string): Promise<WooOrderLike | null> {
+  const numeric = Number(orderNumber);
+  if (Number.isInteger(numeric) && numeric > 0) {
+    try {
+      return await getWooOrder(numeric);
+    } catch (error) {
+      if (!isWooOrderNotFound(error)) throw error;
+    }
+  }
+  const searched = await listWooOrders({ search: orderNumber, perPage: 20 });
+  return (
+    searched.orders.find(
+      (order) => String(order.number ?? order.id) === orderNumber || String(order.id) === orderNumber
+    ) ?? null
+  );
+}
 
 export async function POST(request: Request) {
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
@@ -31,59 +72,45 @@ export async function POST(request: Request) {
   }
 
   try {
-    const supabase = getSupabaseAdmin();
-    const { data: order, error } = await supabase
-      .from('orders')
-      .select(`
-        id,
-        order_number,
-        email,
-        status,
-        payment_status,
-        payment_method,
-        total,
-        tracking_number,
-        tracking_url,
-        shipping_carrier,
-        shipping_service,
-        shipped_at,
-        created_at,
-        order_items(product_name, quantity)
-      `)
-      .eq('order_number', orderNumber)
-      .maybeSingle();
+    const wooOrder = await findWooOrderByNumber(orderNumber);
+    let view: OrderWithItems & { items: { product_name: string; quantity: number }[] } | null = null;
 
-    if (error) throw error;
-    if (!order) {
-      return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
+    if (wooOrder) {
+      const projected = orderFromWoo(wooOrder);
+      if (projected.email.trim().toLowerCase() !== email) {
+        return NextResponse.json({ error: 'Email does not match this order.' }, { status: 403 });
+      }
+      view = {
+        ...projected,
+        order_items: [],
+        items: (wooOrder.line_items ?? []).map((line) => ({
+          product_name: line.name ?? 'Item',
+          quantity: Number(line.quantity ?? 0) || 0,
+        })),
+      };
+    } else {
+      const legacy = await getLegacyOrderByNumberForViewer(orderNumber, email);
+      if (!legacy) {
+        return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
+      }
+      if (String(legacy.email ?? '').trim().toLowerCase() !== email) {
+        return NextResponse.json({ error: 'Email does not match this order.' }, { status: 403 });
+      }
+      view = {
+        ...legacy,
+        items: (legacy.order_items ?? []).map((item) => ({
+          product_name: item.product_name,
+          quantity: Number(item.quantity) || 0,
+        })),
+      };
     }
 
-    const row = order as {
-      email: string;
-      status: string;
-      payment_status: string;
-      payment_method: string | null;
-      total: number;
-      tracking_number: string | null;
-      tracking_url: string | null;
-      shipping_carrier: string | null;
-      shipping_service: string | null;
-      shipped_at: string | null;
-      order_number: string;
-      created_at: string;
-      order_items: { product_name: string; quantity: number }[];
-    };
-
-    if (row.email.trim().toLowerCase() !== email) {
-      return NextResponse.json({ error: 'Email does not match this order.' }, { status: 403 });
-    }
-
-    const trackingUrl = resolveTrackingUrl(row);
+    const trackingUrl = resolveTrackingUrl(view);
     let liveTracking: Awaited<ReturnType<typeof fetchShippoTracking>> | null = null;
 
-    if (row.tracking_number && row.shipping_carrier && !(await resolveShippoConfigError())) {
+    if (view.tracking_number && view.shipping_carrier && !(await resolveShippoConfigError())) {
       try {
-        liveTracking = await fetchShippoTracking(row.shipping_carrier, row.tracking_number);
+        liveTracking = await fetchShippoTracking(view.shipping_carrier, view.tracking_number);
       } catch (trackError) {
         console.warn('Shippo live tracking unavailable:', trackError);
       }
@@ -91,18 +118,18 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       order: {
-        orderNumber: row.order_number,
-        status: row.status,
-        paymentStatus: row.payment_status,
-        paymentMethod: row.payment_method,
-        total: row.total,
-        createdAt: row.created_at,
-        shippedAt: row.shipped_at,
-        carrier: row.shipping_carrier,
-        service: row.shipping_service,
-        trackingNumber: row.tracking_number,
+        orderNumber: view.order_number,
+        status: view.status,
+        paymentStatus: view.payment_status,
+        paymentMethod: view.payment_method,
+        total: view.total,
+        createdAt: view.created_at,
+        shippedAt: view.shipped_at,
+        carrier: view.shipping_carrier,
+        service: view.shipping_service,
+        trackingNumber: view.tracking_number,
         trackingUrl: liveTracking?.trackingUrl || trackingUrl,
-        items: row.order_items,
+        items: view.items,
       },
       tracking: liveTracking
         ? {

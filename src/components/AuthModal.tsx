@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, User, Eye, EyeOff, Loader2, ArrowRight, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../context/AuthContext';
-import { authApi } from '../lib/supabase/api';
 import { useToast } from '../context/ToastContext';
 
 interface Props {
@@ -11,7 +10,17 @@ interface Props {
   onClose: () => void;
 }
 
-type AuthMode = 'login' | 'signup' | 'forgot';
+/**
+ * This modal signs in and signs up, and that is all it does.
+ *
+ * It used to carry a third mode that asked Supabase to send a reset email. With
+ * the customer path on WooCommerce there is nothing here to send it, and a
+ * modal cannot ask for a reset any more than it can hold a session, so the one
+ * owner of that flow is the `/forgot-password` page and this links to it. That
+ * link is also why this file matters beyond its own screen: the modal is in the
+ * layout, so whatever it imported was downloaded by every storefront route.
+ */
+type AuthMode = 'login' | 'signup';
 
 /**
  * The development convenience — and only the part of it that is true.
@@ -57,17 +66,13 @@ export default function AuthModal({ isOpen, onClose }: Props) {
       if (mode === 'login') {
         await signIn({ email: formData.email, password: formData.password });
         onClose();
-      } else if (mode === 'signup') {
+      } else {
         await signUp({
           email: formData.email,
           password: formData.password,
           fullName: formData.fullName,
         });
         toast.success('Account created! Please check your email to verify.');
-        onClose();
-      } else if (mode === 'forgot') {
-        await authApi.resetPassword(formData.email);
-        toast.success('Reset link sent! Check your email.');
         onClose();
       }
     } catch (err) {
@@ -81,7 +86,7 @@ export default function AuthModal({ isOpen, onClose }: Props) {
     setFormData({ email: '', password: '', fullName: '' });
   };
 
-  const goToFullPage = (page: 'login' | 'signup') => {
+  const goToFullPage = (page: 'login' | 'signup' | 'forgot-password') => {
     onClose();
     navigate(`/${page}`);
   };
@@ -125,14 +130,10 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                   className="h-12 mx-auto mb-4"
                 />
                 <h2 className="font-serif text-2xl font-bold text-charcoal">
-                  {mode === 'login' && 'Welcome Back'}
-                  {mode === 'signup' && 'Create Account'}
-                  {mode === 'forgot' && 'Reset Password'}
+                  {mode === 'login' ? 'Welcome Back' : 'Create Account'}
                 </h2>
                 <p className="text-charcoal-light text-sm mt-1">
-                  {mode === 'login' && 'Sign in to your account'}
-                  {mode === 'signup' && 'Join Himalayan Koh today'}
-                  {mode === 'forgot' && 'Enter your email to reset'}
+                  {mode === 'login' ? 'Sign in to your account' : 'Join Himalayan Koh today'}
                 </p>
               </div>
             </div>
@@ -203,38 +204,36 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                 </div>
               </div>
 
-              {mode !== 'forgot' && (
-                <div>
-                  <label className="block text-sm font-medium text-charcoal mb-1.5">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-charcoal placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
-                      placeholder="••••••••"
-                      minLength={6}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-charcoal placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+                    placeholder="••••••••"
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
-              )}
+              </div>
 
               {mode === 'login' && (
                 <div className="text-right">
                   <button
                     type="button"
-                    onClick={() => { setMode('forgot'); resetForm(); }}
+                    onClick={() => goToFullPage('forgot-password')}
                     className="text-sm text-himalayan hover:underline"
                   >
                     Forgot password?
@@ -250,9 +249,7 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                 className="w-full flex items-center justify-center gap-2 min-h-11 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {localLoading && <Loader2 size={18} className="animate-spin" />}
-                {mode === 'login' && 'Sign In'}
-                {mode === 'signup' && 'Create Account'}
-                {mode === 'forgot' && 'Send Reset Link'}
+                {mode === 'login' ? 'Sign In' : 'Create Account'}
               </motion.button>
 
               {/* Switch mode */}
@@ -281,29 +278,18 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                     </button>
                   </>
                 )}
-                {mode === 'forgot' && (
-                  <button
-                    type="button"
-                    onClick={() => { setMode('login'); resetForm(); }}
-                    className="text-himalayan font-semibold hover:underline"
-                  >
-                    Back to sign in
-                  </button>
-                )}
               </div>
 
               {/* Full page link */}
-              {mode !== 'forgot' && (
-                <div className="pt-2 text-center">
-                  <button
-                    type="button"
-                    onClick={() => goToFullPage(mode === 'login' ? 'login' : 'signup')}
-                    className="text-xs text-charcoal-light hover:text-charcoal"
-                  >
-                    Open full {mode === 'login' ? 'login' : 'signup'} page <ArrowRight size={12} className="inline" />
-                  </button>
-                </div>
-              )}
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => goToFullPage(mode === 'login' ? 'login' : 'signup')}
+                  className="text-xs text-charcoal-light hover:text-charcoal"
+                >
+                  Open full {mode === 'login' ? 'login' : 'signup'} page <ArrowRight size={12} className="inline" />
+                </button>
+              </div>
             </form>
           </motion.div>
         </motion.div>

@@ -100,6 +100,26 @@ const PLUGIN_ERRORS: Record<string, { status: number; error: string }> = {
     error: 'WooCommerce is not active on the store, so customer accounts cannot be created.',
   },
   hk_storefront_customer_missing: { status: 404, error: 'That customer no longer exists.' },
+  hk_storefront_current_password_invalid: {
+    status: 401,
+    error: 'That current password is not correct.',
+  },
+  hk_storefront_customer_mismatch: {
+    status: 403,
+    error: 'Those credentials do not belong to this account.',
+  },
+  hk_storefront_reset_key_invalid: {
+    status: 400,
+    error: 'This reset link is invalid or has expired. Request a new one.',
+  },
+  hk_storefront_reset_unavailable: {
+    status: 400,
+    error: 'Password resets are not available for this account.',
+  },
+  hk_storefront_origin_invalid: {
+    status: 500,
+    error: 'The storefront origin was missing, so the reset link could not be built.',
+  },
 };
 
 /** The plugin's route namespace, e.g. for a setup check to probe. */
@@ -181,6 +201,132 @@ export async function verifyWordPressCustomerCredentials(
     return { ok: true, customer };
   } catch (error) {
     return { ok: false, ...describeFailure(error, 'sign-in') };
+  }
+}
+
+export type PasswordResetRequestResult = { ok: true } | { ok: false; status: number; error: string };
+
+/**
+ * Ask WordPress to email a customer a password-reset link.
+ *
+ * The token is WordPress's and stays there: the plugin calls
+ * `get_password_reset_key()`, which keeps the verifiable half on the user and
+ * returns only the half that belongs in a link. Nothing about it comes back here —
+ * the app sends the request and WordPress sends the mail, so this app never holds
+ * a credential that can reset anybody's password.
+ *
+ * `origin` is this deployment's storefront origin (see the plugin's
+ * `hk_storefront_reset_origin`): the emailed link has to point at `/reset-password`
+ * on the storefront, and WordPress cannot know that address on its own.
+ *
+ * Never throws — every failure becomes an honest `{ ok: false }`.
+ */
+export async function requestWordPressPasswordReset(
+  login: string,
+  origin: string
+): Promise<PasswordResetRequestResult> {
+  const identifier = (login || '').trim();
+  if (!identifier) return { ok: false, status: 400, error: 'Enter the email address your account uses.' };
+
+  try {
+    await wordpressRequest<{ accepted?: boolean }>(`${NAMESPACE}/customer/request-password-reset`, {
+      method: 'POST',
+      body: { login: identifier, origin },
+      credentials: requireWordPressCredentials(),
+      timeoutMs: TIMEOUT_MS,
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, ...describeFailure(error, 'password reset') };
+  }
+}
+
+/**
+ * Set a customer's new password with the key WordPress mailed them.
+ *
+ * The plugin validates the key with `check_password_reset_key()` and writes the
+ * password with `reset_password()`, which is also what sends WordPress's own
+ * "your password changed" notice — so the customer hears about the change from the
+ * system that made it.
+ */
+export async function resetWordPressCustomerPassword(input: {
+  login: string;
+  key: string;
+  password: string;
+}): Promise<CustomerAccountResult> {
+  const login = (input.login || '').trim();
+  const key = (input.key || '').trim();
+
+  if (!login || !key) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'This reset link is invalid or has expired. Request a new one.',
+    };
+  }
+
+  try {
+    const raw = await wordpressRequest<RawCustomerResponse>(`${NAMESPACE}/customer/reset-password`, {
+      method: 'POST',
+      body: { login, key, password: input.password },
+      credentials: requireWordPressCredentials(),
+      timeoutMs: TIMEOUT_MS,
+    });
+
+    const customer = toCustomer(raw.customer);
+    if (!customer) {
+      return {
+        ok: false,
+        status: 502,
+        error: 'The password was changed but WordPress returned no customer id.',
+      };
+    }
+    return { ok: true, customer };
+  } catch (error) {
+    return { ok: false, ...describeFailure(error, 'password reset') };
+  }
+}
+
+/**
+ * Change a signed-in customer's password, re-checking the current one in WordPress.
+ *
+ * Both halves belong to WordPress: `wp_authenticate` proves the old password and
+ * `wp_set_password` writes the new one, so the new password never travels through a
+ * second auth system. The account portal used to do this with Supabase
+ * (`signInWithPassword`, then `updateUser`), which stopped working when sign-in
+ * moved to WordPress.
+ *
+ * `customerId` is passed so the plugin can refuse a credential that belongs to a
+ * different account than the session did — knowing a password must not be a way to
+ * change that account's password from here.
+ */
+export type PasswordChangeResult = { ok: true } | { ok: false; status: number; error: string };
+
+export async function changeWordPressCustomerPassword(input: {
+  customerId: number;
+  login: string;
+  currentPassword: string;
+  newPassword: string;
+}): Promise<PasswordChangeResult> {
+  try {
+    await wordpressRequest<RawCustomerResponse>(
+      `${NAMESPACE}/customer/change-password`,
+      {
+        method: 'POST',
+        body: {
+          customerId: input.customerId,
+          login: input.login,
+          currentPassword: input.currentPassword,
+          newPassword: input.newPassword,
+        },
+        credentials: requireWordPressCredentials(),
+        timeoutMs: TIMEOUT_MS,
+      }
+    );
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, ...describeFailure(error, 'password change') };
   }
 }
 

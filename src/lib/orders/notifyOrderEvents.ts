@@ -1,11 +1,33 @@
+/**
+ * Order events email the buyer and the store, and that is all they do.
+ *
+ * ## Where the order comes from
+ *
+ * WooCommerce. The order id these functions receive is the store's own id (the
+ * checkout reserves the order, and the webhook and the label step both carry that
+ * id), so the summary is the same projection the screens render — `orderFromWoo` —
+ * rather than a Supabase row. There is no second order store left to read.
+ *
+ * ## What they no longer do
+ *
+ * They used to write an in-app notification row for every admin (`notifyAdmins`,
+ * "Payment received — ship now" / "Order shipped"). That call was removed, not
+ * ported: nothing ever *read* the notifications table for an admin, and the
+ * recipient list came from Supabase `profiles` rows with `role = 'admin'` — a table
+ * whose admin identity has since moved to WordPress. The emails below are the alert
+ * that is actually delivered.
+ *
+ * Email is a side effect, never the source of truth: every dispatch is
+ * fire-and-forget, so a mail failure cannot fail the payment or the order write.
+ */
+
 import {
   sendAdminPaymentReceived,
   sendBuyerOrderConfirmation,
   sendBuyerShippedEmail,
 } from '@/lib/email/orderEmails';
+import { orderFromWoo, getWooOrder } from '@/lib/woo/orders';
 import { resolveTrackingUrl } from '@/lib/orders/tracking';
-import { notifyAdmins } from '@/lib/notifications/adminNotify';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
 
 interface OrderNotifyRow {
   order_number: string;
@@ -20,17 +42,21 @@ interface OrderNotifyRow {
 }
 
 async function loadOrderSummary(orderId: string): Promise<OrderNotifyRow | null> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from('orders')
-    .select(
-      'order_number, email, total, payment_status, payment_method, status, tracking_number, tracking_url, shipping_carrier'
-    )
-    .eq('id', orderId)
-    .maybeSingle();
+  const numeric = Number(orderId);
+  if (!Number.isInteger(numeric) || numeric <= 0) return null;
 
-  if (error) throw error;
-  return (data as OrderNotifyRow | null) || null;
+  const order = orderFromWoo(await getWooOrder(numeric));
+  return {
+    order_number: order.order_number,
+    email: order.email,
+    total: order.total,
+    payment_status: order.payment_status,
+    payment_method: order.payment_method,
+    status: order.status,
+    tracking_number: order.tracking_number,
+    tracking_url: order.tracking_url,
+    shipping_carrier: order.shipping_carrier,
+  };
 }
 
 function toEmailSummary(row: OrderNotifyRow) {
@@ -53,6 +79,8 @@ export function dispatchOrderCreatedNotifications(orderId: string): void {
     try {
       const row = await loadOrderSummary(orderId);
       if (!row) return;
+      // A card order that has not been paid yet announces itself when the payment
+      // lands (`dispatchPaymentReceivedNotifications`), not here.
       if (row.payment_method === 'stripe_card' && row.payment_status === 'pending') {
         return;
       }
@@ -69,15 +97,7 @@ export function dispatchPaymentReceivedNotifications(orderId: string): void {
       const row = await loadOrderSummary(orderId);
       if (!row) return;
       const summary = toEmailSummary(row);
-      await Promise.all([
-        sendBuyerOrderConfirmation(summary),
-        sendAdminPaymentReceived(summary),
-        notifyAdmins(
-          'Payment received — ship now',
-          `${row.order_number} paid by ${row.email} · $${Number(row.total).toFixed(2)}. Create Shippo label.`,
-          { orderId, orderNumber: row.order_number, type: 'payment_paid' }
-        ),
-      ]);
+      await Promise.all([sendBuyerOrderConfirmation(summary), sendAdminPaymentReceived(summary)]);
     } catch (error) {
       console.error('Payment received notifications failed:', error);
     }
@@ -90,14 +110,7 @@ export function dispatchOrderShippedNotifications(orderId: string): void {
       const row = await loadOrderSummary(orderId);
       if (!row?.tracking_number) return;
       const summary = toEmailSummary(row);
-      await Promise.all([
-        sendBuyerShippedEmail(summary),
-        notifyAdmins(
-          'Order shipped',
-          `${row.order_number} shipped · ${row.tracking_number}`,
-          { orderId, orderNumber: row.order_number, trackingNumber: row.tracking_number, type: 'shipped' }
-        ),
-      ]);
+      await sendBuyerShippedEmail(summary);
     } catch (error) {
       console.error('Order shipped notifications failed:', error);
     }

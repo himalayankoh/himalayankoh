@@ -1,12 +1,15 @@
 # Storefront cart & wishlist — WordPress contract
 
-Status: **cart, wishlist and customer accounts have left Supabase.** The cart is
-WooCommerce's (`wc/store/v1`), scoped to the account through a token binding in our
-plugin. The wishlist is a WordPress table behind the same namespace, owned by a
-WooCommerce customer id. A customer account **is** a WooCommerce customer, and the
-shopper's password is verified by WordPress. What remains on Supabase is the
-*profile slice* — profile, addresses, notifications — plus the admin console and
-content; see `WORDPRESS-WOOCOMMERCE-MIGRATION.md`.
+Status: **cart, wishlist, saved addresses and customer accounts have left
+Supabase.** The cart is WooCommerce's (`wc/store/v1`), scoped to the account through
+a token binding in our plugin. The wishlist and the saved addresses are WordPress
+tables behind the same namespace, both owned by a WooCommerce customer id. A
+customer account **is** a WooCommerce customer, and the shopper's password is
+verified by WordPress — including the reset and change flows, which are WordPress's
+own `get_password_reset_key` / `reset_password` / `wp_set_password`. What remains on
+Supabase is the *orders* slice, the admin console, content, settings and media; see
+`WORDPRESS-WOOCOMMERCE-MIGRATION.md`, and `ORDERS-WOOCOMMERCE-MIGRATION.md` for the
+orders design.
 
 This file is written for whoever operates the WordPress side.
 
@@ -18,6 +21,7 @@ This file is written for whoever operates the WordPress side.
 | --- | --- | --- |
 | Cart | **WooCommerce**, `wc/store/v1` | WooCommerce already owns carts, pricing, coupons, shipping and stock reservation. Rebuilding that would be reimplementing WooCommerce's rules in our code — the thing this migration exists to stop doing. |
 | Wishlist | **Our plugin**, `hk-storefront/v1` | WooCommerce has no wishlist: not in core, not in the Store API, not in REST v3. The choice was a custom table or leaving the data in Supabase. |
+| Saved addresses | **Our plugin**, `hk-storefront/v1` | Woo has two address *slots* on the customer (the ones that ship an order) but no list to choose from, which is what the account portal has always shown. |
 
 They are not split by convenience; they are split by which system already owns the
 concern.
@@ -164,9 +168,16 @@ by email at sign-in time.
 | --- | --- | --- |
 | `POST` | `/hk-storefront/v1/customer/login` | `wp_authenticate` the shopper's password, answer with the customer id |
 | `POST` | `/hk-storefront/v1/customer/register` | `wc_create_new_customer` — the WordPress user, the customer record and the store's welcome email |
+| `POST` | `/hk-storefront/v1/customer/request-password-reset` | `get_password_reset_key` + `wp_mail` a link that points at the storefront's `/reset-password` |
+| `POST` | `/hk-storefront/v1/customer/reset-password` | `check_password_reset_key` then `reset_password` (single-use, WordPress's own rule) |
+| `POST` | `/hk-storefront/v1/customer/change-password` | re-check the current password with `wp_authenticate`, then `wp_set_password` |
 | `GET` | `/hk-storefront/v1/cart-session?customerId=` | the cart bound to that customer; `{ "session": null }` when there is none |
 | `POST` | `/hk-storefront/v1/cart-session` | bind the customer's current cart token (`REPLACE INTO`, so two devices cannot interleave) |
 | `DELETE` | `/hk-storefront/v1/cart-session?customerId=` | forget the binding |
+| `GET` | `/hk-storefront/v1/addresses?customerId=` | the customer's saved addresses, defaults first |
+| `POST` | `/hk-storefront/v1/addresses` | save one address; `is_default_*` clears the previous default on that axis |
+| `PATCH` | `/hk-storefront/v1/addresses/<id>` | update fields, or set/clear a default |
+| `DELETE` | `/hk-storefront/v1/addresses/<id>` | remove one address |
 
 All of them are `manage_options`-guarded like the rest of the plugin: the app's
 server calls them with a WordPress **administrator application password**. The
@@ -203,6 +214,35 @@ server-side revocation this design has; tokens otherwise expire on their own.
   `hk_cart_sessions.cart_token` is WooCommerce's own opaque `Cart-Token`. The
   *contents* of the cart are never copied — that would be a second source of truth
   that drifts the first time stock moves.
+- `hk_addresses.customer_id` is that same integer (plugin 1.2.0). Addresses were the
+  one feature this migration inherited already broken: the Supabase rows were keyed
+  by the Supabase user id, which sign-in stopped producing, so the list was always
+  empty and every save went nowhere. They are re-keyed rather than migrated — the old
+  rows point at an id nobody can present, exactly like the pre-1.1.0 wishlist rows.
+
+WooCommerce *does* have two address slots on the customer record, but only the two
+that ship an order (billing and shipping). The account portal has always shown a
+*list* to choose from, which Woo has no field for, so those live in our table and
+the two Woo slots stay Woo's.
+
+### Email verification and in-app notifications are retired, not migrated
+
+Two Supabase-era flows had no equivalent to move to, and both were removed rather
+than rebuilt:
+
+- **`/verify-email`.** `wc_create_new_customer` makes the account usable
+  immediately and mails a welcome, not a verification link — so there was nothing
+  left to verify, and the page's "click the link to verify your account" copy (on the
+  signup screen too) was describing a step that had not existed since accounts moved.
+  The route is gone and `/verify-email` now redirects to `/login`, so an old link in
+  someone's inbox still lands somewhere useful.
+- **Customer/admin notifications.** Nothing ever wrote a customer notification and
+  nothing read an admin one; the writer fetched its recipients from Supabase
+  `profiles` rows with `role = 'admin'`, a table whose admin identity had already
+  moved to WordPress. The delivered alert for an order is the **email**
+  (`lib/email/orderEmails.ts`); an in-console alert would need two halves that do not
+  exist yet (a WordPress recipient source and a reader in the console), so the writer
+  was deleted rather than left writing rows nobody opens.
 
 ### Still missing: account deletion
 

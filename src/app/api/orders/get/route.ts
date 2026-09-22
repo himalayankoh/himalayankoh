@@ -1,32 +1,51 @@
+/**
+ * Order lookup for the confirmation and success pages.
+ *
+ * ## WooCommerce first, and the caller's session decides
+ *
+ * The order is the store's. A **signed-in** caller only ever gets an order that is
+ * theirs — matched on the WooCommerce customer id the session carries, or on the
+ * billing email the store recorded. A **guest** caller (no verified session) only
+ * ever gets an ownerless order: the guest-checkout-confirmation capability, without
+ * the old RLS policy that let anyone holding the public anon key enumerate every
+ * guest order.
+ *
+ * The caller cannot name an owner: there is no user id in the request body any
+ * more, only the id of the order being asked about.
+ *
+ * ## Legacy fallback
+ *
+ * A pre-migration order is not in the store, so a Woo miss falls through to the
+ * read-only legacy adapter (`lib/orders/legacyOrders`), which applies the same
+ * ownership rule by billing email. A live order never reaches it.
+ */
+
 import { NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { optionalCustomerRequest } from '@/lib/auth/customerRequest';
+import {
+  HK_META,
+  getWooOrder,
+  isWooOrderNotFound,
+  orderWithItemsFromWoo,
+  readWooOrderMeta,
+  type WooOrderLike,
+} from '@/lib/woo/orders';
+import { getLegacyOrderForViewer } from '@/lib/orders/legacyOrders';
 
-// Server-mediated order lookup (admin client, bypasses RLS) — used by
-// ordersApi.getOrderById() from the browser instead of a direct anon
-// Supabase query. Guest orders (user_id IS NULL) previously relied on a
-// blanket "Anon can view guest orders" RLS policy so the browser could read
-// them back directly; that policy let anyone holding the public anon key
-// enumerate every guest order via the REST API, not just the one order this
-// page already knows the ID of. Routing the read through this endpoint lets
-// that RLS policy be dropped (see the matching migration) while preserving
-// the exact same guest "know the order ID, see the order" capability.
-async function resolveUserId(request: Request): Promise<string | null> {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return null;
+export const dynamic = 'force-dynamic';
+
+/** Whether this viewer owns this Woo order, or may see it as a guest. */
+function mayViewWooOrder(order: WooOrderLike, viewer: { id: number; email: string } | null): boolean {
+  const owner = String(order.billing?.email ?? '').trim().toLowerCase();
+  if (viewer) {
+    if (Number(order.customer_id ?? 0) === viewer.id) return true;
+    return Boolean(owner) && owner === viewer.email.trim().toLowerCase();
   }
-
-  const token = authHeader.slice(7).trim();
-  if (!token) return null;
-
-  const supabase = getSupabaseAdmin();
-  const { data: userData, error } = await supabase.auth.getUser(token);
-  if (error || !userData.user) {
-    return null;
-  }
-
-  return userData.user.id;
+  // No session: ownerless only. A registered customer's order is not a guest order.
+  const hasCustomer = Number(order.customer_id ?? 0) > 0;
+  const hasMetaOwner = readWooOrderMeta(order, HK_META.userId) !== null;
+  return !hasCustomer && !hasMetaOwner;
 }
 
 export async function POST(request: Request) {
@@ -49,34 +68,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'orderId is required.' }, { status: 400 });
   }
 
-  const userId = await resolveUserId(request);
+  const customer = await optionalCustomerRequest(request);
 
   try {
-    const supabase = getSupabaseAdmin();
-    let query = supabase
-      .from('orders')
-      .select(`*, order_items(*)`)
-      .eq('id', orderId);
-
-    // A logged-in caller only ever gets back their own order — a signed-in
-    // request can't be used to read someone else's order by guessing its ID.
-    // Unverified/guest callers are restricted to orders with no owner at all
-    // (the same guest-checkout-confirmation capability this replaces) —
-    // never a bare id match, or any order could be read by anyone who
-    // guesses/knows its id, authenticated-owned or not.
-    if (userId) {
-      query = query.eq('user_id', userId);
-    } else {
-      query = query.is('user_id', null);
+    const numericId = Number(orderId);
+    if (Number.isInteger(numericId) && numericId > 0) {
+      try {
+        const order = await getWooOrder(numericId);
+        if (mayViewWooOrder(order, customer)) {
+          return NextResponse.json(orderWithItemsFromWoo(order));
+        }
+        // The store has this order and it is not this caller's. Do not fall through
+        // to the legacy store: a Woo order that exists is not a legacy order.
+        return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
+      } catch (error) {
+        // Only a genuine "no such order" falls through to the legacy read; a store
+        // failure is answered as a failure so it is not mistaken for a miss.
+        if (!isWooOrderNotFound(error)) throw error;
+      }
     }
 
-    const { data, error } = await query.maybeSingle();
-    if (error) throw error;
-    if (!data) {
+    const legacy = await getLegacyOrderForViewer(orderId, customer?.email ?? null);
+    if (!legacy) {
       return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
     }
-
-    return NextResponse.json(data);
+    return NextResponse.json(legacy);
   } catch (error) {
     console.error('Order lookup failed:', error);
     return NextResponse.json({ error: 'Unable to load order.' }, { status: 500 });

@@ -1,27 +1,42 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, Eye, EyeOff, Loader2, Check, AlertTriangle } from 'lucide-react';
-import { authApi } from '../../lib/supabase/api';
-import { supabase } from '../../lib/supabase/client';
 import { useToast } from '../../context/ToastContext';
 
+/**
+ * Setting a new password from the link WordPress emailed.
+ *
+ * ## What replaced the session gate
+ *
+ * This page used to refuse to render until `supabase.auth.getSession()` reported a
+ * session, because Supabase proved a recovery link by putting a session in the
+ * browser. That is not how WordPress proves it: the link carries `login` and `key`,
+ * and `check_password_reset_key()` is the only validator — so the page needs no
+ * session at all, which is what makes it work on a phone that has never signed in,
+ * the normal way a reset link gets opened.
+ *
+ * The link is therefore presented for what it is: a form the customer can fill in,
+ * and a key that either works (the password changes) or does not (WordPress says so,
+ * and the page offers a new link). No session, none of the false "invalid link"
+ * state a missing recovery session used to produce even when the link was fine.
+ */
 export default function ResetPasswordPage() {
+  const [searchParams] = useSearchParams();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [validSession, setValidSession] = useState<boolean | null>(null);
 
   const navigate = useNavigate();
   const toast = useToast();
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setValidSession(!!session);
-    });
-  }, []);
+  // WordPress sends the account's login name and its reset key. Both are required:
+  // the key alone does not say which account it belongs to.
+  const login = (searchParams.get('login') ?? '').trim();
+  const key = (searchParams.get('key') ?? '').trim();
+  const linkUsable = Boolean(login && key);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +54,17 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     try {
-      await authApi.updatePassword(password);
+      const response = await fetch('/api/auth/customer/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login, key, password }),
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || 'Failed to reset password');
+      }
+
       setSuccess(true);
       setTimeout(() => navigate('/login'), 3000);
     } catch (err) {
@@ -49,15 +74,7 @@ export default function ResetPasswordPage() {
     }
   };
 
-  if (validSession === null) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-cream via-white to-himalayan-lighter flex items-center justify-center">
-        <Loader2 size={32} className="animate-spin text-himalayan" />
-      </div>
-    );
-  }
-
-  if (!validSession) {
+  if (!linkUsable) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-cream via-white to-himalayan-lighter flex items-center justify-center p-4">
         <motion.div
@@ -70,7 +87,7 @@ export default function ResetPasswordPage() {
           </div>
           <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Invalid or Expired Link</h1>
           <p className="text-charcoal-light mb-6">
-            This password reset link is invalid or has expired. Please request a new one.
+            This password reset link is missing its reset token or has expired. Request a new one.
           </p>
           <Link
             to="/forgot-password"
