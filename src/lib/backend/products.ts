@@ -1,18 +1,5 @@
 /**
- * Catalog adapters and the browser's catalog client.
- *
- * This module owns the *source reads*: switching from Supabase to
- * WordPress/WooCommerce is a flag change rather than a rewrite, and both sources
- * emit `Product` (`src/data/products.ts`) — there is no second view model.
- *
- * ## Supabase source
- * Behaviour is intentionally identical to the pre-migration code paths, because
- * 'supabase' stays the default until WooCommerce parity is verified:
- *   - `productsApi` remains the query layer (it owns the `packing_profile:` gate
- *     that keeps half-configured products off the storefront);
- *   - `readCatalogProductBySlug` preserves the direct -> list-scan ->
- *     hidden-active-guard -> demo-catalog order, so an admin's in-progress
- *     product is never republished from stale bundled demo data.
+ * Catalog adapters — the raw reads of the store.
  *
  * ## WooCommerce source
  * Read order, best data first:
@@ -21,8 +8,13 @@
  *   3. WordPress core `/wp/v2/product` — always available, reports NO price,
  *      NO SKU and NO stock.
  * Step 3 is a *degradation*: prices stay `null` and stock stays `'unknown'`, and
- * the reason lands in `warnings`. The bundled demo catalog is never used here,
- * so nothing invented can reach a WooCommerce-powered page.
+ * the reason lands in `warnings`. The bundled demo catalog is never used here, so
+ * nothing invented can reach a WooCommerce-powered page.
+ *
+ * There is no second source. The `NEXT_PUBLIC_DATA_SOURCE` flag, the Supabase
+ * adapter and the demo-catalog fallback that only the Supabase path used are all
+ * gone: a storefront that could read one of two catalogs was a storefront that
+ * could disagree with itself about which products exist.
  *
  * ## Two readers, on purpose
  * - **Raw** — `readCatalogProducts` / `readCatalogProductBySlug`. Everything the
@@ -44,13 +36,7 @@
  */
 
 import type { Product } from '../../data/products';
-import { storefrontProducts as demoProducts } from '../../data/products';
-import { isSupabaseConfigured } from '../supabase/client';
-import { productsApi } from '../supabase/api';
-import { isHiddenActiveProduct } from '../supabase/api/products';
-import { getFallbackProductBySlug, mapSupabaseProduct } from '../products/mapProduct';
-import { normalizeProductSlug, productSlugFromName, slugsMatch } from '../products/slug';
-import { isWooCommerceDataSource } from './config';
+import { normalizeProductSlug } from '../products/slug';
 import {
   fetchAdminProductBySlug,
   fetchAdminProducts,
@@ -60,7 +46,6 @@ import {
 import type { ProductQuery } from './woocommerce';
 
 export interface CatalogQuery {
-  /** Omitted on the Supabase source means "no limit", matching the old default. */
   perPage?: number;
   page?: number;
   slug?: string;
@@ -88,139 +73,6 @@ export interface CatalogLookup {
   /** Exact backend error, when the lookup degraded. */
   error: string | null;
 }
-
-/* ------------------------------------------------------------------ */
-/* Supabase source                                                     */
-/* ------------------------------------------------------------------ */
-
-/**
- * The Supabase catalog read, reported rather than thrown.
- *
- * Both sources honour the same contract: a catalog that cannot be read returns
- * nothing *and says so*, instead of throwing through a page render. Supabase is
- * optional here and is pointed at a sentinel host in environments that run
- * without it, where the query rejects with a DNS failure — which used to fail the
- * sitemap's prerender and take a whole deployment build down with it.
- *
- * The fallback is an empty catalog, never the bundled demo list: substituting
- * someone else's inventory for a failed read is how a storefront ends up
- * advertising products it cannot sell.
- */
-async function supabaseList(query: CatalogQuery): Promise<CatalogResult> {
-  const perPage = query.perPage;
-  const offset = query.page && query.page > 1 ? (query.page - 1) * (perPage ?? 24) : undefined;
-
-  try {
-    const { products, count } = await productsApi.getProducts(
-      {
-        limit: perPage,
-        offset,
-        search: query.search,
-        categorySlug: query.categorySlug,
-        isFeatured: query.isFeatured,
-      },
-      { signal: query.signal }
-    );
-
-    return {
-      products: products.map(mapSupabaseProduct),
-      count,
-      degraded: false,
-      warnings: [],
-    };
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    return {
-      products: [],
-      count: 0,
-      degraded: true,
-      warnings: [
-        `The Supabase catalog could not be read (${reason}). No products are shown, because the bundled demo catalog is not this store's inventory.`,
-      ],
-    };
-  }
-}
-
-async function supabaseLookup(slug: string, signal?: AbortSignal): Promise<CatalogLookup> {
-  const normalized = normalizeProductSlug(slug);
-  if (!normalized) return { product: null, related: [], provenance: null, error: null };
-
-  // No Supabase configured: the bundled demo catalog is the whole storefront,
-  // which is how local development without credentials has always worked.
-  if (!isSupabaseConfigured()) {
-    const product = getFallbackProductBySlug(normalized) ?? null;
-    return {
-      product,
-      related: relatedFromDemo(product, normalized),
-      provenance: product ? 'fallback-catalog' : null,
-      error: null,
-    };
-  }
-
-  let error: string | null = null;
-
-  try {
-    let row = await productsApi.getProductBySlug(normalized, { signal });
-    let listScanned = false;
-
-    if (!row) {
-      const { products } = await productsApi.getProducts({ limit: 100 }, { signal });
-      row = products.find((candidate) => matchesSlug(candidate.slug, candidate.name, normalized)) ?? null;
-      listScanned = Boolean(row);
-    }
-
-    if (row) {
-      const product = mapSupabaseProduct(row);
-      const related = await productsApi
-        .getRelatedProducts(row.id, row.category_id, 3, { signal })
-        .then((rows) => rows.map(mapSupabaseProduct))
-        .catch(() => [] as Product[]);
-
-      return {
-        product,
-        related,
-        provenance: listScanned ? 'list-scan' : 'direct',
-        error: null,
-      };
-    }
-  } catch (err) {
-    error = err instanceof Error ? err.message : String(err);
-  }
-
-  // A real active row for this slug that is deliberately withheld from the
-  // storefront (no packing profile yet) must not be papered over by the bundled
-  // demo catalog, which reuses these same slugs.
-  const hidden = await isHiddenActiveProduct(normalized).catch(() => false);
-  if (hidden) return { product: null, related: [], provenance: null, error };
-
-  const fallback = getFallbackProductBySlug(normalized) ?? null;
-  return {
-    product: fallback,
-    related: relatedFromDemo(fallback, normalized),
-    provenance: fallback ? 'fallback-catalog' : null,
-    error,
-  };
-}
-
-/** Mirrors the legacy list-scan matcher exactly (raw slug, then name-derived slug). */
-function matchesSlug(rowSlug: string, rowName: string, slug: string): boolean {
-  return slugsMatch(rowSlug, slug) || slugsMatch(productSlugFromName(rowName, rowSlug), slug);
-}
-
-/**
- * Related products from the bundled catalog.
- *
- * Reads the storefront-scoped list, so a recommendation can never surface a
- * product the catalog itself would not serve.
- */
-function relatedFromDemo(product: Product | null, slug: string): Product[] {
-  if (!product) return [];
-  return demoProducts.filter((entry) => !slugsMatch(entry.slug, slug)).slice(0, 3);
-}
-
-/* ------------------------------------------------------------------ */
-/* WooCommerce source                                                  */
-/* ------------------------------------------------------------------ */
 
 function toProductQuery(query: CatalogQuery): ProductQuery {
   return {
@@ -283,8 +135,8 @@ async function wooLookup(slug: string, signal?: AbortSignal): Promise<CatalogLoo
     return { product: core.products[0], related: [], provenance: 'direct', error: core.error };
   }
 
-  // No demo-catalog fallback on this source: an unknown slug is genuinely
-  // unknown, and inventing a product here would be the worst possible outcome.
+  // No demo-catalog fallback: an unknown slug is genuinely unknown, and
+  // inventing a product here would be the worst possible outcome.
   return { product: null, related: [], provenance: null, error: store.error };
 }
 
@@ -300,7 +152,7 @@ async function wooLookup(slug: string, signal?: AbortSignal): Promise<CatalogLoo
  * wrapper in `./serverCatalog` instead.
  */
 export async function readCatalogProducts(query: CatalogQuery = {}): Promise<CatalogResult> {
-  return isWooCommerceDataSource() ? wooList(query) : supabaseList(query);
+  return wooList(query);
 }
 
 /** The catalog's answer for one slug, straight from the source. */
@@ -308,6 +160,5 @@ export async function readCatalogProductBySlug(
   slug: string,
   signal?: AbortSignal
 ): Promise<CatalogLookup> {
-  return isWooCommerceDataSource() ? wooLookup(slug, signal) : supabaseLookup(slug, signal);
+  return wooLookup(slug, signal);
 }
-

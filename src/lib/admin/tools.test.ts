@@ -172,7 +172,6 @@ function row(overrides: Partial<AdminCatalogRow> = {}): AdminCatalogRow {
     isFeatured: false,
     isOffNiche: false,
     missing: [],
-    record: null,
     ...overrides,
   };
 }

@@ -1,25 +1,16 @@
 /**
  * Central backend configuration — the public facts only.
  *
- * The migration from Supabase to WordPress/WooCommerce is staged, so the data
- * source is a flag rather than a rewrite. Default stays 'supabase': flipping it
- * must be a deliberate, reversible act, and the Supabase path stays intact as
- * the rollback target until WooCommerce parity is verified.
+ * WordPress/WooCommerce is the backend, full stop. There used to be a
+ * `NEXT_PUBLIC_DATA_SOURCE` flag choosing between Supabase and WooCommerce; with
+ * the Supabase path deleted the flag has no second branch to select, and a switch
+ * with one position is a way for a deployment to read nothing.
  *
  * Credentials are NOT here. They live in `./credentials`, which only server
  * modules import, because this file is reachable from client components and
  * every "no secret in the browser bundle" rule needs a structural owner rather
- * than a convention. The data-source flag it re-exports has its own module
- * (`./dataSource`) for the same reason: a client component that wants the flag
- * should not pull the origin and timeout in with it.
+ * than a convention.
  */
-
-import { dataSource, resolveDataSource } from './dataSource';
-
-import type { DataSource } from './dataSource';
-
-export { resolveDataSource };
-export type { DataSource };
 
 function normaliseBaseUrl(value: string | undefined): string {
   const trimmed = (value || '').trim();
@@ -45,8 +36,6 @@ const woocommerceBaseUrl = normaliseBaseUrl(
 );
 
 export const backendConfig = {
-  /** 'supabase' (default, rollback target) or 'woocommerce'. */
-  dataSource,
   wordpressBaseUrl,
   woocommerceBaseUrl,
   /** WordPress REST API root, e.g. https://example.com/staging/wp-json */
@@ -58,19 +47,6 @@ export const backendConfig = {
 };
 
 /** True when the storefront should read catalog data from WordPress/WooCommerce. */
-export function isWooCommerceDataSource(): boolean {
-  return backendConfig.dataSource === 'woocommerce';
-}
-
-/**
- * True when Supabase is still the catalog source (the default, and the
- * rollback target). Views use this to decide whether Supabase-specific
- * behaviour — the bundled demo catalog and realtime invalidation — applies.
- */
-export function isSupabaseDataSource(): boolean {
-  return backendConfig.dataSource === 'supabase';
-}
-
 /** The configuration facts readiness depends on, so the rule can be tested directly. */
 export interface BackendReadinessInput {
   wordpressApiRoot: string;

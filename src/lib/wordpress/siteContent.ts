@@ -10,54 +10,14 @@
  *   - first-party storefront events             → a table (append-only)
  *   - newsletter subscribers, contact messages  → a table each
  *
- * ## Why one module
+ * ## The request itself lives elsewhere
  *
- * These endpoints share one namespace, one credential and one failure mode, so they
- * share one client. Five modules each calling `wordpressRequest` with
- * `requireWordPressCredentials()` would be five places to get the error handling,
- * the credential and the path prefix subtly different.
- *
- * ## Server-only
- *
- * An administrator application password is full site access, so nothing here may be
- * imported by a browser bundle. That is enforced by `scripts/check-client-supabase`
- * (a browser chunk containing `hk-storefront` is a bug with an owner), and by the
- * fact that every caller is a route handler or a server library.
+ * `lib/wordpress/storefrontClient.ts` owns the namespace, the credential and the
+ * timeout, because the Hermes evidence store talks to the same namespace and one
+ * shared request path beats two that drift.
  */
 
-import { WordPressApiError, wordpressRequest, type QueryValue } from '@/lib/backend/wordpress';
-import { requireWordPressCredentials } from '@/lib/backend/wordpressCredentials';
-import { backendConfig } from '@/lib/backend/config';
-
-const BASE = '/hk-storefront/v1';
-const TIMEOUT_MS = 20_000;
-
-/** The origin is not configured — surfaced rather than turned into a silent empty. */
-function assertConfigured(): void {
-  if (!backendConfig.wordpressApiRoot) {
-    throw new WordPressApiError({
-      message:
-        'WordPress is not configured for this deployment (WORDPRESS_BASE_URL is empty), so the site-content endpoints cannot be reached.',
-      path: BASE,
-      status: 0,
-    });
-  }
-}
-
-/** One request against the namespace, with the administrator credential. */
-async function call<T>(
-  path: string,
-  options: { method?: 'GET' | 'POST' | 'DELETE'; params?: Record<string, QueryValue>; body?: unknown } = {}
-): Promise<T> {
-  assertConfigured();
-  return wordpressRequest<T>(`${BASE}${path}`, {
-    method: options.method ?? 'GET',
-    params: options.params,
-    body: options.body,
-    credentials: requireWordPressCredentials(),
-    timeoutMs: TIMEOUT_MS,
-  });
-}
+import { storefrontRequest as call } from './storefrontClient';
 
 /**
  * A category key as both halves of this client spell it.

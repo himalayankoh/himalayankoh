@@ -3,7 +3,7 @@ import { AnimatePresence } from 'framer-motion';
 import { Search } from 'lucide-react';
 import { SkeletonProductGrid } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
-import { products as fallbackProducts, Product } from '../data/products';
+import type { Product } from '../data/products';
 import ProductCard from '../components/ProductCard';
 import ProductModal from '../components/ProductModal';
 import CategoryEducationPanel from '../components/category/CategoryEducationPanel';
@@ -12,16 +12,6 @@ import CategoryHubLayout from '../components/category/CategoryHubLayout';
 import CategoryShopPanel from '../components/category/CategoryShopPanel';
 import { productMatchesCategoryFilter } from '../lib/categoryContent';
 import { getCatalogProducts } from '../lib/backend/catalogClient';
-import { isSupabaseDataSource } from '../lib/backend/dataSource';
-
-
-/**
- * The bundled demo catalog is a Supabase-source-only safety net: it exists so a
- * Supabase outage does not blank the page. On the WooCommerce source an empty
- * catalog is a genuine answer, so demo products must never be substituted.
- * Module scope keeps it out of the effect's dependency array.
- */
-const USES_SUPABASE_SOURCE = isSupabaseDataSource();
 import { useCategoryBlogArticles } from '../hooks/useCategoryBlogArticles';
 import { useCategoryHubContent } from '../hooks/useCategoryHubContent';
 import { useProductsCategoryFilter } from '../hooks/useProductsCategoryFilter';
@@ -47,13 +37,14 @@ export default function ProductsPage({
   const { activeFilter, categoryKey } = useProductsCategoryFilter(initialCategoryKey);
   const [searchQuery, setSearchQuery] = useState('');
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
-  const [products, setProducts] = useState<Product[]>(initialProducts ?? fallbackProducts);
+  // No bundled catalogue as the initial value: the store's read is the only
+  // source, and the server already sent this request's products when it has them.
+  const [products, setProducts] = useState<Product[]>(initialProducts ?? []);
   // A server-rendered list is already on screen; anything else is loading until
   // the catalog read answers. There is no credential to consult: the read goes
   // through the backend on every source.
   const [loading, setLoading] = useState(!initialProducts);
   const prevCategoryKey = useRef<string | null>(null);
-  const hasLoadedOnce = useRef(Boolean(initialProducts));
   const fetchSeq = useRef(0);
   const serverCatalogRef = useRef(Boolean(initialProducts));
 
@@ -87,17 +78,13 @@ export default function ProductsPage({
         const { products: catalogProducts } = await getCatalogProducts();
         if (seq !== fetchSeq.current) return;
         setProducts(catalogProducts);
-        hasLoadedOnce.current = true;
       } catch (err) {
         console.error('Failed to fetch products:', err);
         if (seq !== fetchSeq.current) return;
-        // Only fall back to the bundled catalog on the FIRST load. A failed
-        // background refetch (e.g. a realtime-triggered one) must NOT replace
-        // the products already on screen — that swap is what made the grid
-        // flicker between the live list and the fallback list.
-        if (!hasLoadedOnce.current && USES_SUPABASE_SOURCE) {
-          setProducts(fallbackProducts);
-        }
+        // A failed refetch leaves the products already on screen alone. There is
+        // no bundled catalogue to fall back to: an empty or failed read from the
+        // store is a genuine answer, and substituting someone else's inventory
+        // for it would advertise products this store cannot sell.
       } finally {
         if (seq === fetchSeq.current) setLoading(false);
       }

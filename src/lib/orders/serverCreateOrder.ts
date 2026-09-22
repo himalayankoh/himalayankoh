@@ -1,5 +1,4 @@
-import { isWooCommerceDataSource } from '@/lib/backend/dataSource';
-import { isRealCatalogProduct } from '@/lib/catalog/realProduct';
+
 import {
   HK_META,
   createWooOrder,
@@ -113,7 +112,7 @@ export function checkoutCartIssues(
       issues.push({ cartItemId: item.id, message: 'This product is no longer available.' });
       continue;
     }
-    if (!product.is_active || (!isWooCommerceDataSource() && !isRealCatalogProduct(product))) {
+    if (!product.is_active) {
       issues.push({ cartItemId: item.id, message: `${product.name || 'This product'} is unavailable.` });
       continue;
     }
@@ -289,16 +288,6 @@ export async function reserveOrderForCheckout(
       reused: true,
       cartToken: cart.id,
     };
-  }
-
-  if (!isWooCommerceDataSource()) {
-    // Refused rather than fallen back to. The cart read above can only have
-    // produced WooCommerce product ids (it reads `wc/store/v1/cart`), and writing
-    // those into a Supabase `order_items` table would attach an order to products
-    // that do not exist there.
-    throw new Error(
-      'Orders are written to WooCommerce: the storefront cart is WooCommerce\'s, so there is no other order store to write to. Set NEXT_PUBLIC_DATA_SOURCE=woocommerce.'
-    );
   }
 
   // Recompute shipping server-side; never trust data.shippingCostOverride.

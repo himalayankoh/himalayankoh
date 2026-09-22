@@ -5,7 +5,6 @@ import { buildConsolidatedParcelFromPackingLineItems, buildParcelsFromPackingLin
 import { shippoAddressPayload, toShippoAddress } from './addresses';
 import { shippoRequest } from './client';
 import { shippoParcelPayload } from './parcels';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
 
 interface ShippoRateResponse {
   object_id: string;
@@ -125,8 +124,7 @@ export async function fetchShippoRates(params: {
 }): Promise<ShippoRate[]> {
   const fromAddress = await resolveShippoFromAddress();
   const to = toShippoAddress(params.toAddress, params.email);
-  const supabase = getSupabaseAdmin();
-  const packingItems = await enrichRatesLineItems(supabase, params.lineItems);
+  const packingItems = await enrichRatesLineItems(params.lineItems);
   const parcelInputs = params.consolidateParcels
     ? buildConsolidatedParcelFromPackingLineItems(packingItems)
     : buildParcelsFromPackingLineItems(packingItems);

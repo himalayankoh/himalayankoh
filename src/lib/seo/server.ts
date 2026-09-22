@@ -1,44 +1,16 @@
-import { createClient } from '@supabase/supabase-js';
-import type {
-  Database,
-  ProductWithCategory,
-} from '@/lib/supabase/database.types';
 import type { Product } from '@/data/products';
 import { lookupCatalogProduct } from '@/lib/backend/serverCatalog';
-import { isRealCatalogProduct } from '@/lib/catalog/realProduct';
 import { filterNicheBlogPosts } from '@/lib/catalog/nicheBlog';
 import type { BlogPostWithAuthor } from '@/lib/blog/types';
 import { wordpressBlog } from '@/lib/blog/wordpressBlog';
 import { SITE_ORIGIN } from '@/lib/site/origin';
 
 /**
- * Server-only Supabase client for SEO/metadata fetches during server render.
- * Uses the public anon key (respects RLS — only published/active rows are
- * returned) and no session persistence. Separate from the browser client so
- * server components can fetch data without shipping it through the client.
- */
-let cached: ReturnType<typeof createClient<Database>> | null = null;
-
-export function getSeoSupabase() {
-  if (cached) return cached;
-  // Read the variables directly rather than through `publicEnv`: this module is
-  // server-only, and the client-safe object must not carry Supabase keys any
-  // more — it lives in the root layout, so its fields reach every route's
-  // bundle. Both spellings are accepted for the Vite-era migration.
-  cached = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://disabled.supabase.co',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'disabled-anon-key',
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  );
-  return cached;
-}
-
-/**
  * Every server-rendered route (Products, product detail, blog) awaits one of
  * the fetches below before Next can send the page, and client-side
  * navigation waits for that same render to finish before the URL changes —
  * with no loading.tsx in (main), the old page just sits there in the
- * meantime. A Supabase request that stalls (cold serverless network blip,
+ * meantime. A store request that stalls (cold serverless network blip,
  * DNS hiccup) used to hang that render indefinitely, which reads as
  * navigation being stuck until the visitor manually reloads. Bounding every
  * such request lets a stall fail fast instead: the page still renders, just
@@ -58,13 +30,12 @@ export function seoFetchDeadline(): AbortSignal {
  * call sites keep one import path.
  */
 /**
- * Runs a server-side CMS read, degrading instead of throwing.
+ * Runs a server-side store read, degrading instead of throwing.
  *
- * Supabase is optional on this storefront and is disabled outright in some
- * environments (`disabled.supabase.co`), where a raw query rejects with a DNS
- * failure. Awaiting it directly meant the sitemap route failed its prerender and
- * took a whole deployment build down with it. A missing CMS must cost the page
- * its blog links, not the site its build.
+ * The store is a network dependency on a server render: a WordPress origin that
+ * is down or slow would otherwise fail a whole deployment build through the
+ * sitemap's prerender. A missing store must cost the page its links, not the site
+ * its build.
  */
 async function safeSeoRead<T>(label: string, run: () => Promise<T>, fallback: T): Promise<T> {
   try {
@@ -84,38 +55,6 @@ export function absoluteUrl(path: string): string {
   return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-export interface SeoProduct {
-  name: string;
-  slug: string;
-  description: string | null;
-  short_description: string | null;
-  price: number;
-  images: string[] | null;
-  thumbnail: string | null;
-  sku: string | null;
-  meta_title: string | null;
-  meta_description: string | null;
-}
-
-/** Server-side product-by-slug fetch for metadata + JSON-LD. Returns null if not found. */
-export async function fetchSeoProduct(slug: string): Promise<SeoProduct | null> {
-  const normalized = normalizeSlugParam(slug);
-  if (!normalized) return null;
-
-  const { data } = await getSeoSupabase()
-    .from('products')
-    .select(
-      'name, slug, description, short_description, price, images, thumbnail, sku, meta_title, meta_description, tags'
-    )
-    .eq('slug', normalized)
-    .eq('is_active', true)
-    .abortSignal(seoFetchDeadline())
-    .maybeSingle();
-
-  if (!data || !isRealCatalogProduct(data as { tags?: string[] | null })) return null;
-  return data as SeoProduct;
-}
-
 /** Route params arrive URL-encoded and case-inconsistent; slugs are stored lowercase. */
 function normalizeSlugParam(slug: string): string {
   try {
@@ -129,8 +68,8 @@ function normalizeSlugParam(slug: string): string {
  * Full product row mapped to the same `Product` shape the client views use, so
  * server metadata and structured data are built by exactly the same helpers the
  * page renders with (no title/description drift between server HTML and the
- * hydrated page). Falls back to the bundled catalog when Supabase has no match,
- * which mirrors the client resolver.
+ * hydrated page). The store is the only catalog, so there is nothing to fall back
+ * to when it has no match.
  */
 export async function fetchSeoProductModel(slug: string): Promise<Product | null> {
   const normalized = normalizeSlugParam(slug);

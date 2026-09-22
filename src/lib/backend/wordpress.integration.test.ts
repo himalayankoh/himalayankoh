@@ -36,7 +36,7 @@ import { readCatalogProducts } from './products';
 import { getCatalogProducts, lookupCatalogProduct } from './serverCatalog';
 import { fetchStoreProductsSafe } from './woocommerce';
 import { wordpressRequestSafe } from './wordpress';
-import { backendConfig, isWooCommerceDataSource } from './config';
+import { backendConfig } from './config';
 import { formatPriceDisplay } from '../products/price';
 import type { Product } from '../../data/products';
 
@@ -92,9 +92,8 @@ function expectNothingInvented(product: Product) {
   }
 }
 
-describe.skipIf(!enabled || !isWooCommerceDataSource())('live WooCommerce backend', () => {
+describe.skipIf(!enabled)('live WooCommerce backend', () => {
   it('is pointed at a configured origin', () => {
-    expect(isWooCommerceDataSource()).toBe(true);
     expect(backendConfig.wordpressApiRoot).toMatch(/^https:\/\//);
   });
 

@@ -3,11 +3,9 @@ import { describe, expect, it } from 'vitest';
 import type { Product as CatalogProduct } from '../../data/products';
 import {
   rowFromCatalogProduct,
-  rowFromSupabaseProduct,
   sortAdminCatalogRows,
   statsFromRows,
   type AdminCatalogRow,
-  type AdminEditableRecord,
 } from './adminCatalog';
 
 /** A row straight off the WooCommerce read, before any projection. */
@@ -27,34 +25,6 @@ function catalogProduct(overrides: Partial<CatalogProduct> = {}): CatalogProduct
     missing: ['price', 'sku', 'stockStatus'],
     ...overrides,
   };
-}
-
-/**
- * Builds a Supabase record carrying only the columns the projection reads.
- *
- * The generated row type has every table column, so the cast is deliberate: a
- * pure mapping test should not have to invent 30 unrelated column values, and
- * adding a column to the table must not break this test.
- */
-function supabaseRecord(overrides: Record<string, unknown> = {}): AdminEditableRecord {
-  return {
-    id: '11111111-1111-1111-1111-111111111111',
-    name: 'Himalayan Salt Block 30 lbs',
-    slug: 'himalayan-salt-block-30-lbs',
-    price: 49.95,
-    compare_at_price: null,
-    thumbnail: 'https://example.supabase.co/storage/v1/object/public/products/block.jpg',
-    images: ['https://example.supabase.co/storage/v1/object/public/products/block.jpg'],
-    tags: [],
-    is_active: true,
-    is_featured: false,
-    category_id: 'category-1',
-    weight: 30,
-    weight_unit: 'lbs',
-    category: null,
-    inventory: null,
-    ...overrides,
-  } as unknown as AdminEditableRecord;
 }
 
 describe('rowFromCatalogProduct', () => {
@@ -108,52 +78,6 @@ describe('rowFromCatalogProduct', () => {
     const row = rowFromCatalogProduct(catalogProduct());
 
     expect(row.source).toBe('woocommerce');
-    expect(row.record).toBeNull();
-  });
-});
-
-describe('rowFromSupabaseProduct', () => {
-  it('carries the record the editor saves back', () => {
-    const record = supabaseRecord();
-    const row = rowFromSupabaseProduct(record);
-
-    expect(row.source).toBe('supabase');
-    expect(row.record).toBe(record);
-    expect(row.price).toBe('$49.95');
-    expect(row.isListed).toBe(true);
-  });
-
-  it('derives stock status only from a tracked count', () => {
-    const inventory = (quantity: number, track_inventory = true) => ({
-      quantity,
-      track_inventory,
-      low_stock_threshold: 5,
-    });
-
-    expect(rowFromSupabaseProduct(supabaseRecord({ inventory: inventory(0) })).stockStatus).toBe('out_of_stock');
-    expect(rowFromSupabaseProduct(supabaseRecord({ inventory: inventory(12) })).stockStatus).toBe('in_stock');
-    // Tracking off is not a stock level, and a missing row is not zero either.
-    expect(
-      rowFromSupabaseProduct(supabaseRecord({ inventory: inventory(500, false) })).stockStatus
-    ).toBe('unknown');
-    expect(rowFromSupabaseProduct(supabaseRecord({ inventory: null })).stockStatus).toBe('unknown');
-    // Listing state says nothing about stock.
-    expect(
-      rowFromSupabaseProduct(supabaseRecord({ is_active: false, inventory: inventory(12) })).stockStatus
-    ).toBe('in_stock');
-  });
-
-  it('uses the storefront packing-profile rule to decide what is withheld', () => {
-    const withProfile = supabaseRecord({ tags: ['packing_profile:{"shipsSeparately":false}'] });
-
-    expect(rowFromSupabaseProduct(withProfile).isHiddenFromStorefront).toBe(false);
-    expect(rowFromSupabaseProduct(supabaseRecord({ tags: [] })).isHiddenFromStorefront).toBe(true);
-    // An inactive product is not "withheld" — it was never published.
-    expect(rowFromSupabaseProduct(supabaseRecord({ is_active: false, tags: [] })).isHiddenFromStorefront).toBe(false);
-  });
-
-  it('reports no missing catalog fields: every column exists on this source', () => {
-    expect(rowFromSupabaseProduct(supabaseRecord()).missing).toEqual([]);
   });
 });
 
@@ -179,7 +103,7 @@ describe('statsFromRows', () => {
     ];
 
     const stats = statsFromRows(rows);
-    if (stats.source !== 'woocommerce') throw new Error('expected the WooCommerce stats variant');
+    expect(stats.source).toBe('woocommerce');
 
     expect(stats.total).toBe(2);
     expect(stats.priceUnavailable).toBe(2);

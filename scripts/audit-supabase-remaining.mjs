@@ -229,23 +229,28 @@ const features = [
   ['Admin sign-in', 'WordPress application password', 'moved'],
   ['YouTube embeds', 'WordPress', 'moved'],
   ['LeadOS + CRM data', 'hk-leados plugin (leados/v1, crm/v1)', 'moved'],
-  ['Catalog read', 'WooCommerce /wc/v3 when the Woo data source is on, Supabase otherwise', 'partial'],
+  ['Catalog read', 'WooCommerce /wc/v3 — Supabase source, demo fallback and the NEXT_PUBLIC_DATA_SOURCE flag all deleted', 'moved'],
   ['Order creation (Stripe + invoice)', 'WooCommerce order, reserved before payment; id in Stripe metadata', 'moved'],
   ['Order reads (confirmation, tracker, history, admin)', 'WooCommerce /wc/v3', 'moved'],
   ['Order status, Stripe, Shippo, order emails', 'WooCommerce order + _hk_* meta; Shippo returns written to the order', 'moved'],
-  ['Historical Supabase orders', 'read-only legacy adapter, no writes (see docs/ORDERS-WOOCOMMERCE-MIGRATION.md §4)', 'legacy'],
+  ['Historical Supabase orders', 'read-only legacy adapter; import measured and ready (npm run migrate:orders) — see §4', 'blocked'],
   ['Blog reads (storefront + metadata)', 'WordPress /wp/v2/posts (lib/blog/wordpressBlog.ts)', 'moved'],
-  ['Blog admin write + media', 'Supabase admin console + Storage — not yet moved', 'remaining'],
-  ['Customer profiles', 'Supabase server-side', 'remaining'],
+  ['Blog admin write + media', 'WordPress /wp/v2/posts + Media Library (lib/blog/wordpressAdminBlog.ts, lib/media)', 'moved'],
+  ['Customer profiles', 'WooCommerce customer — the last server-side Supabase read left after the orders import', 'remaining'],
   ['Saved addresses', 'hk-storefront plugin table, keyed by the WooCommerce customer id', 'moved'],
   ['Password reset (request + set)', 'WordPress get_password_reset_key / reset_password', 'moved'],
   ['Email verification', 'no replacement — retired, see the migration doc §email verification', 'retired'],
   ['Notifications', 'retired in-app path; order email is the delivered alert', 'retired'],
-  ['Category hub CMS overrides', 'Supabase, read through /api/category-hub', 'remaining'],
-  ['Site settings', 'Supabase server-side', 'remaining'],
-  ['Media (product images, blog bucket)', 'Supabase Storage, admin-side', 'remaining'],
-  ['Newsletter / contact submissions', 'Supabase server-side', 'remaining'],
-  ['Traffic analytics (site_events)', 'Supabase server-side, admin-side', 'remaining'],
+  ['Category hub CMS overrides', 'WordPress options via hk-storefront/v1 (lib/categoryContent/hubOverrides.ts)', 'moved'],
+  ['Site settings', 'WordPress options via hk-storefront/v1 (lib/settings/serverSettings.ts)', 'moved'],
+  ['Media (product images, blog bucket)', 'new uploads → WordPress Media Library; existing Supabase URLs left intact', 'partial'],
+  ['Newsletter / contact submissions', 'hk-storefront plugin tables (hk_newsletter_subscribers, hk_contact_submissions)', 'moved'],
+  ['Traffic analytics (site_events)', 'hk-storefront plugin table hk_site_events, aggregated in SQL', 'moved'],
+  ['Hermes evidence', 'hk-storefront plugin table hk_hermes_evidence; dedupe is the table UNIQUE key', 'moved'],
+  ['Shippo packing profiles', 'WooCommerce product meta _hk_packing_profile (lib/woo/packingProfile.ts)', 'moved'],
+  ['SEO server reads', 'the dead Supabase product fetch was deleted; blog SEO reads WordPress', 'moved'],
+  ['Stripe admin client', 'deleted from lib/stripe/server — the one remaining Supabase client is the orders adapter', 'moved'],
+  ['Admin catalog data layer', 'features/catalog/repository.ts + services/db.ts still read PostgREST when VITE_SUPABASE_* is set', 'remaining'],
 ];
 for (const [feature, owner, status] of features) {
   console.log(`  [${status.padEnd(9)}] ${feature.padEnd(52)} ${owner}`);
@@ -254,3 +259,5 @@ console.log('\n`broken` and `inert` are not "remaining" work: those two have no 
 console.log('they need a decision (see the addresses/notifications question in the migration doc).');
 console.log('`retired` means the feature had no live path at all and was removed rather than ported,');
 console.log('so there is nothing left to migrate — the reason is recorded in the migration doc.');
+console.log('`blocked` means the code path is written and measured but cannot be switched off yet;');
+console.log('the blocker is named in the migration doc, never left implicit.');

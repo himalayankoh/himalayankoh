@@ -340,6 +340,45 @@ number, total, email and payment status; a legacy order is visible to its custom
 account history and to the operator in the console; re-running the import creates no
 duplicate.
 
+#### Status (measured 2026-09-22, `npm run migrate:orders` — dry run)
+
+The importer exists and is measured. `scripts/migrate-legacy-orders.mjs` reads both
+sides, prints the migration report and writes it to
+`supabase-backup/legacy-orders-migration-report.json`; it writes nothing unless it is
+given `--apply`. The deployed order set is small and entirely mappable:
+
+| Measured | |
+| --- | --- |
+| Orders | **14** (23 line items) |
+| Date range | 2026-07-16 → 2026-08-19 |
+| Statuses | `pending` 10, `delivered` 2, `shipped` 2 |
+| Payment statuses | `pending` 10, `paid` 4 |
+| Currency | USD 14/14 |
+| Orders with no line items | **0** |
+| Orders with no email | **0** |
+| Line items that do not sum to the stored subtotal | **0** |
+| Orders whose own arithmetic (subtotal + shipping + tax − discount) misses the stored total | **0** |
+| Product mapping | not needed — line items are written with their own name, grain size and price, so nothing depends on a Supabase product id surviving |
+
+One correction worth recording: the first version of the check compared the line-item
+sum against the *grand* total and reported 12 of 14 orders as inconsistent. They were
+all correct — the difference was the shipping the total includes. A reconciliation
+that cries wolf on correct data is worse than none, so the check now models the total.
+
+**Blocker (one, and it is a credential):** `--apply` posts each order to
+`POST /hk-storefront/v1/legacy-orders/import`, which silences every WooCommerce email
+for the duration of the request. That endpoint needs an administrator application
+password (`WORDPRESS_ADMIN_USER` + `WORDPRESS_ADMIN_APP_PASSWORD`), and none is
+configured in this environment. It cannot be replaced by the WooCommerce REST API:
+that API has no way to create an order without firing the customer emails, so an
+import through it would email fourteen customers about orders from last month.
+
+**The single human action required:** WordPress → Users → Profile → Application
+Passwords → add one, then set `WORDPRESS_ADMIN_USER` and
+`WORDPRESS_ADMIN_APP_PASSWORD` in the deployment's environment and run
+`npm run migrate:orders -- --apply`. Nothing else in this migration is waiting on a
+person.
+
 ---
 
 ## 4. Dual read/write policy
@@ -360,8 +399,18 @@ Supabase while the console can also read it through `/api/admin/orders/legacy`.
 
 **What is deleted when:** `stripe_checkout_sessions` is dropped from Supabase only
 after the plugin's session table has served a full payment cycle in production;
-`orders`, `order_items`, `product_packing_profiles` only after the end condition
-above; `hermes_evidence` only after its reader has moved (§3.6).
+`orders`, `order_items` only after the end condition above; `hermes_evidence` only
+after its reader has moved — which it now has, so that table's remaining question is
+the data copy, not the code.
+
+**`product_packing_profiles` has moved to Woo but its rows have not.** The packing
+profile is now product meta `_hk_packing_profile` (`lib/woo/packingProfile.ts`), and
+that is the only read path Shippo uses. Until the old rows are copied, a product whose
+box dimensions were recorded only on the old database rates from its weight instead,
+which can mean more parcels than the old system quoted. The copy is a data migration
+with one open mapping question — the old rows are keyed by a Supabase product id, and
+only SKU or slug bridges that to a WooCommerce product — so it needs a decision about
+what to do with a row whose product no longer exists, exactly like the orders import.
 
 ---
 
@@ -439,8 +488,15 @@ The requirement was to classify each one rather than leave the answer implied.
 Nothing in the **new-order lifecycle** reads or writes Supabase. The remaining uses
 are legacy reads and admin screens that are separately scheduled.
 
-### Step 6: not started
+### Step 6: implemented, blocked on one credential
 
-The historical import (§3.10) is **not** implemented: no Supabase order has been
-copied into WooCommerce, and no production table has been dropped or altered. That
-is a data-migration step with its own verification, and it is the next orders task.
+The historical import (§3.10) is **written, measured and not yet applied**: the dry run
+reports 14 orders, 23 line items and zero mapping exceptions, and no Supabase order
+has been copied into WooCommerce. No production table has been dropped or altered.
+
+Applying it needs an administrator application password for staging WordPress — see
+the blocker note in §3.10 for why the WooCommerce REST API cannot substitute. Until it
+has run, `lib/orders/legacyOrders.ts` and `/api/admin/orders/legacy` stay as the
+read-only compatibility path, and `lib/supabase/adminClient.ts` exists only to serve
+them. `lib/stripe/server/supabaseAdmin.ts` is **deleted**: nothing in the Stripe
+runtime touches Supabase any more.

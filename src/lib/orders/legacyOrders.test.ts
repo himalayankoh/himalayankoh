@@ -19,7 +19,7 @@ vi.mock('@/lib/supabase/client', () => ({
   isSupabaseConfigured: () => state.configured,
 }));
 
-vi.mock('@/lib/stripe/server/supabaseAdmin', () => ({
+vi.mock('@/lib/supabase/adminClient', () => ({
   getSupabaseAdmin: () => ({
     from: () => {
       state.queried = true;

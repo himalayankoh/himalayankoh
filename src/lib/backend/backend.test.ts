@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  backendConfig,
-  describeReadiness,
-  isSupabaseDataSource,
-  isWooCommerceDataSource,
-  resolveDataSource,
-} from './config';
+import { backendConfig, describeReadiness } from './config';
 import { describeBackendReadiness, wooCredentials } from './credentials';
 import { buildQueryString, toBodySnippet, WordPressApiError } from './wordpress';
 import { looksLikeHtml, looksLikeWordPressFatal } from './wordpressFatal.mjs';
@@ -424,28 +418,12 @@ describe('buildQueryString', () => {
   });
 });
 
-describe('backend source flag', () => {
-  it('defaults to Supabase unless the flag explicitly selects woocommerce', () => {
-    // Pinned against explicit inputs rather than the ambient environment, so it
-    // holds whether or not NEXT_PUBLIC_DATA_SOURCE is set. The previous version
-    // asserted the ambient default, which failed for anyone who followed the
-    // migration doc and turned the flag on.
-    expect(resolveDataSource(undefined)).toBe('supabase');
-    expect(resolveDataSource('')).toBe('supabase');
-    expect(resolveDataSource('   ')).toBe('supabase');
-    expect(resolveDataSource('supabase')).toBe('supabase');
-    expect(resolveDataSource('garbage')).toBe('supabase');
-    expect(resolveDataSource('woocommerce')).toBe('woocommerce');
-    expect(resolveDataSource('  WooCommerce ')).toBe('woocommerce');
-  });
-
-  it('mirrors the configured flag onto the running app source', () => {
-    // What the old ambient assertion was really pinning: the app's source is
-    // exactly what the flag resolves to, whichever way it is set.
-    const expected = resolveDataSource(process.env.NEXT_PUBLIC_DATA_SOURCE);
-    expect(backendConfig.dataSource).toBe(expected);
-    expect(isSupabaseDataSource()).toBe(expected === 'supabase');
-    expect(isWooCommerceDataSource()).toBe(expected === 'woocommerce');
+describe('backend configuration', () => {
+  it('names one origin for the store, and no Supabase one', () => {
+    // There is no data-source flag any more, so the only thing left to pin is
+    // that the configuration speaks about WordPress and nothing else.
+    expect(backendConfig).not.toHaveProperty('dataSource');
+    expect(backendConfig.woocommerceBaseUrl).toBe(backendConfig.wordpressBaseUrl);
   });
 
   it('reports blockers instead of claiming the backend is ready', () => {

@@ -18,7 +18,7 @@
  * server-side, next to the credential it inspects.
  */
 
-import { isWooCommerceDataSource } from '../backend/dataSource';
+import { backendConfig } from '../backend/config';
 
 export type CapabilityId =
   /* Commerce */
@@ -55,7 +55,7 @@ export const CAPABILITIES: Record<CapabilityId, Capability> = {
     label: 'Catalog read',
     enables: 'Products, categories and the listing state that the storefront actually serves.',
     requires:
-      'NEXT_PUBLIC_DATA_SOURCE=woocommerce plus a WordPress origin (WORDPRESS_BASE_URL), so the admin and the storefront read one catalog.',
+      'A WordPress origin (WORDPRESS_BASE_URL), so the admin and the storefront read one catalog.',
   },
   'woo-rest-read': {
     id: 'woo-rest-read',
@@ -156,10 +156,10 @@ export function capabilityEnables(ids: CapabilityId[]): string[] {
 
 /** Human label for the catalog source the admin is reading right now. */
 export function catalogSourceLabel(): string {
-  return isWooCommerceDataSource() ? 'WooCommerce' : 'Supabase';
+  return 'WooCommerce';
 }
 
 /** True when the admin and the storefront are reading the same catalog. */
 export function isCatalogSourceShared(): boolean {
-  return isWooCommerceDataSource();
+  return Boolean(backendConfig.wordpressBaseUrl);
 }

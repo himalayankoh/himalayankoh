@@ -82,7 +82,8 @@ const PUBLIC_ENV: Record<string, string | undefined> = {
  *
  * The anon key is public by design (it is the key the browser is *meant* to
  * carry); the service-role key is not, and lives server-side only — see
- * `lib/stripe/server/supabaseAdmin.ts`.
+ * `lib/supabase/adminClient.ts`, whose only remaining caller is the read-only
+ * historical-orders adapter.
  */
 export function getSupabaseConfig(): SupabaseConfig | null {
   const metaEnv =

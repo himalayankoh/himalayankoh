@@ -13,7 +13,6 @@ const publicProduct = {
   name: 'Salt Block',
   price: 25,
   is_active: true,
-  tags: ['packing_profile:standard'],
   inventory: { quantity: 5, reserved_quantity: 0, track_inventory: true, allow_backorder: false },
 };
 
@@ -23,9 +22,20 @@ describe('checkout eligibility', () => {
     expect(issues[0]?.message).toContain('only 0 available');
   });
 
-  it('rejects a non-public product before payment', () => {
-    const issues = checkoutCartIssues([item({ ...publicProduct, tags: [] })]);
+  it('rejects an unpublished product before payment', () => {
+    const issues = checkoutCartIssues([item({ ...publicProduct, is_active: false })]);
     expect(issues[0]?.message).toContain('unavailable');
+  });
+
+  it('does not refuse a product merely for lacking a packing profile', () => {
+    // The packing-profile gate was a Supabase-era rule applied to its own `tags`
+    // column, and the cart is WooCommerce's: a missing profile means the parcel is
+    // rated from the product's weight, not that the customer cannot buy it. The
+    // store already refuses a line it will not sell, and a guard here that invented
+    // a second, stricter rule would block checkout on a field the store does not
+    // require.
+    const issues = checkoutCartIssues([item({ ...publicProduct, tags: [] })]);
+    expect(issues).toEqual([]);
   });
 
   it('rejects quantities above available stock', () => {

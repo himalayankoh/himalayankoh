@@ -1,10 +1,10 @@
 /**
  * Backend abstraction layer.
  *
- * The single source of catalog data. Application code imports from here rather
- * than from `lib/supabase` or a WordPress client directly, so the storefront can
- * move from Supabase to WordPress/WooCommerce with a flag change instead of a
- * rewrite. See docs/WORDPRESS-WOOCOMMERCE-MIGRATION.md.
+ * The single source of catalog data: WordPress/WooCommerce. Application code
+ * imports from here rather than from a WordPress client directly, so the
+ * storefront has one seam to read the store through. See
+ * docs/WORDPRESS-WOOCOMMERCE-MIGRATION.md.
  *
  * Only the names the app actually calls are re-exported. The layer's internals
  * stay reachable by direct import for tests and diagnostics, so the public
@@ -18,11 +18,9 @@
  * `/products/[slug]`.
  *
  * So: **storefront code imports its modules directly** — `./catalogClient` for the
- * browser catalog client, `./config` for the data-source flag — and this barrel is
- * for the console. Sealed server reads are in `./serverCatalog`.
+ * browser catalog client — and this barrel is for the console. Sealed server
+ * reads are in `./serverCatalog`.
  */
-
-export { isSupabaseDataSource } from './dataSource';
 
 /**
  * The storefront catalog client for *browser* code: it reads `/api/catalog`.
@@ -52,5 +50,4 @@ export {
   type AdminCatalogRow,
   type AdminCatalogSort,
   type AdminCatalogStats,
-  type AdminEditableRecord,
 } from './adminCatalog';

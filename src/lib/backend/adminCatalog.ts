@@ -7,44 +7,31 @@
  * module removes that split by answering admin reads from the same seam the
  * storefront uses.
  *
- * It owns no queries of its own:
- *   - `supabase`    delegates to `adminApi` (the Supabase admin query layer,
- *                   unchanged, including its inactive-product visibility),
- *                   and projects the rows into the shape below.
- *   - `woocommerce` delegates to the catalog adapter (`getCatalogProducts`),
- *                   which is the read the storefront performs.
+ * It owns no queries of its own: it delegates to the catalog adapter
+ * (`readCatalogProducts`), which is the read the storefront performs. The Supabase
+ * branch that used to sit beside it is deleted — with one source there is nothing
+ * to choose between, and nothing for the two to disagree about.
  *
  * ## Unknown is a value
- * Every field a source cannot report is `null` — price, SKU, stock, listing
- * state, inventory counts — and the UI renders that as unknown. Nothing is
- * defaulted to zero, because `0` is a price and a stock level, not a silence.
- * For the same reason the stats are a union: a source that cannot count low
- * stock reports no low-stock figure rather than another source's number.
+ * Every field the store cannot report is `null` — price, SKU, stock, inventory
+ * counts — and the UI renders that as unknown. Nothing is defaulted to zero,
+ * because `0` is a price and a stock level, not a silence.
  */
 
 import type { Product as CatalogProduct, StockStatus } from '../../data/products';
-import type { Category, Inventory, Product as SupabaseProduct } from '../supabase/database.types';
 import { ADMIN_CATALOG_PER_PAGE } from '../admin/catalogPageSize';
-import { adminApi } from '../supabase/api/admin';
-import { isRealCatalogProduct } from '../catalog/realProduct';
-import { isSupabaseConfigured } from '../supabase/client';
-import { priceDisplayFromRange } from '../products/price';
 import { countOffNicheProducts, isNicheProduct } from '../catalog/niche';
-import { isWooCommerceDataSource, type DataSource } from './config';
 import { readCatalogProducts } from './products';
 import { WORDPRESS_MAX_PER_PAGE } from './wordpress';
 import { UNCATEGORIZED_CATEGORY } from './woocommerce';
 
-/** The row shape the Supabase editor saves back. Absent on every other source. */
-export type AdminEditableRecord = SupabaseProduct & {
-  category: Category | null;
-  inventory: Inventory | null;
-};
+/** Who answered for a row. One source, named on the row so the console can say so. */
+export type CatalogSource = 'woocommerce';
 
 /** One product as the admin lists it, with every unreported fact left unknown. */
 export interface AdminCatalogRow {
   /** Which source answered for this row. */
-  source: DataSource;
+  source: CatalogSource;
   id: string;
   name: string;
   slug: string;
@@ -57,21 +44,21 @@ export interface AdminCatalogRow {
   price: string;
   priceMin: number | null;
   priceMax: number | null;
-  /** Struck-through "was" price. Null on sources with no such column. */
+  /** Struck-through "was" price. Null: the store reports no such column. */
   compareAtPrice: number | null;
   /** Null when the source reported no SKU. Never invented. */
   sku: string | null;
   stockStatus: StockStatus;
-  /** Unit count. Null on any source that does not report one. */
+  /** Unit count. Null when the route reports no count. */
   stockQuantity: number | null;
   lowStockThreshold: number | null;
   trackInventory: boolean | null;
-  /** Shipping weight, or null when the source has no such column. */
+  /** Shipping weight, or null when the read does not report one. */
   weight: number | null;
   weightUnit: string | null;
   /** Listing state, or null when the source has no such concept. */
   isListed: boolean | null;
-  /** Live but withheld from the storefront (the Supabase packing-profile rule). */
+  /** Live but withheld from the storefront (the niche rule). */
   isHiddenFromStorefront: boolean | null;
   isFeatured: boolean;
   description?: string | null;
@@ -84,8 +71,6 @@ export interface AdminCatalogRow {
   isOffNiche: boolean;
   /** Catalog fields the source could not supply. */
   missing: string[];
-  /** Present only when this row can be saved back through the admin editor. */
-  record: AdminEditableRecord | null;
 }
 
 /**
@@ -128,35 +113,18 @@ export interface AdminCatalogPage {
 }
 
 /**
- * Product facts for the dashboard.
- *
- * Deliberately a union: the WooCommerce source reports no listing state and no
- * inventory counts, so it has no active/inactive/low-stock figures to show. A
- * merged type with optional fields would invite the view to fall back to
- * another source's numbers, which is how the two catalogs drifted apart.
+ * Product facts for the dashboard, from the one source there is.
  */
-export type AdminCatalogStats =
-  | {
-      source: 'supabase';
-      total: number;
-      active: number;
-      inactive: number;
-      featured: number;
-      lowStock: number;
-      outOfStock: number;
-      /** Categories present in this catalog. */
-      categories: number;
-    }
-  | {
-      source: 'woocommerce';
-      total: number;
-      featured: number;
-      priceUnavailable: number;
-      skuUnavailable: number;
-      stockUnknown: number;
-      /** Categories present in this catalog. */
-      categories: number;
-    };
+export interface AdminCatalogStats {
+  source: CatalogSource;
+  total: number;
+  featured: number;
+  priceUnavailable: number;
+  skuUnavailable: number;
+  stockUnknown: number;
+  /** Categories present in this catalog. */
+  categories: number;
+}
 
 // The page size is owned by a client-safe leaf module so the products screen can
 // compute its pager without importing this read model. Re-exported for the
@@ -208,69 +176,7 @@ export function rowFromCatalogProduct(product: CatalogProduct): AdminCatalogRow 
     shortDescription: (product as { shortDescription?: string }).shortDescription ?? product.description ?? null,
     isOffNiche: !isNicheProduct(product),
     missing: product.missing ?? [],
-    record: null,
   };
-}
-
-/** Supabase admin row -> admin row. Carries the record the editor saves back. */
-export function rowFromSupabaseProduct(record: AdminEditableRecord): AdminCatalogRow {
-  const inventory = record.inventory;
-  return {
-    source: 'supabase',
-    id: String(record.id),
-    name: record.name,
-    slug: record.slug,
-    image: record.thumbnail || (record.images ?? [])[0] || '',
-    images: Array.isArray(record.images) ? record.images.filter(Boolean) : [],
-    categoryName: record.category?.name ?? null,
-    categoryId: record.category_id ?? null,
-    price: priceDisplayFromRange(record.price ?? null),
-    priceMin: record.price ?? null,
-    priceMax: record.compare_at_price ?? null,
-    compareAtPrice: record.compare_at_price ?? null,
-    sku: record.sku || null,
-    // Supabase tracks units, not a stock status; the rule lives directly above.
-    stockStatus: stockStatusFromInventory(record),
-    stockQuantity: inventory ? inventory.quantity : null,
-    lowStockThreshold: inventory ? inventory.low_stock_threshold : null,
-    trackInventory: inventory ? inventory.track_inventory : null,
-    weight: record.weight ?? null,
-    weightUnit: record.weight_unit ?? null,
-    isListed: Boolean(record.is_active),
-    isHiddenFromStorefront: isWithheldFromStorefront(record),
-    isFeatured: Boolean(record.is_featured),
-    description: record.description ?? null,
-    shortDescription: record.short_description ?? null,
-    isOffNiche: !isNicheProduct({
-      name: record.name,
-      category: record.category?.name ?? null,
-    }),
-    missing: [],
-    record,
-  };
-}
-
-/**
- * Stock status the Supabase inventory row implies.
- *
- * Only a tracked count answers the question. A missing inventory row and a row
- * with tracking switched off both leave stock unknown — neither is a zero, and
- * listing state (`is_active`) says nothing about stock at all.
- */
-function stockStatusFromInventory(record: AdminEditableRecord): StockStatus {
-  const inventory = record.inventory;
-  if (!inventory || inventory.track_inventory === false) return 'unknown';
-  return inventory.quantity <= 0 ? 'out_of_stock' : 'in_stock';
-}
-
-/**
- * Active, but still withheld from the storefront. The packing-profile rule has
- * exactly one owner (`isRealCatalogProduct`, the gate the storefront itself
- * applies); asking it here keeps the two from drifting. A Supabase-only policy,
- * so this is null on every other source.
- */
-function isWithheldFromStorefront(record: AdminEditableRecord): boolean {
-  return Boolean(record.is_active) && !isRealCatalogProduct(record);
 }
 
 /** Unknown-priced products sort last in both directions — never as zero. */
@@ -319,69 +225,7 @@ function facetsFromRows(rows: AdminCatalogRow[]): AdminCatalogFacet[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* Supabase source                                                     */
-/* ------------------------------------------------------------------ */
-
-function supabaseSort(sort: AdminCatalogSort = 'newest'): {
-  sortBy: 'name' | 'price' | 'created_at';
-  sortOrder: 'asc' | 'desc';
-} {
-  switch (sort) {
-    case 'name':
-      return { sortBy: 'name', sortOrder: 'asc' };
-    case 'price_asc':
-      return { sortBy: 'price', sortOrder: 'asc' };
-    case 'price_desc':
-      return { sortBy: 'price', sortOrder: 'desc' };
-    default:
-      return { sortBy: 'created_at', sortOrder: 'desc' };
-  }
-}
-
-async function supabasePage(query: AdminCatalogQuery): Promise<AdminCatalogPage> {
-  // No configured source means no catalog. The admin used to substitute the
-  // bundled demo products here; that is a fabricated catalog, so it is gone.
-  if (!isSupabaseConfigured()) {
-    return {
-      rows: [],
-      count: 0,
-      totalPages: 1,
-      facets: [],
-      degraded: true,
-      warnings: [
-        'The Supabase source is not configured, so there is no catalog to read. Set the Supabase environment variables, or point NEXT_PUBLIC_DATA_SOURCE at WooCommerce.',
-      ],
-    };
-  }
-
-  const { sortBy, sortOrder } = supabaseSort(query.sort);
-  const [page, categories] = await Promise.all([
-    adminApi.getProducts({
-      search: query.search || undefined,
-      category_id: query.categoryId || undefined,
-      is_active: query.listing === 'active' ? true : query.listing === 'inactive' ? false : undefined,
-      is_featured: query.isFeatured,
-      low_stock: query.lowStock,
-      sortBy,
-      sortOrder,
-      page: query.page,
-      limit: query.perPage ?? ADMIN_CATALOG_PER_PAGE,
-    }),
-    adminApi.getCategories(),
-  ]);
-
-  return {
-    rows: page.products.map(rowFromSupabaseProduct),
-    count: page.count,
-    totalPages: Math.max(1, page.totalPages || 1),
-    facets: categories.map((category) => ({ id: category.id, name: category.name })),
-    degraded: false,
-    warnings: [],
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/* WooCommerce source                                                  */
+/* The store source                                                    */
 /* ------------------------------------------------------------------ */
 
 async function wooPage(query: AdminCatalogQuery): Promise<AdminCatalogPage> {
@@ -448,36 +292,16 @@ async function wooStats(): Promise<AdminCatalogStats> {
   return statsFromRows(read.products.map(rowFromCatalogProduct));
 }
 
-async function supabaseStats(): Promise<AdminCatalogStats> {
-  if (!isSupabaseConfigured()) {
-    return { source: 'supabase', total: 0, active: 0, inactive: 0, featured: 0, lowStock: 0, outOfStock: 0, categories: 0 };
-  }
-  const [stats, categories] = await Promise.all([
-    adminApi.getProductManagementStats(),
-    adminApi.getCategories(),
-  ]);
-  return {
-    source: 'supabase',
-    total: stats.total,
-    active: stats.active,
-    inactive: stats.inactive,
-    featured: stats.featured,
-    lowStock: stats.lowStock,
-    outOfStock: stats.outOfStock,
-    categories: categories.length,
-  };
-}
-
 /* ------------------------------------------------------------------ */
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Reads a page of the admin catalog through the configured source. */
+/** Reads a page of the admin catalog from the store. */
 export async function readAdminCatalogPage(query: AdminCatalogQuery = {}): Promise<AdminCatalogPage> {
-  return isWooCommerceDataSource() ? wooPage(query) : supabasePage(query);
+  return wooPage(query);
 }
 
 /** Reads the product facts the dashboard shows, from the same source. */
 export async function readAdminCatalogStats(): Promise<AdminCatalogStats> {
-  return isWooCommerceDataSource() ? wooStats() : supabaseStats();
+  return wooStats();
 }

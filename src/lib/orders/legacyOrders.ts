@@ -36,7 +36,7 @@
  * Server-only.
  */
 
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
+import { getSupabaseAdmin } from '@/lib/supabase/adminClient';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
 import type { Order, OrderItem, OrderWithItems } from '@/lib/supabase/database.types';
 
