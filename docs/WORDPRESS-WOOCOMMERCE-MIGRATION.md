@@ -574,6 +574,14 @@ condition for this whole path is in `ORDERS-WOOCOMMERCE-MIGRATION.md` §4.
 namespace index, so "the plugin is not active" is a stated fact rather than an
 inference from scattered feature failures:
 
+The same command sweeps **every route the application calls** on those namespaces
+(19 on `hk-storefront/v1`, 1 on `crm/v1`) and, when the administrator credential is
+present, lists the installed HK plugins with the version that is actually active —
+the plugin file on the server *is* the deployment, and nothing else records which
+build is running. Registration is judged from the response's error code rather than
+its status, so a route that wants a parameter (400) or is POST-only (404 with a
+different code) still counts as present; only `rest_no_route` means missing.
+
 ```
 HK WordPress plugins
   credential: absent

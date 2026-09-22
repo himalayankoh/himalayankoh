@@ -335,6 +335,103 @@ if (!pluginsPass) {
   console.log('            { "status": "active" }');
 }
 
+/*
+ * Every route the application actually calls on the HK plugins.
+ *
+ * The two probes above answer "is the plugin there at all". This answers the
+ * question that comes next — after the plugin is uploaded, is the *whole* surface
+ * there, including the tables and endpoints added since the last deploy. A route
+ * that was never named here is a feature that fails later, one at a time, with
+ * nothing saying which deploy it went missing from.
+ *
+ * Registration is judged from the response's error code rather than its status:
+ * a route that exists but wants a parameter answers 400 `rest_missing_callback_param`,
+ * and a POST-only route answers 404 with a *different* code than a route that does
+ * not exist (`rest_no_route`). Read-only — still GETs only.
+ */
+const REQUIRED_ROUTES = {
+  'hk-storefront/v1': [
+    ['/events', 'first-party traffic events'],
+    ['/events/summary', 'traffic aggregation'],
+    ['/settings', 'site settings'],
+    ['/category-hubs', 'category-hub overrides'],
+    ['/category-hubs/one?key=home', 'one category hub'],
+    ['/admin-records?table=store_settings', 'the console record store'],
+    ['/admin-records/one?table=store_settings&id=free_shipping', 'one console record'],
+    ['/hermes-evidence/status', 'Hermes evidence store'],
+    ['/newsletter', 'newsletter subscribers'],
+    ['/contact', 'contact submissions'],
+    ['/wishlist/count?owner=0', 'wishlist'],
+    ['/addresses?owner=0', 'saved addresses'],
+    ['/cart-session?owner=0', 'cart binding'],
+    ['/customer/login', 'customer sign-in'],
+    ['/customer/register', 'account creation'],
+    ['/customer/request-password-reset', 'password-reset request'],
+    ['/customer/reset-password', 'password reset'],
+    ['/customer/change-password', 'password change'],
+    ['/legacy-orders/import', 'the historical order import'],
+  ],
+  'crm/v1': [
+    ['/leads?search=', 'the CRM inbox and LeadOS lead library'],
+  ],
+};
+
+const sweep = async () => {
+  console.log('\nHK plugin surface (every route the application calls)');
+
+  for (const [namespace, routes] of Object.entries(REQUIRED_ROUTES)) {
+    const registered =
+      namespace === 'hk-storefront/v1' ? storefrontRegistered : crmRegistered;
+
+    if (namespacesKnown && !registered) {
+      // Absent as a whole: listing each route as missing would be noise, and the
+      // namespace line above already says which deploy the plugin is missing from.
+      console.log(`  ${namespace} — not registered (${routes.length} route(s) unavailable)`);
+      continue;
+    }
+
+    let missing = 0;
+    const lines = [];
+    for (const [path, purpose] of routes) {
+      const result = await probeAdmin(`/${namespace}${path}`);
+      const code = result.json?.code;
+      let marker;
+      if (result.status >= 200 && result.status < 300) marker = 'PASS   ';
+      else if (result.fatal) marker = 'FATAL  ';
+      else if (code && code !== 'rest_no_route') marker = 'PRESENT';
+      else if (result.status === 401 || result.status === 403) marker = 'AUTH   ';
+      else if (result.status === 0) marker = 'UNKNOWN';
+      else {
+        marker = 'ABSENT ';
+        missing += 1;
+      }
+      lines.push(`      ${marker} ${path} — ${purpose}`);
+    }
+
+    console.log(`  ${namespace}: ${routes.length - missing}/${routes.length} route(s) present`);
+    for (const line of lines) console.log(line);
+  }
+
+  // Installed plugins, with the version that is actually active. This is the only
+  // way to tell "uploaded an old build" from "uploaded the current one" — the
+  // plugin file on the server is the deployment, and nothing else records it.
+  if (hasAdminCredential) {
+    const installed = await probeAdmin('/wp/v2/plugins');
+    if (Array.isArray(installed.json)) {
+      const hk = installed.json.filter((plugin) =>
+        String(plugin?.name || '').toLowerCase().includes('himalayan')
+      );
+      console.log('\n  Installed HK plugins');
+      if (!hk.length) console.log('      (none — the plugins are not installed on this site)');
+      for (const plugin of hk) {
+        console.log(`      ${plugin.plugin} — ${plugin.version} — ${plugin.status}`);
+      }
+    }
+  }
+};
+
+await sweep();
+
 const critical =
   core[0] && core[1] && core[3] && storeProducts === false && adminProducts === false;
 
