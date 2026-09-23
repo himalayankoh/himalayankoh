@@ -48,6 +48,7 @@ import {
   CatalogStatus,
 } from './types';
 import { parseTagList } from './tags';
+import { consoleStatusFromWoo, wooListingStatusOrDraft } from '../../lib/woo/productStatus';
 
 export function uid(): string {
   try {
@@ -144,7 +145,14 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
   const name = String(r.name || 'Untitled Product');
   const id = String(r.id);
   const slug = String(r.slug || id);
-  const catName = (r.categoryName as string) || (r.category as string) || 'Uncategorized';
+  // The admin product DTO reports categories as parallel id/name arrays while a
+  // catalog row reports a single name. Both shapes are read here: without the
+  // array, the editor showed the "Uncategorized" placeholder on a product
+  // WooCommerce had actually filed under "Bulk and Rock Salt" (measured live).
+  const categoryNames = Array.isArray(r.categoryNames)
+    ? (r.categoryNames as unknown[]).map(String).filter(Boolean)
+    : [];
+  const catName = (r.categoryName as string) || (r.category as string) || categoryNames[0] || 'Uncategorized';
   const dimensions = r.dimensions && typeof r.dimensions === 'object'
     ? (r.dimensions as { length?: number | null; width?: number | null; height?: number | null })
     : {};
@@ -155,9 +163,15 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     ...(typeof dimensions.height === 'number' ? { heightIn: dimensions.height } : {}),
     ...(typeof r.packagePreset === 'string' ? { packagePreset: r.packagePreset } : {}),
   };
-  const catId = typeof r.categoryId === 'number' || typeof r.categoryId === 'string'
-    ? String(r.categoryId)
-    : `cat-${catName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  // The store's numeric category id is what the editor's select is built from,
+  // so it wins over a display name when the read reports one.
+  const categoryIds = Array.isArray(r.categoryIds)
+    ? (r.categoryIds as unknown[]).map(String).filter(Boolean)
+    : [];
+  const catId = categoryIds[0]
+    ?? (typeof r.categoryId === 'number' || typeof r.categoryId === 'string'
+      ? String(r.categoryId)
+      : `cat-${catName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`);
   const stockQty = typeof r.stockQuantity === 'number' ? r.stockQuantity : (r.stockStatus === 'instock' || r.inStock ? 50 : 0);
   const stockStat = r.stockStatus === 'instock' || r.inStock
     ? 'in_stock'
@@ -166,7 +180,14 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
       : r.stockStatus === 'onbackorder'
         ? 'on_backorder'
         : 'unknown';
-  const isListed = r.isListed !== false && r.status !== 'draft';
+  // The store's own listing state, read as itself: a draft is a draft and stays
+  // a draft through a save. Rows with no `status` come from the published-only
+  // public read, where every row is live by construction — reading those as a
+  // draft would unlist the whole console.
+  const consoleStatus: CatalogStatus = r.status !== undefined
+    ? (consoleStatusFromWoo(r.status) as CatalogStatus)
+    : (r.isListed === false ? 'draft' : 'active');
+  const isListed = consoleStatus === 'active';
   const imagesList = rawImgs.length > 0 ? rawImgs : ['/images/placeholder-product.svg'];
 
   const desc = (r.description as string) || (name ? `${name} — authentic pure Himalayan pink salt from the Himalayan Koh collection.` : '');
@@ -185,7 +206,7 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     categoryId: catId,
     categoryName: catName,
     brand: 'Himalayan Koh',
-    status: isListed ? 'active' : 'inactive',
+    status: consoleStatus,
     price: priceNum,
     compareAtPrice: compareAt,
     costPrice: typeof r.costPrice === 'number' ? r.costPrice : 0,
@@ -236,7 +257,9 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     variants: [],
     createdAt: (r.createdAt as string) || new Date().toISOString(),
     updatedAt: (r.updatedAt as string) || new Date().toISOString(),
-    publishedAt: (r.publishedAt as string) || new Date().toISOString(),
+    // A row that is not live has never been published; dating it "now" is what
+    // made a brand-new draft read as "First live: just now" in the product list.
+    publishedAt: (r.publishedAt as string) || (isListed ? new Date().toISOString() : null),
   };
 }
 
@@ -417,16 +440,14 @@ export interface ProductInput {
   listingEndsAt?: string | null;
 }
 
-const WOO_STATUS_BY_LOCAL: Record<string, string> = {
-  active: 'publish',
-  inactive: 'private',
-  archived: 'draft',
-  ready: 'draft',
-  draft: 'draft',
-};
-
+/**
+ * The console's status word → the store's. The table and its documented folds
+ * live in one module (`lib/woo/productStatus.ts`) so the console, the API
+ * boundary and the tests all translate identically — see that file for why a
+ * draft used to come back from a save as WooCommerce `private`.
+ */
 function wooStatus(status: CatalogStatus): string {
-  return WOO_STATUS_BY_LOCAL[status] ?? 'draft';
+  return wooListingStatusOrDraft(status);
 }
 
 /** Stock statuses as WooCommerce spells them. */

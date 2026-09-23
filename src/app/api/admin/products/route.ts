@@ -12,6 +12,7 @@ import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { hasWooCommerceCredentials } from '@/lib/backend/credentials';
 import { createWooProduct, listWooProducts, WooWriteError } from '@/lib/woo/productWrite';
 import { fromWooProduct, isUnusablePrice } from '@/lib/woo/productPayload';
+import { readProductStatusField } from '@/lib/woo/productStatus';
 
 /** Maps the request body onto a patch, dropping keys the caller did not send. */
 function readPatch(body: Record<string, unknown>): Record<string, unknown> {
@@ -101,8 +102,14 @@ export async function POST(request: Request) {
     }
   }
 
+  // The console's status word becomes WooCommerce's, or the create is refused:
+  // WooCommerce rejects a status it does not know with `rest_invalid_param`.
+  const status = readProductStatusField(body);
+  if (!status.ok) return NextResponse.json({ error: status.error }, { status: 400 });
+  const writeBody = status.value ? { ...body, status: status.value } : body;
+
   try {
-    const result = await createWooProduct(readPatch(body) as never);
+    const result = await createWooProduct(readPatch(writeBody) as never);
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
     if (error instanceof WooWriteError) {

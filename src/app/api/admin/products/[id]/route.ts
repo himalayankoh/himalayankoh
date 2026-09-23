@@ -22,6 +22,7 @@ import {
   WooWriteError,
 } from '@/lib/woo/productWrite';
 import { fromWooProduct, isUnusablePrice, variationPriceRange, type AdminVariationPatch } from '@/lib/woo/productPayload';
+import { readProductStatusField } from '@/lib/woo/productStatus';
 
 const PATCH_FIELDS = [
   'name',
@@ -157,9 +158,17 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     }
   }
 
+  // A listing status is translated from the console's word to WooCommerce's own
+  // here, and an unknown word is refused. Without this the browser's `active`
+  // reached WooCommerce verbatim, which answers `rest_invalid_param` — after the
+  // editor had already shown the save as done.
+  const status = readProductStatusField(body);
+  if (!status.ok) return NextResponse.json({ error: status.error }, { status: 400 });
+  const writeBody = status.value ? { ...body, status: status.value } : body;
+
   try {
-    const patch = readPatch(body);
-    const variationPatches = readVariationPatches(body);
+    const patch = readPatch(writeBody);
+    const variationPatches = readVariationPatches(writeBody);
 
     // Variations first: if one of them is rejected, the parent edit has not
     // happened yet, so a failed save cannot leave a half-edited product behind.

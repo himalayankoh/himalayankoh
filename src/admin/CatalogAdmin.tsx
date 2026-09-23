@@ -1,9 +1,9 @@
 // ============================================================================
-// LUXEDGE V2 — CATALOG ADMIN (Catalog Launch Phase)
+// HIMALAYAN KOH — CATALOG ADMIN (Catalog Launch Phase)
 //
-// DB-backed product management + promotions for the admin. Replaces the old
-// in-memory demo products panel. Everything persists through the catalog
-// repository (admin JWT → Supabase RLS). No fake facts: UNKNOWN stays
+// Store-backed product management + promotions for the admin. Everything
+// persists through the catalog repository (admin session → the console's own
+// /api/admin routes → WooCommerce/WordPress). No fake facts: UNKNOWN stays
 // UNKNOWN, merchandising flags are admin decisions, delete prefers archive.
 // ============================================================================
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment, type ReactNode } from 'react';
@@ -49,6 +49,7 @@ import {
 import { parseHtmlPage } from '../features/ai/importer';
 import { prepareImageForUpload } from '../lib/image-upload';
 import { getListingPlaybook, validateListingAgainstPlaybook, supplierBrandForUrl } from '../features/catalog/listingPlaybook';
+import { humanSaveError } from '../features/catalog/saveError';
 import { hasCatalogImageUrl } from '../features/catalog/imageUrl';
 import { AIImportPanel } from './AIImportPanel';
 import {
@@ -1883,6 +1884,9 @@ export function CatalogProductEditor() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  // A save that did not happen stays on screen. The toast it also raises is gone
+  // after four seconds, which is how a refused save came to look like a save.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [tab, setTab] = useState<EditorTab>('general');
   const [newCatOpen, setNewCatOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -1944,13 +1948,16 @@ export function CatalogProductEditor() {
   const handleSave = async (productOverride?: CatalogProduct) => {
     const productToSave = productOverride ?? p;
     if (!productToSave) return;
-    if (!productToSave.name.trim()) { notify('Product name is required', 'error'); return; }
-    if (!(productToSave.price > 0)) { notify('Price must be greater than 0', 'error'); return; }
+    if (!productToSave.name.trim()) { setSaveError('Product name is required.'); notify('Product name is required', 'error'); return; }
+    if (!(productToSave.price > 0)) { setSaveError('Price must be greater than 0.'); notify('Price must be greater than 0', 'error'); return; }
     const currentProduct = productToSave;
     // Already-live listing: edits (price, inventory, status, copy…) must save.
     // Playbook gaps become loud warnings instead of hard blockers.
     const wasLive = originStatus === 'active';
-    if (currentProduct.images.length === 0 && !wasLive) { notify('At least one image is required before activating a premium listing', 'error'); setTab('images'); return; }
+    if (currentProduct.images.length === 0 && !wasLive) {
+      const msg = 'At least one image is required before activating a premium listing.';
+      setSaveError(msg); notify(msg, 'error'); setTab('images'); return;
+    }
     // Listing Playbook gate — publishing a listing as Live needs verified
     // images (no placeholders / inline base64) and supplier data. Draft
     // saves and edits of already-live products get non-blocking warnings;
@@ -1966,7 +1973,9 @@ export function CatalogProductEditor() {
       supplierSku: currentProduct.supplierProductRef,
     });
     if (currentProduct.status === 'active' && !verdict.ok && !wasLive) {
-      notify(`Cannot save as Live: ${verdict.errors.join(' ')}`, 'error');
+      const msg = `Cannot save as Live: ${verdict.errors.join(' ')}`;
+      setSaveError(msg);
+      notify(msg, 'error');
       setTab('images');
       return;
     }
@@ -1974,6 +1983,7 @@ export function CatalogProductEditor() {
       notify(`Saved (already live). Playbook gaps: ${verdict.errors.join(' ')}`, 'error');
     }
     if (verdict.warnings.length) notify(verdict.warnings.join(' '), 'error');
+    setSaveError(null);
     setSaving(true);
     try {
       // Refresh the session token before writing — a form left open past the
@@ -2077,6 +2087,7 @@ export function CatalogProductEditor() {
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2500);
       notify(isNew ? 'Product created' : 'Product saved');
+      setSaveError(null);
       // The product row response predates the image/variant writes above. Do
       // not replace local state with that stale row or a newly imported image
       // appears briefly and then vanishes from the editor.
@@ -2088,7 +2099,11 @@ export function CatalogProductEditor() {
       }
     } catch (e) {
       setSaveStatus('idle');
-      notify(`Save failed: ${(e as Error).message}`, 'error');
+      // The store's own words, translated — and kept on screen, because a toast
+      // that vanishes leaves the owner believing the save went through.
+      const message = humanSaveError((e as Error).message);
+      setSaveError(message);
+      notify(`Save failed: ${message}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -2172,6 +2187,18 @@ export function CatalogProductEditor() {
               <FloppyDisk size={14} />{saving ? 'Saving…' : 'Save'}
             </button>
           </>
+        )}
+        {/* A refused save, where the owner is looking. It stays until the next
+            save attempt, so an edit that did not reach the store cannot be
+            mistaken for one that did. */}
+        {saveError && (
+          <div role="alert" className="w-full flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800">
+            <Warning size={14} weight="bold" className="mt-0.5 shrink-0" />
+            <span className="flex-1">Not saved — {saveError}</span>
+            <button type="button" onClick={() => setSaveError(null)} aria-label="Dismiss save error" className="shrink-0 text-red-700 hover:text-red-900">
+              <X size={13} weight="bold" />
+            </button>
+          </div>
         )}
       </div>
 

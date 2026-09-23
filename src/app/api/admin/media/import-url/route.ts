@@ -7,6 +7,19 @@ import { MAX_MEDIA_BYTES, uploadMediaToWordPress } from '@/lib/media/wordpressMe
 export const dynamic = 'force-dynamic';
 
 const MAX_IMAGE_BYTES = MAX_MEDIA_BYTES;
+
+/**
+ * True when reading the remote image failed at the connection level — DNS, TLS,
+ * a refused connection — rather than because of anything this server did.
+ * `fetch` reports all of those as a bare `TypeError: fetch failed` with the real
+ * reason on `cause`, so the cause is what distinguishes them.
+ */
+function isNetworkFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.message === 'fetch failed') return true;
+  const cause = (error as { cause?: { code?: unknown } }).cause;
+  return typeof cause?.code === 'string' && cause.code.length > 0;
+}
 const ALLOWED_MIME_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/jpg': 'jpg',
@@ -42,6 +55,11 @@ export async function POST(request: Request) {
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
+
+  // Which half of the import failed. Both halves fetch over the network, so
+  // without this an unreachable WordPress would be reported as an unreachable
+  // image URL.
+  let stage: 'fetch' | 'upload' = 'fetch';
 
   try {
     // 2. Fetch external image server-side
@@ -96,6 +114,7 @@ export async function POST(request: Request) {
     // The bytes are the ones that were just fetched and validated. WordPress owns
     // the file from here: it becomes a Media Library item, so WooCommerce can use
     // it, WordPress's own editors can see it, and the storefront gets one URL.
+    stage = 'upload';
     try {
       const media = await uploadMediaToWordPress({
         buffer,
@@ -120,8 +139,27 @@ export async function POST(request: Request) {
     }
   } catch (err) {
     const isAbort = err instanceof Error && err.name === 'AbortError';
-    const message = isAbort ? 'Image download timed out (15s limit reached).' : err instanceof Error ? err.message : 'Import failed';
-    return NextResponse.json({ error: message }, { status: isAbort ? 504 : 500 });
+    if (isAbort) {
+      return NextResponse.json(
+        { error: 'Image download timed out (15s limit reached).' },
+        { status: 504 }
+      );
+    }
+    if (stage === 'fetch' && isNetworkFailure(err)) {
+      // Measured live: an unreachable host answered `500 {"error":"fetch failed"}`,
+      // which says nothing about what the owner typed.
+      return NextResponse.json(
+        {
+          error:
+            'Unable to fetch that image URL. Check that it is a public link to a real image file and that the host is reachable from the server.',
+        },
+        { status: 502 }
+      );
+    }
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Import failed' },
+      { status: 500 }
+    );
   } finally {
     clearTimeout(timer);
   }

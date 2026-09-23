@@ -168,6 +168,7 @@ function row(overrides: Partial<AdminCatalogRow> = {}): AdminCatalogRow {
     weight: null,
     weightUnit: null,
     isListed: true,
+    status: 'publish',
     isHiddenFromStorefront: null,
     isFeatured: false,
     isOffNiche: false,
