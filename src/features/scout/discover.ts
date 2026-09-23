@@ -1,7 +1,7 @@
 // ============================================================================
-// LUXEDGE V2 — SCOUT AUTONOMOUS DISCOVERY (Phase 4A closure)
+// HIMALAYAN KOH — SCOUT AUTONOMOUS DISCOVERY (Phase 4A closure)
 //
-// Query-based discovery: turn a plain-language query ("dog toys", "pet
+// Query-based discovery: turn a plain-language query ("pink salt", "salt
 // accessories") into a deduped list of real product-page URLs, then hand
 // them to the existing research pipeline. Manual URL mode stays available
 // as an advanced option in the admin UI.
@@ -14,7 +14,7 @@
 import { hostOf } from './normalize';
 
 export interface DiscoverOptions {
-  /** Plain-language query, e.g. "dog toys" or "pet accessories". */
+  /** Plain-language query, e.g. "pink salt" or "salt licks". */
   query: string;
   /** Target market appended to the query, e.g. "USA". */
   market?: string;
@@ -139,12 +139,12 @@ export function isLikelyProductPage(url: string): boolean {
     // Deep product paths (>= 2 segments) are almost always product pages.
     if (segments.length >= 2) return true;
     // Single-segment path: reject listing/nav segments and generic plurals
-    // (dog-toys, collars, beds = listings; kong-classic = a product). The
-    // research pipeline is the real product filter — discovery only avoids
+    // (salt-licks, lamps, grinders = listings; pink-salt-fine-1kg = a product).
+    // The research pipeline is the real product filter — discovery only avoids
     // category/blog/search pages.
     const seg = segments[0];
     if (LISTING_SEGMENT.test(seg)) return false;
-    if (/s$/.test(seg) && /^(?:dog|cat|pet|toy|bed|bowl|collar|leash|groom|accessor|suppl)[a-z-]*s$/i.test(seg)) return false;
+    if (/s$/.test(seg) && /^(?:salt|lick|block|lamp|grain|grinder|scrub|soak|bath|slab|crystal|chunk|shaker|mill|gift|suppl|accessor)[a-z-]*s$/i.test(seg)) return false;
     return true;
   } catch {
     return false;
@@ -173,8 +173,9 @@ function dedupeKeyForUrl(url: string): string {
   try {
     const u = new URL(url);
     const host = hostOf(url);
-    // Ignore query strings except real product IDs on known retail hosts.
-    const q = /(?:chewy|petco|amazon)\./i.test(host) ? u.search : '';
+    // Ignore query strings except real product IDs on the retail hosts the
+    // evidence rules actually search.
+    const q = /(?:amazon|target|walmart|tractorsupply)\./i.test(host) ? u.search : '';
     return `${host}${u.pathname.replace(/\/+$/, '')}${q}`;
   } catch {
     return '';
@@ -206,9 +207,9 @@ export function buildSearchUrl(opts: DiscoverOptions): string {
 
 /**
  * Build the concrete search queries for one discovery run. A generic
- * category-level query ("pet accessories") is expanded into specific pet
+ * category-level query ("pink salt") is expanded into specific salt
  * product types so real product pages surface; a product-specific query
- * ("KONG Classic dog toy") is searched as-is.
+ * ("Himalayan Salt Medium Grain 45 lbs") is searched as-is.
  */
 export function buildQueries(opts: DiscoverOptions): string[] {
   const q = opts.query.trim();
@@ -220,22 +221,24 @@ export function buildQueries(opts: DiscoverOptions): string[] {
 
   // Product-specific: contains a concrete product noun or brand word → search
   // the ORIGINAL query as-is. A product-specific seed query (e.g. a CJ-seeded
-  // concept like "single door dog cage") must NEVER be replaced by unrelated
+  // concept like "himalayan salt cooking slab") must NEVER be replaced by
+  // unrelated
   // generic QUERY_EXPANSIONS — the original query is the authoritative search
-  // term. The noun list covers the concrete pet-product vocabulary actually
+  // term. The noun list covers the concrete salt-product vocabulary actually
   // used by the CJ seed concepts (cage, playpen, mat, blanket, ramp, sofa, bag,
   // backpack, trailer, seat belt, clothes, shoe, fence, saucer, tub, …).
-  if (/\b(?:kong|chuckit|west paw|frisco|nylabone|barkbox|petfusion|outward hound)\b|\b(?:toy|bed|harness|collar|leash|brush|carrier|fountain|dispenser|scratch|tunnel|bowl|kennel|crate|cage|playpen|pen|mat|blanket|ramp|sofa|bag|backpack|trailer|seat ?belt|clothes|clothing|shirt|sweater|shoe|shoes|fence|stroller|bottle|tub|bath|saucer|ball|puzzle|treat|supplement|shampoo|clipper|groomer|towel|pad|house|igloo|jacket|boots|necklace|feeder|perch)\b/i.test(q)) {
+  if (/\b(?:salt|lick|block|lamp|grain|grinder|scrub|soak|bath|slab|crystal|chunk|shaker|mill|dust|brine|pickling|deodorant|inhaler|tealight|candle ?holder|platter|tile|pouch|sack|bag|bulk|wholesale|edible|livestock|horse|cattle)\b/i.test(q)) {
     return [mk(q)];
   }
-  // STRUCTURAL GUARANTEE (Phase 4J/4K): a query that names a pet AND carries
-  // enough concrete phrase (>= 3 significant tokens) is a specific product
-  // query, NOT a generic category — even when its product noun is not in the
-  // list above (e.g. "dog grooming bath tub stainless steel"). Only genuinely
-  // generic category phrases ("pet accessories", "dog toys") get expanded.
-  const PET = /\b(?:dog|cat|pet|puppy|kitten|canine|feline)\b/i;
+  // STRUCTURAL GUARANTEE (Phase 4J/4K): a query that names this store's own
+  // niche AND carries enough concrete phrase (>= 3 significant tokens) is a
+  // specific product query, NOT a generic category — even when its product noun
+  // is not in the list above (e.g. "himalayan pink salt grinder stainless
+  // steel"). Only genuinely generic category phrases ("pink salt", "salt
+  // accessories") get expanded.
+  const NICHE = /\b(?:salt|himalayan|pink salt|mineral)\b/i;
   const tokens = q.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
-  if (PET.test(q) && tokens.length >= 3) {
+  if (NICHE.test(q) && tokens.length >= 3) {
     return [mk(q)];
   }
   // Generic category query → expand into concrete product types.

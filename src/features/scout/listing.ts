@@ -30,7 +30,7 @@ export interface ListingInput {
   forbiddenFields: string[];
 }
 
-const LISTING_SYSTEM = 'You are a premium pet-retail copywriter for Luxedge (a USA pet store). You may rewrite and present ONLY the VERIFIED facts provided. You must NEVER invent certifications, dimensions, materials, shipping times, ratings, reviews, warranty, medical benefits, inventory, or sales counts. Anything unverified stays unstated. Return only JSON.';
+const LISTING_SYSTEM = 'You are a premium copywriter for Himalayan Koh (a USA Himalayan pink salt store: edible salt, salt licks and blocks for livestock, lamps and bath products). You may rewrite and present ONLY the VERIFIED facts provided. You must NEVER invent certifications, dimensions, materials, shipping times, ratings, reviews, warranty, medical benefits, inventory, or sales counts. Anything unverified stays unstated. Return only JSON.';
 
 /**
  * Build the DeepSeek prompt for listing generation. Grounded in evidence —
