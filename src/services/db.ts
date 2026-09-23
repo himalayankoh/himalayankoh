@@ -9,9 +9,8 @@
 //
 // ## Where they live now
 //
-// They used to live in Supabase, reached with a hand-rolled PostgREST client built
-// from `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` in the browser bundle. Both
-// halves of that are gone: the records are rows in the hk-storefront plugin's
+// They used to live in a browser-side database adapter. That path is gone: the
+// records are rows in the hk-storefront plugin's
 // `hk_admin_records` table, and the browser reaches them through the same-origin
 // `/api/admin/records` route — which is the only side that holds a WordPress
 // credential. There is no second backend to fall back to, so a failed write throws
@@ -49,7 +48,7 @@ export interface DbAdapter {
       orderBy?: string;
       limit?: number;
       filters?: Record<string, string>;
-      /** PostgREST-style filter expressions, e.g. `url=not.like.data:*`. */
+      /** Record payload filter expressions understood by this compatibility adapter. */
       rawFilters?: Record<string, string>;
     },
   ): Promise<T[]>;
@@ -102,7 +101,7 @@ async function parse<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-/** `not.like.<prefix>*` — the one raw expression the admin screens use. */
+/** `not.like.<prefix>*` — the one prefix expression the admin screens use. */
 function matchesRawFilters(row: Record<string, unknown>, rawFilters?: Record<string, string>): boolean {
   if (!rawFilters) return true;
   for (const [key, expr] of Object.entries(rawFilters)) {

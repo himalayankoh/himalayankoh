@@ -1,7 +1,8 @@
 # Orders → WooCommerce: migration design
 
-**Status: the new-order lifecycle is implemented; the historical import is not.
-No production data has been migrated and no production table has been dropped.**
+**Status: the new-order lifecycle is WooCommerce-first, and the 14 historical staging
+orders have been imported idempotently. No production data has been migrated and no
+production table has been dropped.**
 
 What has landed (see §7 for the step-by-step status):
 
@@ -10,14 +11,14 @@ What has landed (see §7 for the step-by-step status):
   customer history and the admin console.
 - `stripe_checkout_sessions` is **gone** (no WordPress table replaced it: the
   PaymentIntent's own metadata names the WooCommerce order).
-- The Supabase `orders`/`order_items` tables are read by **one** place —
-  `src/lib/orders/legacyOrders.ts`, a read-only adapter for orders placed before
-  this migration. Nothing writes them.
+- The historical orders are now WooCommerce records tagged with their original
+  Supabase ID, imported with zero charges, emails, labels, or inventory reduction.
+- Application runtime no longer reads or writes Supabase orders or order items.
 
-Still open: the historical import (§3.10), the Shippo packing inputs (§3.5, still
-reads `product_packing_profiles`) and the admin screens that still read Supabase
-through `lib/supabase/api/admin.ts` (`getShippingLabelOrders`, the dashboard
-analytics). Those are named in §7.
+Still open for operations: checkout/Stripe and Shippo live staging QA needs safe
+provider test credentials; the configured Shippo key is live, so no label test was
+attempted. The Store API products fatal also remains and is independent of this order
+migration (the application reads product data from REST v3 instead).
 
 Companion to `WORDPRESS-WOOCOMMERCE-MIGRATION.md` (§7 cart/checkout, phase 9) and
 `STOREFRONT-WORDPRESS-CONTRACT.md`. The numbers below are measured by

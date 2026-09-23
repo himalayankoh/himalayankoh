@@ -6,13 +6,9 @@
 // real visitor numbers and charts. This is independent of Google: GA4 still
 // receives the same events via gtag, but our dashboard reads from this table.
 //
-// The events themselves live in Supabase, and this browser module no longer knows
-// that. It used to POST to `<project>.supabase.co/rest/v1/site_events` with the
-// anon key, which put the project URL and key in the client bundle and pulled the
-// Supabase config resolver into the product detail page — because that page's
-// campaign path reaches `lib/marketing`, which imports the recorder. Both calls
-// now go to `/api/events`, which owns the credential, the table and the schema
-// probe. Recording is fire-and-forget and must NEVER break the storefront.
+// Event persistence belongs to WordPress. This browser module sends a same-origin
+// POST to `/api/events`; the server route owns the WordPress credential and table.
+// Recording is fire-and-forget and must NEVER break the storefront.
 // ============================================================================
 
 import { getFreshAccessToken } from './wordpressAdminAuth';

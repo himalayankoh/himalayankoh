@@ -3,9 +3,8 @@
  *
  * The Product Scout, Product Research, Hermes feeds and the media/settings key-value
  * stores keep their own working state (candidates and scores, suppliers, agent jobs).
- * That state used to be read and written straight from the browser to Supabase's
- * PostgREST endpoint with `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` in the
- * bundle. It now lives in the hk-storefront plugin's `hk_admin_records` table, and the
+ * That state used to be read and written straight from the browser to a database
+ * endpoint. It now lives in the hk-storefront plugin's `hk_admin_records` table, and the
  * browser reaches it through this route, which is the only side that holds the
  * WordPress credential.
  *

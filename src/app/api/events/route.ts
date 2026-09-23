@@ -3,12 +3,9 @@
  *
  * ## Two backends ago
  *
- * `services/siteEvents.ts` used to POST straight to
- * `<project>.supabase.co/rest/v1/site_events` with the anon key, which put the
- * Supabase project URL and key in the client bundle and pulled the config resolver
- * onto a product page. That moved here. The events now belong to WordPress, in the
- * `hk_site_events` table behind `hk-storefront/v1/events`, and this route is the
- * only caller — so the browser still sees one same-origin endpoint and no credential.
+ * The event recorder sends same-origin requests here. Events belong to WordPress,
+ * in the `hk_site_events` table behind `hk-storefront/v1/events`; this route is the
+ * only persistence caller, so the browser sees no integration credential.
  *
  * ## A public write with no session
  *
