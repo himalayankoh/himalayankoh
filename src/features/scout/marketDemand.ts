@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — MARKET DEMAND ADAPTER (Phase 4D §9-§10 + Phase 4G §D + 4G.1)
+// HIMALAYAN KOH — MARKET DEMAND ADAPTER (Phase 4D §9-§10 + Phase 4G §D + 4G.1)
 //
 // Provider-neutral interface for official/permitted demand-data sources.
 // The Google Ads path is SERVER-BACKED: the browser NEVER holds Google
@@ -16,7 +16,7 @@
 //   * Google Ads "competition" means ADVERTISER/ad-slot competition — never
 //     total ecommerce product competition.
 //   * Search-volume evidence does NOT prove purchases, conversion rate,
-//     marketplace sales, or Luxedge profitability.
+//     marketplace sales, or Himalayan Koh profitability.
 //   * CJ `listedNum` / supplier listing count is NEVER routed through this
 //     interface and is NEVER treated as consumer demand.
 //   * A configured-but-failed demand source must NOT silently look identical
@@ -27,7 +27,7 @@
 import type { MarketSignal } from './types';
 
 export interface MarketDemandQuery {
-  /** Market/category hypothesis, e.g. "dog travel accessories". */
+  /** Market/category hypothesis, e.g. "himalayan pink salt". */
   query: string;
   /** Target market (ISO-ish), e.g. "US". */
   market?: string;
@@ -242,7 +242,7 @@ export function parseGoogleAdsResults(raw: unknown): GoogleAdsReturnedResult[] {
   return [];
 }
 
-const LIMITATION = 'Search-volume evidence from Google Search; it does not prove purchases, conversion rate, marketplace sales, or Luxedge profitability.';
+const LIMITATION = 'Search-volume evidence from Google Search; it does not prove purchases, conversion rate, marketplace sales, or Himalayan Koh profitability.';
 
 /**
  * Generate MarketSignal[] FROM structured facts (Phase 4G.1 §E). Human

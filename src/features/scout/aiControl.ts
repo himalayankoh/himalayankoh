@@ -1,7 +1,7 @@
 // ============================================================================
-// LUXEDGE V2 — FLEXIBLE AI CONTROL (Phase 4B amendment)
+// HIMALAYAN KOH — FLEXIBLE AI CONTROL (Phase 4B amendment)
 //
-// The owner decides how much control AI gets at any moment. Luxedge must work
+// The owner decides how much control AI gets at any moment. The pipeline must work
 // as 100% HUMAN CONTROL, HUMAN + AI COPILOT, or a GUARDED AUTONOMOUS SYSTEM
 // without changing the underlying application architecture.
 //
@@ -190,6 +190,7 @@ export const DEFAULT_AI_CONTROL_CONFIG: AiControlConfig = {
 // Config persistence (localStorage, admin-only UI, no secrets)
 // ---------------------------------------------------------------------------
 
+// Backward-compatibility key: renaming it would orphan the saved control config.
 const CONFIG_KEY = 'luxedge_ai_control';
 
 export function loadAiControlConfig(storage?: Pick<Storage, 'getItem'>): AiControlConfig {
@@ -427,6 +428,7 @@ export function selectProvider(
 // AI ROUTER DECISION LOG (§10) — durable audit, NEVER secrets
 // ---------------------------------------------------------------------------
 
+// Backward-compatibility key: renaming it would orphan the saved router log.
 const LOG_KEY = 'luxedge_ai_router_log';
 const MAX_LOG = 200;
 

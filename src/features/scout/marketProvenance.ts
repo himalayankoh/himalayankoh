@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — MARKET PROVENANCE VERIFICATION (Phase 4C live-readiness +
+// HIMALAYAN KOH — MARKET PROVENANCE VERIFICATION (Phase 4C live-readiness +
 // migration-security revision)
 //
 // A BUSINESS qualification must be grounded in a REAL persisted

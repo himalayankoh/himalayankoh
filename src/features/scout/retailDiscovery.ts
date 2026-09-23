@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — RETAIL MARKET-EVIDENCE DISCOVERY (Phase 4E)
+// HIMALAYAN KOH — RETAIL MARKET-EVIDENCE DISCOVERY (Phase 4E)
 //
 // MARKET EVIDENCE discovery only. NOT supplier sourcing, NOT CJ research, NOT
 // product importing. Finds EXACT single-product retailer pages (Chewy, Target,
@@ -34,7 +34,7 @@ export const MAX_RETAIL_SEARCH_REQUESTS = 8;
 export const MAX_RETAIL_LISTING_SOURCES = 3;
 
 export interface RetailEvidenceSearchOptions {
-  /** Market hypothesis, e.g. "dog travel accessories". */
+  /** Market hypothesis, e.g. "himalayan pink salt grinder". */
   query: string;
   market?: string;
   /** Retailer domains to search individually (default RETAIL_EVIDENCE_DOMAINS). */
@@ -102,7 +102,7 @@ function hostOf(url: string): string {
  * Future domains WITHOUT a verified pattern remain permissive (URL-level
  * category filters + the evidence pack's content validation apply).
  */
-export const STRICT_PATTERN_DOMAINS = new Set(['chewy.com', 'target.com', 'walmart.com']);
+export const STRICT_PATTERN_DOMAINS = new Set(['target.com', 'walmart.com', 'tractorsupply.com']);
 
 /**
  * Verified single-product URL patterns — encoded from CURRENT public search
@@ -113,8 +113,8 @@ export const STRICT_PATTERN_DOMAINS = new Set(['chewy.com', 'target.com', 'walma
 export function retailProductUrlPattern(url: string): { matched: boolean; pattern?: string } {
   const h = hostOf(url);
   const p = url.toLowerCase();
-  if (h === 'chewy.com' || h.endsWith('.chewy.com')) {
-    return /\/dp\/\d/.test(p) ? { matched: true, pattern: 'chewy:/dp/<id>' } : { matched: false };
+  if (h === 'tractorsupply.com' || h.endsWith('.tractorsupply.com')) {
+    return /\/p\/[^/]+\/\d+/.test(p) ? { matched: true, pattern: 'tractorsupply:/p/<slug>/<id>' } : { matched: false };
   }
   if (h === 'target.com' || h.endsWith('.target.com')) {
     return /\/p\//.test(p) && /\/a-\d+/.test(p) ? { matched: true, pattern: 'target:/p/.../A-<id>' } : { matched: false };

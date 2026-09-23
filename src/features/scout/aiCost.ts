@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — SCOUT AI COST CONTROL (Phase 4B)
+// HIMALAYAN KOH — SCOUT AI COST CONTROL (Phase 4B)
 //
 // DeepSeek calls cost money, so every AI call is gated:
 //  1) Deterministic prefilter runs first — AI is only offered candidates that

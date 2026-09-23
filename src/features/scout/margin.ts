@@ -1,7 +1,7 @@
 // ============================================================================
-// LUXEDGE V2 — SCOUT PRICING / MARGIN MODEL
+// HIMALAYAN KOH — SCOUT PRICING / MARGIN MODEL
 //
-// Calculated separately from the opportunity score. The proposed Luxedge
+// Calculated separately from the opportunity score. The proposed selling
 // price is an INFERRED suggestion (landed cost × markup, rounded to a
 // consumer-friendly .99), never a verified market price.
 //

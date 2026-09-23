@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — PRODUCT SCOUT TYPES (Phase 4A)
+// HIMALAYAN KOH — PRODUCT SCOUT TYPES (Phase 4A)
 //
 // The scout pipeline researches real pet products, verifies the source,
 // normalizes the data, scores the opportunity (100-point weighted), hard-
@@ -45,7 +45,7 @@ export interface MarginCalc {
   supplierPrice: number | null;
   shippingCost: number | null;
   landedCost: number | null;
-  /** Suggested Luxedge retail price (INFERRED from landed cost + markup). */
+  /** Suggested selling price (INFERRED from landed cost + markup). */
   proposedSellingPrice: number | null;
   grossMarginDollars: number | null;
   grossMarginPct: number | null;

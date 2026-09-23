@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — SCOUT HARD REJECTION FILTERS
+// HIMALAYAN KOH — SCOUT HARD REJECTION FILTERS
 //
 // Deterministic rule checks. Any match → the candidate is REJECTED with an
 // exact reason. These are conservative: when evidence is missing the check

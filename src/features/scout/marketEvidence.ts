@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — MARKET EVIDENCE PACK (Phase 4D + Phase 4E)
+// HIMALAYAN KOH — MARKET EVIDENCE PACK (Phase 4D + Phase 4E)
 //
 //   discovery → select 6-8 strongest EXACT product pages → fetch/research them
 //   → extract real facts (price, availability, rating, review count, brand,
@@ -15,7 +15,7 @@
 //     The quality gate uses availabilityEvidenceCount; the market opportunity
 //     availability scoring continues to use positive availability.
 //   * reviewCountEvidenceCount / totalObservedReviews recorded where safely
-//     extractable (never republished as Luxedge reviews).
+//     extractable (never republished as our customer reviews).
 //   * a page counts as usable exact-product evidence only when it has a title
 //     AND at least TWO of {price, availability, rating/review, real images,
 //     selectable variants, product attribute/brand}. Listicles/category pages
@@ -68,7 +68,7 @@ export interface EvidenceCounts {
   ratingEvidenceCount: number;
   /** Pages with a review-count number (where safely extractable). */
   reviewCountEvidenceCount: number;
-  /** Sum of extractable review counts (never republished as Luxedge reviews). */
+  /** Sum of extractable review counts (never republished as our customer reviews). */
   totalObservedReviews: number;
   /** Pages with EXPLICIT availability evidence (available OR unavailable). */
   availabilityEvidenceCount: number;
@@ -234,8 +234,8 @@ export function evidenceUrlRejectionReason(url: string): string | null {
   // validation alone cannot reject rich collection pages, so the URL is the
   // discriminator). Anchored so /ip/b/2 or /ip/c/3 are never misread.
   if (h === 'target.com' && firstSeg === '/s/') return 'retailer search URL (target /s/)';
-  if (h === 'chewy.com' && firstSeg === '/f/') return 'retailer collection/filter URL (chewy /f/)';
-  if (h === 'chewy.com' && firstSeg === '/b/') return 'retailer browse URL (chewy /b/)';
+  if (h === 'tractorsupply.com' && firstSeg === '/c/') return 'retailer collection/filter URL (tractorsupply /c/)';
+  if (h === 'walmart.com' && firstSeg === '/browse/') return 'retailer browse URL (walmart /browse/)';
   if (h === 'walmart.com' && p.includes('/c/kp/')) return 'retailer category URL (walmart /c/kp/)';
   // Listicles / guides / rankings (e.g. "dog-toy-brands-in-the-usa",
   // "14-usa-cat-toys", "/top-10", "/best-", "/lists/", "/made-in-the-usa"
@@ -503,7 +503,7 @@ export function assessEvidenceQuality(
     reasons.push(`${counts.failedExtracts} pages fetched but not extractable`);
   }
   if (counts.reviewCountEvidenceCount > 0) {
-    reasons.push(`${counts.reviewCountEvidenceCount} pages with review counts (${counts.totalObservedReviews} total observed, never republished as Luxedge reviews)`);
+    reasons.push(`${counts.reviewCountEvidenceCount} pages with review counts (${counts.totalObservedReviews} total observed, never republished as our customer reviews)`);
   }
 
   return { pass: missing.length === 0, missing, reasons, counts };

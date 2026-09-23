@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — RETAIL NAVIGATION DISCOVERY (Phase 4E.2)
+// HIMALAYAN KOH — RETAIL NAVIGATION DISCOVERY (Phase 4E.2)
 //
 // A retailer LISTING / search / category page is a NAVIGATION SOURCE ONLY. It
 // is never market/product evidence itself. Flow:

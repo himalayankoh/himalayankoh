@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — PRODUCT SCOUT ENGINE (Phase 4A + closure)
+// HIMALAYAN KOH — PRODUCT SCOUT ENGINE (Phase 4A + closure)
 //
 // Pipeline: DISCOVER → VERIFY SOURCE → NORMALIZE → SCORE → REJECT/SHORTLIST
 //          → OWNER APPROVAL (UI) → PRODUCT DRAFT (explicit owner action)
@@ -26,6 +26,7 @@ import { extractPageFacts, describeExtract } from './extract';
 import { calculateMargin } from './margin';
 import { applyRejectFilters, collectRiskFlags } from './reject';
 import { scoreCandidate, SHORTLIST_THRESHOLD } from './score';
+import { saltCategoryFromText } from './category';
 import { signalsFromDiscovery, signalsFromExtracts, scoreMarketOpportunity, runMarketIntelligence } from './market';
 import { evidenceFingerprint } from './aiCost';
 import { newId } from './persist';
@@ -45,7 +46,7 @@ import {
 import type { DiscoverResult } from './discover';
 
 export interface ScoutRunOptions {
-  /** Source URLs to research (pet products only). */
+  /** Source URLs to research (this store's own catalogue). */
   urls: string[];
   /** Admin-JWT-configured db adapter. */
   db: DbAdapter;
@@ -57,13 +58,7 @@ export interface ScoutRunOptions {
   onProgress?: (msg: string) => void;
 }
 
-function petCategorySignal(title: string): string | null {
-  const t = title.toLowerCase();
-  if (/dog|puppy|canine/i.test(t)) return 'Dog';
-  if (/cat|kitten|feline/i.test(t)) return 'Cat';
-  if (/pet/i.test(t)) return 'Pet';
-  return null;
-}
+
 
 /** Build the durable evidence record from extraction results. */
 function buildEvidence(url: string, extract: PageExtract, category: string | null): ScoutCandidate['evidence'] {
@@ -148,7 +143,7 @@ export async function researchUrl(
   // 3) MARGIN (computed here so the SCORE job has the numbers ready; status
   //    decisions still happen only in the SCORE job).
   const margin = calculateMargin({ supplierPrice: extract.price, shippingCost: extract.freeShipping ? 0 : null, markup });
-  const category = petCategorySignal(title);
+  const category = saltCategoryFromText(title);
 
   const candidate: ScoutCandidate = {
     id: '',
@@ -227,7 +222,7 @@ export function scorePhaseCandidate(
 
   const rejection = applyRejectFilters({ title, extract, margin, images: extract.images });
   const riskFlags = collectRiskFlags({ title, extract, margin });
-  const category = petCategorySignal(title);
+  const category = saltCategoryFromText(title);
 
   const score = scoreCandidate({
     title,
@@ -319,7 +314,7 @@ export function qaCandidate(candidate: ScoutCandidate): QAOutcome {
 // ---------------------------------------------------------------------------
 
 export interface MarketIntelligenceOptions {
-  /** Market/niche to investigate, e.g. "dog toys". */
+  /** Market/niche to investigate, e.g. "himalayan pink salt". */
   query: string;
   market?: string;
   db: DbAdapter;
@@ -327,7 +322,7 @@ export interface MarketIntelligenceOptions {
   discover?: (q: { query: string; market?: string; maxResults?: number }) => Promise<DiscoverResult>;
   /**
    * Phase 4E: when set, discovery uses SITE-RESTRICTED retailer search
-   * (Chewy/Target/Walmart, …) instead of one generic query — exact product
+   * (Target/Walmart/Tractor Supply, …) instead of one generic query — exact product
    * pages with real prices/availability. Market evidence only.
    */
   retailDomains?: string[];
@@ -652,10 +647,11 @@ export async function runMarketIntelligenceJob(opts: MarketIntelligenceOptions):
   );
   if (demandCollection.signals.length) signals = [...signals, ...demandCollection.signals];
 
-  const category = query.toLowerCase().includes('cat')
-    ? 'Cat' : query.toLowerCase().includes('dog') || query.toLowerCase().includes('puppy')
-      ? 'Dog' : query.toLowerCase().includes('groom')
-        ? 'Grooming' : 'Pet';
+  // The category the market score is weighted by comes from the query itself.
+  // (The pet-era version tested `includes('cat')`, which also matched
+  // "catalogue", and `includes('dog')`, then defaulted everything else to a pet
+  // label.)
+  const category = saltCategoryFromText(query);
 
   const det = scoreMarketOpportunity({ signals, category });
   progress(`[market] ${query}: deterministic market score ${det.score}/100`);

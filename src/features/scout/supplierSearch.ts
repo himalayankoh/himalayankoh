@@ -1,12 +1,12 @@
 // ============================================================================
-// LUXEDGE V2 — SUPPLIER SEARCH ENGINE (Phase 4C)
+// HIMALAYAN KOH — SUPPLIER SEARCH ENGINE (Phase 4C)
 //
 // Bridges the provider-neutral SupplierDiscoveryAdapter into the existing
 // Product Scout pipeline. Flow:
 //
 //   adapter.searchProducts(query, market, maxResults)
 //   → normalize (already done by the adapter) → dedupe (CJ pid/SKU)
-//   → deterministic prefilter (US inventory, pet niche, price, images, risk)
+//   → deterministic prefilter (US inventory, this store's niche, price, images, risk)
 //   → persist candidates (admin JWT, RLS) → PRODUCT_SCORE → PRODUCT_QA
 //
 // Reuses the SAME durable job trail (PRODUCT_RESEARCH → PRODUCT_SCORE →
@@ -25,6 +25,7 @@ import type {
 } from '../suppliers/types';
 import type { ScoutCandidate, CandidateEvidence } from './types';
 import { calculateMargin } from './margin';
+import { saltCategoryFromText, type ScoutCategory } from './category';
 import { applyRejectFilters, collectRiskFlags } from './reject';
 import { scoreCandidate, SHORTLIST_THRESHOLD } from './score';
 import { qaCandidate } from './engine';
@@ -48,12 +49,14 @@ export interface SupplierSearchRunOptions {
   onProgress?: (msg: string) => void;
 }
 
-export function petCategoryFromTitle(title: string): 'Dog' | 'Cat' | 'Pet' | null {
-  const t = title.toLowerCase();
-  if (/dog|puppy|canine/i.test(t)) return 'Dog';
-  if (/cat|kitten|feline/i.test(t)) return 'Cat';
-  if (/pet/i.test(t)) return 'Pet';
-  return null;
+/**
+ * The candidate's category signal, from the one classifier that owns it
+ * (`./category`). Kept as a named wrapper so the call site reads the same as
+ * before, but the vocabulary is this store's — the pet-species table that used
+ * to live here described a different business.
+ */
+export function saltCategoryFromTitle(title: string): ScoutCategory | null {
+  return saltCategoryFromText(title);
 }
 
 /** One business-qualified candidate detail (Phase 4C final audit). */
@@ -814,7 +817,7 @@ export function scoreSupplierCandidate(candidate: ScoutCandidate, markup?: numbe
     rejectionReason,
     evidence: {
       ...ev,
-      category: { status: petCategoryFromTitle(candidate.title) ? 'inferred' : 'unknown', value: petCategoryFromTitle(candidate.title), note: 'Inferred from title keywords' },
+      category: { status: saltCategoryFromTitle(candidate.title) ? 'inferred' : 'unknown', value: saltCategoryFromTitle(candidate.title), note: 'Inferred from title keywords' },
       riskNotes,
     },
   };

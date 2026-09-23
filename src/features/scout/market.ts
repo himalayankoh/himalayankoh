@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — SCOUT MARKET INTELLIGENCE (Phase 4B)
+// HIMALAYAN KOH — SCOUT MARKET INTELLIGENCE (Phase 4B)
 //
 // Two layers:
 //  1) MarketSignalCollector — deterministic evidence layer. Collects ONLY
@@ -129,9 +129,9 @@ export function signalsFromExtracts(items: { title: string; extract: PageExtract
     source: 'Researched product pages',
     sourceUrl: '',
     observedAt: at,
-    summary: `${rated} of ${items.length} researched pages carried rating/review evidence${reviewed ? `; ${reviewed} pages with review counts (${totalReviews} total observed — never republished as Luxedge reviews)` : ''}.`,
+    summary: `${rated} of ${items.length} researched pages carried rating/review evidence${reviewed ? `; ${reviewed} pages with review counts (${totalReviews} total observed — never republished as our own customer reviews)` : ''}.`,
     confidence: items.length ? 'verified' : 'unknown',
-    limitations: 'Ratings on source pages are the suppliers\' own; Luxedge never republishes them as customer reviews.',
+    limitations: 'Ratings on source pages are the suppliers\' own; we never republish them as our own customer reviews.',
   });
 
   signals.push({
@@ -154,7 +154,7 @@ export function signalsFromExtracts(items: { title: string; extract: PageExtract
 
 export interface MarketScoreInput {
   signals: MarketSignal[];
-  /** Category signal from researched titles (Dog/Cat/Pet/…). */
+  /** Category signal from researched titles — see `./category`. */
   category: string | null;
 }
 
@@ -352,7 +352,7 @@ export async function runMarketIntelligence(
     const evidenceText = input.signals
       .map((s) => `- [${s.confidence}] ${s.signalType}: ${s.summary} (source: ${s.sourceUrl || s.source})`)
       .join('\n');
-    const prompt = `You are Luxedge's USA pet-market analyst. Reason ONLY over the evidence below — never invent facts.\n\nIMPORTANT LIMITATION: URL counts and page counts in the evidence are search-result breadth / market-supply visibility snapshots — they are NOT sales, orders, search volume, or consumer demand. Do not present them as demand. If real demand evidence (ratings/reviews/availability across pages) is missing, say so and keep the score honest.\n\nEVIDENCE:\n${evidenceText}\n\nCategory signal: ${input.category || 'unknown'}\n\nReturn STRICT JSON (no markdown):\n{\n  "marketOpportunityScore": 0-100,\n  "trendConfidence": "verified|inferred|unknown",\n  "demandEvidence": "short summary of what the evidence supports",\n  "competitionLevel": "low|medium|high|unknown",\n  "customerPainPoint": "string or null",\n  "priceBand": {"min": number, "max": number} or null,\n  "risks": ["..."],\n  "recommendedSearchQueries": ["..."],\n  "reasoningSummary": "concise — no chain of thought"\n}`;
+    const prompt = `You are Himalayan Koh's USA market analyst for Himalayan pink salt (edible salt, salt licks and blocks for livestock, lamps and bath products). Reason ONLY over the evidence below — never invent facts.\n\nIMPORTANT LIMITATION: URL counts and page counts in the evidence are search-result breadth / market-supply visibility snapshots — they are NOT sales, orders, search volume, or consumer demand. Do not present them as demand. If real demand evidence (ratings/reviews/availability across pages) is missing, say so and keep the score honest.\n\nEVIDENCE:\n${evidenceText}\n\nCategory signal: ${input.category || 'unknown'}\n\nReturn STRICT JSON (no markdown):\n{\n  "marketOpportunityScore": 0-100,\n  "trendConfidence": "verified|inferred|unknown",\n  "demandEvidence": "short summary of what the evidence supports",\n  "competitionLevel": "low|medium|high|unknown",\n  "customerPainPoint": "string or null",\n  "priceBand": {"min": number, "max": number} or null,\n  "risks": ["..."],\n  "recommendedSearchQueries": ["..."],\n  "reasoningSummary": "concise — no chain of thought"\n}`;
     const raw = await aiCall(prompt, input.model);
     const parsed = parseMarketAnalysis(raw);
     if (parsed) {
@@ -377,4 +377,4 @@ export async function runMarketIntelligence(
   return { ...base, unsupportedClaims: unsupported, aiUsed: false, analyzedAt: at };
 }
 
-const MARKET_INTEL_SYSTEM = 'You are a strict, evidence-only USA pet-market analyst for Luxedge. You may reason only over the provided evidence. Never invent demand, trends, ratings, reviews, certifications or sales data. Return only the requested JSON.';
+const MARKET_INTEL_SYSTEM = 'You are a strict, evidence-only USA market analyst for Himalayan Koh (Himalayan pink salt: edible salt, salt licks and blocks for livestock, lamps and bath products). You may reason only over the provided evidence. Never invent demand, trends, ratings, reviews, certifications or sales data. Return only the requested JSON.';

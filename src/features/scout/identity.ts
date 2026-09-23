@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — MARKET-PAGE PRODUCT IDENTITY (Phase 4G §C)
+// HIMALAYAN KOH — MARKET-PAGE PRODUCT IDENTITY (Phase 4G §C)
 //
 // A PRODUCT FAMILY is not automatically the SAME exact product. Review and
 // rating evidence from different retailer pages may only be treated as the
@@ -101,7 +101,7 @@ export interface ReviewAggregationReport {
  * Aggregate review evidence across market PDPs WITHOUT implying they are the
  * same product. Reports how many pages carried review evidence; sums are only
  * meaningful within an exact-identity group (and even then, retailer-reported
- * counts are not Luxedge reviews — they are market observation).
+ * counts are not our own customer reviews — they are market observation).
  */
 export function aggregateReviewEvidence(pages: PageIdentityEvidence[]): ReviewAggregationReport {
   const withReviews = pages.filter((p) => p.canonicalTitle);
@@ -125,7 +125,7 @@ export function aggregateReviewEvidence(pages: PageIdentityEvidence[]): ReviewAg
   const conceptOnlyPages = pages.filter((p) => !hasExplicitIdentity(p)).length;
 
   const note = pagesWithReviewEvidence
-    ? `${pagesWithReviewEvidence} market PDPs carried review/rating evidence — counts are NOT summed across products unless exact identity (GTIN/UPC/MPN/brand+model) was verified; ${exactIdentityGroups} exact-identity group(s) and ${conceptOnlyPages} concept/unknown page(s). These are retailer-observed counts, never Luxedge reviews.`
+    ? `${pagesWithReviewEvidence} market PDPs carried review/rating evidence — counts are NOT summed across products unless exact identity (GTIN/UPC/MPN/brand+model) was verified; ${exactIdentityGroups} exact-identity group(s) and ${conceptOnlyPages} concept/unknown page(s). These are retailer-observed counts, never our own customer reviews.`
     : 'No market pages carried review/rating evidence.';
 
   return { pagesWithReviewEvidence, exactIdentityGroups, conceptOnlyPages, note };

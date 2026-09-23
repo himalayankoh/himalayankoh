@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — SCOUT GUARDED AUTONOMY (Phase 4B)
+// HIMALAYAN KOH — SCOUT GUARDED AUTONOMY (Phase 4B)
 //
 // Policy layer over the deterministic evidence pipeline. Three modes:
 //   MANUAL — owner controls every candidate transition.
@@ -38,6 +38,7 @@ export const AUTONOMY_MODES = ['MANUAL', 'REVIEW', 'AUTO'] as const;
 // Emergency pause (kill switch)
 // ---------------------------------------------------------------------------
 
+// Backward-compatibility key — see the storage-key note in `aiControl.ts`.
 const PAUSE_KEY = 'luxedge_scout_emergency_pause';
 
 export function isEmergencyPaused(storage?: Pick<Storage, 'getItem'>): boolean {

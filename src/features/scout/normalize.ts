@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — SCOUT NORMALIZATION + DEDUPE
+// HIMALAYAN KOH — SCOUT NORMALIZATION + DEDUPE
 //
 // Pure helpers: slugify, supplier-from-domain, price parsing, suggested-sell
 // price resolution, and duplicate detection keys. No I/O — fully unit-testable.
@@ -108,7 +108,7 @@ export function parseRating(text: string): number | null {
 
 export interface SellPriceEvidence {
   supplierPrice?: EvidenceItem | null;
-  /** e.g. "Chewy KONG Classic Dog Toy, Medium - $11.96 (https://…)" */
+  /** e.g. "Himalayan Salt Medium Grain 45 lbs - $49.95 (https://…)" */
   retail_reference?: unknown;
   /** e.g. "$7.99 - $25.99" */
   manufacturer_price_range?: unknown;

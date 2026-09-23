@@ -1,7 +1,7 @@
 // ============================================================================
-// LUXEDGE V2 — SCOUT LISTING GENERATION + FACTUAL QA (Phase 4B)
+// HIMALAYAN KOH — SCOUT LISTING GENERATION + FACTUAL QA (Phase 4B)
 //
-// Generates a premium Luxedge listing DRAFT for an approved candidate using
+// Generates a premium Himalayan Koh listing DRAFT for an approved candidate using
 // DeepSeek through the secure server proxy (key server-side only). The AI may
 // rewrite PRESENT verified source facts but may NEVER invent certifications,
 // dimensions, materials, shipping times, ratings, reviews, warranty, medical
@@ -38,7 +38,7 @@ const LISTING_SYSTEM = 'You are a premium copywriter for Himalayan Koh (a USA Hi
  */
 export function buildListingPrompt(input: ListingInput): string {
   const facts = input.verifiedFacts.length ? input.verifiedFacts.join('\n') : 'No verified facts were collected for this product beyond the title and source.';
-  return `Create a premium Luxedge product listing for this real product.
+  return `Create a premium Himalayan Koh product listing for this real product.
 
 PRODUCT TITLE: ${input.title}
 SUPPLIER: ${input.supplierName}
@@ -290,7 +290,7 @@ export function buildDeterministicListing(candidate: ScoutCandidate): ListingDra
   const shortDescription = `${title} — verified from ${candidate.source} (${candidate.sourceUrl}). ${price !== null ? `Observed supplier price $${price.toFixed(2)}.` : ''} All facts sourced; unverified details intentionally omitted.`;
 
   return {
-    title: `Luxedge ${title}`.slice(0, 120),
+    title: `Himalayan Koh ${title}`.slice(0, 120),
     shortDescription,
     longDescription: `${shortDescription}\n\nThis listing is a deterministic draft assembled strictly from verified source evidence. No ratings, reviews, certifications, shipping promises, medical claims or inventory counts are asserted.`,
     features,

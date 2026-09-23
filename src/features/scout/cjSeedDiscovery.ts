@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — CJ SEED DISCOVERY + PRODUCT-CONCEPT CLUSTERING (Phase 4F)
+// HIMALAYAN KOH — CJ SEED DISCOVERY + PRODUCT-CONCEPT CLUSTERING (Phase 4F)
 //
 // The web-discovery bottleneck is proven: generic/site-restricted discovery
 // does not reliably produce enough retrievable exact PDPs. This module uses

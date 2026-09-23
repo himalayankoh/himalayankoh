@@ -1577,7 +1577,7 @@ export default function ProductScout() {
           </div>
           <label className="flex items-center gap-2 text-xs text-gray-600">
             <input type="checkbox" checked={miRetail} onChange={(e) => setMiRetail(e.target.checked)} disabled={miRunning} className="rounded" />
-            Retailer-restricted discovery (Chewy · Target · Walmart) — exact product pages for the evidence pack
+            Retailer-restricted discovery (Target · Walmart · Tractor Supply) — exact product pages for the evidence pack
           </label>
           {miResult && (
             <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-2">

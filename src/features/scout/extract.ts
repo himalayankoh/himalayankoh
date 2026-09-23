@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — SCOUT PAGE EXTRACTOR
+// HIMALAYAN KOH — SCOUT PAGE EXTRACTOR
 //
 // Rule-based extraction from a fetched source page (no AI, no credits). Only
 // facts actually present in the page text/images are extracted; anything not

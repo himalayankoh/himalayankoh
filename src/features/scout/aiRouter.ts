@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — AI ROUTER (Phase 4B amendment)
+// HIMALAYAN KOH — AI ROUTER (Phase 4B amendment)
 //
 // Single funnel for every AI provider invocation. Enforces, in order:
 //   master switch → feature switch → control mode → emergency pause →
@@ -13,7 +13,7 @@
 //
 // When the router blocks AI (services OFF, feature OFF, MANUAL mode without
 // an explicit request, pause) it THROWS a catchable error so callers fall
-// back to the deterministic pipeline — AI OFF never breaks Luxedge.
+// back to the deterministic pipeline — AI OFF never breaks the pipeline.
 // ============================================================================
 
 import { serverGenerate } from '../ai/client';

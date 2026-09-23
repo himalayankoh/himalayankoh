@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — PRODUCT SCORE (100 POINTS)
+// HIMALAYAN KOH — PRODUCT SCORE (100 POINTS)
 //
 // Exact weighted model required by the Phase 4A spec:
 //   Demand/usefulness         20
@@ -18,6 +18,7 @@
 // ============================================================================
 
 import type { PageExtract } from './types';
+import { hasNicheFormSignal, hasNicheRelevance } from './category';
 import type { MarginCalc } from './types';
 import type { ScoreBreakdown, ScoreCriterion } from './types';
 
@@ -37,7 +38,7 @@ export const SCORE_WEIGHTS: Record<string, number> = {
  * Shortlist bar for PRODUCT_SHORTLISTED. Calibrated to what a WELL-EVIDENCED
  * CJ candidate can actually score: CJ supplies no rating/review evidence
  * (ratings 0) and supplier reliability caps at 10 (platform, not manufacturer),
- * so a strong record (pet title 20 + supplier 10 + fast delivery 15 + verified
+ * so a strong record (niche title 20 + supplier 10 + fast delivery 15 + verified
  * margin 15 + images 8-10 + competition/upsell 2-7 + risk 1-3) lands ~65-78.
  * 75 rejected almost the entire catalog; 60 admits strong evidence while
  * thin records (no price/images/margin) still fall far below.
@@ -67,15 +68,18 @@ export function scoreCandidate(input: ScoreInput): ScoreBreakdown {
   const { title, extract, margin, supplierVerified, sourceIsManufacturer, images, riskFlags } = input;
   const breakdown: Record<string, ScoreCriterion> = {};
 
-  // 1) Demand / usefulness (20) — pet relevance + category signal.
-  const isPet = /dog|cat|puppy|kitten|pet/i.test(title);
-  const categorySignal = /feed|toy|bed|leash|harness|groom|treat|bowl|carrier|scratch|water|chew|brush|bath|walk/i.test(title);
+  // 1) Demand / usefulness (20) — niche relevance + a recognisable product
+  //    form. Both read the title's own words: this store sells Himalayan pink
+  //    salt, so the pet-era pet-title/category tests (which awarded 0 of these
+  //    20 points to every product it actually sells) are replaced, not deleted.
+  const isNiche = hasNicheRelevance(title);
+  const categorySignal = hasNicheFormSignal(title);
   let demandPts = 0;
   const demandNote: string[] = [];
-  if (isPet) { demandPts += 10; demandNote.push('Pet-relevant title (+10)'); }
-  else demandNote.push('No pet-relevance evidence in title (+0)');
-  if (categorySignal) { demandPts += 10; demandNote.push('Clear pet category signal (+10)'); }
-  else demandNote.push('No specific pet category signal (+0)');
+  if (isNiche) { demandPts += 10; demandNote.push('Niche-relevant title (+10)'); }
+  else demandNote.push('No niche-relevance evidence in title (+0)');
+  if (categorySignal) { demandPts += 10; demandNote.push('Clear product-form category signal (+10)'); }
+  else demandNote.push('No specific product-form category signal (+0)');
   breakdown.demand = { points: cap(demandPts, 20), max: 20, note: demandNote.join('; ') };
 
   // 2) Supplier reliability (15) — verified fetch + identity.
@@ -175,7 +179,7 @@ export function scoreCandidate(input: ScoreInput): ScoreBreakdown {
   }
 
   const overall = Object.entries(breakdown).reduce((sum, [, c]) => sum + c.points, 0);
-  const explanation = `Score ${overall}/100 — ${isPet ? 'pet product' : 'non-pet title'}; margin ${margin.grossMarginPct !== null ? (margin.grossMarginPct * 100).toFixed(1) + '%' : 'uncomputable'}; delivery ${extract.shippingDays ? extract.shippingDays.min + '-' + extract.shippingDays.max + 'd' : 'unknown'}; images ${images.length}.`;
+  const explanation = `Score ${overall}/100 — ${isNiche ? 'niche product' : 'off-niche title'}; margin ${margin.grossMarginPct !== null ? (margin.grossMarginPct * 100).toFixed(1) + '%' : 'uncomputable'}; delivery ${extract.shippingDays ? extract.shippingDays.min + '-' + extract.shippingDays.max + 'd' : 'unknown'}; images ${images.length}.`;
 
   return {
     overall,
