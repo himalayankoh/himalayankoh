@@ -14,7 +14,24 @@ import {
 
 describe('priceFields', () => {
   it('writes a plain price as the regular price and clears any sale', () => {
-    expect(priceFields({ price: 9.95 })).toEqual({ regular_price: '9.95' });
+    expect(priceFields({ price: 9.95 })).toEqual({ regular_price: '9.95', sale_price: '' });
+  });
+
+  /**
+   * The failure this pins, measured on staging: a product on sale was edited to a
+   * new price with no compare-at, and the store kept charging the old sale price —
+   * `regular_price` was written, `sale_price` was not cleared, and WooCommerce
+   * charges the sale price whenever one is set. The console then read the sale price
+   * back, so the owner saw their edit apparently ignored.
+   */
+  it('does not leave a stale sale price behind a new plain price', () => {
+    const written = priceFields({ price: 21 });
+    expect(written).toEqual({ regular_price: '21.00', sale_price: '' });
+    // The pair WooCommerce would then report as the selling price.
+    expect(sellingPrice({ regular_price: '21.00', sale_price: written.sale_price ?? '' })).toEqual({
+      price: 21,
+      compareAtPrice: null,
+    });
   });
 
   it('turns a compare-at price into a real WooCommerce sale', () => {
@@ -46,12 +63,12 @@ describe('priceFields', () => {
     // is number-only, so a string fell through to `undefined` and JSON omitted
     // the field entirely. A silent no-op on the price is the one outcome the
     // mapper must not produce.
-    expect(priceFields({ price: '9.95' })).toEqual({ regular_price: '9.95' });
+    expect(priceFields({ price: '9.95' })).toEqual({ regular_price: '9.95', sale_price: '' });
     expect(priceFields({ price: '9.95', compareAtPrice: '17.95' })).toEqual({
       regular_price: '17.95',
       sale_price: '9.95',
     });
-    expect(priceFields({ price: ' 12 ' })).toEqual({ regular_price: '12.00' });
+    expect(priceFields({ price: ' 12 ' })).toEqual({ regular_price: '12.00', sale_price: '' });
   });
 
   it('treats an empty string as a cleared price, like null', () => {

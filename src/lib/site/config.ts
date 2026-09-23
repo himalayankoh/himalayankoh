@@ -19,10 +19,19 @@ export const SITE_CONFIG = {
   ordersEmail: 'orders@himalayankoh.com',
 
   /**
-   * Where inbound @himalayankoh.com emails forward to.
-   * Set CLOUDFLARE_EMAIL_FORWARD in server env to override.
+   * Where inbound @himalayankoh.com emails forward to — `CLOUDFLARE_EMAIL_FORWARD`.
+   *
+   * Deliberately empty when the deployment does not set it. This used to default to
+   * the owner's personal inbox in source, which put that address in the server
+   * bundle and made the credential scan flag it on every build (the same address is
+   * the configured WordPress administrator, so it is also a server-env value). A
+   * personal inbox is deployment configuration, not something this repository ships.
+   *
+   * Empty means "not configured", and the admin email panel says so rather than
+   * displaying a forwarding address the deployment does not actually use — the same
+   * honesty rule the rest of that panel follows.
    */
-  forwardDestination: process.env.CLOUDFLARE_EMAIL_FORWARD ?? '8002salman@gmail.com',
+  forwardDestination: process.env.CLOUDFLARE_EMAIL_FORWARD ?? '',
 
   /** Cloudflare zone ID for DNS / email routing management. */
   cloudflareZone: process.env.CLOUDFLARE_ZONE_ID ?? null,

@@ -2,7 +2,14 @@
 /**
  * Keep server credentials out of the build output, and prove it.
  *
- *   node scripts/check-build-secrets.mjs
+ *   node scripts/check-build-secrets.mjs [build-dir]
+ *
+ * `build-dir` defaults to `dist` (the vinext/Cloudflare artifact). `npm run build`
+ * runs `next build`, which writes `.next` and does **not** touch `dist` — so it
+ * passes `.next` explicitly rather than scanning a `dist/` left behind by an
+ * earlier deploy build. That distinction matters in both directions: a stale `dist`
+ * can fail the gate on a file the current source no longer produces, or pass it
+ * while the artifact that actually ships still holds a credential.
  *
  * The problem this fixes
  * ----------------------
@@ -40,13 +47,25 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DIST = join(ROOT, 'dist');
+
+/** The artifact to scan: `node scripts/check-build-secrets.mjs [dir]`, default `dist`. */
+const DIST = join(ROOT, process.argv[2] || 'dist');
 
 /** Local env files. Gitignored, developer-owned, and the only place values exist locally. */
 const ENV_FILES = ['.env.local', '.dev.vars', '.env.production.local'];
 
 /** Files inside the build output that must never ship, whatever they contain. */
 const FORBIDDEN_ARTIFACTS = ['server/.dev.vars', '.dev.vars', 'server/.env', '.env'];
+
+/**
+ * Directories that are build bookkeeping rather than build output.
+ *
+ * `.next/cache` is webpack's *persistent* module cache: it survives across builds
+ * and still holds the source text of modules the current tree no longer contains, so
+ * scanning it reports yesterday's code as today's artifact. Nothing in it is served,
+ * copied or deployed — `.next/static` and `.next/server` are.
+ */
+const NOT_ARTIFACT_DIRS = new Set(['cache', 'trace']);
 
 /** Values shorter than this are placeholders, not credentials. */
 const MIN_SECRET_LENGTH = 20;
@@ -104,6 +123,24 @@ function collectSecrets() {
   return values;
 }
 
+/**
+ * Whether a path inside the artifact is served to browsers.
+ *
+ * Two layouts, because two builders write here:
+ *
+ *   dist/client/**      vinext/Cloudflare — the Worker's static asset root
+ *   static/**          `next build` — copied to the CDN and to every client
+ *   *.html             a prerendered document, whoever wrote it
+ *
+ * Everything else (server bundles, SSR chunks) is still part of a deployed
+ * artifact, but not a URL a visitor can fetch — which is the difference between
+ * "this value is public" and "this value is one bad deploy away from being
+ * public". Both fail the gate; only the report differs.
+ */
+function isClientServed(rel) {
+  return rel.startsWith('client/') || rel.startsWith('static/') || rel.endsWith('.html');
+}
+
 async function walk(dir) {
   const out = [];
   let entries;
@@ -113,6 +150,7 @@ async function walk(dir) {
     return out;
   }
   for (const entry of entries) {
+    if (entry.isDirectory() && NOT_ARTIFACT_DIRS.has(entry.name)) continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) out.push(...(await walk(full)));
     else out.push(full);
@@ -121,7 +159,7 @@ async function walk(dir) {
 }
 
 if (!existsSync(DIST)) {
-  process.stderr.write('No build output in dist/. Run the build first.\n');
+  process.stderr.write(`No build output in ${relative(ROOT, DIST) || DIST}/. Run the build first.\n`);
   process.exit(1);
 }
 
@@ -160,19 +198,40 @@ if (removed.length > 0) {
   );
 }
 process.stdout.write(
-  `Scanned ${scanned} built file(s) against ${secrets.size} server-side variable(s).\n`,
+  `Scanned ${scanned} file(s) in ${relative(ROOT, DIST) || '.'}/ against ${secrets.size} server-side variable(s).\n`,
 );
 
 if (offenders.length > 0) {
-  process.stderr.write(
-    `\nA server-only value appears in the build output. Nothing is printed here by design;\n` +
-      `open the file and check it yourself:\n\n`,
-  );
-  for (const { rel, name } of offenders) {
-    process.stderr.write(`  ${rel}  <- ${name}\n`);
+  // The two classes are reported apart because they mean different things. A value
+  // in a client-served file has already been handed to anyone who loaded the page;
+  // one in a server bundle is not fetched by a browser but is still shipped. Nothing
+  // is printed by design — open the file and look.
+  const clientServed = offenders.filter((o) => isClientServed(o.rel));
+  const serverOnly = offenders.filter((o) => !isClientServed(o.rel));
+
+  process.stderr.write(`\nA server-only value appears in ${relative(ROOT, DIST) || '.'}/.\n`);
+
+  if (clientServed.length > 0) {
+    process.stderr.write(
+      `\nCLIENT-SERVED — reachable by any visitor; treat as disclosed (${clientServed.length}):\n`,
+    );
+    for (const { rel, name } of clientServed) {
+      process.stderr.write(`  ${rel}  <- ${name}\n`);
+    }
   }
+
+  if (serverOnly.length > 0) {
+    process.stderr.write(
+      `\nSERVER-ONLY — not fetched by a browser, but part of the deployed artifact (${serverOnly.length}):\n`,
+    );
+    for (const { rel, name } of serverOnly) {
+      process.stderr.write(`  ${rel}  <- ${name}\n`);
+    }
+  }
+
   process.stderr.write(
-    `\nFix: the value must be read at runtime (Worker secret), never inlined. Only\n` +
+    `\nNothing is printed here by design; open the file and check it yourself.\n` +
+      `Fix: the value must be read at runtime (Worker secret), never inlined. Only\n` +
       `NEXT_PUBLIC_* may be inlined, and only for genuinely public values.\n`,
   );
   process.exit(1);

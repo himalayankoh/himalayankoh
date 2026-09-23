@@ -7,15 +7,20 @@
  * This module is where those same logins live now: the same addresses, the same
  * passwords, owned by the deployment instead of by a database.
  *
+ * It is deliberately server-only — imported by the login route and nothing else.
+ * It used to be accompanied by a copy of the same addresses in the browser, which
+ * is what made a client able to declare itself an administrator by comparing an
+ * email; the browser now learns its role from the signed session instead.
+ *
  * Configure one or more:
  *
- *   ADMIN_LOGIN_ACCOUNTS=8002salman@gmail.com:<sha256>,basco.pk@gmail.com:<sha256>
+ *   ADMIN_LOGIN_ACCOUNTS=first-admin@example.com:<sha256>,second-admin@example.com:<sha256>
  *
  * A third field is an optional display name for the console — what the header
  * and the account menu show. Without it the identifier is shown, so an
  * un-named account reads as its own email address rather than a made-up name:
  *
- *   ADMIN_LOGIN_ACCOUNTS=admin@himalayankoh.com:<sha256>:Salman Bashir
+ *   ADMIN_LOGIN_ACCOUNTS=first-admin@example.com:<sha256>:The Owner
  *
  * Generate a hash with `npm run admin:hash -- "the password"`. Only the digest
  * is configured — the password itself is never written to an environment file,

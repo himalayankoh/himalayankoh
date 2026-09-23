@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "test:integration": "node scripts/test-integration.mjs",
     "build": "next build",
-    "postbuild": "node scripts/mark-build.mjs && node scripts/check-public-origin.mjs && node scripts/check-build-secrets.mjs",
+    "postbuild": "node scripts/mark-build.mjs && node scripts/check-public-origin.mjs && node scripts/check-build-secrets.mjs .next",
     "images:fetch": "node scripts/fetch-legacy-images.mjs",
     "images:check": "node scripts/check-legacy-images.mjs",
     "start": "next start",
@@ -45,7 +45,8 @@
     "start:vinext": "wrangler dev --config dist/server/wrangler.json",
     "deploy:vinext": "vinext-cloudflare deploy --config dist/server/wrangler.json && node scripts/check-build-secrets.mjs",
     "deploy:staging": "node scripts/deploy-staging.mjs",
-    "pack:plugins": "node scripts/pack-plugins.mjs"
+    "pack:plugins": "node scripts/pack-plugins.mjs",
+    "verify:wordpress": "node scripts/verify-wordpress-writes.mjs"
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",

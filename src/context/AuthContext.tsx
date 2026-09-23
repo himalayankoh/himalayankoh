@@ -15,6 +15,7 @@ import {
   type SbUser as WordPressAdmin,
 } from '../services/wordpressAdminAuth';
 import { signOutOfBrowser } from '../lib/auth/browserSignOut';
+import { resolveServerIdentity } from '../lib/auth/sessionIdentity';
 import {
   createCustomerAccount,
   getCustomerSession,
@@ -54,10 +55,28 @@ function runAfterAuthCallback(task: () => void) {
   globalThis.setTimeout(task, 0);
 }
 
+/**
+ * The role claim on a session, and nothing else.
+ *
+ * This used to fall back to comparing the session's email against a hardcoded list
+ * of administrator addresses — a client-side authorization rule. An email string is
+ * not a credential, and the rule had a hole: a customer whose address merely started
+ * with `admin@` was handed `admin` and shown the console (the server's routes still
+ * rejected the writes, so it was a UI-level escalation rather than a breach, but it
+ * was an escalation the client had no business performing).
+ *
+ * The role now has one origin: the claim the server put in the token it signed after
+ * checking the credential. `roleFromUser` only reads that claim, and a session
+ * without one has no role — which is why an anonymous visitor and a token the server
+ * never issued both read as "not an admin" rather than being guessed at.
+ *
+ * The claim is still confirmed against `/api/auth/session` on load (see the
+ * initialisation effect), because a claim read out of localStorage is a copy of what
+ * the server said, not proof of it.
+ */
 function roleFromUser(user: SessionUser | null): 'admin' | 'customer' | null {
   const metaRole = user?.user_metadata?.role || (user as { app_metadata?: { role?: string } })?.app_metadata?.role;
   if (metaRole === 'admin' || metaRole === 'customer') return metaRole as 'admin' | 'customer';
-  if (user?.email && (user.email === '8002salman@gmail.com' || user.email === 'basco.pk@gmail.com' || user.email.startsWith('admin@'))) return 'admin';
   return null;
 }
 
@@ -217,7 +236,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile({
       id: userId,
       email: sessionUser.email ?? '',
-      full_name: (sessionUser.user_metadata?.full_name as string) || (fallbackRole === 'admin' ? 'Salman Bashir' : null),
+      // The name is whatever the identity carries. It used to be `'Salman Bashir'`
+      // for an admin without one — a name invented by the browser, which is how a
+      // mis-configured deployment would still show a plausible-looking owner.
+      full_name: (sessionUser.user_metadata?.full_name as string) || null,
       phone: null,
       avatar_url: null,
       role: fallbackRole,
@@ -244,6 +266,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Initialize auth state
   useEffect(() => {
+    let mounted = true;
+
+    /**
+     * Have the server confirm the stored session, and let its answer be the answer.
+     *
+     * The stored session is what the server handed over at sign-in, so presenting it
+     * immediately keeps the first paint fast and matches what the admin saw a moment
+     * ago. But localStorage is the browser's to edit, and a copy of a claim is not
+     * proof of it — so the server is asked, once per load, via `/api/auth/session`,
+     * and the role that comes back is the one the console uses.
+     *
+     * Only an explicit refusal ends the session. `unreachable` (offline, a 5xx, a
+     * non-JSON body) deliberately leaves the stored session alone: a network blip
+     * must not sign a working administrator out of their own console, and the
+     * protected routes will reject a genuinely bad token on their own.
+     */
+    const confirmStoredSession = async () => {
+      const identity = await resolveServerIdentity();
+      if (!mounted) return;
+
+      if (identity.status === 'unreachable') return;
+
+      if (identity.status === 'rejected') {
+        // The server would not confirm the token: tampered, expired, or signed by a
+        // key this deployment no longer holds. Clear it through its one owner so the
+        // console stops presenting a credential every route rejects.
+        signOutOfBrowser();
+        profileRequestId.current += 1;
+        setUser(null);
+        setSession(null);
+        setProfile(null);
+        setProfileLoading(false);
+        setProfileError(null);
+        setLoading(false);
+        return;
+      }
+
+      // Verified: rebuild the identity from the server's answer rather than from the
+      // stored blob, so the id, address, name and role are all the token's.
+      if (identity.role === 'admin') {
+        const stored = readStoredAdminSession();
+        if (!stored) return;
+        const admin: WordPressAdmin = {
+          id: identity.user.id,
+          email: identity.user.email,
+          name: identity.user.name,
+          role: 'admin',
+          username: identity.user.username,
+        };
+        setUser(adminUserToSessionUser(admin));
+        setSession(adminSessionForUser(admin, stored.accessToken, stored.expiresAt));
+        setProfile(adminProfileFrom(admin));
+      } else {
+        const stored = getCustomerSession();
+        if (!stored) return;
+        const customer: CustomerUser = {
+          id: Number(identity.user.id),
+          email: identity.user.email,
+          name: identity.user.name,
+          role: 'customer',
+        };
+        setUser(customerUserToSessionUser(customer));
+        setSession(customerSessionForUser(customer, stored.accessToken, stored.expiresAt));
+        setProfile(customerProfileFrom(customer));
+      }
+
+      setProfileLoading(false);
+      setProfileError(null);
+      setLoading(false);
+    };
+
     // A WordPress admin session stands on its own: when one is present it is the
     // whole answer, and initialising Supabase on top of it would replace the admin
     // identity with a customer one. Admin tokens cannot be refreshed, so an
@@ -258,7 +351,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfileLoading(false);
       setProfileError(null);
       setLoading(false);
-      return;
+      void confirmStoredSession();
+      return () => {
+        mounted = false;
+      };
     }
 
     // A customer session stands on its own in exactly the same way: WordPress
@@ -278,10 +374,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfileLoading(false);
       setProfileError(null);
       setLoading(false);
-      return;
+      void confirmStoredSession();
+      return () => {
+        mounted = false;
+      };
     }
-
-    let mounted = true;
     let authInitializationFinished = false;
     const authInitializationTimer = globalThis.setTimeout(() => {
       if (!mounted || authInitializationFinished) return;
@@ -310,9 +407,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Pre-seed profile from session user metadata immediately to prevent empty profile state
       const detectedRole = roleFromUser(nextSession.user);
-      const initialFullName =
-        (nextSession.user.user_metadata?.full_name as string) ||
-        (detectedRole === 'admin' ? 'Salman Bashir' : null);
+      const initialFullName = (nextSession.user.user_metadata?.full_name as string) || null;
       setProfile((prev) => prev || {
         id: nextSession.user.id,
         email: nextSession.user.email ?? '',

@@ -24,7 +24,18 @@ export async function POST(req: NextRequest) {
     const html = String(body.html || `<p>${text}</p>`).trim();
 
     if (!to) {
-      return NextResponse.json({ ok: false, error: 'Recipient address required' }, { status: 400 });
+      // No recipient and no configured default. Named honestly, because the likeliest
+      // cause is a deployment that never set the forwarding inbox rather than a bad
+      // request — and "Recipient address required" would send someone looking at the
+      // form instead of at the environment.
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'No recipient given, and no default is configured. Set CLOUDFLARE_EMAIL_FORWARD in the server environment, or pass an explicit recipient.',
+        },
+        { status: 400 }
+      );
     }
 
     const providerConfigured = isEmailConfigured();

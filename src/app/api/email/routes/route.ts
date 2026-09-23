@@ -38,13 +38,18 @@ export async function GET() {
     configured: hasToken,
     domain: DOMAIN,
     routes: IN_MEMORY_ROUTES,
-    destinations: [
-      {
-        email: DEFAULT_DESTINATION,
-        verified: false,
-        note: 'Verification state unknown — check Cloudflare dashboard.',
-      },
-    ],
+    // Only reported when the deployment names one. An empty address would read as a
+    // destination and is not: this route's whole job is to say where mail goes, so
+    // "nowhere configured" has to look different from a destination.
+    destinations: DEFAULT_DESTINATION
+      ? [
+          {
+            email: DEFAULT_DESTINATION,
+            verified: false,
+            note: 'Verification state unknown — check Cloudflare dashboard.',
+          },
+        ]
+      : [],
     note: hasToken
       ? 'Cloudflare API token present. Routes shown are in-memory defaults for preview/staging. Live sync with Cloudflare requires CF API integration.'
       : 'CLOUDFLARE_API_TOKEN not set. Routes shown are preview defaults only — not synced to Cloudflare.',
@@ -59,6 +64,21 @@ export async function POST(req: NextRequest) {
 
     if (!name) {
       return NextResponse.json({ ok: false, error: 'Address local part is required' }, { status: 400 });
+    }
+
+    // Refuse rather than add a route that forwards to nothing. The caller no longer
+    // supplies this value (the browser used to, from a hardcoded address), so an
+    // empty one means the deployment has not configured a forwarding inbox — a
+    // server setting, not something a request can invent.
+    if (!forwardTo) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'No forwarding inbox is configured. Set CLOUDFLARE_EMAIL_FORWARD in the server environment so new addresses have somewhere to deliver.',
+        },
+        { status: 503 }
+      );
     }
 
     const fullAddress = `${name}@${DOMAIN}`;

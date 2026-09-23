@@ -148,8 +148,11 @@ export function parseWooDecimal(value: unknown): number | null {
  * that never existed.
  *
  * A compare-at price is the only thing that makes a product "on sale", so it
- * decides the pair on its own; `price` alone is just the list price, and a null
- * price clears both fields rather than leaving a stale sale behind.
+ * decides the pair on its own; `price` alone is the whole price story — the
+ * product sells at exactly that number, which means any *existing* `sale_price`
+ * has to go. Leaving it stood would keep the store charging the old number while
+ * the console displayed the new one, because WooCommerce charges `sale_price`
+ * whenever it is set. A null price clears both fields.
  */
 /**
  * A price as a number, accepting the numeric string a form field produces.
@@ -196,9 +199,16 @@ export function priceFields(
   }
 
   if (patch.price !== undefined) {
+    // Clearing `sale_price` here is not tidiness. On update, this branch names a
+    // price for a product that may already be discounted: writing only
+    // `regular_price` left the old `sale_price` in place, WooCommerce went on
+    // charging it, and `sellingPrice` reported the *sale* price back — so the
+    // console showed the old number as though the edit had been refused, and the
+    // storefront kept selling it. `regular_price` alone is the whole price story
+    // only when nothing is on sale.
     return price === null || price === undefined
       ? { regular_price: '', sale_price: '' }
-      : { regular_price: toWooDecimal(price) };
+      : { regular_price: toWooDecimal(price), sale_price: '' };
   }
 
   return {};

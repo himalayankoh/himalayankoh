@@ -5795,6 +5795,18 @@ export function AEmailMarketing() {
     dkim?: { status?: string; note?: string };
     omnisend?: { status?: string; note?: string };
   } | null>(null);
+
+  /**
+   * The deployment's forwarding inbox, exactly as `/api/email/status` reports it —
+   * empty when the deployment has not configured one.
+   *
+   * Never hardcoded. This panel used to print the owner's personal address in four
+   * places, which shipped it in the browser bundle; an inbox is deployment
+   * configuration, and a panel that shows an address mail does not actually go to is
+   * worse than one that says it does not know.
+   */
+  const forwardInbox = emailStatus?.forwardDestination?.trim() || '';
+
   const [testMail, setTestMail] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const [testMailMsg, setTestMailMsg] = useState('');
   const [mailRoutes, setMailRoutes] = useState<{ configured?: boolean; routes?: { id?: string; address?: string; local?: string; forwardsTo?: string; enabled?: boolean }[]; destinations?: { email?: string; verified?: boolean }[]; message?: string } | null>(null);
@@ -5820,7 +5832,11 @@ export function AEmailMarketing() {
       const token = getAccessToken();
       const r = await fetch('/api/email/routes', {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: local, forwardTo: '8002salman@gmail.com' }),
+        // The forwarding destination is the deployment's business, so it is not sent
+        // from here: `/api/email/routes` fills in the configured inbox itself. A
+        // browser-supplied address would be a value the panel could not be trusted to
+        // supply, and hardcoding one shipped a personal inbox into the bundle.
+        body: JSON.stringify({ name: local }),
       });
       const j = await r.json().catch(() => null);
       if (j?.ok) { setAddrMsg({ ok: true, text: j.message }); setNewAddr(''); await loadRoutes(); notify(j.message, 'success'); }
@@ -5861,10 +5877,11 @@ export function AEmailMarketing() {
       const r = await fetch('/api/email/send', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: '8002salman@gmail.com', subject: 'Himalayan Koh — Cloudflare email test', text: 'Hi Salman,\n\nThis is a test email sent from sales@himalayankoh.com through Cloudflare Email Routing / Email Sending. If you received this, outbound email from the site works.\n\n— Himalayan Koh' }),
+        // No `to`: the route addresses the deployment's configured forwarding inbox.
+        body: JSON.stringify({ subject: 'Himalayan Koh — Cloudflare email test', text: 'Hi Salman,\n\nThis is a test email sent from sales@himalayankoh.com through Cloudflare Email Routing / Email Sending. If you received this, outbound email from the site works.\n\n— Himalayan Koh' }),
       });
       const j = await r.json().catch(() => null);
-      if (j?.ok) { setTestMail('sent'); setTestMailMsg('Test email sent to 8002salman@gmail.com — check your Gmail inbox.'); notify('Test email sent', 'success'); }
+      if (j?.ok) { setTestMail('sent'); setTestMailMsg(`Test email ${j.simulated ? 'simulated for' : 'sent to'} ${forwardInbox || 'the forwarding inbox'} — check that inbox.`); notify('Test email sent', 'success'); }
       else { setTestMail('failed'); setTestMailMsg(j?.error || 'Could not send test email.'); notify(j?.error || 'Send failed', 'error'); }
     } catch (e) { setTestMail('failed'); setTestMailMsg(`Request failed: ${(e as Error).message}`); }
   };
@@ -5952,10 +5969,10 @@ export function AEmailMarketing() {
             )}
             <div className="mt-2 space-y-0.5">
               <p className="text-[11px] font-mono text-blue-700 bg-blue-50 rounded px-2 py-0.5">
-                sales@himalayankoh.com → {emailStatus?.forwardDestination ?? '8002salman@gmail.com'}
+                sales@himalayankoh.com → {forwardInbox || 'not configured'}
               </p>
               <p className="text-[11px] font-mono text-blue-700 bg-blue-50 rounded px-2 py-0.5">
-                anything@himalayankoh.com → {emailStatus?.forwardDestination ?? '8002salman@gmail.com'} (catch-all)
+                anything@himalayankoh.com → {forwardInbox || 'not configured'} (catch-all)
               </p>
             </div>
           </div>
@@ -5985,7 +6002,7 @@ export function AEmailMarketing() {
             </div>
             <p className="text-xs text-gray-600">{emailStatus?.outbound?.note || 'Checking outbound email configuration…'}</p>
             <button onClick={sendTestEmail} disabled={testMail === 'sending'} className="btn-glow mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
-              <PaperPlaneRight size={13} /> {testMail === 'sending' ? 'Sending…' : `Send test email to ${emailStatus?.forwardDestination ?? '8002salman@gmail.com'}`}
+              <PaperPlaneRight size={13} /> {testMail === 'sending' ? 'Sending…' : `Send test email to ${forwardInbox || 'the forwarding inbox'}`}
             </button>
             {testMailMsg && <p className={`mt-2 text-[11px] ${testMail === 'sent' ? 'text-emerald-700' : 'text-red-600'}`}>{testMailMsg}</p>}
           </div>
@@ -6025,7 +6042,7 @@ export function AEmailMarketing() {
             <span className="self-center text-xs text-gray-400 font-mono">@himalayankoh.com</span>
             <button onClick={addAddress} disabled={addrBusy || !newAddr.trim()} className="btn-glow px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold whitespace-nowrap">{addrBusy ? '…' : 'Add address'}</button>
           </div>
-          <p className="text-[10px] text-gray-400 mt-1.5">New addresses forward to 8002salman@gmail.com automatically — emails to <b>anything@himalayankoh.com</b> already arrive there too (catch-all).</p>
+          <p className="text-[10px] text-gray-400 mt-1.5">New addresses forward to {forwardInbox || 'the deployment forwarding inbox'} automatically — emails to <b>anything@himalayankoh.com</b> already arrive there too (catch-all).</p>
           {addrMsg && <p className={`mt-2 text-[11px] ${addrMsg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{addrMsg.text}</p>}
         </div>
 
