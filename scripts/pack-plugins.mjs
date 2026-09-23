@@ -11,6 +11,21 @@
  * checksum is printed so a human uploading it can prove it is the file this repository
  * produced.
  *
+ * The archive is written here rather than by `Compress-Archive` or the `zip` CLI,
+ * because Compress-Archive writes **backslash** separators inside the archive. A Linux
+ * host then unpacks the plugin as one file literally named
+ * `himalayan-koh-storefront\himalayan-koh-storefront.php`: WordPress lists it, and every
+ * activation answers "Plugin file does not exist." Writing the archive in Node removes
+ * that trap and the platform branch with it.
+ *
+ * Two shape rules, both learned the hard way against a real site:
+ *
+ *   1. No wrapping folder. WordPress names the plugin's destination directory after the
+ *      *uploaded filename*, then unpacks the archive inside it. A wrapping folder just
+ *      adds a level, and `-1.5.0` in the filename becomes a version-named plugin folder.
+ *   2. So the artifact is `deploy/<slug>.zip` with the plugin file at the archive root,
+ *      which installs as `wp-content/plugins/<slug>/<slug>.php`.
+ *
  * The versions come from each plugin's own header — never from this script — because a
  * ZIP that says one version while the plugin says another is how the wrong code ends up
  * active. Output goes to `deploy/` (gitignored: build artifacts, not source).
@@ -19,10 +34,10 @@
  */
 
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deflateRawSync } from 'node:zlib';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'deploy');
@@ -39,22 +54,93 @@ function pluginVersion(source) {
   return match[1];
 }
 
-function zip(from, to) {
-  // PowerShell's Compress-Archive on Windows, `zip` elsewhere. Both put the named
-  // directory at the archive root, which is what WordPress requires.
-  if (process.platform === 'win32') {
-    execFileSync(
-      'powershell',
-      [
-        '-NoProfile',
-        '-Command',
-        `Compress-Archive -Path '${from}' -DestinationPath '${to}' -Force`,
-      ],
-      { stdio: 'inherit' },
-    );
-    return;
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/**
+ * A stored/deflated ZIP with `/` separators. `entries` are paths relative to the
+ * archive root plus their contents; the directory entry for each is implied by the
+ * file paths, which is what WordPress's unzip expects.
+ */
+function buildZip(entries) {
+  const local = [];
+  const central = [];
+  let offset = 0;
+
+  for (const [name, data] of entries) {
+    const nameBytes = Buffer.from(name, 'utf8');
+    const crc = crc32(data);
+    const deflated = deflateRawSync(data, { level: 9 });
+
+    const header = Buffer.alloc(30);
+    header.writeUInt32LE(0x04034b50, 0);
+    header.writeUInt16LE(20, 4); // version needed
+    header.writeUInt16LE(0x0800, 6); // UTF-8 names
+    header.writeUInt16LE(8, 8); // deflate
+    header.writeUInt32LE(crc, 14);
+    header.writeUInt32LE(deflated.length, 18);
+    header.writeUInt32LE(data.length, 22);
+    header.writeUInt16LE(nameBytes.length, 26);
+
+    local.push(header, nameBytes, deflated);
+
+    const directory = Buffer.alloc(46);
+    directory.writeUInt32LE(0x02014b50, 0);
+    directory.writeUInt16LE(20, 4); // version made by
+    directory.writeUInt16LE(20, 6); // version needed
+    directory.writeUInt16LE(0x0800, 8);
+    directory.writeUInt16LE(8, 10);
+    directory.writeUInt32LE(crc, 16);
+    directory.writeUInt32LE(deflated.length, 20);
+    directory.writeUInt32LE(data.length, 24);
+    directory.writeUInt16LE(nameBytes.length, 28);
+    directory.writeUInt32LE(0, 38); // external attributes
+    directory.writeUInt32LE(offset, 42);
+
+    central.push(directory, nameBytes);
+    offset += header.length + nameBytes.length + deflated.length;
   }
-  execFileSync('zip', ['-qr', to, from], { stdio: 'inherit', cwd: dirname(from) });
+
+  const centralBytes = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralBytes.length, 12);
+  end.writeUInt32LE(offset, 16);
+
+  return Buffer.concat([...local, centralBytes, end]);
+}
+
+/** Every entry must be forward-slash, flat, and named after the plugin file. */
+function assertInstallable(zipPath, slug, expected) {
+  const bytes = readFileSync(zipPath);
+  const names = [];
+  for (let i = 0; i < bytes.length - 30; i += 1) {
+    if (bytes.readUInt32LE(i) !== 0x04034b50) continue;
+    const nameLength = bytes.readUInt16LE(i + 26);
+    names.push(bytes.subarray(i + 30, i + 30 + nameLength).toString('utf8'));
+    i += 29 + nameLength;
+  }
+  if (names.some((name) => name.includes('\\'))) {
+    throw new Error(`${zipPath} contains backslash separators — WordPress would not unpack it`);
+  }
+  if (names.some((name) => name.includes('/'))) {
+    throw new Error(`${zipPath} wraps its contents in a folder — WordPress already names that folder after the ZIP (${names[0]})`);
+  }
+  if (!names.includes(expected)) {
+    throw new Error(`${zipPath} does not contain ${expected}`);
+  }
+  return names;
 }
 
 mkdirSync(OUT, { recursive: true });
@@ -69,33 +155,39 @@ for (const plugin of PLUGINS) {
     continue;
   }
 
-  const php = readFileSync(source, 'utf8');
   let version;
   try {
-    version = pluginVersion(php);
+    version = pluginVersion(readFileSync(source, 'utf8'));
   } catch (error) {
     console.error(`  ${plugin.slug}: could not read the plugin version (${error.message})`);
     failed += 1;
     continue;
   }
 
-  // Stage the plugin folder exactly as WordPress will unpack it.
-  const stage = join(OUT, plugin.slug);
-  rmSync(stage, { recursive: true, force: true });
-  mkdirSync(stage, { recursive: true });
-  copyFileSync(source, join(stage, plugin.file.split('/').pop()));
+  const inside = plugin.file.split('/').pop();
+  const entries = [[inside, readFileSync(source)]];
 
-  const zipPath = join(OUT, `${plugin.slug}-${version}.zip`);
+  // The filename is load-bearing: WordPress installs this into `plugins/<basename>/`.
+  const zipPath = join(OUT, `${plugin.slug}.zip`);
   rmSync(zipPath, { force: true });
-  zip(stage, zipPath);
+  writeFileSync(zipPath, buildZip(entries));
 
-  const bytes = readFileSync(zipPath);
-  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  let names;
+  try {
+    names = assertInstallable(zipPath, plugin.slug, inside);
+  } catch (error) {
+    console.error(`  ${plugin.slug}: ${error.message}`);
+    failed += 1;
+    continue;
+  }
 
-  console.log(`${plugin.slug}-${version}.zip`);
-  console.log(`  file:   deploy/${plugin.slug}-${version}.zip`);
-  console.log(`  bytes:  ${statSync(zipPath).size}`);
-  console.log(`  sha256: ${sha256}`);
+  const sha256 = createHash('sha256').update(readFileSync(zipPath)).digest('hex');
+  console.log(`${plugin.slug}.zip  (version ${version})`);
+  console.log(`  file:     deploy/${plugin.slug}.zip`);
+  console.log(`  installs: wp-content/plugins/${plugin.slug}/${inside}`);
+  console.log(`  bytes:    ${statSync(zipPath).size}`);
+  console.log(`  entries:  ${names.join(', ')}`);
+  console.log(`  sha256:   ${sha256}`);
 }
 
 process.exit(failed ? 1 : 0);

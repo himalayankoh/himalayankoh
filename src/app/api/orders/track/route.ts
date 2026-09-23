@@ -6,9 +6,9 @@
  * billing email must match either way, so knowing an order number is not enough to
  * read somebody's order.
  *
- * A pre-migration order is not in the store, so a Woo miss falls through to the
- * read-only legacy adapter (`lib/orders/legacyOrders`) and the same email check
- * applies there.
+ * An order imported from the old store answers to the number that store gave it, which
+ * lives in order meta; WooCommerce's own search does not look at meta, so the number is
+ * matched against that meta within one customer's orders.
  */
 
 import { NextResponse } from 'next/server';
@@ -16,20 +16,28 @@ import { resolveTrackingUrl } from '@/lib/orders/tracking';
 import { fetchShippoTracking } from '@/lib/shippo/server/tracking';
 import { resolveShippoConfigError } from '@/lib/shippo/config';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { getLegacyOrderByNumberForViewer } from '@/lib/orders/legacyOrders';
 import {
+  HK_META,
   getWooOrder,
   isWooOrderNotFound,
   listWooOrders,
+  listWooOrdersForEmail,
   orderFromWoo,
+  readWooOrderMeta,
   type WooOrderLike,
 } from '@/lib/woo/orders';
 import type { OrderWithItems } from '@/lib/commerce/types';
 
 export const dynamic = 'force-dynamic';
 
-/** The store's order for an order number, or null when it holds none. */
-async function findWooOrderByNumber(orderNumber: string): Promise<WooOrderLike | null> {
+/**
+ * The store's order for an order number, or null when it holds none.
+ *
+ * The email narrows the meta match: an imported order is only findable by its old
+ * number through its own meta, and searching the whole order table for a meta value
+ * WooCommerce does not index is not something to do per request.
+ */
+async function findWooOrderByNumber(orderNumber: string, email: string): Promise<WooOrderLike | null> {
   const numeric = Number(orderNumber);
   if (Number.isInteger(numeric) && numeric > 0) {
     try {
@@ -38,12 +46,22 @@ async function findWooOrderByNumber(orderNumber: string): Promise<WooOrderLike |
       if (!isWooOrderNotFound(error)) throw error;
     }
   }
+
+  const matches = (orders: WooOrderLike[]) =>
+    orders.find(
+      (order) =>
+        String(order.number ?? order.id) === orderNumber ||
+        String(order.id) === orderNumber ||
+        String(readWooOrderMeta(order, HK_META.legacyOrderNumber) ?? '') === orderNumber
+    ) ?? null;
+
   const searched = await listWooOrders({ search: orderNumber, perPage: 20 });
-  return (
-    searched.orders.find(
-      (order) => String(order.number ?? order.id) === orderNumber || String(order.id) === orderNumber
-    ) ?? null
-  );
+  const hit = matches(searched.orders);
+  if (hit) return hit;
+  if (!email) return null;
+
+  const byEmail = await listWooOrdersForEmail(email, { perPage: 20 });
+  return matches(byEmail.orders);
 }
 
 export async function POST(request: Request) {
@@ -72,7 +90,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const wooOrder = await findWooOrderByNumber(orderNumber);
+    const wooOrder = await findWooOrderByNumber(orderNumber, email);
     let view: OrderWithItems & { items: { product_name: string; quantity: number }[] } | null = null;
 
     if (wooOrder) {
@@ -89,20 +107,7 @@ export async function POST(request: Request) {
         })),
       };
     } else {
-      const legacy = await getLegacyOrderByNumberForViewer(orderNumber, email);
-      if (!legacy) {
-        return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
-      }
-      if (String(legacy.email ?? '').trim().toLowerCase() !== email) {
-        return NextResponse.json({ error: 'Email does not match this order.' }, { status: 403 });
-      }
-      view = {
-        ...legacy,
-        items: (legacy.order_items ?? []).map((item) => ({
-          product_name: item.product_name,
-          quantity: Number(item.quantity) || 0,
-        })),
-      };
+      return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
     }
 
     const trackingUrl = resolveTrackingUrl(view);

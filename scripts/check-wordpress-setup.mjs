@@ -214,20 +214,30 @@ const wpAppPassword = (process.env.WORDPRESS_ADMIN_APP_PASSWORD || '').replace(/
 const hasAdminCredential = Boolean(wpUser && wpAppPassword);
 console.log(`  credential: ${hasAdminCredential ? `present (${wpUser})` : 'absent'}`);
 
-/** One GET with the administrator application password. Never throws. */
-async function probeAdmin(path) {
+/**
+ * One request with the administrator application password. Never throws.
+ *
+ * A POST is used only for the routes that are registered POST-only; it carries an
+ * empty object, which every one of them rejects on validation or permission before
+ * doing anything. Nothing here writes.
+ */
+async function probeAdmin(path, { method = 'GET' } = {}) {
   if (!hasAdminCredential) {
     return { status: 0, ms: 0, detail: 'No administrator application password is configured.', body: '' };
   }
 
   const started = Date.now();
   try {
+    const headers = {
+      Accept: 'application/json',
+      'User-Agent': UA,
+      Authorization: `Basic ${Buffer.from(`${wpUser}:${wpAppPassword}`).toString('base64')}`,
+    };
+    if (method !== 'GET') headers['Content-Type'] = 'application/json';
     const response = await fetch(`${apiRoot}${path}`, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': UA,
-        Authorization: `Basic ${Buffer.from(`${wpUser}:${wpAppPassword}`).toString('base64')}`,
-      },
+      method,
+      headers,
+      body: method === 'GET' ? undefined : '{}',
       signal: AbortSignal.timeout(timeoutMs),
     });
     const body = await response.text();
@@ -344,10 +354,11 @@ if (!pluginsPass) {
  * that was never named here is a feature that fails later, one at a time, with
  * nothing saying which deploy it went missing from.
  *
- * Registration is judged from the response's error code rather than its status:
- * a route that exists but wants a parameter answers 400 `rest_missing_callback_param`,
- * and a POST-only route answers 404 with a *different* code than a route that does
- * not exist (`rest_no_route`). Read-only — still GETs only.
+ * Registration is judged by whether WordPress answers `rest_no_route`, which is what
+ * it returns for a URL that is not registered **or** for a registered URL called with
+ * the wrong method — so each route below carries the method it is registered for.
+ * Probing everything with GET reports every POST-only route as missing, which is how
+ * a working customer sign-in came to look absent.
  */
 const REQUIRED_ROUTES = {
   'hk-storefront/v1': [
@@ -358,18 +369,19 @@ const REQUIRED_ROUTES = {
     ['/category-hubs/one?key=home', 'one category hub'],
     ['/admin-records?table=store_settings', 'the console record store'],
     ['/admin-records/one?table=store_settings&id=free_shipping', 'one console record'],
-    ['/hermes-evidence/status', 'Hermes evidence store'],
+    ['/hermes-evidence', 'Hermes evidence store'],
+    ['/hermes-evidence/status', 'evidence status updates', 'POST'],
     ['/newsletter', 'newsletter subscribers'],
     ['/contact', 'contact submissions'],
     ['/wishlist/count?owner=0', 'wishlist'],
     ['/addresses?owner=0', 'saved addresses'],
     ['/cart-session?owner=0', 'cart binding'],
-    ['/customer/login', 'customer sign-in'],
-    ['/customer/register', 'account creation'],
-    ['/customer/request-password-reset', 'password-reset request'],
-    ['/customer/reset-password', 'password reset'],
-    ['/customer/change-password', 'password change'],
-    ['/legacy-orders/import', 'the historical order import'],
+    ['/customer/login', 'customer sign-in', 'POST'],
+    ['/customer/register', 'account creation', 'POST'],
+    ['/customer/request-password-reset', 'password-reset request', 'POST'],
+    ['/customer/reset-password', 'password reset', 'POST'],
+    ['/customer/change-password', 'password change', 'POST'],
+    ['/legacy-orders/import', 'the historical order import', 'POST'],
   ],
   'crm/v1': [
     ['/leads?search=', 'the CRM inbox and LeadOS lead library'],
@@ -392,8 +404,8 @@ const sweep = async () => {
 
     let missing = 0;
     const lines = [];
-    for (const [path, purpose] of routes) {
-      const result = await probeAdmin(`/${namespace}${path}`);
+    for (const [path, purpose, method = 'GET'] of routes) {
+      const result = await probeAdmin(`/${namespace}${path}`, { method });
       const code = result.json?.code;
       let marker;
       if (result.status >= 200 && result.status < 300) marker = 'PASS   ';

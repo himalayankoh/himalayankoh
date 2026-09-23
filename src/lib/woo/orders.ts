@@ -83,6 +83,16 @@ export const HK_META = {
   shippingMethod: '_hk_shipping_method',
   shippedAt: '_hk_shipped_at',
   deliveredAt: '_hk_delivered_at',
+  /**
+   * The number the pre-WooCommerce store gave an imported order.
+   *
+   * Historical orders carry the number a customer saw on their confirmation mail, and
+   * WooCommerce's order search does not look at meta — so a customer tracking a parcel
+   * by that number is found by matching this against what they typed, after narrowing
+   * the search to their own email. Nothing writes this for a new order; it exists for
+   * rows imported from the old store.
+   */
+  legacyOrderNumber: '_hk_legacy_order_number',
 } as const;
 
 export type AppOrderStatus = Order['status'];

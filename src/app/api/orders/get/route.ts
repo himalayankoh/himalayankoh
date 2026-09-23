@@ -13,11 +13,11 @@
  * The caller cannot name an owner: there is no user id in the request body any
  * more, only the id of the order being asked about.
  *
- * ## Legacy fallback
+ * ## No second order store
  *
- * A pre-migration order is not in the store, so a Woo miss falls through to the
- * read-only legacy adapter (`lib/orders/legacyOrders`), which applies the same
- * ownership rule by billing email. A live order never reaches it.
+ * Orders the old store recorded were imported into WooCommerce with their original
+ * references, so a miss here is a miss: this route reads WooCommerce and nothing else,
+ * and a customer's order is never answered from a store nobody maintains any more.
  */
 
 import { NextResponse } from 'next/server';
@@ -31,7 +31,6 @@ import {
   readWooOrderMeta,
   type WooOrderLike,
 } from '@/lib/woo/orders';
-import { getLegacyOrderForViewer } from '@/lib/orders/legacyOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,17 +81,13 @@ export async function POST(request: Request) {
         // to the legacy store: a Woo order that exists is not a legacy order.
         return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
       } catch (error) {
-        // Only a genuine "no such order" falls through to the legacy read; a store
-        // failure is answered as a failure so it is not mistaken for a miss.
+        // Only a genuine "no such order" is answered as a miss; a store failure is
+        // answered as a failure so it is not mistaken for one.
         if (!isWooOrderNotFound(error)) throw error;
       }
     }
 
-    const legacy = await getLegacyOrderForViewer(orderId, customer?.email ?? null);
-    if (!legacy) {
-      return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
-    }
-    return NextResponse.json(legacy);
+    return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
   } catch (error) {
     console.error('Order lookup failed:', error);
     return NextResponse.json({ error: 'Unable to load order.' }, { status: 500 });

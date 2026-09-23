@@ -103,41 +103,6 @@ export async function fetchAdminOrder(id: string): Promise<AdminOrderRecord> {
   return order;
 }
 
-export interface LegacyOrderSummary {
-  id: string;
-  order_number: string;
-  email: string;
-  status: Order['status'];
-  payment_status: Order['payment_status'];
-  total: number;
-  created_at: string;
-  source: 'legacy';
-}
-
-/**
- * The app's own pre-migration orders.
- *
- * Read-only and separate from the store's list on purpose: an owner must still be
- * able to see orders the app recorded before WooCommerce became the order source,
- * and those are not the store's records.
- */
-export async function fetchLegacyOrders(
-  options: { search?: string; page?: number; limit?: number } = {}
-): Promise<{
-  orders: LegacyOrderSummary[];
-  count: number;
-  totalPages: number;
-  available: boolean;
-  reason: string | null;
-}> {
-  const params = new URLSearchParams();
-  if (options.search) params.set('search', options.search);
-  if (options.page) params.set('page', String(options.page));
-  if (options.limit) params.set('limit', String(options.limit));
-  const query = params.toString();
-  return getJson(`/api/admin/orders/legacy${query ? `?${query}` : ''}`);
-}
-
 /* ------------------------------------------------------------------ */
 /* Coupons (WooCommerce)                                              */
 /* ------------------------------------------------------------------ */
