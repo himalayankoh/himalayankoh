@@ -49,6 +49,10 @@ const PLUGINS = [
   // packaged alongside the real plugins so its artifact and checksum are built
   // the same way, and removed the same way once the theme is fixed.
   { slug: 'hk-store-api-compat', file: 'wordpress/hk-store-api-compat/hk-store-api-compat.php' },
+  // Staging-only, marker-scoped cleanup tool. Packaged like the others so its
+  // artifact and checksum are reproducible; it refuses to run on production and is
+  // removed from staging once the QA rows are gone.
+  { slug: 'hk-staging-cleanup', file: 'wordpress/hk-staging-cleanup/hk-staging-cleanup.php' },
 ];
 
 /** The plugin's own header version, which is the only version that counts. */

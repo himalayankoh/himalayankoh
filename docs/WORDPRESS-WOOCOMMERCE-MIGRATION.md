@@ -661,3 +661,79 @@ The follow-on decision that will need owner input: whether all 11 staging
 products should be publicly sellable, or whether WooCommerce needs its own
 "is this ready to sell" marker to mirror the Supabase `packing_profile:` gate
 (see §4).
+
+---
+
+## 11. The verified build is deployed to staging
+
+Measured, three ways, in this order — the invariant is that a deployment is never
+ahead of the code it claims to be:
+
+| Where | SHA |
+| --- | --- |
+| Local working tree (`git rev-parse HEAD`) | `c13bd0e` |
+| Staging Worker (`GET /api/version`) | `c13bd0e` |
+| `origin/integration/cloudflare-workers-migration` | `31c9998` — **16 commits behind** |
+
+Local and staging agree. The GitHub branch does not, and **could not be updated from
+this environment**: the configured credential helper stores nothing, `gh` reports an
+invalid token, and there is no SSH key, so `git push` fails at authentication. Nothing
+was force-pushed and no history was rewritten; the commits are local until a working
+GitHub credential is available. That is a real, external blocker and the only reason
+the three SHAs above are not all equal.
+
+Deployment used the existing staging mechanism — `npm run build:deploy` (writes
+`.env.production.local` with the staging origin and the commit, then builds and runs
+both artifact gates) followed by `npm run deploy:staging` (Worker
+`himalayan-koh-ecommerce`, origin `preview.himalayankoh.com`). **Production was not
+touched.** Worker secrets are managed with `wrangler secret put`, not by the deploy, so
+they survive it; the live sign-in and write flows below are the proof.
+
+### Live regression on the deployed origin
+
+| Suite | Result |
+| --- | --- |
+| Customer journey (signup, login, account, wishlist, addresses, password change, reset, cross-account isolation) | **21/21** |
+| LeadOS + CRM (stats, projects, lead save, dedupe, scoring, CRM, outreach **simulation**) | **18/18** |
+| Admin catalog write (draft → edit → publish → trash → purge) | **18/18** |
+| Storefront + cart | **14/14** |
+| Admin sign-in through the app's own route | PASS (role `admin`) |
+| Admin APIs on a real session | products 31 · orders 25 of 28 (14 imported historical + 14 new) · inventory 57 · analytics · LeadOS stats |
+| Woo Store API `/wc/store/v1/products` (catalogue, parameters, per-product, variable) | healthy — `hk-store-api-compat` 1.0.1 active |
+| Client Supabase scan | 73 routes: 0 SDK, 0 config; the 3 dynamic routes measured with real ids → **76/76 clean** |
+| `audit:supabase` | 667 modules, **0** runtime imports (browser 0, server 0, types 0, raw calls 0) |
+
+### QA debris, and the tool that removed it
+
+The storefront tables are append-only behind the administrator application password
+and no delete route covers them, so QA rows accumulate next to real ones. This pass
+added `wordpress/hk-staging-cleanup/` — a **staging-only, marker-scoped** tool:
+
+- it refuses to run unless the site URL is the staging install (`/staging` path or a
+  `preview.` host), so shipping it to production is inert rather than dangerous;
+- it accepts no table, column, id or pattern from the caller — the markers are
+  constants in the file, and the most a caller can ask for is a dry run;
+- it required an explicit `confirm` token and `manage_options`.
+
+Dry run, then delete: **50 rows** removed — 11 newsletter subscribers, 9 contact
+submissions, 9 site events, 9 Hermes evidence records, 6 CRM leads, 6 LeadOS projects —
+leaving **0** matched rows and the one real LeadOS project (`Himalayan Koh — B2B Salt`)
+untouched. Every row removed was synthetic: the newsletter table held only
+`cutover-verify-*` and `probe-*` rows, which is why its count reached 11 rather than
+the two the previous pass assumed.
+
+The tool was then deactivated **and deleted from staging** (its route now answers
+404), so the deletion surface does not outlive the cleanup. Its source stays in the
+repository, packaged by `pack:plugins` like `hk-store-api-compat`, because the next QA
+pass will produce the same debris.
+
+### Stripe and Shippo, closed honestly
+
+- **Stripe**: no test keys exist in any environment. Both routes fail closed on the
+deployed app — `create-payment-intent` → 503 "Stripe payments are not configured",
+webhook → 503 "STRIPE_WEBHOOK_SECRET is not configured". Live payment E2E is
+**BLOCKED on test credentials**, not on code.
+- **Shippo**: the only configured key is a **live** one, so no rate or label was
+requested. The safe path was measured instead (an incomplete address answers 400 with
+no provider call), and the packing logic is read from WooCommerce product meta.
+Live shipping E2E is **BLOCKED on a test credential**, deliberately not exercised.
