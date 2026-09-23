@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "test:integration": "node scripts/test-integration.mjs",
     "build": "next build",
-    "postbuild": "node scripts/mark-build.mjs && node scripts/check-public-origin.mjs && node scripts/check-build-secrets.mjs .next",
+    "postbuild": "node scripts/mark-build.mjs && node scripts/check-public-origin.mjs .next && node scripts/check-build-secrets.mjs .next",
     "images:fetch": "node scripts/fetch-legacy-images.mjs",
     "images:check": "node scripts/check-legacy-images.mjs",
     "start": "next start",

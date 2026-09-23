@@ -45,6 +45,10 @@ const OUT = join(ROOT, 'deploy');
 const PLUGINS = [
   { slug: 'himalayan-koh-storefront', file: 'wordpress/himalayan-koh-storefront.php' },
   { slug: 'himalayan-koh-leados', file: 'wordpress/himalayan-koh-leados.php' },
+  // Staging-only compatibility shim for the FarmAgrico theme's Store API fatal;
+  // packaged alongside the real plugins so its artifact and checksum are built
+  // the same way, and removed the same way once the theme is fixed.
+  { slug: 'hk-store-api-compat', file: 'wordpress/hk-store-api-compat/hk-store-api-compat.php' },
 ];
 
 /** The plugin's own header version, which is the only version that counts. */

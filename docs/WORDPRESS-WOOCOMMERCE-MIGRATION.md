@@ -24,9 +24,35 @@ GitHub Next.js frontend  →  Cloudflare preview / production frontend
 
 ## 1. Summary of the blocker
 
-Every WooCommerce **Store API product** route on staging returns a WordPress PHP
-fatal error. Until that is resolved, **no public endpoint on staging reports
-product price, sale price, SKU or stock status**, so the storefront cannot show
+> **Resolved 2026-09-23.** The fatal was the active **FarmAgrico theme**, not
+> WooCommerce: `farmagrico_woocommerce_add_to_cart_text()`
+> (`inc/woocommerce.php:842`) reads the global `$product` from inside the
+> `woocommerce_product_add_to_cart_text` filter, and WooCommerce's Store API
+> serialiser calls that filter while building a product response — a context where
+> no such global is populated. Empty result sets never reach the per-product
+> builder, which is why `include=99999999` answered `200 []` while every query that
+> matched a product fataled.
+>
+> Staging now runs a small, removable compatibility plugin —
+> `wordpress/hk-store-api-compat` v1.0.1, **active**, packaged by
+> `npm run pack:plugins` (sha256 `197d8c74b241d7f302125c2bc5ccfa6dbcf5ff2022aa1d48939ef934bda92e00`) —
+> that detaches that one callback for `/wc/store/v1/products*` requests only. A
+> Store API request returns JSON, so the theme's HTML button label is meaningless
+> there; ordinary theme pages keep it. `npm run diagnose:store-products` now
+> reports **pattern: healthy**: the whole published catalogue, every parameterised
+> query (`per_page`, `orderby`, `search`, `_fields`, `include`) and all ten
+> per-product routes answer HTTP 200.
+>
+> This is a compatibility shim, not the permanent fix: when the theme guards its
+> global (or uses the filter's product argument), deactivate and delete the plugin
+> and nothing else changes.
+>
+> Everything below this note is the pre-fix record of the same fault, kept because
+> it is the measurement the fix was chosen from.
+
+Every WooCommerce **Store API product** route on staging returned a WordPress PHP
+fatal error. Until that was resolved, **no public endpoint on staging reported
+product price, sale price, SKU or stock status**, so the storefront could not show
 real commercial data.
 
 | Endpoint | Result |
@@ -462,7 +488,7 @@ With no override the app runs the `supabase` default. What to expect on each:
 | --- | --- | --- |
 | 0 | Repo audit → this document | ✅ Done |
 | 1 | `src/lib/backend/` adapter layer | ✅ Done |
-| 2 | WordPress staging connectivity | ⚠️ Content OK · **Store API products fatal** |
+| 2 | WordPress staging connectivity | ✅ Content OK · **Store API products fixed 2026-09-23** via `hk-store-api-compat` v1.0.1 (FarmAgrico theme callback scoped out of Store API product requests) — see §1 |
 | 3 | Products first, behind a flag | ✅ Read paths wired and verified on both flag values — storefront **and admin** (`adminCatalog.ts`); the two surfaces now serve the same catalog · ⛔ price/stock blocked by §1 |
 | 4 | WordPress content pages | ⏸ Not started — no code written. The speculative WordPress page/post mapper was removed as unused surface rather than left as untested groundwork. |
 | 5 | SEO from WordPress + Yoast | ⏸ Not started |
@@ -474,7 +500,7 @@ With no override the app runs the `supabase` default. What to expect on each:
 | 11 | Cloudflare hosting | ⏸ Not started |
 | 12 | Environment configuration | ⚠️ Documented in §6, needs manual file edit |
 | 13 | Safety rules | ✅ Observed throughout |
-| 14 | First milestone | ⛔ Blocked on §1 |
+| 14 | First milestone | ✅ Unblocked — §1 fixed 2026-09-23 (Store API healthy) |
 
 ---
 

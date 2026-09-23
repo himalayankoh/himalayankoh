@@ -8,10 +8,14 @@
  * got inlined was not the value anyone configured", and only a scan of what was
  * actually emitted can catch that.
  *
- *   node scripts/check-public-origin.mjs
+ *   node scripts/check-public-origin.mjs [artifact-dir]
  *
- * Run after the build (wired into `build` and `build:vinext`). Exits non-zero on
- * a match, so a deploy cannot proceed from a build that would publish
+ * Run after a build. `artifact-dir` is the directory the build emitted and
+ * defaults to `dist/` (the Cloudflare/vinext artifact checked by `build:vinext`
+ * and `build:deploy`); the plain `npm run build` passes `.next`, because that is
+ * what `next build` emits and the rule — no loopback origin in a shipped
+ * document — is about the documents this build will serve. Exits non-zero on a
+ * match, so a deploy cannot proceed from a build that would publish
  * `http://localhost:...` in a canonical URL, a sitemap entry or an email link.
  */
 import { readdir, readFile, stat } from 'node:fs/promises';
@@ -19,7 +23,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DIST = join(ROOT, 'dist');
+const ARTIFACT_DIR = process.argv[2] ? join(ROOT, process.argv[2]) : join(ROOT, 'dist');
 
 /**
  * Document extensions only — the artifacts a visitor or crawler actually receives.
@@ -36,6 +40,14 @@ const DIST = join(ROOT, 'dist');
  * reached the sitemap at all.
  */
 const DOCUMENT_EXTENSIONS = new Set(['.html', '.htm', '.rsc', '.xml', '.txt', '.json']);
+
+/**
+ * This repository's own scan report, written into the artifact directory by
+ * `check-client-supabase.mjs`. It records the base URL the scan was pointed at
+ * (a loopback URL during local verification by definition) and is not part of
+ * the build's output — nothing serves or deploys it.
+ */
+const SCANNER_REPORTS = new Set(['client-supabase-report.json']);
 
 /**
  * Files that legitimately hold a loopback URL:
@@ -69,10 +81,11 @@ async function walk(dir) {
   return found;
 }
 
-const files = await walk(DIST);
+const files = await walk(ARTIFACT_DIR);
 if (files.length === 0) {
   process.stderr.write(
-    'No build output found in dist/. Run the build first — this check inspects what the build emitted.\n',
+    `No build output found in ${relative(ROOT, ARTIFACT_DIR)}/. Run the build first — ` +
+      'this check inspects what the build emitted.\n',
   );
   process.exit(1);
 }
@@ -83,6 +96,7 @@ const expected = [];
 for (const file of files) {
   const ext = file.slice(file.lastIndexOf('.'));
   if (!DOCUMENT_EXTENSIONS.has(ext)) continue;
+  if (SCANNER_REPORTS.has(file.slice(file.lastIndexOf('\\') + 1))) continue;
 
   const info = await stat(file);
   if (info.size > 12 * 1024 * 1024) continue;
@@ -91,7 +105,7 @@ for (const file of files) {
   const matches = body.match(LOOPBACK);
   if (!matches) continue;
 
-  const rel = relative(DIST, file).split('\\').join('/');
+  const rel = relative(ARTIFACT_DIR, file).split('\\').join('/');
   if (EXPECTED_LOOPBACK_FILES.has(rel)) {
     expected.push(rel);
     continue;
@@ -128,5 +142,6 @@ if (offenders.length > 0) {
 }
 
 process.stdout.write(
-  `No loopback origin in ${files.length} built file(s). Public origin is safe to deploy.\n`,
+  `No loopback origin in ${files.length} built file(s) under ${relative(ROOT, ARTIFACT_DIR)}/. ` +
+    'Public origin is safe to deploy.\n',
 );

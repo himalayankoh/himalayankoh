@@ -22,8 +22,10 @@
  * data rather than silently polluting the inbox — this script prints exactly what it
  * left behind.
  *
- * Outreach sending is deliberately not exercised: it is an outbound-mail action
- * against a real prospect list, and this pass must not send anything.
+ * Outreach is exercised **in simulation only**. The route's simulation path is the
+ * one outbound-mail code a QA pass may run: it records the attempt, returns
+ * `state=simulated`, calls no provider, and must not mark the lead `contacted`.
+ * A real send is an action against a real prospect — never this.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -211,6 +213,33 @@ try {
     body: JSON.stringify({ email: 'not-an-email' }),
   });
   record('CRM refuses an invalid email', crmRejected.status === 400, `HTTP ${crmRejected.status}`);
+
+  // ---- outreach simulation (sends nothing) ---------------------------------
+  const sim = await app('/api/admin/leados/outreach/send', {
+    method: 'POST',
+    body: JSON.stringify({
+      leadId,
+      recipientEmail: `qa-outreach-${STAMP}@example.test`,
+      recipientName: 'QA Recipient',
+      subject: `${MARK} outreach simulation`,
+      message: 'Staging QA simulation for the outreach route. No email leaves the store.',
+      simulation: true,
+    }),
+  });
+  const simBody = sim.body ?? {};
+  record(
+    'outreach simulation (nothing sent)',
+    sim.ok && simBody.state === 'simulated' && simBody.simulated === true,
+    `HTTP ${sim.status} state=${simBody.state}`
+  );
+
+  const afterSim = await plugin(`/leados/v1/leads/${leadId}`);
+  const simLead = afterSim.body?.lead ?? afterSim.body ?? {};
+  record(
+    '  simulation did not mark contacted',
+    String(simLead.status || '') !== 'contacted',
+    `status=${simLead.status ?? '-'}`
+  );
 
   // ---- cleanup -------------------------------------------------------------
   const removed = await plugin(`/leados/v1/leads/${leadId}`, { method: 'DELETE' });
