@@ -296,7 +296,7 @@ const features = [
   ['Hermes evidence', 'hk-storefront plugin table hk_hermes_evidence; dedupe is the table UNIQUE key', 'moved'],
   ['Shippo packing profiles', 'WooCommerce product meta _hk_packing_profile (lib/woo/packingProfile.ts)', 'moved'],
   ['SEO server reads', 'the dead Supabase product fetch was deleted; blog SEO reads WordPress', 'moved'],
-  ['Stripe admin client', 'deleted from lib/stripe/server — the one remaining Supabase client is the orders adapter', 'moved'],
+  ['Stripe admin client', 'deleted from lib/stripe/server; payment truth is the Woo order plus the signature-checked webhook', 'moved'],
   ['Admin catalog data layer', 'features/catalog/repository.ts → /api/admin/* → WooCommerce; the console’s own records go to the plugin table via services/db.ts', 'moved'],
 ];
 for (const [feature, owner, status] of features) {

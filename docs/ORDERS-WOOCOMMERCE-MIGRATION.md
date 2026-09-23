@@ -479,30 +479,29 @@ The requirement was to classify each one rather than leave the answer implied.
 
 | Use | Class | Action |
 | --- | --- | --- |
-| `lib/orders/legacyOrders.ts` | **LEGACY historical read** | Kept, but no longer reaches Supabase: it reads the static archive the export writes. Read-only, no network, reached only when the store has no such order. Removal condition in §4. |
-| `app/api/admin/orders/legacy/route.ts` | **LEGACY historical read** | Kept for the same reason, served from the archive; `adminApi.getOrders` is gone with `lib/supabase/api/admin.ts`. |
+| `lib/orders/legacyOrders.ts` | **LEGACY historical read** | **Deleted.** It existed to serve the orders the Supabase table held; all 14 are Woo orders now, so the console reads them from WooCommerce like any other order. |
+| `app/api/admin/orders/legacy/route.ts` | **LEGACY historical read** | **Deleted** with the adapter above; `adminApi.getOrders` went earlier with `lib/supabase/api/admin.ts`. |
 | `adminApi.updateOrderStatus`, `updateOrderPaymentStatus`, `getOrderAnalytics`, `getDashboardStats`, `AdminOrderAnalytics` | **DEAD** | **Deleted.** No caller since the console moved to `lib/woo/orders`; order figures now come from `statsFromWooOrders`. |
-| `adminApi.getShippingLabelOrders` | **NEW-path gap** | Still reads Supabase `orders` for `/admin/labels`. Should become `listWooOrders`; not done in this pass. |
-| `adminApi.getDashboardAnalytics` (orders + order_items), `adminApi.deleteProduct`'s `order_items` cascade | **UNRELATED to the order source of truth** | Left alone: they are the admin catalog/analytics screens, which are their own migration block. |
+| `adminApi.getShippingLabelOrders` | **NEW-path gap** | **Closed**: `/admin/labels` reads `listWooOrders` and the Shippo metadata those orders carry. |
+| `adminApi.getDashboardAnalytics` (orders + order_items), `adminApi.deleteProduct`'s `order_items` cascade | **UNRELATED to the order source of truth** | **Closed** with the admin catalog block: dashboard figures come from Woo orders, and trashing a product no longer consults an order table. |
 
-Nothing in the **new-order lifecycle** reads or writes Supabase. The remaining uses
-are legacy reads and admin screens that are separately scheduled.
+Nothing in the **new-order lifecycle** reads or writes Supabase, and no remaining
+runtime path reads `orders` or `order_items` at all.
 
-### Step 6: implemented, blocked on one credential
+### Step 6: applied
 
-The historical import (§3.10) is **written, measured and not yet applied**: the dry run
-reports 14 orders, 23 line items and zero mapping exceptions, and no Supabase order
-has been copied into WooCommerce. No production table has been dropped or altered.
+The historical import (§3.10) has **run against staging**: `npm run migrate:orders -- --apply`
+reported 14 created, 0 failed, and a second run created nothing — idempotency is the
+plugin endpoint answering `exists` for an id it has already imported. Each imported
+order carries `_hk_legacy_supabase_order_id`, its original `date_created_gmt` and the
+source totals, with WooCommerce email silenced for the duration of the request and the
+line items written free-standing so no inventory moved. No production table has been
+dropped or altered.
 
-Applying it needs an administrator application password for staging WordPress — see
-the blocker note in §3.10 for why the WooCommerce REST API cannot substitute.
-
-**The application no longer waits for it.** The 14 orders and 23 line items were
-exported to `supabase-backup/legacy-orders.archive.json`, and
-`lib/orders/legacyOrders.ts` reads that file instead of opening a Supabase client.
-The import remains the end state — the archive is a carrier, not an architecture —
-but until the credential exists, showing fourteen historical orders costs the
-application no database connection at all. `lib/supabase/adminClient.ts` and
-`lib/supabase/client.ts` are **deleted** with the last importers, and
-`lib/stripe/server/supabaseAdmin.ts` was already gone: nothing in the Stripe runtime
-touches Supabase any more.
+With the Woo orders present, `lib/orders/legacyOrders.ts` and its route were
+**deleted** rather than kept as a carrier — the archive file
+(`supabase-backup/legacy-orders.archive.json`) stays untracked as the offline record,
+and its only remaining use is letting `migrate:orders` re-run somewhere that no longer
+has Supabase credentials. `lib/supabase/adminClient.ts` and `lib/supabase/client.ts`
+are **deleted** with the last importers, and `lib/stripe/server/supabaseAdmin.ts` was
+already gone: nothing in the Stripe runtime touches Supabase any more.

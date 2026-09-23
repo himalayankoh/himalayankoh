@@ -548,25 +548,30 @@ been keeping alive:
 | `lib/seo/server.ts` | Its Supabase read had no callers left — dead code carrying a live client. Deleted |
 | `lib/hermes/evidenceStore.ts` | Plugin table `hk_hermes_evidence`, reached through `lib/wordpress/storefrontClient.ts`; dedupe is the table's UNIQUE key |
 | `lib/shippo/server/rates.ts` packing lookup | WooCommerce product weight/dimensions plus `_hk_packing_profile` product meta, read by `lib/woo/packingProfile.ts` — which also resolves the store's weight unit from Woo settings instead of assuming pounds |
-| `lib/orders/legacyOrders.ts`, `/api/admin/orders/legacy` | A read-only adapter over the static archive the export writes (`supabase-backup/legacy-orders.archive.json`). No network, no client, no writes — see §10.5 |
+| `lib/orders/legacyOrders.ts`, `/api/admin/orders/legacy` | **Deleted.** The 14 historical orders were imported into WooCommerce (`npm run migrate:orders -- --apply`: 14 created, re-run created 0) and now render from `lib/woo/orders` like any other order — no adapter, no archive read at runtime. The archive file stays as the offline record — see §10.5 |
 | `lib/stripe/server/supabaseAdmin.ts`, `lib/supabase/*` | Deleted: `client.ts`, `adminClient.ts`, `config.ts` and all four `api/` modules. `@supabase/supabase-js` stays in `package.json` because the *scripts* still use it (backup, RLS verification, the order export) — tooling, not runtime |
 
-### 10.5 The historical orders are carried, not queried
+### 10.5 The historical orders are imported, not carried
 
-The import (`npm run migrate:orders -- --apply`) still needs a WordPress
-administrator application password and the plugin on the target, so it has not run.
-Fourteen orders with twenty-three line items is not a reason to keep a database
-connection in the application, so they were exported once:
+Both blockers that held the import — the plugin on the target, and the administrator
+application password — are resolved, so `npm run migrate:orders -- --apply` has run:
+**14 orders, 23 line items, 0 failed, 0 duplicates on re-run.** They are ordinary Woo
+orders now, each tagged `_hk_legacy_supabase_order_id` and carrying its original
+date and totals, with WooCommerce email silenced for the request and line items
+written free-standing so nothing touched inventory.
+
+The archive is the fallback for a target that has **no** WordPress write credential,
+not a runtime path — it is exported once:
 
 ```
 npm run migrate:orders -- --export-archive   # writes supabase-backup/legacy-orders.archive.json
 ```
 
-`lib/orders/legacyOrders.ts` reads that file. If it is not present, the legacy path
-answers "nothing here" — the same answer as a deployment that never had these orders,
-and never an outage. The archive is untracked on purpose: it carries customers' own
-addresses and order details, which do not belong in git history. The removal
-condition for this whole path is in `ORDERS-WOOCOMMERCE-MIGRATION.md` §4.
+`migrate:orders` reads that file when it cannot read Supabase. It is untracked on
+purpose: it carries customers' own addresses and order details, which do not belong
+in git history. Now that the import has run, the archive's only job is to let the
+importer re-run against a target that has lost its Supabase credentials — the
+application no longer reads it at all.
 
 ### 10.4 Phase L — the plugin blocker, measured
 
@@ -593,14 +598,25 @@ HK WordPress plugins
          Blocks: the CRM inbox and LeadOS
 ```
 
-**Blocked, and it needs one human step**: the plugin files have to reach
-`wp-content/plugins/` on the WordPress host. Nothing in the Worker deployment puts
-them there, and `POST /wp/v2/plugins` installs from the wordpress.org directory only,
-so a private plugin cannot be installed through REST. Once the files are present,
-activation *is* a single authenticated call (`POST /wp/v2/plugins/<plugin>` with
-`{"status":"active"}`), which the check script prints. Everything above that depends
-on these namespaces is correct in code and untested live until that happens — stated
-rather than claimed.
+**Resolved.** The plugin files now reach the WordPress host through the normal
+bucket: `npm run pack:plugins` builds a ZIP per header version and
+`scripts/install-wordpress-plugins.mjs` drives the authenticated upload and activation
+for an operator, staging only. Two obstacles are worth recording because both are
+invisible from the code:
+
+- `POST /wp/v2/plugins` installs from the wordpress.org directory only, so a private
+  plugin cannot be installed through REST. It has to go through the upload endpoint.
+- **WordPress names the destination folder from the uploaded filename**, and an
+  archive written by `Compress-Archive` on Windows uses backslash path separators —
+  which Linux reads as one file with a backslash in its name. The plugin then appears
+  in the list and refuses to activate ("Plugin file does not exist"). `pack-plugins.mjs`
+  therefore writes folder separators that are forward slashes on every platform, and
+  names the archive after the plugin slug.
+
+After the upload, `npm run check:wordpress` reports both namespaces registered and
+**20 of 20** routes present with the method each is registered for — the probe uses
+the route's real method, because probing a POST-only route with GET reports a present
+route as missing.
 
 ---
 

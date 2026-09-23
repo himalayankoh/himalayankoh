@@ -8,11 +8,11 @@
 // ## The archive, and why it exists
 //
 // `--export-archive` writes the same 14 orders to
-// `supabase-backup/legacy-orders.archive.json`, which is what the app's read-only
-// legacy order path serves when the import cannot run — no WordPress administrator
-// application password, or the plugin not yet installed on the target. That path
-// used to hold a live Supabase client; the archive is why the application no longer
-// needs one. It is untracked on purpose: it carries customers' own order details,
+// `supabase-backup/legacy-orders.archive.json`, the offline record of the historical
+// orders. The app *had* a read-only legacy order path that served this file; all 14
+// are now WooCommerce orders and that path is deleted, so the archive's only remaining
+// job is to let this script re-run against a target that no longer has Supabase
+// credentials. It is untracked on purpose: it carries customers' own order details,
 // and git history is the wrong place for them.
 //
 // DRY RUN IS THE DEFAULT, and it is also the migration *report*: it prints the
