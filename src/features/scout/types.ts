@@ -46,7 +46,7 @@ export interface MarginCalc {
   shippingCost: number | null;
   landedCost: number | null;
   /** Suggested Luxedge retail price (INFERRED from landed cost + markup). */
-  proposedLuxedgePrice: number | null;
+  proposedSellingPrice: number | null;
   grossMarginDollars: number | null;
   grossMarginPct: number | null;
   confidence: 'high' | 'medium' | 'low';

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — Storefront Account State
  * Description:       Custom tables and REST endpoints for the state WordPress does not already own: per-account storefront state (wishlist, saved addresses, cart binding), the customer operations WooCommerce exposes no REST route for (sign-in, account creation, password reset), and the app's site-content bridge (settings, category-hub overrides, first-party events, newsletter/contact submissions, HK blog fields). This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the hk-storefront/v1 namespace below.
- * Version:           1.5.0
+ * Version:           1.5.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -69,7 +69,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_STOREFRONT_VERSION', '1.5.0' );
+define( 'HK_STOREFRONT_VERSION', '1.5.1' );
 
 /** The installed schema version, so an update can add tables without re-activation. */
 const HK_STOREFRONT_DB_VERSION_OPTION = 'hk_storefront_db_version';
@@ -356,6 +356,10 @@ function hk_storefront_admin_record_tables() {
 		'suppliers',
 		'supplier_products',
 		'agent_jobs',
+		// Product Scout's run audit trail: the per-agent steps and the log lines a
+		// run writes, so a run is inspectable after the fact.
+		'agent_runs',
+		'agent_logs',
 		'media_videos',
 		// The Hermes review feeds. Nothing writes these yet — the panels are empty
 		// because no producer exists, not because the storage was missing — but they

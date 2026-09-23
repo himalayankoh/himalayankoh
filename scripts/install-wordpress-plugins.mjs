@@ -41,7 +41,7 @@ const UA = 'Mozilla/5.0 (compatible; HimalayanKoh-plugin-installer/1.0)';
 const DRY = process.argv.includes('--dry');
 
 const PLUGINS = [
-  { slug: 'himalayan-koh-storefront', version: '1.5.0' },
+  { slug: 'himalayan-koh-storefront', version: '1.5.1' },
   { slug: 'himalayan-koh-leados', version: '1.0.0' },
 ];
 
@@ -148,7 +148,10 @@ function pluginRows(base) {
 }
 
 function uploadZip({ slug, version }, base) {
-  const zip = resolve(PROJECT, 'deploy', `${slug}-${version}.zip`);
+  // The artifact is `deploy/<slug>.zip`: WordPress names the destination folder
+  // after the uploaded filename, so a version in the name becomes a second,
+  // version-named copy of the plugin (see scripts/pack-plugins.mjs).
+  const zip = resolve(PROJECT, 'deploy', `${slug}.zip`);
   if (!existsSync(zip)) return `artifact missing (${zip}) — run npm run pack:plugins`;
   const page = curl([`${base}/wp-admin/plugin-install.php?tab=upload`]);
   const nonce = page.match(/name="_wpnonce" value="([^"]+)"/)?.[1];

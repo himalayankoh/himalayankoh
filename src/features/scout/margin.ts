@@ -39,19 +39,19 @@ export function calculateMargin(input: MarginInput): MarginCalc {
   const landedCost = supplierPrice !== null && shippingCost !== null
     ? round2(supplierPrice + shippingCost)
     : null;
-  const proposedLuxedgePrice = landedCost !== null ? toRetail(landedCost * markup) : null;
-  const grossMarginDollars = landedCost !== null && proposedLuxedgePrice !== null
-    ? round2(proposedLuxedgePrice - landedCost)
+  const proposedSellingPrice = landedCost !== null ? toRetail(landedCost * markup) : null;
+  const grossMarginDollars = landedCost !== null && proposedSellingPrice !== null
+    ? round2(proposedSellingPrice - landedCost)
     : null;
-  const grossMarginPct = proposedLuxedgePrice !== null && grossMarginDollars !== null
-    ? round2(grossMarginDollars / proposedLuxedgePrice)
+  const grossMarginPct = proposedSellingPrice !== null && grossMarginDollars !== null
+    ? round2(grossMarginDollars / proposedSellingPrice)
     : null;
 
   if (supplierPrice === null) notes.push('Supplier price UNKNOWN — landed cost cannot be computed.');
   if (shippingCost === null) notes.push('Shipping cost UNKNOWN — margin confidence LOW, do not auto-approve.');
   if (supplierPrice !== null && shippingCost !== null) {
     notes.push(`Landed cost ${landedCost} (supplier ${supplierPrice} + shipping ${shippingCost}).`);
-    notes.push(`Suggested Luxedge price ${proposedLuxedgePrice} is INFERRED (${markup}× landed, rounded to .99).`);
+    notes.push(`Suggested selling price ${proposedSellingPrice} is INFERRED (${markup}× landed, rounded to .99).`);
   }
 
   // Spec: when shipping/cost is unknown, margin confidence is LOW — the
@@ -63,7 +63,7 @@ export function calculateMargin(input: MarginInput): MarginCalc {
     supplierPrice,
     shippingCost,
     landedCost,
-    proposedLuxedgePrice,
+    proposedSellingPrice,
     grossMarginDollars,
     grossMarginPct,
     confidence,

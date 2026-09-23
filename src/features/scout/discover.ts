@@ -22,32 +22,32 @@ export interface DiscoverOptions {
   maxResults?: number;
   /** Optional max supplier cost — used to bias the query, not fabricate data. */
   maxSupplierCost?: number;
-  /** Optional category keyword (dog/cat/grooming/…) appended to the query. */
+  /** Optional category keyword (fine/coarse/lamp/bath…) appended to the query. */
   category?: string;
 }
 
 /**
- * Concrete pet product types used to expand a generic query ("pet
- * accessories") into real product searches. Each becomes its own search so a
+ * Concrete Himalayan Koh product types used to expand a generic query
+ * ("pink salt") into real product searches. Each becomes its own search so a
  * category-level query still surfaces actual product pages. Never invents
  * results — it only broadens the query into honest product terms.
  */
 export const QUERY_EXPANSIONS = [
-  'dog toy',
-  'cat toy',
-  'dog bed',
-  'dog harness',
-  'dog collar',
-  'cat scratching post',
-  'pet grooming brush',
-  'dog leash',
-  'cat carrier',
-  'dog bowl',
-  'pet first aid kit',
-  'dog puzzle toy',
-  'cat tunnel',
-  'pet water fountain',
-  'dog treat dispenser',
+  'himalayan pink salt',
+  'pink salt fine',
+  'pink salt coarse',
+  'salt lamp',
+  'himalayan salt lamp',
+  'bath salt',
+  'salt block for livestock',
+  'salt lick',
+  'salt grinder',
+  'salt and pepper set',
+  'salt scrub',
+  'pickling salt',
+  'soaking salt',
+  'salt slab',
+  'salt gift set',
 ];
 
 export interface DiscoverResult {

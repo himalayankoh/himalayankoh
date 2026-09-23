@@ -22,10 +22,10 @@ import { fetchRawPage, extractLinks, decodeRedirectUrl, cleanUrl } from './disco
 import { evidenceUrlRejectionReason } from './marketEvidence';
 
 /** Initial USA evidence domains (site-restricted). */
-export const RETAIL_EVIDENCE_DOMAINS = ['chewy.com', 'target.com', 'walmart.com'];
+export const RETAIL_EVIDENCE_DOMAINS = ['target.com', 'walmart.com'];
 
 /** Optional additional domains — NOT required to work. */
-export const OPTIONAL_RETAIL_EVIDENCE_DOMAINS = ['petco.com', 'petsmart.com', 'tractorsupply.com'];
+export const OPTIONAL_RETAIL_EVIDENCE_DOMAINS = ['tractorsupply.com'];
 
 /** Hard cap on the number of site-restricted search requests per run. */
 export const MAX_RETAIL_SEARCH_REQUESTS = 8;

@@ -150,7 +150,7 @@ export interface CjSeedConcept {
   /**
    * FIXED concept-level supplier-suitability score (0–15, Phase 4G §B) — NOT
    * a demand/market score and NOT scaled by member count. Ranks concepts
-   * only for: pet relevance, product clarity, supplier data completeness,
+   * only for: category relevance, product clarity, supplier data completeness,
    * basic safety/risk suitability. Higher = more researchable, not "popular".
    */
   suitabilityScore: number;
@@ -212,7 +212,8 @@ export function clusterCjSeedConcepts(
  * complete concept with 1 record merely because more listings exist. That is
  * not consumer demand and it is an undesirable selection bias.
  *
- *   pet relevance           0–2   (dog/cat/pet in the representative title)
+ *   category relevance      0–2   (this store's category in the representative
+ *                                  title: himalayan/pink salt, else salt)
  *   clear product concept   0–2   (title length is a real single-product title)
  *   verified supplier price 0–2   (ANY member has a real price — not count)
  *   usable image evidence   0–2   (ANY member has a real image — not count)
@@ -235,11 +236,12 @@ export function assessConceptSuitability(records: CjSeedRecord[]): { score: numb
   const any = (fn: (r: CjSeedRecord) => boolean) => records.some(fn);
   const title = rep.title.toLowerCase();
 
-  // 1) Pet relevance (0–2)
-  let petPts = 0;
-  if (/\b(dog|puppy|canine|cat|kitten|feline)\b/.test(title)) petPts = 2;
-  else if (/\bpet\b/.test(title)) petPts = 1;
-  reasons.push(petPts ? `pet-relevant title (+${petPts})` : 'no clear pet keyword in title');
+  // 1) Category relevance (0–2) — the title is recognisably this store's own
+  //    category, not some other market's product type.
+  let categoryPts = 0;
+  if (/\b(himalayan|pink salt)\b/.test(title)) categoryPts = 2;
+  else if (/\bsalt\b/.test(title)) categoryPts = 1;
+  reasons.push(categoryPts ? `category-relevant title (+${categoryPts})` : 'no clear category keyword in title');
 
   // 2) Clear product concept (0–2) — a real single-product title. Uses the
   //    NORMALIZED concept-token count, not raw title length: CJ titles are
@@ -299,7 +301,7 @@ export function assessConceptSuitability(records: CjSeedRecord[]): { score: numb
   const researchable = tokens.length >= 2;
   reasons.push(researchable ? `researchable concept vocabulary (${tokens.length} tokens) (+2)` : `concept vocabulary not researchable (${tokens.length} tokens)`);
 
-  const score = petPts
+  const score = categoryPts
     + (clarity ? 2 : 0)
     + (hasPrice ? 2 : 0)
     + (hasImage ? 2 : 0)
@@ -312,7 +314,7 @@ export function assessConceptSuitability(records: CjSeedRecord[]): { score: numb
 
 /**
  * Select up to `max` DISTINCT concepts for market research. Ranking uses ONLY
- * supplier-suitability (pet relevance, clarity, data completeness, safety) —
+ * supplier-suitability (category relevance, clarity, data completeness, safety) —
  * never invented popularity. Returns concepts sorted by suitabilityScore desc.
  */
 export function selectSeedConcepts(records: CjSeedRecord[], max = CJ_SEED_MAX_CONCEPTS): CjSeedConcept[] {
@@ -381,7 +383,7 @@ export interface CjSeedRunResult {
 export interface CjSeedDiscoveryOptions {
   adapter: SupplierDiscoveryAdapter;
   db: DbAdapter;
-  /** Seed search query (concept vocabulary source). Default: dog travel accessories. */
+  /** Seed search query (concept vocabulary source). Default: himalayan pink salt. */
   query?: string;
   market?: string;
   maxResults?: number;
@@ -404,7 +406,7 @@ export interface CjSeedDiscoveryOptions {
  *   * `listedNum` is preserved as a listing count only — never demand.
  */
 export async function runCjSeedDiscovery(opts: CjSeedDiscoveryOptions): Promise<CjSeedRunResult> {
-  const { adapter, db, query = 'dog travel accessories', market = 'US', maxResults = CJ_SEED_MAX_RECORDS, onProgress } = opts;
+  const { adapter, db, query = 'himalayan pink salt', market = 'US', maxResults = CJ_SEED_MAX_RECORDS, onProgress } = opts;
   const progress = (m: string) => onProgress?.(m);
   const at = new Date().toISOString();
 

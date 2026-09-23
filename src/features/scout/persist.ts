@@ -1,19 +1,26 @@
 // ============================================================================
-// LUXEDGE V2 — SCOUT PERSISTENCE (Phase 4A)
+// HIMALAYAN KOH — SCOUT PERSISTENCE (Phase 4A)
 //
-// Writes scout records to Supabase through the db adapter using the ADMIN's
-// own JWT (set via setAccessToken). RLS grants admin full access to the
-// scout tables and denies anon/customer writes, so persisting here never
-// bypasses authorization. No service-role key is ever used client-side.
+// Writes scout records to the HK WordPress admin-record store through the db
+// adapter, using the ADMIN's own session (set via setAccessToken). The plugin
+// allowlists every record name used here and refuses anon/customer writes, so
+// persisting never bypasses authorization.
 //
-// Honesty: evidence jsonb stores VERIFIED/INFERRED/UNKNOWN statuses; nothing
-// is fabricated. The product draft is written with status 'draft' only —
-// publishing requires explicit owner approval later.
+// Products are the exception: they have a WooCommerce owner, so a scout-created
+// draft is created in the store itself (see createProductDraft below).
+//
+// Honesty: evidence stores VERIFIED/INFERRED/UNKNOWN statuses; nothing is
+// fabricated. The product draft is created with status 'draft' only — publishing
+// requires explicit owner approval later.
 // ============================================================================
 
 import type { DbAdapter } from '../../services/db';
 import type { ScoutCandidate, ScoutSupplier, ScoreBreakdown, CandidateEvidence } from './types';
 import { canonicalDomain } from './normalize';
+// Products belong to WooCommerce, not to the console's record store, so the
+// draft/publish paths below go through the store repository (which owns all Woo
+// field mapping).
+import { createProduct, getProduct, listCategories, listProducts, saveProductImages, setProductStatus } from '../catalog/repository';
 
 export function newId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
@@ -355,84 +362,56 @@ export interface ProductDraftInput {
   compareAtPrice: number | null;
   costPrice: number | null;
   landedCost: number | null;
-  grossMargin: number | null;
   images: string[];
   shortDesc: string;
   sourceUrl: string;
   supplierName: string;
-  scoreOverall: number | null;
-  /** CJ/supplier_products row this draft's evidence came from (provenance). */
-  supplierProductId?: string | null;
 }
 
-const LEGACY_TAX_CODE = 'txcd_99999999';
-
 /**
- * Create a products row (status 'draft') + product_images rows, honoring the
- * reconciled schema's legacy NOT NULL columns (title, description,
- * short_description, tax_code, is_featured, features/benefits/specifications
- * jsonb, inventory_qty). Never sets status='published'.
+ * Create the candidate's product as a WooCommerce DRAFT.
+ *
+ * The console's record store deliberately refuses `products`/`product_images`
+ * (see services/db.ts) — the store owns them — so a scout draft is created in
+ * WooCommerce itself. The supplier and source URL ride in the description, which
+ * is where a draft's provenance survives a Woo round trip. Never publishes: the
+ * owner-approval gate is the store status `draft`.
  */
-export async function createProductDraft(db: DbAdapter, input: ProductDraftInput): Promise<{ id: string; existing: boolean }> {
-  const existing = await db.findFirst<{ id: string }>('products', 'slug', input.slug);
+export async function createProductDraft(input: ProductDraftInput): Promise<{ id: string; existing: boolean }> {
+  const existing = (await listProducts()).find((p) => p.slug === input.slug);
   if (existing) return { id: existing.id, existing: true };
 
-  const t = now();
-  const desc = `${input.shortDesc || input.title} — ${input.supplierName}. Source: ${input.sourceUrl}`;
-  const features = input.shortDesc ? [input.shortDesc] : [];
-  const product = {
-    id: newId(),
-    slug: input.slug,
-    title: input.title,
+  const created = await createProduct({
     name: input.title,
-    description: desc,
-    short_description: input.shortDesc || input.title,
+    canonicalSlug: input.slug,
     status: 'draft',
-    currency: 'USD',
-    tax_code: LEGACY_TAX_CODE,
-    is_featured: false,
-    features,
-    benefits: [],
-    specifications: {},
-    seo_keywords: [],
-    brand: input.supplierName,
-    price: input.price,
-    compare_at_price: input.compareAtPrice,
-    cost_price: input.costPrice,
-    landed_cost: input.landedCost,
-    gross_margin: input.grossMargin,
-    inventory_qty: 0,
-    category_id: input.categoryId,
-    product_source_evidence: {
-      sourceUrl: input.sourceUrl,
-      supplier: input.supplierName,
-      score: input.scoreOverall,
-      supplierProductId: input.supplierProductId ?? null,
-      draftedAt: t,
-      status: 'draft',
-    },
-    created_at: t,
-    updated_at: t,
-  };
-  const inserted = await db.insert<{ id: string } & Record<string, unknown>>('products', product);
+    description: `${input.shortDesc || input.title} — ${input.supplierName}. Source: ${input.sourceUrl}`,
+    shortDescription: input.shortDesc || input.title,
+    categoryId: input.categoryId,
+    price: input.price ?? undefined,
+    compareAtPrice: input.compareAtPrice ?? undefined,
+    costPrice: input.costPrice ?? undefined,
+    landedCost: input.landedCost ?? undefined,
+    inventoryQty: 0,
+  });
 
-  // product_images legacy NOT NULLs: storage_path, public_url, alt_text.
-  const imageRows = input.images.map((url, i) => ({
-    id: newId(),
-    product_id: inserted.id,
-    storage_path: url,
-    public_url: url,
-    url,
-    alt_text: input.title,
-    kind: 'product',
-    is_primary: i === 0,
-    sort_order: i,
-    created_at: t,
-  }));
-  for (const row of imageRows) {
-    await db.insert('product_images', row);
+  const images = input.images.filter(Boolean);
+  if (images.length > 0) {
+    // The supplier gallery is attached to the store product. WooCommerce rejects
+    // a whole image save when one URL is unacceptable and a supplier CDN URL can
+    // rot between research and drafting, so a gallery failure must not discard a
+    // draft that is already real — the editor can attach images afterwards.
+    try {
+      await saveProductImages(
+        created.id,
+        images.map((url, i) => ({ url, altText: input.title, isPrimary: i === 0, sortOrder: i })),
+        { reload: false },
+      );
+    } catch {
+      /* draft kept; images can be attached in the product editor */
+    }
   }
-  return { id: inserted.id, existing: false };
+  return { id: created.id, existing: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -449,38 +428,24 @@ export interface PublishDraftInput {
 }
 
 /**
- * Publish a scout-created product draft to the live storefront: status
- * 'active' (+ published_at) with an explicit COMMERCE_READY stamp — a scout
- * draft would otherwise derive FULFILLMENT_PENDING (inventory 0) and never
- * surface. Requires an existing draft (caller ensures it). Idempotent:
- * already-active products stay live without a second audit job. Always writes
- * a PRODUCT_PUBLISH audit row (best-effort — never blocks publishing).
+ * Publish a scout-created product draft to the live storefront by setting the
+ * store's own status to `active`. Requires an existing draft (caller ensures
+ * it). Idempotent: an already-active product stays live without a second audit
+ * job. Always writes a PRODUCT_PUBLISH audit row (best-effort — never blocks
+ * publishing).
  */
 export async function publishProductDraft(
   db: DbAdapter,
   input: PublishDraftInput
 ): Promise<{ published: boolean; reason: 'live' | 'already-live' | 'missing' }> {
-  const existing = await db.get<{ id: string; status: string; product_source_evidence: Record<string, unknown> | null }>('products', input.productId);
+  const existing = await getProduct(input.productId);
   if (!existing) return { published: false, reason: 'missing' };
   if (existing.status === 'active') return { published: true, reason: 'already-live' };
 
   const t = new Date().toISOString();
-  const prior = existing.product_source_evidence && typeof existing.product_source_evidence === 'object'
-    ? existing.product_source_evidence
-    : {};
-  await db.update<{ id: string; status: string; published_at: string; commerce_readiness: string; product_source_evidence: Record<string, unknown> }>('products', input.productId, {
-    status: 'active',
-    published_at: t,
-    commerce_readiness: 'COMMERCE_READY',
-    product_source_evidence: {
-      ...prior,
-      status: 'published',
-      publishedAt: t,
-      publishedVia: input.channel,
-      candidateId: input.candidateId,
-      score: input.scoreOverall,
-    },
-  });
+  // The store's own status is the publish: the candidate's product was created
+  // as a draft and this is the owner's explicit approval.
+  await setProductStatus(input.productId, 'active');
 
   try {
     const jobId = await createJob(db, 'PRODUCT_PUBLISH', { productId: input.productId, candidateId: input.candidateId, title: input.candidateTitle, channel: input.channel });
@@ -491,10 +456,13 @@ export async function publishProductDraft(
   return { published: true, reason: 'live' };
 }
 
-/** Resolve a category by exact name; null when it does not exist. */
-export async function findCategoryId(db: DbAdapter, name: string): Promise<string | null> {
-  const row = await db.findFirst<{ id: string }>('categories', 'name', name);
-  return row ? row.id : null;
+/** Resolve a store category by exact name; null when it does not exist. */
+export async function findCategoryId(name: string): Promise<string | null> {
+  const target = name.trim().toLowerCase();
+  if (!target) return null;
+  const categories = await listCategories();
+  const hit = categories.find((c) => c.name.trim().toLowerCase() === target);
+  return hit ? hit.id : null;
 }
 
 // ---------------------------------------------------------------------------

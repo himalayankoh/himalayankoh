@@ -1,5 +1,5 @@
 // ============================================================================
-// LUXEDGE V2 — ADMIN · PRODUCT SCOUT (Phase 4A)
+// HIMALAYAN KOH — ADMIN · PRODUCT SCOUT (Phase 4A)
 //
 // Premium compact control center for the autonomous research pipeline.
 // Shows real candidates from product_candidates (+ product_scores +
@@ -21,6 +21,8 @@ import {
 import { useApp, Modal, fetchPageContent } from '../App';
 import { useNavigate } from 'react-router-dom';
 import { getDb } from '../services/db';
+import { listProducts, updateProduct } from '../features/catalog/repository';
+import { SITE_ORIGIN } from '../lib/site/origin';
 import { getAccessToken } from '../services/wordpressAdminAuth';
 import type { DbAdapter } from '../services/db';
 import { runScoutResearch, runMarketIntelligenceJob, qaCandidate, cjMarketContextFor } from '../features/scout/engine';
@@ -40,23 +42,11 @@ import { suggestedSellPrice } from '../features/scout/normalize';
 import type { SuggestedSellPrice } from '../features/scout/normalize';
 import { loadAiControlConfig } from '../features/scout/aiControl';
 
-// Real seed sources for the first controlled research run (pet products,
-// USA-focused). Each URL was verified fetchable (manufacturer + retailer
-// pages); the owner can edit the list before running.
-export const SCOUT_SEED_URLS = [
-  'https://www.kongcompany.com/kong-classic/',
-  'https://www.kongcompany.com/kong-flyer/',
-  'https://www.kongcompany.com/kong-extreme/',
-  'https://www.kongcompany.com/zoomgroom/',
-  'https://www.kongcompany.com/kong-wubba/',
-  'https://www.kongcompany.com/kong-squeezz/',
-  'https://www.kongcompany.com/kong-treat-ball/',
-  'https://www.petco.com/shop/en/petcostore/product/kong-classic-dog-toy',
-  'https://www.petco.com/shop/en/petcostore/product/kong-flyer-dog-toy',
-  'https://www.outwardhound.com/product/brutus-bone/',
-  'https://www.chewy.com/frisco-bird-cat-toy/dp/193158',
-  'https://www.chewy.com/outward-hound-brutus-bone-chew-toy/dp/134240',
-];
+// Default seed source for the first controlled research run: this store's own
+// catalogue, resolved from the deployment's origin so staging seeds staging.
+// The owner edits this list before running — a later run uses the supplier
+// pages the provider search actually returns.
+export const SCOUT_SEED_URLS = [`${SITE_ORIGIN}/products`];
 
 interface ScoreRow { id: string; candidate_id: string; overall: number; explanation: string; weights: Record<string, number>; breakdown: Record<string, { points: number; max: number; note: string }>; }
 interface SupplierRow { id: string; name: string; slug: string; base_url: string; }
@@ -129,7 +119,7 @@ export default function ProductScout() {
 
   // Phase 4B — Market Intelligence + Autonomy + Owner Attention
   const [miOpen, setMiOpen] = useState(false);
-  const [miQuery, setMiQuery] = useState('dog toys');
+  const [miQuery, setMiQuery] = useState('');
   const [miMarket, setMiMarket] = useState('USA');
   const [miRunning, setMiRunning] = useState(false);
   // Phase 4E — retailer-restricted evidence discovery (site:chewy/target/walmart).
@@ -159,7 +149,7 @@ export default function ProductScout() {
   const logRef = useRef<HTMLDivElement>(null);
 
   // Discovery state (autonomous mode)
-  const [discoverQuery, setDiscoverQuery] = useState('pet accessories');
+  const [discoverQuery, setDiscoverQuery] = useState('');
   const [discoverMarket, setDiscoverMarket] = useState('USA');
   const [discoverMax, setDiscoverMax] = useState('20');
   const [discovering, setDiscovering] = useState(false);
@@ -167,7 +157,7 @@ export default function ProductScout() {
 
   // Phase 4C — CJ supplier search (official supplier API, server proxy)
   const [cjHealth, setCjHealth] = useState<SupplierHealth>('not_configured');
-  const [cjQuery, setCjQuery] = useState('dog enrichment toy');
+  const [cjQuery, setCjQuery] = useState('');
   const [cjMax, setCjMax] = useState('30');
   const [cjRunning, setCjRunning] = useState(false);
   const [cjLog, setCjLog] = useState<string[]>([]);
@@ -208,13 +198,17 @@ export default function ProductScout() {
         d.list<SupplierRow>('suppliers'),
         d.list<SupplierProductRow>('supplier_products'),
         d.list<JobRow>('agent_jobs', { orderBy: 'created_at.desc', limit: 12 }),
-        d.list<ProductRow>('products'),
+        // Products belong to WooCommerce, so they are read from the store (the
+        // console's record store refuses `products` by design).
+        listProducts(),
       ]);
       setJobs(Array.isArray(jobRows) ? jobRows : []);
       // Match candidate → product by the deterministic slug createProductDraft
       // generates from the candidate title (title→slug, slice 80), so approved
       // candidates show their draft/live product status.
-      const products = new Map((Array.isArray(prodRows) ? prodRows : []).map((p) => [p.slug, p]));
+      const products = new Map(
+        prodRows.map((p) => [p.slug, { id: p.id, name: p.name, slug: p.slug, status: p.status, price: p.price }]),
+      );
       const productFor = (c: CandidateRow): ProductRow | null => {
         const slug = c.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'item';
         return products.get(slug) ?? null;
@@ -292,7 +286,7 @@ export default function ProductScout() {
   const runDiscover = async () => {
     if (!db) { notify('Database not ready'); return; }
     const q = discoverQuery.trim();
-    if (!q) { notify('Enter a discovery query (e.g. “dog toys”)'); return; }
+    if (!q) { notify('Enter a discovery query (e.g. “himalayan pink salt”)'); return; }
     setDiscovering(true);
     setDiscoverNote('');
     try {
@@ -339,7 +333,7 @@ export default function ProductScout() {
   const runCjSearch = async () => {
     if (!db) { notify('Database not ready'); return; }
     const q = cjQuery.trim();
-    if (!q) { notify('Enter a CJ search query (e.g. “dog enrichment toy”)'); return; }
+    if (!q) { notify('Enter a CJ search query (e.g. “himalayan salt lamp”)'); return; }
     setCjRunning(true);
     setCjLog([]);
     setCjNote('');
@@ -460,8 +454,8 @@ export default function ProductScout() {
     const ev = v.candidate.evidence;
     const price = priceOverride ?? (ev?.supplierPrice?.value as number | null) ?? null;
     const category = String(ev?.category?.value || '');
-    const categoryId = category ? await findCategoryId(db, category) : null;
-    const result = await createProductDraft(db, {
+    const categoryId = category ? await findCategoryId(category) : null;
+    const result = await createProductDraft({
       title: v.candidate.title,
       slug: slugOf(v.candidate.title),
       categoryId,
@@ -469,13 +463,10 @@ export default function ProductScout() {
       compareAtPrice: null,
       costPrice: price,
       landedCost: price,
-      grossMargin,
       images: v.candidate.images.length ? v.candidate.images : (v.supplierProduct?.images || []),
       shortDesc,
       sourceUrl: v.candidate.source_url,
       supplierName: v.candidate.source,
-      scoreOverall: v.score?.overall ?? null,
-      supplierProductId: v.supplierProduct?.id ?? null,
     });
     return result.id;
   };
@@ -523,7 +514,7 @@ export default function ProductScout() {
       const draftId = await draftFor(v, '', null, price);
       // Owner-price path: patch the sell price onto an existing price-less draft.
       if (v.product && !v.product.price && priceOverride !== null && priceOverride > 0) {
-        await db.update<{ id: string; price: number }>('products', draftId, { price: priceOverride });
+        await updateProduct(draftId, { price: priceOverride });
       }
       const res = await publishProductDraft(db, {
         productId: draftId,
@@ -635,7 +626,7 @@ export default function ProductScout() {
         supplierPrice: price,
         shippingCost: null,
         landedCost: price,
-        proposedLuxedgePrice: price !== null ? price * 2.5 : null,
+        proposedSellingPrice: price !== null ? price * 2.5 : null,
         grossMarginDollars: null,
         grossMarginPct: marginPct !== null ? marginPct / 100 : null,
         confidence: conf as 'high' | 'low',
@@ -664,7 +655,7 @@ export default function ProductScout() {
   const runMarketIntel = async () => {
     if (!db) { notify('Database not ready'); return; }
     const q = miQuery.trim();
-    if (!q) { notify('Enter a market query (e.g. “dog toys”)'); return; }
+    if (!q) { notify('Enter a market query (e.g. “himalayan pink salt”)'); return; }
     setMiRunning(true);
     setMiLog([]);
     // Phase 4E.1 FAIL-CLOSED: clear any stale market-grounded CJ context at
@@ -958,7 +949,7 @@ export default function ProductScout() {
             and set it on the Cloudflare worker from your terminal (project folder):
           </p>
           <code className="block bg-white border border-sky-200 rounded-lg px-3 py-2 font-mono text-[11px] text-sky-900 select-all">
-            npx wrangler secret put CJ_API_KEY --name luxedge-production
+            npx wrangler secret put CJ_API_KEY --name himalayan-koh-ecommerce
           </code>
           <p className="text-sky-600 mt-2">
             Paste the key when prompted, then press <b>Refresh</b> here — status should flip to ONLINE and CJ search unlocks.
@@ -1193,7 +1184,7 @@ export default function ProductScout() {
           <div className="p-12 text-center text-gray-400">
             <Target size={40} className="mx-auto mb-3 text-gray-200" />
             <p className="font-semibold text-gray-500">No candidates{stats.candidates ? ' match the filters' : ' yet'}</p>
-            <p className="text-sm mt-1">Run a Scout Run to research real pet products.</p>
+            <p className="text-sm mt-1">Run a Scout Run to research relevant product opportunities.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1385,7 +1376,7 @@ export default function ProductScout() {
                 <input
                   value={discoverQuery}
                   onChange={(e) => setDiscoverQuery(e.target.value)}
-                  placeholder="e.g. dog toys / cat accessories"
+                  placeholder="e.g. himalayan pink salt / salt lamps"
                   disabled={discovering}
                   className="flex-1 min-w-[180px] px-3 py-1.5 border border-blue-200 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-400 disabled:bg-blue-50"
                 />
@@ -1426,7 +1417,7 @@ export default function ProductScout() {
                 <input
                   value={cjQuery}
                   onChange={(e) => setCjQuery(e.target.value)}
-                  placeholder="e.g. dog enrichment toy / cat scratching post"
+                  placeholder="e.g. himalayan salt lamp / bath salt"
                   disabled={cjRunning}
                   className="flex-1 min-w-[180px] px-3 py-1.5 border border-indigo-200 rounded-lg text-sm bg-white focus:outline-none focus:border-indigo-400 disabled:bg-indigo-50"
                 />
@@ -1565,7 +1556,7 @@ export default function ProductScout() {
             <input
               value={miQuery}
               onChange={(e) => setMiQuery(e.target.value)}
-              placeholder="Market query, e.g. dog toys / cat grooming"
+              placeholder="Market query, e.g. himalayan pink salt / salt lamps"
               disabled={miRunning}
               className="flex-1 min-w-[200px] px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-50"
             />
