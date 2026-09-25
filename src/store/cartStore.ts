@@ -53,10 +53,14 @@ type CartMode = 'remote' | 'local' | null;
 let mode: CartMode = null;
 let loaded = false;
 let isLoading = false;
+let cartMutationVersion = 0;
+let serverTax: number | null = null;
+let serverTotal: number | null = null;
 
 // Serializes concurrent mutations so API calls don't interleave
 let mutationQueue: Promise<void> = Promise.resolve();
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+  cartMutationVersion++;
   const next = mutationQueue.then(fn);
   mutationQueue = next.then(() => {}, () => {});
   return next;
@@ -144,6 +148,8 @@ function reportIssues(issues: string[]) {
 
 function applyView(view: CartView) {
   cartItems = view.items.map(mapLine);
+  serverTax = typeof view.totalTax === 'number' ? view.totalTax : null;
+  serverTotal = typeof view.totalPrice === 'number' ? view.totalPrice : null;
   emitChange();
   reportIssues(view.issues);
 }
@@ -175,8 +181,16 @@ async function remote(op: () => Promise<CartView>): Promise<CartView | null> {
 async function loadCart() {
   if (loaded || isLoading) return;
   isLoading = true;
+  emitChange();
+  const versionAtStart = cartMutationVersion;
   try {
     const view = await remote(() => cartClient.read());
+    if (versionAtStart !== cartMutationVersion) {
+      // A mutation happened while loadCart was in flight.
+      // Do not overwrite the newer authoritative state with stale initial read.
+      loaded = true;
+      return;
+    }
     if (view) {
       mode = 'remote';
       applyView(view);
@@ -191,6 +205,7 @@ async function loadCart() {
     console.error('Failed to load cart:', error);
   } finally {
     isLoading = false;
+    emitChange();
   }
 }
 
@@ -204,9 +219,15 @@ export function useCart() {
   const addItem = useCallback(async (item: Omit<CartItem, 'quantity' | 'cartItemId'>, quantity = 1) => {
     return enqueue(async () => {
       const productId = String(item.id);
+      const existing = cartItems.find(
+        ci => getItemKey(ci.id, ci.grainSize) === getItemKey(productId, item.grainSize)
+      );
+      const previousQuantity = existing ? existing.quantity : 0;
 
       if (mode !== 'local') {
-        const view = await remote(() => cartClient.add(productId, quantity, item.variation));
+        const view = await remote(() =>
+          cartClient.add(productId, quantity, item.variation, previousQuantity)
+        );
         if (view) {
           mode = 'remote';
           loaded = true;
@@ -215,9 +236,6 @@ export function useCart() {
         }
       }
 
-      const existing = cartItems.find(
-        ci => getItemKey(ci.id, ci.grainSize) === getItemKey(productId, item.grainSize)
-      );
       if (existing) {
         existing.quantity += quantity;
         cartItems = [...cartItems];
@@ -302,6 +320,23 @@ export function useCart() {
     });
   }, []);
 
+  const updateCustomerAddress = useCallback(
+    async (address: { country?: string; state?: string; city?: string; postalCode?: string }) => {
+      return enqueue(async () => {
+        if (mode !== 'local') {
+          const view = await remote(() => cartClient.updateCustomer(address));
+          if (view) {
+            mode = 'remote';
+            applyView(view);
+            return view;
+          }
+        }
+        return null;
+      });
+    },
+    []
+  );
+
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
@@ -311,7 +346,12 @@ export function useCart() {
     removeItem,
     updateQuantity,
     clearCart,
+    updateCustomerAddress,
     totalItems,
     totalPrice,
+    serverTax,
+    serverTotal,
+    isLoaded: loaded,
+    isLoading,
   };
 }

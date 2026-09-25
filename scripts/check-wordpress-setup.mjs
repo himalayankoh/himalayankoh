@@ -268,6 +268,10 @@ async function probeAdmin(path, { method = 'GET' } = {}) {
 
 const storefrontPlugin = await probeAdmin('/hk-storefront/v1/events?limit=1');
 const crmPlugin = await probeAdmin('/crm/v1/leads?search=');
+// The wholesale plugin is a third namespace, and its absence is not a storefront fault:
+// a shop with no trade desk is a legitimate deployment. So it is probed and reported
+// separately, and only the namespaces the retail shop depends on gate the verdict.
+const wholesalePlugin = await probeAdmin('/hk-wholesale/v1/settings');
 
 /*
  * The namespace list is public, so it answers "is the plugin registered at all"
@@ -280,9 +284,38 @@ const namespaces = Array.isArray(namespaceList) ? namespaceList.map(String) : []
 const namespacesKnown = namespaces.length > 0;
 const storefrontRegistered = namespaces.includes('hk-storefront/v1');
 const crmRegistered = namespaces.includes('crm/v1');
+const wholesaleRegistered = namespaces.includes('hk-wholesale/v1');
+
+/*
+ * The wholesale plugin reports its own schema health. It has to: `dbDelta()` returns
+ * nothing when MySQL refuses a statement, so an install that could not build one of its
+ * tables reads as healthy from the outside — every list is an empty list, and only a
+ * write fails. A missing table is therefore reported here, before anyone tries to use
+ * the desk. (One was: a column named `lines` is a reserved word, and the unquoted CREATE
+ * TABLE for it never ran.)
+ */
+const wholesaleSettings = wholesalePlugin?.json;
+const wholesaleMissingTables = Array.isArray(wholesaleSettings?.missing_tables) ? wholesaleSettings.missing_tables : [];
+const wholesaleMissingColumns = wholesaleSettings?.missing_columns && typeof wholesaleSettings.missing_columns === 'object'
+  ? Object.entries(wholesaleSettings.missing_columns)
+  : [];
+if (wholesaleSettings && wholesaleRegistered) {
+  const schema =
+    wholesaleMissingTables.length || wholesaleMissingColumns.length
+      ? `INCOMPLETE — missing ${[wholesaleMissingTables.length ? `${wholesaleMissingTables.join(', ')} table(s)` : '', wholesaleMissingColumns.map(([table, columns]) => `${table}.${columns.join('/')}`).join(', ')].filter(Boolean).join(' and ')}`
+      : 'complete';
+  console.log(
+    `  wholesale schema: code v${wholesaleSettings.db_version || '?'} · installed v${wholesaleSettings.installed_db_version || '?'} · ${schema}`
+  );
+  if (schema !== 'complete' && wholesaleSettings.schema_error) {
+    console.log(`      the database refused: ${wholesaleSettings.schema_error}`);
+  }
+}
 
 if (namespacesKnown) {
-  console.log(`  registered: hk-storefront/v1 = ${storefrontRegistered ? 'yes' : 'no'} · crm/v1 = ${crmRegistered ? 'yes' : 'no'}`);
+  console.log(
+    `  registered: hk-storefront/v1 = ${storefrontRegistered ? 'yes' : 'no'} · crm/v1 = ${crmRegistered ? 'yes' : 'no'} · hk-wholesale/v1 = ${wholesaleRegistered ? 'yes' : 'no'}`
+  );
 }
 
 // A namespace the index does not list is 'ABSENT' even when the credentialed probe
@@ -321,6 +354,11 @@ reportPlugin(
   'wishlist, saved addresses, cart across devices, customer sign-in and password resets'
 );
 reportPlugin('GET /crm/v1/leads', crmPlugin, 'the CRM inbox and LeadOS');
+reportPlugin(
+  'GET /hk-wholesale/v1/settings',
+  wholesalePlugin,
+  'the wholesale portal, quotations and the trade console (not needed by the retail shop)'
+);
 
 if (!pluginsPass) {
   console.log('');
@@ -336,8 +374,12 @@ if (!pluginsPass) {
   console.log('    2. Copy each plugin onto the site:');
   console.log('       wp-content/plugins/himalayan-koh-storefront/himalayan-koh-storefront.php');
   console.log('       wp-content/plugins/himalayan-koh-leados/himalayan-koh-leados.php');
-  console.log('       (or zip the folder and upload it under Plugins -> Add New -> Upload Plugin)');
-  console.log('    3. Activate both. Re-running this script should then print PASS for each.');
+  console.log('       (or zip the folder and upload it under Plugins -> Add New -> Upload Plugin)');      console.log('    3. Activate both. Re-running this script should then print PASS for each.');
+  console.log('');
+  console.log('    The wholesale plugin (`wordpress/hk-wholesale.php`) is installed the same way');
+  console.log('    (`deploy/hk-wholesale.zip`, built by `npm run pack:plugins`). Its absence only');
+  console.log('    affects the trade portal, and `WHOLESALE_SESSION_SECRET` must be set on the');
+  console.log('    deployment for buyers to sign in.');
   console.log('');
   console.log('    If an administrator application password is configured and the plugins are');
   console.log('    already installed but inactive, activation is a single authenticated call:');
@@ -386,6 +428,16 @@ const REQUIRED_ROUTES = {
   'crm/v1': [
     ['/leads?search=', 'the CRM inbox and LeadOS lead library'],
   ],
+  'hk-wholesale/v1': [
+    ['/settings', 'the wholesale workspace vocabulary'],
+    ['/overview', 'wholesale counts, values and container utilisation'],
+    ['/catalog', 'the wholesale catalogue with tier prices'],
+    ['/access?email=probe%40example.invalid', 'buyer approval lookup used at sign-in'],
+    ['/records?resource=products&limit=1', 'the wholesale record store'],
+    ['/records/one?resource=products&id=0', 'one wholesale record'],
+    ['/apply', 'a buyer application', 'POST'],
+    ['/decide', 'approving an application', 'POST'],
+  ],
 };
 
 const sweep = async () => {
@@ -393,7 +445,11 @@ const sweep = async () => {
 
   for (const [namespace, routes] of Object.entries(REQUIRED_ROUTES)) {
     const registered =
-      namespace === 'hk-storefront/v1' ? storefrontRegistered : crmRegistered;
+      namespace === 'hk-storefront/v1'
+        ? storefrontRegistered
+        : namespace === 'crm/v1'
+          ? crmRegistered
+          : wholesaleRegistered;
 
     if (namespacesKnown && !registered) {
       // Absent as a whole: listing each route as missing would be noise, and the

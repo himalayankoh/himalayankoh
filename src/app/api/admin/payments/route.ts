@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server';
+import { createHmac } from 'node:crypto';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { getSettingsForCategory, upsertSettings } from '@/lib/settings/serverSettings';
-import { resolveStripeSecretKey, resolveStripeWebhookSecret, getStripeClient } from '@/lib/stripe/server/stripe';
+import {
+  evaluateCurrentStripeReadiness,
+  getStripeSignatureVerifier,
+  resolveStripeSecretKey,
+  resolveStripeWebhookSecret,
+} from '@/lib/stripe/server/stripe';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 function maskKey(val: string | null | undefined): string {
   if (!val || val.length < 8) return '';
@@ -30,9 +37,20 @@ export async function GET(request: Request) {
       process.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim() ||
       '';
 
+    // The console reports what the server would actually do, not whether keys are
+    // present. `evaluateCurrentStripeReadiness` is the same decision every money
+    // route uses, so the screen cannot call a setup "ready" while checkout is
+    // returning 503 for it.
+    const readiness = await evaluateCurrentStripeReadiness();
+
     const stripeConfigured = Boolean(stripeSecret && stripePk);
-    const stripeMode = stripeSecret.startsWith('sk_live_') ? 'production' : 'sandbox';
+    const stripeMode = readiness.secretMode === 'live' ? 'production' : 'sandbox';
     const stripeEnabled = paymentSettings.stripe_enabled !== 'false' && stripeConfigured;
+    /** Test/staging vs live/production, said in words the owner can act on. */
+    const stripeStageLabel =
+      readiness.stage === 'off' ? 'OFF' : readiness.stage === 'live' ? 'LIVE / PRODUCTION' : 'TEST / STAGING';
+    const stripeReady =
+      stripeEnabled && readiness.chargingEnabled && readiness.orderSyncConfigured && (readiness.stage === 'test' || readiness.readyForLive);
 
     const primary = (paymentSettings.primary_provider as any) || (stripeConfigured ? 'stripe' : 'none');
     const backup = (paymentSettings.backup_provider as any) || 'none';
@@ -48,9 +66,17 @@ export async function GET(request: Request) {
           ? 'not_configured'
           : !stripeEnabled
           ? 'disabled'
-          : stripeMode === 'production'
+          : stripeReady
           ? 'ready'
-          : 'sandbox',
+          : 'error',
+        stage: readiness.stage,
+        stageLabel: stripeStageLabel,
+        ready: stripeReady,
+        readyForLive: readiness.readyForLive,
+        chargingEnabled: readiness.chargingEnabled,
+        orderSyncConfigured: readiness.orderSyncConfigured,
+        blockers: readiness.blockers,
+        checks: readiness.checks,
         isConfigured: stripeConfigured,
         keys: {
           publishableKey: {
@@ -78,7 +104,11 @@ export async function GET(request: Request) {
         ],
         lastTestAt: paymentSettings.stripe_last_test_at || undefined,
         lastTestOk: paymentSettings.stripe_last_test_ok === 'true',
-        lastError: paymentSettings.stripe_last_error || undefined,
+        // The first blocker, not a generic "error": the screen has to say what is
+        // missing or the owner has to go looking for it.
+        lastError: stripeReady
+          ? undefined
+          : readiness.blockers[0] || paymentSettings.stripe_last_error || undefined,
       },
       {
         id: 'paypal',
@@ -196,7 +226,7 @@ export async function POST(request: Request) {
 
   try {
     const body = (await request.json()) as {
-      action: 'test' | 'toggle' | 'set_primary' | 'set_backup';
+      action: 'test' | 'health' | 'toggle' | 'set_primary' | 'set_backup';
       provider: string;
       enabled?: boolean;
     };
@@ -249,7 +279,11 @@ export async function POST(request: Request) {
         }
 
         try {
-          const stripe = await getStripeClient();
+          // Read-only, and deliberately not the charging client: validating a key
+          // and being allowed to charge with it are different questions. An owner
+          // must be able to confirm a live key is valid on a deployment where live
+          // charging is switched off, and this call moves no money.
+          const stripe = await getStripeSignatureVerifier();
           const balance = await stripe.balance.retrieve();
           await upsertSettings('payments', {
             stripe_last_test_at: new Date().toISOString(),
@@ -258,7 +292,7 @@ export async function POST(request: Request) {
           });
           return NextResponse.json({
             ok: true,
-            message: `Stripe connection verified successfully! Livemode: ${balance.livemode}.`,
+            message: `Stripe accepted the key (read-only balance call, livemode: ${balance.livemode}). No charge was made.`,
           });
         } catch (testErr) {
           const msg = (testErr as Error).message || 'Stripe API call failed';
@@ -277,6 +311,91 @@ export async function POST(request: Request) {
       return NextResponse.json({
         ok: false,
         error: `${provider} credentials are not configured on this server.`,
+      });
+    }
+
+    if (action === 'health') {
+      if (provider !== 'stripe') {
+        return NextResponse.json({ ok: false, error: `${provider} has no health check.` }, { status: 400 });
+      }
+
+      const secretKey = await resolveStripeSecretKey();
+      if (!secretKey) {
+        await upsertSettings('payments', {
+          stripe_health_at: new Date().toISOString(),
+          stripe_health_ok: 'false',
+          stripe_webhook_endpoint_ok: 'false',
+          stripe_health_detail: 'No Stripe secret key is configured.',
+        });
+        return NextResponse.json({ ok: false, error: 'No Stripe secret key is configured.' });
+      }
+
+      /* --- Payment side: is the key usable? (read-only) ------------------- */
+      let paymentOk = false;
+      let paymentDetail = '';
+      try {
+        const stripe = await getStripeSignatureVerifier();
+        const balance = await stripe.balance.retrieve();
+        paymentOk = true;
+        paymentDetail = `Stripe accepted the key. livemode: ${balance.livemode}.`;
+      } catch (err) {
+        paymentDetail = (err as Error).message || 'Stripe rejected the key.';
+      }
+
+      /* --- Webhook side: does this deployment's endpoint answer? ----------- */
+      // The probe is signed with the stored signing secret and carries a harmless
+      // event type that touches no order. It therefore proves the endpoint is up
+      // and the secret in settings is the one the endpoint verifies with. It does
+      // NOT prove the secret matches the endpoint Stripe has on file — only a real
+      // delivery can prove that, and the wording says so.
+      let webhookOk = false;
+      let webhookDetail = '';
+      const webhookSecret = await resolveStripeWebhookSecret();
+      if (!webhookSecret) {
+        webhookDetail = 'No webhook signing secret is stored, so the endpoint cannot be probed.';
+      } else {
+        try {
+          const origin = new URL(request.url).origin;
+          const stamp = Date.now();
+          const payload = JSON.stringify({
+            id: `evt_health_${stamp}`,
+            object: 'event',
+            type: 'payment_intent.created',
+            livemode: false,
+            data: { object: { id: `pi_health_${stamp}`, object: 'payment_intent', livemode: false, metadata: {} } },
+          });
+          const t = Math.floor(stamp / 1000);
+          const signature = createHmac('sha256', webhookSecret).update(`${t}.${payload}`).digest('hex');
+          const res = await fetch(`${origin}/api/stripe/webhook`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'stripe-signature': `t=${t},v1=${signature}` },
+            body: payload,
+          });
+          const answer = await res.text();
+          webhookOk = res.ok && answer.includes('"received":true');
+          webhookDetail = webhookOk
+            ? 'The endpoint verified a correctly signed probe. This shows the endpoint and the stored secret agree; only a real Stripe delivery proves the secret belongs to your Stripe endpoint.'
+            : `The endpoint answered HTTP ${res.status}: ${answer.slice(0, 200)}`;
+        } catch (err) {
+          webhookDetail = (err as Error).message || 'The webhook endpoint could not be reached.';
+        }
+      }
+
+      const allOk = paymentOk && webhookOk;
+      await upsertSettings('payments', {
+        stripe_health_at: new Date().toISOString(),
+        stripe_health_ok: allOk ? 'true' : 'false',
+        stripe_webhook_endpoint_ok: webhookOk ? 'true' : 'false',
+        stripe_health_detail: JSON.stringify({ paymentDetail, webhookDetail }).slice(0, 900),
+      });
+
+      return NextResponse.json({
+        ok: allOk,
+        message: allOk
+          ? 'Payment and webhook health checks passed.'
+          : 'Health check incomplete — see the details.',
+        payment: { ok: paymentOk, detail: paymentDetail },
+        webhook: { ok: webhookOk, detail: webhookDetail },
       });
     }
 

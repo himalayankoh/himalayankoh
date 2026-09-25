@@ -16,14 +16,7 @@ function truncateAtWord(text: string, max: number): string {
 
 function normalizeTitle(title: string): string {
   const withoutBrand = title.replace(/\s*\|\s*Himalayan Koh\s*$/i, '').trim();
-  const maxBaseLength = MAX_TITLE_LENGTH - BRAND_SUFFIX.length;
-  // Truncate the product's own title first so the brand suffix always
-  // survives intact — truncating the combined string let long product
-  // titles eat into " | Himalayan Koh", leaving titles that end in a bare
-  // "|…" with no brand name at all.
-  const base =
-    withoutBrand.length > maxBaseLength ? truncateAtWord(withoutBrand, maxBaseLength) : withoutBrand;
-  return `${base}${BRAND_SUFFIX}`;
+  return `${withoutBrand}${BRAND_SUFFIX}`;
 }
 
 function buildFallbackDescription(product: Product, displayName: string): string {
@@ -62,21 +55,22 @@ export function buildProductPageSeo(product: Product): { title: string; descript
   const displayName = content.displayName;
 
   let title: string;
-  if (product.metaTitle) {
+  if (product.metaTitle && product.metaTitle.trim()) {
     title = normalizeTitle(product.metaTitle);
-  } else if (content.metaTitle) {
+  } else if (content.metaTitle && content.metaTitle.trim()) {
     title = normalizeTitle(content.metaTitle);
   } else {
     title = normalizeTitle(displayName);
   }
 
   let description: string;
-  if (product.metaDescription) {
-    description = truncateAtWord(product.metaDescription.trim(), MAX_DESCRIPTION_LENGTH);
-  } else if (content.metaDescription) {
-    description = truncateAtWord(content.metaDescription.trim(), MAX_DESCRIPTION_LENGTH);
+  if (product.metaDescription && product.metaDescription.trim()) {
+    description = product.metaDescription.trim();
+  } else if (content.metaDescription && content.metaDescription.trim()) {
+    description = content.metaDescription.trim();
   } else if (product.description) {
-    const lead = product.description.split(/[.!]/)[0]?.trim();
+    const leadMatch = product.description.match(/^([\s\S]*?(?<!\d)[.!?])(?:\s+|$)/);
+    const lead = (leadMatch ? leadMatch[1] : product.description).trim().replace(/[.!?]+$/, '');
     description = truncateAtWord(
       lead ? `${displayName}. ${lead}.` : buildFallbackDescription(product, displayName),
       MAX_DESCRIPTION_LENGTH

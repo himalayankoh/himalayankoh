@@ -29,6 +29,7 @@ export interface CartView {
   items: CartLineView[];
   itemsCount: number;
   totalPrice: number | null;
+  totalTax?: number | null;
   currency: string;
   /** WooCommerce's own complaints about this cart, as sentences. */
   issues: string[];
@@ -86,12 +87,26 @@ export const cartClient = {
    * *additional* units. The variation pair names an option the catalog reported; the
    * price is still the store's.
    */
-  add: (productId: string, quantity: number, variation?: { attribute: string; value: string }) =>
-    request({ action: 'add', productId, quantity, ...(variation ? { variation } : {}) }),
+  add: (
+    productId: string,
+    quantity: number,
+    variation?: { attribute: string; value: string },
+    previousQuantity?: number
+  ) =>
+    request({
+      action: 'add',
+      productId,
+      quantity,
+      ...(variation ? { variation } : {}),
+      ...(previousQuantity !== undefined ? { previousQuantity } : {}),
+    }),
   /** Sets a line's quantity. Zero or less removes it. */
   setQuantity: (key: string, quantity: number) => request({ action: 'setQuantity', key, quantity }),
   /** Removes a line. */
   remove: (key: string) => request({ action: 'remove', key }),
   /** Removes every line. */
   clear: () => request({ action: 'clear' }),
+  /** Updates customer destination for authoritative tax recalculation. */
+  updateCustomer: (address: { country?: string; state?: string; city?: string; postalCode?: string }) =>
+    request({ action: 'updateCustomer', address }),
 };

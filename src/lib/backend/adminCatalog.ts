@@ -331,10 +331,10 @@ async function readUnlistedProducts(): Promise<{ rows: AdminCatalogRow[]; error:
   }
 }
 
-async function wooPage(query: AdminCatalogQuery): Promise<AdminCatalogPage> {
+async function wooPage(query: AdminCatalogQuery, shared?: CatalogRead): Promise<AdminCatalogPage> {
   // The unscoped read: the console shows the source's whole catalog, including
   // the products the storefront withholds, and says how many that is below.
-  const [read, unlisted] = await Promise.all([
+  const [read, unlisted] = await (shared ?? Promise.all([
     readCatalogProducts({
       search: query.search || undefined,
       isFeatured: query.isFeatured,
@@ -342,7 +342,7 @@ async function wooPage(query: AdminCatalogQuery): Promise<AdminCatalogPage> {
       signal: query.signal,
     }),
     readUnlistedProducts(),
-  ]);
+  ]));
 
   const warnings = [...read.warnings];
   if (unlisted.error) {
@@ -396,15 +396,17 @@ async function wooPage(query: AdminCatalogQuery): Promise<AdminCatalogPage> {
   };
 }
 
-async function wooStats(): Promise<AdminCatalogStats> {
+type CatalogRead = Promise<[Awaited<ReturnType<typeof readCatalogProducts>>, Awaited<ReturnType<typeof readUnlistedProducts>>]>;
+
+async function wooStats(shared?: CatalogRead): Promise<AdminCatalogStats> {
   // Stats describe the source's catalog, not the storefront's slice of it: a
   // dashboard that quietly dropped off-niche rows would report a product count
   // the owner cannot reconcile against WooCommerce. Unlisted rows are counted
   // for the same reason — WooCommerce's own product count includes them.
-  const [read, unlisted] = await Promise.all([
+  const [read, unlisted] = await (shared ?? Promise.all([
     readCatalogProducts({ perPage: WORDPRESS_MAX_PER_PAGE }),
     readUnlistedProducts(),
-  ]);
+  ]));
   return statsFromRows([...read.products.map(rowFromCatalogProduct), ...unlisted.rows]);
 }
 
@@ -420,4 +422,15 @@ export async function readAdminCatalogPage(query: AdminCatalogQuery = {}): Promi
 /** Reads the product facts the dashboard shows, from the same source. */
 export async function readAdminCatalogStats(): Promise<AdminCatalogStats> {
   return wooStats();
+}
+
+/** One request-local source snapshot for the common unscoped console read.
+ * No cross-user cache; mutations are visible on the very next request.
+ */
+export async function readAdminCatalogWithStats(query: AdminCatalogQuery = {}) {
+  const shared: CatalogRead | undefined = !query.search && query.isFeatured === undefined
+    ? Promise.all([readCatalogProducts({ perPage: WORDPRESS_MAX_PER_PAGE, signal: query.signal }), readUnlistedProducts()])
+    : undefined;
+  const [page, stats] = await Promise.all([wooPage(query, shared), wooStats(shared)]);
+  return { page, stats };
 }

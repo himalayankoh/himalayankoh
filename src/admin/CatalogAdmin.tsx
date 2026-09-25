@@ -509,7 +509,7 @@ export function CatalogProductsPage() {
     if (fFlag === 'new' && !p.newArrival) return false;
     if (fFlag === 'sale' && !(p.compareAtPrice > p.price)) return false;
     if (fFlag === 'free-shipping' && !p.freeShipping) return false;
-    if (fFlag === 'low-stock' && !(p.inventoryQty <= p.lowStockThreshold)) return false;
+    if (fFlag === 'low-stock' && !(Boolean(p.trackInventory) && p.inventoryQty <= p.lowStockThreshold)) return false;
     if (fImage === 'no-image' && p.images.length > 0) return false;
     if (fImage === 'has-image' && p.images.length === 0) return false;
     if (fImage === 'single-image' && p.images.length <= 1) return false;
@@ -775,7 +775,11 @@ export function CatalogProductsPage() {
     return 'None';
   };
 
-  if (loading) return <div className="text-center py-20 text-gray-400">Loading catalog…</div>;
+  if (loading) return <section aria-busy="true" aria-label="Products" className="space-y-5">
+    <div><h1 className="text-2xl font-bold text-[#26211C]">Products</h1><p role="status" className="mt-1 text-sm text-[#6D6258]">Loading your WooCommerce catalogue…</p></div>
+    <div aria-hidden="true" className="grid grid-cols-2 lg:grid-cols-4 gap-3">{Array.from({length:4},(_,i)=><div key={i} className="h-24 rounded-xl border border-[#E0D6C8] bg-white animate-pulse" />)}</div>
+    <div aria-hidden="true" className="rounded-xl border border-[#E0D6C8] bg-white p-4 space-y-4">{Array.from({length:6},(_,i)=><div key={i} className="h-12 rounded bg-[#FAF7F1] animate-pulse" />)}</div>
+  </section>;
 
   if (loadError) {
     return (
@@ -1208,9 +1212,21 @@ export function CatalogProductsPage() {
                   ),
                   stock: (
                     <td className="px-3 py-1.5 text-xs whitespace-nowrap">
-                      <span className={p.inventoryQty <= p.lowStockThreshold && p.lowStockThreshold > 0 ? 'text-red-600 font-semibold' : ''} title={`${INVENTORY_SOURCE_LABELS[p.inventorySource || 'UNKNOWN']} stock`}>
-                        {p.inventoryQty <= 0 ? 'Out of stock' : p.inventoryQty}
-                      </span>
+                      {!p.trackInventory ? (
+                        p.stockStatus === 'in_stock' ? (
+                          <span className="text-green-700 font-medium">In stock</span>
+                        ) : p.stockStatus === 'out_of_stock' ? (
+                          <span className="text-red-600 font-medium">Out of stock</span>
+                        ) : p.stockStatus === 'on_backorder' ? (
+                          <span className="text-amber-600 font-medium">On backorder</span>
+                        ) : (
+                          <span className="text-green-700 font-medium">In stock</span>
+                        )
+                      ) : (
+                        <span className={p.inventoryQty <= p.lowStockThreshold && p.lowStockThreshold > 0 ? 'text-red-600 font-semibold' : ''} title={`${INVENTORY_SOURCE_LABELS[p.inventorySource || 'UNKNOWN']} stock`}>
+                          {p.inventoryQty <= 0 ? (p.stockStatus === 'out_of_stock' ? 'Out of stock' : '0') : p.inventoryQty}
+                        </span>
+                      )}
                       {p.inventoryQty > 0 && p.inventorySource === 'INTERNAL_STOCK' && <span className="text-[10px] text-gray-400 ml-1">internal</span>}
                     </td>
                   ),
@@ -1882,6 +1898,7 @@ export function CatalogProductEditor() {
 
   const [cats, setCats] = useState<CatalogCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hydrated, setHydrated] = useState(isNew);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   // A save that did not happen stays on screen. The toast it also raises is gone
@@ -1901,6 +1918,8 @@ export function CatalogProductEditor() {
     urlMode === 'detail' || urlMode === 'ai' ? urlMode : 'quick',
   );
   const [p, setP] = useState<CatalogProduct | null>(null);
+  const [originalProduct, setOriginalProduct] = useState<CatalogProduct | null>(null);
+  const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set());
   // Status the product had when the editor loaded it. The Listing Playbook
   // gate blocks *publishing* (transition into Live); it must NOT block edits
   // of a listing that is already live — otherwise legacy live products
@@ -1910,15 +1929,20 @@ export function CatalogProductEditor() {
 
   const load = useCallback(async () => {
     try {
+      setLoading(true);
+      setHydrated(false);
       const cs = await listCategories();
       setCats(cs);
       if (paramId) {
-        const prod = await getProduct(paramId);
+        const prod = await getProduct(paramId, true);
         if (!prod) { notify('Product not found', 'error'); nav('/admin/products'); return; }
         setOriginStatus(prod.status);
         setP(prod);
+        setOriginalProduct(prod);
+        setDirtyFields(new Set());
+        setHydrated(true);
       } else {
-        setP({
+        const initialNew: CatalogProduct = {
           id: '', slug: '', name: '', shortDescription: '', description: '', features: [], specifications: {},
           categoryId: cs[0]?.id ?? null, categoryName: cs[0]?.name ?? '', brand: '', status: 'active',
           price: 0, compareAtPrice: 0, costPrice: 0, landedCost: 0, marginPercent: null, currency: 'USD',
@@ -1929,8 +1953,12 @@ export function CatalogProductEditor() {
           commerceReadiness: null, sourceType: null, inventorySource: null, fulfillmentMethod: null,
           supplierUrl: null, supplierStockStatus: null, riskFlags: [],
           images: [], variants: [], createdAt: '', updatedAt: '', publishedAt: null,
-        });
+        };
+        setP(initialNew);
+        setOriginalProduct(initialNew);
         setOriginStatus(null);
+        setDirtyFields(new Set());
+        setHydrated(true);
       }
     } catch (e) {
       notify(`Could not load: ${(e as Error).message}`, 'error');
@@ -1942,19 +1970,26 @@ export function CatalogProductEditor() {
   useEffect(() => { void load(); }, [paramId]);
 
   const set = <K extends keyof CatalogProduct>(k: K, v: CatalogProduct[K]) => {
+    setDirtyFields((prev) => new Set(prev).add(k));
     setP((prev) => (prev ? { ...prev, [k]: v } : prev));
   };
 
   const handleSave = async (productOverride?: CatalogProduct) => {
+    if (!hydrated || loading || saving) return;
     const productToSave = productOverride ?? p;
     if (!productToSave) return;
     if (!productToSave.name.trim()) { setSaveError('Product name is required.'); notify('Product name is required', 'error'); return; }
-    if (!(productToSave.price > 0)) { setSaveError('Price must be greater than 0.'); notify('Price must be greater than 0', 'error'); return; }
+    if (!isNew && dirtyFields.size === 0 && !productOverride) {
+      notify('No changes to save');
+      return;
+    }
+    if (isNew && !(productToSave.price > 0)) { setSaveError('Price must be greater than 0.'); notify('Price must be greater than 0', 'error'); return; }
+    if (dirtyFields.has('price') && !(productToSave.price > 0)) { setSaveError('Price must be greater than 0.'); notify('Price must be greater than 0', 'error'); return; }
     const currentProduct = productToSave;
     // Already-live listing: edits (price, inventory, status, copy…) must save.
     // Playbook gaps become loud warnings instead of hard blockers.
     const wasLive = originStatus === 'active';
-    if (currentProduct.images.length === 0 && !wasLive) {
+    if (currentProduct.images.length === 0 && !wasLive && (isNew || dirtyFields.has('images'))) {
       const msg = 'At least one image is required before activating a premium listing.';
       setSaveError(msg); notify(msg, 'error'); setTab('images'); return;
     }
@@ -1989,63 +2024,125 @@ export function CatalogProductEditor() {
       // Refresh the session token before writing — a form left open past the
       // 1h JWT expiry must not fail the save with Supabase 401 "JWT expired".
       setDbToken(await getFreshAccessToken());
-      const input = {
-        name: currentProduct.name.trim(),
-        shortTitle: currentProduct.shortTitle,
-        subtitle: currentProduct.subtitle,
-        shortDescription: currentProduct.shortDescription,
-        description: currentProduct.description,
-        features: currentProduct.features,
-        specifications: currentProduct.specifications,
-        categoryId: currentProduct.categoryId,
-        brand: currentProduct.brand,
-        status: currentProduct.status,
-        price: currentProduct.price,
-        compareAtPrice: currentProduct.compareAtPrice,
-        costPrice: currentProduct.costPrice,
-        landedCost: currentProduct.landedCost,
-        currency: currentProduct.currency,
-        sku: currentProduct.sku,
-        inventoryQty: currentProduct.inventoryQty,
-        stockStatus: currentProduct.stockStatus,
-        lowStockThreshold: currentProduct.lowStockThreshold,
-        shippingCost: currentProduct.shippingCost,
-        freeShipping: currentProduct.freeShipping,
-        deliveryMinDays: currentProduct.deliveryMinDays,
-        deliveryMaxDays: currentProduct.deliveryMaxDays,
-        shippingNote: currentProduct.shippingNote,
-        usInventory: currentProduct.usInventory,
-        supplierSource: currentProduct.supplierSource,
-        supplierProductRef: currentProduct.supplierProductRef,
-        commerceReadiness: currentProduct.commerceReadiness,
-        sourceType: currentProduct.sourceType,
-        inventorySource: currentProduct.inventorySource,
-        fulfillmentMethod: currentProduct.fulfillmentMethod,
-        supplierUrl: currentProduct.supplierUrl,
-        supplierStockStatus: currentProduct.supplierStockStatus,
-        riskFlags: currentProduct.riskFlags,
-        tags: currentProduct.tags,
-        featured: currentProduct.featured,
-        newArrival: currentProduct.newArrival,
-        trending: currentProduct.trending,
-        bestRated: currentProduct.bestRated,
-        bestSeller: currentProduct.bestSeller,
-        promoted: currentProduct.promoted,
-        saleEnabled: currentProduct.saleEnabled,
-        discountType: currentProduct.discountType,
-        discountValue: currentProduct.discountValue,
-        seoTitle: currentProduct.seoTitle,
-        seoDescription: currentProduct.seoDescription,
-        seoKeywords: currentProduct.seoKeywords,
-        canonicalSlug: currentProduct.canonicalSlug,
-        ogImage: currentProduct.ogImage,
-        ownerNotes: currentProduct.ownerNotes,
-        evidenceNotes: currentProduct.evidenceNotes,
-      };
       const isWoo = isWooId(currentProduct.id);
-      const saved = isNew
-        ? await createProduct(input)
-        : (await updateProduct(currentProduct.id, isWoo ? ({ ...input, images: currentProduct.images } as unknown as Partial<ProductInput>) : input))!;
+
+      let saved: CatalogProduct | null = null;
+      if (isNew) {
+        const input: ProductInput = {
+          name: currentProduct.name.trim(),
+          shortTitle: currentProduct.shortTitle,
+          subtitle: currentProduct.subtitle,
+          shortDescription: currentProduct.shortDescription,
+          description: currentProduct.description,
+          features: currentProduct.features,
+          specifications: currentProduct.specifications,
+          categoryId: currentProduct.categoryId,
+          brand: currentProduct.brand,
+          status: currentProduct.status,
+          price: currentProduct.price,
+          compareAtPrice: currentProduct.compareAtPrice,
+          costPrice: currentProduct.costPrice,
+          landedCost: currentProduct.landedCost,
+          currency: currentProduct.currency,
+          sku: currentProduct.sku,
+          inventoryQty: currentProduct.inventoryQty,
+          stockStatus: currentProduct.stockStatus,
+          lowStockThreshold: currentProduct.lowStockThreshold,
+          shippingCost: currentProduct.shippingCost,
+          freeShipping: currentProduct.freeShipping,
+          deliveryMinDays: currentProduct.deliveryMinDays,
+          deliveryMaxDays: currentProduct.deliveryMaxDays,
+          shippingNote: currentProduct.shippingNote,
+          usInventory: currentProduct.usInventory,
+          supplierSource: currentProduct.supplierSource,
+          supplierProductRef: currentProduct.supplierProductRef,
+          commerceReadiness: currentProduct.commerceReadiness,
+          sourceType: currentProduct.sourceType,
+          inventorySource: currentProduct.inventorySource,
+          fulfillmentMethod: currentProduct.fulfillmentMethod,
+          supplierUrl: currentProduct.supplierUrl,
+          supplierStockStatus: currentProduct.supplierStockStatus,
+          riskFlags: currentProduct.riskFlags,
+          tags: currentProduct.tags,
+          featured: currentProduct.featured,
+          newArrival: currentProduct.newArrival,
+          trending: currentProduct.trending,
+          bestRated: currentProduct.bestRated,
+          bestSeller: currentProduct.bestSeller,
+          promoted: currentProduct.promoted,
+          saleEnabled: currentProduct.saleEnabled,
+          discountType: currentProduct.discountType,
+          discountValue: currentProduct.discountValue,
+          seoTitle: currentProduct.seoTitle,
+          seoDescription: currentProduct.seoDescription,
+          seoKeywords: currentProduct.seoKeywords,
+          canonicalSlug: currentProduct.canonicalSlug,
+          ogImage: currentProduct.ogImage,
+          ownerNotes: currentProduct.ownerNotes,
+          evidenceNotes: currentProduct.evidenceNotes,
+        };
+        saved = await createProduct(input);
+      } else {
+        // True PATCH / merge semantics: only touched fields are sent to the backend
+        const patch: Partial<ProductInput> = {};
+        if (dirtyFields.has('name')) patch.name = currentProduct.name.trim();
+        if (dirtyFields.has('shortTitle')) patch.shortTitle = currentProduct.shortTitle;
+        if (dirtyFields.has('subtitle')) patch.subtitle = currentProduct.subtitle;
+        if (dirtyFields.has('shortDescription')) patch.shortDescription = currentProduct.shortDescription;
+        if (dirtyFields.has('description')) patch.description = currentProduct.description;
+        if (dirtyFields.has('features')) patch.features = currentProduct.features;
+        if (dirtyFields.has('specifications')) patch.specifications = currentProduct.specifications;
+        if (dirtyFields.has('categoryId')) patch.categoryId = currentProduct.categoryId;
+        if (dirtyFields.has('brand')) patch.brand = currentProduct.brand;
+        if (dirtyFields.has('status')) patch.status = currentProduct.status;
+        if (dirtyFields.has('price')) patch.price = currentProduct.price;
+        if (dirtyFields.has('compareAtPrice')) patch.compareAtPrice = currentProduct.compareAtPrice;
+        if (dirtyFields.has('costPrice')) patch.costPrice = currentProduct.costPrice;
+        if (dirtyFields.has('landedCost')) patch.landedCost = currentProduct.landedCost;
+        if (dirtyFields.has('currency')) patch.currency = currentProduct.currency;
+        if (dirtyFields.has('sku')) patch.sku = currentProduct.sku;
+        if (dirtyFields.has('inventoryQty')) patch.inventoryQty = currentProduct.inventoryQty;
+        if (dirtyFields.has('stockStatus')) patch.stockStatus = currentProduct.stockStatus;
+        if (dirtyFields.has('lowStockThreshold')) patch.lowStockThreshold = currentProduct.lowStockThreshold;
+        if (dirtyFields.has('shippingCost')) patch.shippingCost = currentProduct.shippingCost;
+        if (dirtyFields.has('freeShipping')) patch.freeShipping = currentProduct.freeShipping;
+        if (dirtyFields.has('deliveryMinDays')) patch.deliveryMinDays = currentProduct.deliveryMinDays;
+        if (dirtyFields.has('deliveryMaxDays')) patch.deliveryMaxDays = currentProduct.deliveryMaxDays;
+        if (dirtyFields.has('shippingNote')) patch.shippingNote = currentProduct.shippingNote;
+        if (dirtyFields.has('usInventory')) patch.usInventory = currentProduct.usInventory;
+        if (dirtyFields.has('supplierSource')) patch.supplierSource = currentProduct.supplierSource;
+        if (dirtyFields.has('supplierProductRef')) patch.supplierProductRef = currentProduct.supplierProductRef;
+        if (dirtyFields.has('commerceReadiness')) patch.commerceReadiness = currentProduct.commerceReadiness;
+        if (dirtyFields.has('sourceType')) patch.sourceType = currentProduct.sourceType;
+        if (dirtyFields.has('inventorySource')) patch.inventorySource = currentProduct.inventorySource;
+        if (dirtyFields.has('fulfillmentMethod')) patch.fulfillmentMethod = currentProduct.fulfillmentMethod;
+        if (dirtyFields.has('supplierUrl')) patch.supplierUrl = currentProduct.supplierUrl;
+        if (dirtyFields.has('supplierStockStatus')) patch.supplierStockStatus = currentProduct.supplierStockStatus;
+        if (dirtyFields.has('riskFlags')) patch.riskFlags = currentProduct.riskFlags;
+        if (dirtyFields.has('tags')) patch.tags = currentProduct.tags;
+        if (dirtyFields.has('featured')) patch.featured = currentProduct.featured;
+        if (dirtyFields.has('newArrival')) patch.newArrival = currentProduct.newArrival;
+        if (dirtyFields.has('trending')) patch.trending = currentProduct.trending;
+        if (dirtyFields.has('bestRated')) patch.bestRated = currentProduct.bestRated;
+        if (dirtyFields.has('bestSeller')) patch.bestSeller = currentProduct.bestSeller;
+        if (dirtyFields.has('promoted')) patch.promoted = currentProduct.promoted;
+        if (dirtyFields.has('saleEnabled')) patch.saleEnabled = currentProduct.saleEnabled;
+        if (dirtyFields.has('discountType')) patch.discountType = currentProduct.discountType;
+        if (dirtyFields.has('discountValue')) patch.discountValue = currentProduct.discountValue;
+        if (dirtyFields.has('seoTitle')) patch.seoTitle = currentProduct.seoTitle;
+        if (dirtyFields.has('seoDescription')) patch.seoDescription = currentProduct.seoDescription;
+        if (dirtyFields.has('seoKeywords')) patch.seoKeywords = currentProduct.seoKeywords;
+        if (dirtyFields.has('canonicalSlug')) patch.canonicalSlug = currentProduct.canonicalSlug;
+        if (dirtyFields.has('ogImage')) patch.ogImage = currentProduct.ogImage;
+        if (dirtyFields.has('ownerNotes')) patch.ownerNotes = currentProduct.ownerNotes;
+        if (dirtyFields.has('evidenceNotes')) patch.evidenceNotes = currentProduct.evidenceNotes;
+
+        if (isWoo && dirtyFields.has('images')) {
+          (patch as Record<string, unknown>).images = currentProduct.images;
+        }
+
+        saved = await updateProduct(currentProduct.id, patch);
+      }
       if (!saved) throw new Error('The backend did not return the saved product.');
       const imagePayload = currentProduct.images.map((img, i) => ({
         id: img.id || undefined,
@@ -2070,10 +2167,10 @@ export function CatalogProductEditor() {
 
       // Parallelize image and variant DB writes (for local products; Woo images are updated atomically above)
       if (!isWoo) {
-        await Promise.all([
-          saveProductImages(saved.id, imagePayload, { reload: false }),
-          saveProductVariants(saved.id, variantPayload, { reload: false }),
-        ]);
+        const writes = [];
+        if (dirtyFields.has('images')) writes.push(saveProductImages(saved.id, imagePayload, { reload: false }));
+        if (dirtyFields.has('variants')) writes.push(saveProductVariants(saved.id, variantPayload, { reload: false }));
+        if (writes.length) await Promise.all(writes);
       }
       // Auto-list: if enabled and this save made the product commerce-ready
       // while it was still a draft, publish it (status → active) so it shows
@@ -2091,11 +2188,14 @@ export function CatalogProductEditor() {
       // The product row response predates the image/variant writes above. Do
       // not replace local state with that stale row or a newly imported image
       // appears briefly and then vanishes from the editor.
-      const refreshed = await getProduct(saved.id);
+      const refreshed = await getProduct(saved.id, true);
+      const nextProduct = refreshed ?? { ...saved, images: currentProduct.images, variants: currentProduct.variants };
       if (isNew) {
         nav(`/admin/products/edit/${saved.id}`);
       } else {
-        setP(refreshed ?? { ...saved, images: currentProduct.images, variants: currentProduct.variants });
+        setP(nextProduct);
+        setOriginalProduct(nextProduct);
+        setDirtyFields(new Set());
       }
     } catch (e) {
       setSaveStatus('idle');
@@ -2132,8 +2232,24 @@ export function CatalogProductEditor() {
     } finally { setAddingCat(false); }
   };
 
-  if (loading) return <div className="text-center py-20 text-gray-400">Loading…</div>;
-  if (!p) return null;
+  if (loading || !hydrated || !p) {
+    return (
+      <div className="space-y-4 animate-pulse" role="status" aria-label="Loading product editor">
+        <div className="h-12 bg-gray-100 rounded-xl border border-gray-200" />
+        <div className="flex gap-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-9 w-24 bg-gray-100 rounded-lg" />
+          ))}
+        </div>
+        <div className="bg-white rounded-xl border p-6 space-y-4">
+          <div className="h-4 w-32 bg-gray-200 rounded" />
+          <div className="h-10 bg-gray-100 rounded-lg" />
+          <div className="h-4 w-40 bg-gray-200 rounded" />
+          <div className="h-28 bg-gray-100 rounded-lg" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -2183,7 +2299,7 @@ export function CatalogProductEditor() {
                 Saving…
               </span>
             )}
-            <button onClick={() => void handleSave()} disabled={saving} className="btn-glow px-4 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0">
+            <button onClick={() => void handleSave()} disabled={saving || loading || !hydrated} className="btn-glow px-4 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0">
               <FloppyDisk size={14} />{saving ? 'Saving…' : 'Save'}
             </button>
           </>
@@ -2281,8 +2397,16 @@ export function CatalogProductEditor() {
           <div className="space-y-5">
             <div className="bg-gray-50 border rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Current Stock Control</p>
-                <p className="text-2xl font-black text-gray-900 mt-0.5">{p.inventoryQty} <span className="text-sm font-normal text-gray-500">units available</span></p>
+                <p className="text-2xl font-black text-gray-900 mt-0.5">
+                  {!p.trackInventory ? (
+                    <span className="text-emerald-700 text-xl font-bold">
+                      {p.stockStatus === 'in_stock' ? 'In stock' : p.stockStatus === 'out_of_stock' ? 'Out of stock' : 'On backorder'}{' '}
+                      <span className="text-sm font-normal text-gray-500">(unmanaged)</span>
+                    </span>
+                  ) : (
+                    <>{p.inventoryQty} <span className="text-sm font-normal text-gray-500">units available</span></>
+                  )}
+                </p>
                 {p.supplierSource === 'Own Stock' || p.inventorySource === 'INTERNAL_STOCK' || !p.supplierSource ? (
                   <p className="text-xs text-emerald-700 font-medium mt-1 flex items-center gap-1">
                     <CheckCircle size={13} weight="bold" /> Own Stock is authoritative — internal quantity controls storefront availability.

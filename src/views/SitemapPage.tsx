@@ -49,24 +49,16 @@ const CATEGORIES = [
 ];
 
 const DEFAULT_PRODUCTS: SitemapProduct[] = [
-  { name: 'Animal Salt Lick 3-4 kg', slug: 'animal-salt-lick-3-4-kg' },
-  { name: 'Animal Salt Lick 5-6 kg', slug: 'salt-lick-5-6-kg' },
-  { name: 'Animal Salt Lick 1-2 lbs', slug: 'animal-salt-lick-1-2-lbs' },
-  { name: 'Animal Salt Lick 12-14 lbs', slug: 'animal-salt-lick-12-14-lbs' },
-  { name: 'Animal Salt Lick 30 lbs', slug: 'animal-salt-lick-30-lbs' },
-  { name: 'Compressed Salt Block 20kg', slug: 'compressed-salt-block-20kg' },
-  { name: 'Himalayan Salt Block 30 lbs', slug: 'himalayan-salt-block-30-lbs' },
-  { name: 'Himalayan Salt Block Rectangular 8 x 4 x 1 in', slug: 'himalayan-salt-block-rectangular-8-x-4-x-1-in' },
-  { name: 'Cooking Salt Plate', slug: 'cooking-salt-plate' },
-  { name: 'Himalayan Salt Fine Grain 45 lbs (0.5-1.0 mm)', slug: 'himalayan-salt-fine-grain-45-lbs' },
-  { name: 'Himalayan Pink Salt Fine Grain 25kg', slug: 'pink-salt-fine-grain-25kg' },
-  { name: 'Himalayan Pink Edible Salt Fine Grain Pouch 6 lbs', slug: 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs' },
-  { name: 'Himalayan Salt Chunks', slug: 'himalayan-salt-chunks' },
-  { name: 'Himalayan Rock Salt 45 lbs', slug: 'himalayan-rock-salt-45-lbs' },
-  { name: 'Himalayan Rock Salt Chunks 18 lbs', slug: 'himalayan-rock-salt-chunks-18-lbs' },
-  { name: 'Himalayan Pink Salt 2-3 kg Pack of 6', slug: 'himalayan-pink-salt-2-3-kg-pack-of-6' },
-  { name: 'Animal Salt Lick with Rope 3-4 kg Pack of 6', slug: 'animal-salt-lick-with-rope-3-4-kg-pack-of-6' },
-  { name: 'Fine Grain Himalayan Pink Salt 50 lb Bag', slug: 'fine-grain-himalayan-pink-salt-50-lb-bag' },
+  { name: 'Himalayan Rock Salt — 45 lbs (2–3 large chunks)', slug: 'himalayan-rock-salt-45-lbs-large-chunks' },
+  { name: 'Himalayan Salt Fine & Coarse Grain — 6 lbs', slug: 'himalayan-salt-6-lbs' },
+  { name: 'Himalayan Salt Fine Grain — 3 lbs', slug: 'himalayan-salt-fine-grain-3-lbs' },
+  { name: 'Himalayan Salt Lick — 12 to 14 lbs', slug: 'himalayan-salt-lick-12-to-14-lbs' },
+  { name: 'Himalayan Salt Lick — 5 to 6 lbs', slug: 'himalayan-salt-lick-5-to-6-lbs' },
+  { name: 'Himalayan Salt Lick — 1 to 2 lbs', slug: 'himalayan-salt-lick-1-to-2-lbs' },
+  { name: 'Himalayan Salt Block — 30 lbs', slug: 'himalayan-salt-block-30-lbs' },
+  { name: 'Himalayan Pink Edible Salt Fine Grain Pouch — 6 lbs', slug: 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs' },
+  { name: 'Himalayan Pink Edible Salt Fine Grain Pouch — 3 lbs', slug: 'himalayan-pink-edible-salt-fine-grain-pouch-3-lbs' },
+  { name: 'Himalayan Pink Edible Salt Fine & Coarse Grain — 16 oz Jar', slug: 'himalayan-pink-edible-salt-16-oz-jar' },
 ];
 
 export default function SitemapPage({ products = DEFAULT_PRODUCTS }: SitemapPageProps) {

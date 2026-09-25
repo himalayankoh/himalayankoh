@@ -286,6 +286,33 @@ describe('cart transport', () => {
     expect(result.session.nonce).toBe('fresh-nonce');
   });
 
+  it('recovers from a missing nonce (HTTP 400 woocommerce_rest_missing_nonce) by re-reading cart and retrying', async () => {
+    const attempts: Array<Record<string, string>> = [];
+    globalThis.fetch = async (input: unknown, init?: unknown) => {
+      const path = new URL(String(input)).pathname.replace(/^.*\/wp-json/, '');
+      const headers = ((init as { headers?: Record<string, string> })?.headers ?? {}) as Record<string, string>;
+
+      if (path.endsWith('/cart/add-item')) {
+        attempts.push(headers);
+        if (attempts.length === 1) {
+          return jsonResponse(
+            { code: 'woocommerce_rest_missing_nonce', message: 'Missing the Nonce header. This endpoint requires a valid nonce.', data: { status: 400 } },
+            400
+          );
+        }
+        return jsonResponse({ items: [] }, 201, { 'cart-token': 'token-1', nonce: 'fresh-nonce' });
+      }
+      return jsonResponse({ items: [] }, 200, { nonce: 'fresh-nonce' });
+    };
+
+    const result = await addStoreCartItem({ cartToken: 'token-1', nonce: null }, '2493', 1);
+
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0].Nonce).toBeUndefined();
+    expect(attempts[1].Nonce).toBe('fresh-nonce');
+    expect(result.session.nonce).toBe('fresh-nonce');
+  });
+
   it('names the endpoint and flags a WordPress PHP fatal rather than reporting a JSON error', async () => {
     useWordPress([
       {
@@ -352,5 +379,77 @@ describe('failure handling', () => {
     // Retrying a refusal would not help and would double every failed add.
     expect(attempts).toBe(1);
     expect((error as StoreCartError).code).toBe('woocommerce_rest_product_not_purchasable');
+  });
+
+  it('reconciles and succeeds when mutation times out but WooCommerce added the item', async () => {
+    let callIndex = 0;
+    globalThis.fetch = async (url) => {
+      callIndex += 1;
+      const urlStr = String(url);
+      if (urlStr.includes('/cart/add-item')) {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+      if (urlStr.includes('/cart')) {
+        return jsonResponse(
+          {
+            items: [cartLine({ id: 2493, quantity: 1 })],
+            items_count: 1,
+          },
+          200,
+          { 'cart-token': 'token-1', nonce: 'fresh-nonce' }
+        );
+      }
+      return jsonResponse({}, 404);
+    };
+
+    const result = await addStoreCartItem(
+      { cartToken: 'token-1', nonce: 'nonce-1' },
+      '2493',
+      1,
+      undefined,
+      { previousQuantity: 0, settleMs: 0 }
+    );
+
+    expect(result.reconciled).toBe(true);
+    expect(result.cart.items?.[0].id).toBe(2493);
+    expect(result.cart.items?.[0].quantity).toBe(1);
+  });
+
+  it('re-throws STORE_TIMEOUT when mutation times out and item is not in authoritative cart', async () => {
+    globalThis.fetch = async (url) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/cart/add-item')) {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+      if (urlStr.includes('/cart')) {
+        // Authoritative cart is still empty
+        return jsonResponse(
+          {
+            items: [],
+            items_count: 0,
+          },
+          200,
+          { 'cart-token': 'token-1', nonce: 'fresh-nonce' }
+        );
+      }
+      return jsonResponse({}, 404);
+    };
+
+    await expect(
+      addStoreCartItem(
+        { cartToken: 'token-1', nonce: 'nonce-1' },
+        '2493',
+        1,
+        undefined,
+        { previousQuantity: 0, settleMs: 0 }
+      )
+    ).rejects.toMatchObject({
+      name: 'StoreCartError',
+      code: 'store_timeout',
+    });
   });
 });

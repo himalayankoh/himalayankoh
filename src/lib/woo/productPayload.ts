@@ -53,8 +53,8 @@ export interface AdminProductPatch {
   compareAtPrice?: number | string | null;
   categoryIds?: number[];
   tags?: string[];
-  /** Public image URLs. Woo resolves an existing media item or sideloads. */
-  images?: string[];
+  /** Public image URLs or image objects. Woo resolves an existing media item or sideloads. */
+  images?: Array<string | { src?: string; alt?: string; id?: number; name?: string }>;
   type?: 'simple' | 'variable';
   manageStock?: boolean;
   stockQuantity?: number | null;
@@ -258,7 +258,24 @@ export function toWooProductBody(
     body.tags = patch.tags.map((name) => ({ name }));
   }
   if (patch.images !== undefined) {
-    body.images = patch.images.map((src) => ({ src }));
+    body.images = patch.images
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          const trimmed = entry.trim();
+          return trimmed ? { src: trimmed } : null;
+        }
+        if (entry && typeof entry === 'object') {
+          const item = entry as { src?: string; alt?: string; id?: number; name?: string };
+          const out: Record<string, unknown> = {};
+          if (typeof item.id === 'number' && item.id > 0) out.id = item.id;
+          if (typeof item.src === 'string' && item.src.trim()) out.src = item.src.trim();
+          if (typeof item.alt === 'string' && item.alt.trim()) out.alt = item.alt.trim();
+          if (typeof item.name === 'string' && item.name.trim()) out.name = item.name.trim();
+          return Object.keys(out).length ? out : null;
+        }
+        return null;
+      })
+      .filter((img): img is Record<string, unknown> => img !== null);
   }
   if (patch.featured !== undefined) body.featured = patch.featured;
 

@@ -7,6 +7,7 @@ import { getErrorMessage } from '../../lib/errors';
 import { getFreshAccessToken } from '../../services/wordpressAdminAuth';
 import { useAuthContext } from '../../context/AuthContext';
 import { createShippoLabel } from '../../lib/shippo/client';
+import { loadShippoConfig, type ShippoPublicConfig } from '../../lib/shippo/publicConfig';
 import { publicEnv } from '../../lib/env';
 import ShippingLabelPanel, { type LabelOrder } from '../../components/admin/ShippingLabelPanel';
 import ShippingSetup from '../../admin/ShippingSetup';
@@ -36,8 +37,8 @@ type AdminOrder = LabelOrder & {
 export default function AdminShippingLabels() {
   const [activeTab, setActiveTab] = useState<'labels' | 'setup'>('labels');
   const { session } = useAuthContext();
-  const [shippoRuntimeEnabled, setShippoRuntimeEnabled] = useState<boolean | null>(null);
-  const shippoEnabled = shippoRuntimeEnabled ?? publicEnv.shippoEnabled;
+  const [shippoConfig, setShippoConfig] = useState<ShippoPublicConfig | null>(null);
+  const shippoEnabled = Boolean(shippoConfig?.configured && shippoConfig?.enabled);
   const [ready, setReady] = useState<AdminOrder[]>([]);
   const [pending, setPending] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +54,7 @@ export default function AdminShippingLabels() {
   const fetchLabels = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
+    void loadShippoConfig().then(setShippoConfig).catch(() => setShippoConfig(null));
 
     try {
       const token = await getFreshAccessToken();
@@ -244,9 +246,28 @@ export default function AdminShippingLabels() {
                 label="Shippo integration"
                 icon={Printer}
                 tone={shippoEnabled ? 'green' : 'slate'}
-                value={shippoEnabled ? 'Enabled' : 'Disabled'}
+                value={shippoEnabled ? 'Enabled' : 'Not Configured'}
+                hint={shippoEnabled ? undefined : (shippoConfig?.reason ?? 'Missing credentials or sender address')}
               />
             </div>
+
+            {!loading && !shippoEnabled && (
+              <AdminNotice
+                tone="warning"
+                title="Shippo is not configured"
+                action={
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('setup')}
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700"
+                  >
+                    Configure Shippo
+                  </button>
+                }
+              >
+                {shippoConfig?.reason || 'Shippo API key and warehouse sender address must be configured before purchasing shipping labels.'}
+              </AdminNotice>
+            )}
 
             <AdminPanel bodyClassName="px-5 py-4">
               <div className="relative">

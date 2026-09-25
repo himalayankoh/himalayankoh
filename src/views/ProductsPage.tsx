@@ -127,7 +127,7 @@ export default function ProductsPage({
           className={
             isCategoryHub
               ? 'grid grid-cols-1 gap-4'
-              : 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5'
+              : 'grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5'
           }
         >
           {filteredProducts.map((product, i) => (
@@ -161,7 +161,7 @@ export default function ProductsPage({
         className={
           isCategoryHub
             ? 'bg-charcoal py-10 md:py-12 border-b border-white/10'
-            : 'bg-gradient-to-r from-charcoal to-charcoal-light py-20 md:py-28'
+            : 'bg-cream py-8 md:py-10 border-b border-himalayan-line'
         }
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
@@ -179,10 +179,10 @@ export default function ProductsPage({
               <span className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-5">
                 Shop Now
               </span>
-              <h1 className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-5 leading-tight">
+              <h1 className="font-serif text-3xl sm:text-4xl font-bold text-charcoal mb-3 leading-tight">
                 Premium Salt Products
               </h1>
-              <p className="text-white/75 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
+              <p className="text-charcoal-light text-base max-w-2xl mx-auto leading-relaxed">
                 Handpicked from the heart of the Himalayas — pure, natural, and mineral-rich
               </p>
             </>
@@ -202,6 +202,7 @@ export default function ProductsPage({
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="search"
+                aria-label="Search the catalogue"
                 placeholder="Search products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}

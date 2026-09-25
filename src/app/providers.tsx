@@ -1,5 +1,6 @@
 'use client';
 
+import { MotionConfig } from 'framer-motion';
 import { AuthProvider } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
 import HashUrlRedirect from '@/components/HashUrlRedirect';
@@ -45,12 +46,12 @@ function ClientEffects() {
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <AuthProvider>
+    <MotionConfig reducedMotion="user"><AuthProvider>
       <ToastProvider>
         <StaleChunkRecovery />
         <ClientEffects />
         {children}
       </ToastProvider>
-    </AuthProvider>
+    </AuthProvider></MotionConfig>
   );
 }

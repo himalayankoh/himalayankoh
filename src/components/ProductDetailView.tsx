@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ShoppingCart, Heart, Check, Minus, Plus, ChevronRight } from 'lucide-react';
+import { X, ShoppingCart, Heart, Check, Minus, Plus, ChevronRight, Loader2 } from 'lucide-react';
 import type { Product } from '../data/products';
 import { findVariationOption } from '../lib/woo/variationOptions';
 import { formatPriceDisplay, isPriceKnown } from '../lib/products/price';
@@ -28,6 +29,7 @@ export default function ProductDetailView({
   variant = 'page',
   onClose,
 }: ProductDetailViewProps) {
+  const dialogRef = useDialogFocus(variant === 'modal', () => onClose?.());
   const [qty, setQty] = useState(1);
   // The store's real variations when the product is variable, `grainSizes`
   // otherwise — one list either way, so the selector cannot show an option the
@@ -35,6 +37,7 @@ export default function ProductDetailView({
   const grainChoices = product.variations?.options.map((option) => option.label) ?? product.grainSizes ?? [];
   const [selectedGrain, setSelectedGrain] = useState(grainChoices[0] || '');
   const [addedToCart, setAddedToCart] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
   const { addItem } = useCart();
   const { user } = useAuthContext();
@@ -72,10 +75,12 @@ export default function ProductDetailView({
   }, [maxQuantity]);
 
   const handleAddToCart = async () => {
+    if (isAdding) return;
     if (!priceKnown) {
       toast.error(`${product.name} has no price available yet.`);
       return;
     }
+    setIsAdding(true);
     try {
       const option = findVariationOption(product.variations, selectedGrain);
       await addItem(
@@ -93,6 +98,8 @@ export default function ProductDetailView({
       setTimeout(() => setAddedToCart(false), 2000);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to add item to cart. Please try again.');
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -184,7 +191,7 @@ export default function ProductDetailView({
           )}
         </div>
 
-        <div className="p-6 md:p-8 relative">
+        <div className="p-4 sm:p-6 md:p-8 relative">
           {variant === 'modal' && onClose && (
             <button
               type="button"
@@ -249,7 +256,8 @@ export default function ProductDetailView({
                     key={g}
                     type="button"
                     onClick={() => setSelectedGrain(g)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
+                    aria-pressed={selectedGrain === g}
+                    className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                       selectedGrain === g
                         ? 'border-himalayan bg-himalayan/10 text-himalayan'
                         : 'border-gray-200 text-charcoal hover:border-himalayan/50'
@@ -296,18 +304,20 @@ export default function ProductDetailView({
           <div className="flex gap-3">
             <motion.button
               type="button"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              whileHover={!isAdding ? { scale: 1.02 } : undefined}
+              whileTap={!isAdding ? { scale: 0.98 } : undefined}
               onClick={handleAddToCart}
-              disabled={!product.inStock || !priceKnown}
+              disabled={!product.inStock || !priceKnown || isAdding}
+              aria-live="polite"
+              aria-busy={isAdding}
               className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
                 addedToCart
                   ? 'bg-green-500 text-white'
                   : 'bg-himalayan hover:bg-himalayan-dark text-white shadow-lg shadow-himalayan/25'
               }`}
             >
-              <ShoppingCart size={18} />
-              {addedToCart ? 'Added to Cart!' : 'Add to Cart'}
+              {isAdding ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
+              {isAdding ? 'Adding…' : (addedToCart ? 'Added to Cart!' : 'Add to Cart')}
             </motion.button>
             <motion.button
               type="button"
@@ -316,10 +326,12 @@ export default function ProductDetailView({
               onClick={handleWishlist}
               className="w-14 h-14 border-2 border-gray-200 rounded-xl flex items-center justify-center hover:border-himalayan hover:text-himalayan transition-colors"
               aria-label="Add to wishlist"
+              aria-pressed={wishlisted}
             >
               <Heart size={20} fill={wishlisted ? 'currentColor' : 'none'} />
             </motion.button>
           </div>
+          <p className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-charcoal-light"><Link to="/shipping" className="underline underline-offset-4">Shipping & delivery</Link><Link to="/returns" className="underline underline-offset-4">Returns & eligibility</Link><Link to="/contact" className="underline underline-offset-4">Product questions</Link></p>
         </div>
       </div>
     </div>
@@ -335,7 +347,7 @@ export default function ProductDetailView({
           className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
           onClick={onClose}
         >
-          {details}
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={displayName} tabIndex={-1} className="max-h-[90dvh] overflow-y-auto w-full max-w-5xl rounded-2xl">{details}</div>
         </motion.div>
       </AnimatePresence>
     );

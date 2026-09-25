@@ -45,6 +45,10 @@ const OUT = join(ROOT, 'deploy');
 const PLUGINS = [
   { slug: 'himalayan-koh-storefront', file: 'wordpress/himalayan-koh-storefront.php' },
   { slug: 'himalayan-koh-leados', file: 'wordpress/himalayan-koh-leados.php' },
+  // The B2B side: wholesale accounts, pricing, container maths and quotations.
+  // Separate from the storefront plugin so a fault in the wholesale calculator
+  // cannot take a shopper's wishlist with it.
+  { slug: 'hk-wholesale', file: 'wordpress/hk-wholesale.php' },
   // Staging-only compatibility shim for the FarmAgrico theme's Store API fatal;
   // packaged alongside the real plugins so its artifact and checksum are built
   // the same way, and removed the same way once the theme is fixed.

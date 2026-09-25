@@ -23,6 +23,13 @@ interface ProviderKeyInfo {
   masked: string;
   source: string;
 }
+interface ProviderCheck {
+  id: string;
+  label: string;
+  state: 'ok' | 'blocked' | 'unknown' | 'not-applicable';
+  detail: string;
+}
+
 interface ProviderCard {
   id: ProviderId;
   name: string;
@@ -39,6 +46,16 @@ interface ProviderCard {
   lastWebhookAt?: string;
   lastPaymentAt?: string;
   lastError?: string;
+  /* The readiness decision the server itself uses, so this screen cannot claim a
+     setup is ready while checkout is refusing it. */
+  stage?: 'off' | 'test' | 'live';
+  stageLabel?: string;
+  ready?: boolean;
+  readyForLive?: boolean;
+  chargingEnabled?: boolean;
+  orderSyncConfigured?: boolean;
+  blockers?: string[];
+  checks?: ProviderCheck[];
 }
 interface PaymentsData {
   ok: boolean;
@@ -63,14 +80,17 @@ const STATUS_COLORS: Record<string, string> = {
   error: 'bg-red-100 text-red-700',
 };
 
-function statusLabel(s: ProviderStatus): string {
+function statusLabel(s: ProviderStatus, ready?: boolean): string {
   switch (s) {
-    case 'ready': return 'Ready';
+    // "Ready" is reserved for a setup the server would actually accept a payment
+    // with. A live key whose webhook is missing is not ready, however many keys
+    // are filled in.
+    case 'ready': return ready === false ? 'Incomplete' : 'Ready';
     case 'sandbox': return 'Sandbox';
     case 'connected': return 'Connected';
     case 'not_configured': return 'Not Configured';
     case 'disabled': return 'Disabled';
-    case 'error': return 'Error';
+    case 'error': return 'Action Required';
     default: return s;
   }
 }
@@ -137,6 +157,33 @@ export default function PaymentsSetup() {
     setTestResult({ provider: id, ok: !!r.ok, message: r.message || r.error });
     setTesting(null);
     void loadData();
+  };
+
+  // Payment + webhook health check. Records the two flags the server's live-
+  // charging gate reads, so a live deployment cannot be called ready on the
+  // strength of a key alone.
+  const runHealthCheck = async (id: ProviderId) => {
+    setTesting(id);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/admin/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ action: 'health', provider: id }),
+      });
+      const r = await res.json() as {
+        ok?: boolean; message?: string; error?: string;
+        payment?: { ok: boolean; detail: string };
+        webhook?: { ok: boolean; detail: string };
+      };
+      const detail = [r.payment?.detail, r.webhook?.detail].filter(Boolean).join(' · ');
+      setTestResult({ provider: id, ok: !!r.ok, message: detail || r.message || r.error });
+    } catch {
+      setTestResult({ provider: id, ok: false, message: 'Network error running the health check.' });
+    } finally {
+      setTesting(null);
+      void loadData();
+    }
   };
 
   const toggleProvider = async (id: ProviderId, enabled: boolean) => {
@@ -289,12 +336,22 @@ export default function PaymentsSetup() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-gray-900">{p.name}</h3>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_COLORS[p.status] || STATUS_COLORS.not_configured}`}>
-                      {statusLabel(p.status)}
+                      {statusLabel(p.status, p.ready)}
                     </span>
                     {isPrimary && <span className="px-2 py-0.5 rounded-full bg-luxe-gold text-white text-[10px] font-bold">PRIMARY</span>}
                     {isBackup && <span className="px-2 py-0.5 rounded-full bg-purple-500 text-white text-[10px] font-bold">BACKUP</span>}
-                    {p.mode === 'production' && <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">PROD</span>}
-                    {p.mode === 'sandbox' && <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">SANDBOX</span>}
+                    {/* Environment, said in full words: a live key in a staging
+                        deployment must never read as simply "PROD". */}
+                    {p.id === 'stripe' && p.stageLabel ? (
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${p.stage === 'live' ? 'bg-green-100 text-green-700' : p.stage === 'test' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {p.stageLabel}
+                      </span>
+                    ) : (
+                      <>
+                        {p.mode === 'production' && <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">LIVE / PRODUCTION</span>}
+                        {p.mode === 'sandbox' && <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold">TEST / STAGING</span>}
+                      </>
+                    )}
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
                     {totalKeys > 0 ? `${configuredKeys}/${totalKeys} credentials configured` : 'No credentials required'}
@@ -314,7 +371,7 @@ export default function PaymentsSetup() {
                     {p.enabled ? 'ON' : 'OFF'}
                   </button>
 
-                  {/* Test */}
+                  {/* Test — does the credential work? */}
                   <button
                     onClick={() => testProvider(p.id)}
                     disabled={!p.isConfigured || testing === p.id}
@@ -323,6 +380,18 @@ export default function PaymentsSetup() {
                     {testing === p.id ? <ArrowClockwise size={12} className="animate-spin" /> : <Plug size={12} />}
                     Test
                   </button>
+
+                  {/* Health — is the deployment able to take and settle a payment? */}
+                  {p.id === 'stripe' && (
+                    <button
+                      onClick={() => runHealthCheck(p.id)}
+                      disabled={!p.isConfigured || testing === p.id}
+                      className={`${BTN} bg-gray-800 text-white hover:bg-gray-900 disabled:opacity-40`}
+                      title="Checks the Stripe key (read-only) and whether this deployment's webhook endpoint answers a signed probe"
+                    >
+                      Health
+                    </button>
+                  )}
 
                   {/* Primary/Backup */}
                   {p.isConfigured && (
@@ -351,6 +420,21 @@ export default function PaymentsSetup() {
                   </button>
                 </div>
               </div>
+
+              {/* Readiness — the blockers the server would refuse checkout for. */}
+              {p.id === 'stripe' && (p.blockers?.length ?? 0) > 0 && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                    {p.stage === 'live' ? 'Live payments are blocked' : 'Test payments are not fully wired'}
+                  </p>
+                  <ul className="mt-1.5 space-y-1 text-xs text-amber-900 list-disc pl-4">
+                    {p.blockers?.map((b) => <li key={b}>{b}</li>)}
+                  </ul>
+                  {p.status === 'error' && p.lastError && !p.blockers?.includes(p.lastError) && (
+                    <p className="mt-1.5 text-xs text-amber-900">{p.lastError}</p>
+                  )}
+                </div>
+              )}
 
               {/* Expanded Details */}
               {isExpanded && (
@@ -381,9 +465,11 @@ export default function PaymentsSetup() {
                   )}
 
                   {/* Stripe live key management — attach the PUBLIC publishable
-                      key from the browser (no redeploy). Secret/webhook keys are
-                      never editable here; they stay in Worker secrets or the
-                      server-side app_settings registry. */}
+                      key from the browser (no redeploy). The secret and webhook
+                      keys are editable too, but in Settings → Service & API Keys,
+                      the one screen that writes the whole provider registry; this
+                      card stays the quick publishable-key switch and shows the
+                      masked state of all three. */}
                   {p.id === 'stripe' && stripeKeys && (
                     <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
                       <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1.5"><Key size={13} /> Stripe Keys (owner-managed)</h4>
@@ -399,8 +485,16 @@ export default function PaymentsSetup() {
                       </div>
                       <p className="text-[11px] text-gray-400 mt-2">
                         The publishable key is public and safe to paste here; it is stored server-side and never shown in full.
-                        Secret + webhook keys are set as Cloudflare Worker secrets (<code className="bg-gray-100 px-1 rounded">wrangler secret put STRIPE_SECRET_KEY</code>).
+                        Set the secret and webhook keys in <strong>Settings → Service &amp; API Keys</strong> — no redeploy needed,
+                        and the Stripe card there has a Test connection button.
                       </p>
+                      <button
+                        type="button"
+                        onClick={() => nav('/admin/settings')}
+                        className="mt-2 text-[11px] font-semibold text-blue-600 hover:text-blue-800 underline"
+                      >
+                        Open Settings → Service &amp; API Keys
+                      </button>
                       {!stripeKeys['Publishable Key']?.configured && (
                         <div className="mt-3 flex gap-2">
                           <input

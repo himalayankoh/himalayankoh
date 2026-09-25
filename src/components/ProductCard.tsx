@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ShoppingCart, Heart, Eye } from 'lucide-react';
+import { ShoppingCart, Heart, Eye, Loader2 } from 'lucide-react';
 import { Product } from '../data/products';
 import { findVariationOption } from '../lib/woo/variationOptions';
 import { formatPriceDisplay, isPriceKnown } from '../lib/products/price';
@@ -35,12 +35,18 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
   // real unit price, and falling back to 0 would let a customer check out for
   // free. The backend reports `priceMin: null` for exactly this case.
   const priceKnown = isPriceKnown(product);
+  const maxQuantity = typeof product.stockQuantity === 'number' ? Math.max(0, product.stockQuantity) : null;
+  const canBuy = priceKnown && product.inStock && (maxQuantity === null || maxQuantity > 0);
+
+  const [isAdding, setIsAdding] = useState(false);
 
   const handleAddToCart = async () => {
+    if (isAdding || !canBuy) return;
     if (!priceKnown) {
       toast.error(`${product.name} has no price available yet.`);
       return;
     }
+    setIsAdding(true);
     try {
       // The chosen option, addressed the way the cart needs it. A product with a
       // choice but no matching variation sends none rather than an invented pair.
@@ -57,6 +63,8 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
       setTimeout(() => setAddedToCart(false), 2000);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to add item to cart. Please try again.');
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -80,10 +88,10 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
 
   return (
     <div
-      className={`group bg-white rounded-2xl overflow-hidden transition-all duration-300 ${
+      className={`group flex flex-col min-w-0 bg-white rounded-xl overflow-hidden border border-himalayan-line/60 transition-shadow duration-150 ${
         shopHighlight
           ? 'shadow-md shadow-himalayan/10 border border-himalayan/15 hover:shadow-xl hover:shadow-himalayan/20 hover:border-himalayan/35'
-          : 'shadow-md shadow-black/5 hover:shadow-xl hover:shadow-himalayan/10'
+          : 'shadow-sm hover:shadow-md'
       }`}
     >
       {/* Image */}
@@ -92,28 +100,30 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
           <img
             src={product.image?.trim() || '/images/placeholder-product.svg'}
             alt={product.name}
-            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+            className="w-full h-full object-contain motion-safe:group-hover:scale-[1.03] transition-transform duration-200"
             loading="lazy"
             onError={(e) => { (e.target as HTMLImageElement).src = '/images/placeholder-product.svg'; }}
           />
         </Link>
 
         {/* Overlay buttons */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100">
-          <motion.button
+        <div className="absolute top-2 right-2 flex gap-1 pointer-events-none opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+          {onQuickView && <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => onQuickView?.(product)}
-            className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-himalayan hover:text-white transition-colors"
+            className="pointer-events-auto w-11 h-11 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-himalayan hover:text-white transition-colors"
             aria-label="Quick view"
           >
             <Eye size={18} />
-          </motion.button>
+          </motion.button>}
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={handleWishlist}
-            className={`w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-colors ${
+            aria-label={`Save ${product.name} to wishlist`}
+            aria-pressed={wishlisted}
+            className={`pointer-events-auto w-11 h-11 rounded-full flex items-center justify-center shadow-lg transition-colors ${
               wishlisted ? 'bg-himalayan text-white' : 'bg-white hover:bg-himalayan hover:text-white'
             }`}
           >
@@ -130,8 +140,8 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
       </div>
 
       {/* Content */}
-      <div className="p-3.5 md:p-4">
-        <h3 className="font-semibold text-charcoal text-sm leading-snug line-clamp-2 mb-1.5 min-h-10">
+      <div className="p-3 md:p-4 flex flex-col flex-1 min-w-0">
+        <h3 className="font-semibold text-charcoal text-sm leading-snug mb-1.5 min-h-10 break-words">
           <Link
             to={`/products/${product.slug}`}
             className="group-hover:text-himalayan transition-colors"
@@ -147,6 +157,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
         {/* Grain Size Selector */}
         {grainChoices.length > 0 && (
           <select
+            aria-label={`Choose grain size for ${product.name}`}
             value={selectedGrain}
             onChange={(e) => setSelectedGrain(e.target.value)}
             className="w-full mb-2.5 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
@@ -158,11 +169,13 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
         )}
 
         {/* Quantity + Add to Cart */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 mt-auto">
           <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
             <button
+              aria-label={`Decrease quantity for ${product.name}`}
+              disabled={qty <= 1 || isAdding}
               onClick={() => setQty(Math.max(1, qty - 1))}
-              className="px-3 py-2 text-sm hover:bg-gray-100 transition-colors font-semibold text-charcoal"
+              className="min-h-11 min-w-9 px-2 py-2 text-sm disabled:opacity-40 hover:bg-gray-100 transition-colors font-semibold text-charcoal"
             >
               −
             </button>
@@ -170,25 +183,29 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
               {qty}
             </span>
             <button
-              onClick={() => setQty(qty + 1)}
-              className="px-3 py-2 text-sm hover:bg-gray-100 transition-colors font-semibold text-charcoal"
+              aria-label={`Increase quantity for ${product.name}`}
+              disabled={isAdding || (maxQuantity !== null && qty >= maxQuantity)}
+              onClick={() => setQty(q => maxQuantity === null ? q + 1 : Math.min(q + 1, maxQuantity))}
+              className="min-h-11 min-w-9 px-2 py-2 text-sm disabled:opacity-40 hover:bg-gray-100 transition-colors font-semibold text-charcoal"
             >
               +
             </button>
           </div>
           <motion.button
-            whileHover={priceKnown ? { scale: 1.02 } : undefined}
-            whileTap={priceKnown ? { scale: 0.98 } : undefined}
+            whileHover={priceKnown && !isAdding ? { scale: 1.02 } : undefined}
+            whileTap={priceKnown && !isAdding ? { scale: 0.98 } : undefined}
             onClick={handleAddToCart}
-            disabled={!priceKnown}
-            className={`flex-1 flex items-center justify-center gap-2 min-h-11 rounded-xl font-semibold text-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
+            disabled={!canBuy || isAdding}
+            aria-live="polite"
+            aria-busy={isAdding}
+            className={`w-full sm:w-auto flex-1 flex items-center justify-center gap-2 min-h-11 rounded-xl font-semibold text-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
               addedToCart
                 ? 'bg-himalayan-green text-white'
                 : 'bg-himalayan hover:bg-himalayan-dark text-white'
             }`}
           >
-            <ShoppingCart size={16} />
-            {addedToCart ? 'Added!' : 'Add to Cart'}
+            {isAdding ? <Loader2 size={16} className="animate-spin" /> : <ShoppingCart size={16} />}
+            {isAdding ? 'Adding…' : (addedToCart ? 'Added!' : !canBuy ? (product.stockStatus === 'out_of_stock' ? 'Out of stock' : 'Unavailable') : 'Add to Cart')}
           </motion.button>
         </div>
       </div>

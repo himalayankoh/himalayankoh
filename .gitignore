@@ -44,3 +44,9 @@ scratch/
 
 # WordPress plugin release artifacts (built by scripts/pack-plugins.mjs)
 deploy/
+
+# QA, browser profiles and data backups
+.chrome-qa-profile/
+qa-visual-artifacts/
+supabase-backup/
+preview-*.png

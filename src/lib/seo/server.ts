@@ -16,7 +16,7 @@ import { SITE_ORIGIN } from '@/lib/site/origin';
  * such request lets a stall fail fast instead: the page still renders, just
  * without that one piece of data, the same way a not-found row is handled.
  */
-const SEO_FETCH_TIMEOUT_MS = 6_000;
+const SEO_FETCH_TIMEOUT_MS = 12_000;
 
 export function seoFetchDeadline(): AbortSignal {
   return AbortSignal.timeout(SEO_FETCH_TIMEOUT_MS);

@@ -14,7 +14,23 @@ interface ShippoTransactionResponse {
   messages?: { text?: string }[];
 }
 
-export async function purchaseShippoLabel(rateId: string, orderId: string): Promise<ShippoLabelResult> {
+export async function purchaseShippoLabel(
+  rateId: string,
+  orderId: string,
+  options?: { dryRun?: boolean }
+): Promise<ShippoLabelResult> {
+  const isDryRun = options?.dryRun || process.env.SHIPPO_DRY_RUN === 'true';
+  if (isDryRun) {
+    return {
+      transactionId: `dry_run_${Date.now()}`,
+      trackingNumber: `DRYRUN${orderId}${Date.now().toString().slice(-6)}`,
+      labelUrl: 'https://preview.himalayankoh.com/test-label-preview.pdf',
+      trackingUrl: 'https://tools.usps.com/go/TrackConfirmAction',
+      carrier: 'USPS (Dry Run)',
+      serviceName: 'Priority Mail (Dry Run)',
+    };
+  }
+
   const transaction = await shippoRequest<ShippoTransactionResponse>('/transactions/', {
     method: 'POST',
     body: {

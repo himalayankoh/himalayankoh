@@ -133,6 +133,8 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 body {
@@ -140,6 +142,7 @@ body {
   color: var(--color-charcoal);
   background: var(--color-warm-white);
   overflow-x: hidden;
+  max-width: 100vw;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -376,4 +379,23 @@ img {
     transition: none !important;
     transform: none !important;
   }
+}
+
+/* Shared keyboard and motion rules for storefront and operations. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-himalayan-dark);
+  outline-offset: 3px;
+}
+.hk-admin :where(input, select, textarea) { max-width: 100%; }
+.hk-admin .admin-content > * { min-width: 0; max-width: 100%; }
+.hk-admin :where(td, th) { overflow-wrap: anywhere; }
+.hk-admin table { font-variant-numeric: tabular-nums; }
+.hk-admin :where(h1, h2, h3) { text-wrap: balance; }
+@media (max-width: 639px) {
+  .hk-admin .admin-content > .grid { grid-template-columns: minmax(0, 1fr); }
+  .hk-admin .admin-content input, .hk-admin .admin-content select { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }

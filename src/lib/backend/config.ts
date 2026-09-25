@@ -44,6 +44,8 @@ export const backendConfig = {
   },
   /** Default read timeout for backend calls, in ms. */
   requestTimeoutMs: Number(process.env.WORDPRESS_REQUEST_TIMEOUT_MS || 12000),
+  /** Default timeout for mutations (add-to-cart, cart updates), in ms. */
+  mutationTimeoutMs: Number(process.env.WORDPRESS_MUTATION_TIMEOUT_MS || 20000),
 };
 
 /** True when the storefront should read catalog data from WordPress/WooCommerce. */

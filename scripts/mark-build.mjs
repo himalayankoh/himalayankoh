@@ -7,8 +7,7 @@
  * it restarts, which made the check report "no previous build" on dev
  * machines even though a production build had succeeded.
  *
- * Runs automatically via the `postbuild` npm script (also on Vercel, where
- * it is harmless).
+ * Runs automatically via the `postbuild` npm script.
  */
 import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';

@@ -13,6 +13,7 @@ import { getAccessToken } from '../services/wordpressAdminAuth';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { listCategories, createCategory, updateCategory, deleteCategory, listProducts, setDbToken } from '../features/catalog/repository';
 import type { CatalogProduct } from '../features/catalog/types';
+import { fetchInventory, type InventoryReport } from '../lib/admin/consoleApi';
 import { AIImportPanel } from './AIImportPanel';
 import { loadProviderSettings, saveProviderSettings } from '../features/ai/providers';
 import { loadPricingRules, savePricingRules, computePricing, DEFAULT_PRICING_RULES } from '../features/ai/pricing';
@@ -46,6 +47,7 @@ import TrafficDashboard from './TrafficDashboard';
 import AdSenseEarnings from './AdSenseEarnings';
 import { ListingPlaybookAdmin } from './ListingPlaybookAdmin';
 import { ListingTaskAdmin } from './ListingTaskAdmin';
+import ServiceKeysPanel from './ServiceKeysPanel';
 import {
   Warning, ArrowLeft, Robot, CheckCircle, CaretDown, CaretRight, CaretUp,
   Clipboard, Code, Cpu, CurrencyDollar, Download, Info, Key, PencilSimple, Eye, FileText, TreeStructure, Globe,
@@ -292,6 +294,7 @@ export function ADashboard() {
   const [realOrders, setRealOrders] = useState<DashOrderRow[]>([]);
   const [stats, setStats] = useState<DashStats | null>(null);
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
+  const [inventoryReport, setInventoryReport] = useState<InventoryReport | null>(null);
   const [gift] = useState<{ active: boolean; remaining: number; total: number; claimsToday: number } | null>(null);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const [range, setRange] = useState<7 | 30 | 90>(7);
@@ -331,7 +334,11 @@ export function ADashboard() {
       .finally(() => setLoadedAt(new Date()));
   }, []);
   const refresh = useAutoRefresh(loadOrders);
-  useEffect(() => { refresh(); listProducts().then(setCatalog).catch(() => setCatalog([])); }, [refresh]);
+  useEffect(() => {
+    refresh();
+    listProducts().then(setCatalog).catch(() => setCatalog([]));
+    fetchInventory().then(setInventoryReport).catch(() => setInventoryReport(null));
+  }, [refresh]);
 
   // Server-aggregated, paid-only metrics (refunds subtracted, no page cap).
   const rev = stats ? stats.revenue : 0;
@@ -344,10 +351,10 @@ export function ADashboard() {
   const activeProducts = catalog.filter(p => p.status === 'active').length;
   const drafts = catalog.filter(p => p.status === 'draft').length;
   const commerceReady = catalog.filter(p => p.commerceReadiness === 'COMMERCE_READY').length;
-  const lowStockList = catalog
-    .filter(p => Number(p.inventoryQty ?? 0) <= 10)
-    .sort((a, b) => Number(a.inventoryQty ?? 0) - Number(b.inventoryQty ?? 0));
-  const lowStock = lowStockList.length;
+
+  // Stock overview reconciled with Inventory: uses the authoritative Inventory rules.
+  // Unmanaged products do not have counted units and are never treated as "0 left" or "low stock".
+  const lowStock = inventoryReport ? inventoryReport.lowStock : 0;
 
   // Daily revenue + order counts for the last 90 days (paid-only rows).
   const isPaidRow = (o: DashOrderRow) => ['paid', 'processing', 'shipped', 'delivered', 'partially_refunded'].includes(String(o.status || ''));
@@ -397,7 +404,18 @@ export function ADashboard() {
     { l: 'Avg order value', v: paidCount ? `$${aov.toFixed(2)}` : '—', sub: paidCount ? 'per paid order' : 'No paid orders yet', i: TrendUp, to: '/admin/orders', iconCls: 'bg-[#e8f0eb] text-[#3f6550]' },
     { l: 'Customers', v: users.length, sub: users.length ? 'registered accounts' : 'No customers yet', i: UsersIcon, to: '/admin/users', iconCls: 'bg-[#faf0eb] text-[#b86452]' },
     { l: 'Active products', v: activeProducts, sub: `${totalProducts} total · ${commerceReady} commerce-ready`, i: Package, to: '/admin/products', iconCls: 'bg-[#fdf5ea] text-[#c98745]' },
-    { l: 'Low-stock products', v: lowStock, sub: lowStock ? 'need restock' : 'All stocked', i: Warning, to: '/admin/products', iconCls: 'bg-amber-50 text-amber-600' },
+    {
+      l: 'Low-stock products',
+      v: inventoryReport ? inventoryReport.lowStock : (catalog.length ? 0 : '—'),
+      sub: inventoryReport
+        ? (inventoryReport.lowStock > 0
+            ? `${inventoryReport.lowStock} need restock`
+            : (inventoryReport.outOfStock > 0 ? `${inventoryReport.outOfStock} out of stock · 0 low stock` : 'All stocked'))
+        : 'Loading inventory…',
+      i: Warning,
+      to: '/admin/inventory',
+      iconCls: inventoryReport && inventoryReport.lowStock > 0 ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-600',
+    },
   ];
 
   const quickActions = [
@@ -567,19 +585,32 @@ export function ADashboard() {
           <div className="bg-white rounded-xl border border-gray-100 p-3.5">
             <div className="flex items-center justify-between mb-2.5">
               <h3 className="font-bold text-[11px] text-gray-800 flex items-center gap-1.5"><Warning size={11} className="text-amber-500" />Low Stock</h3>
-              <Link to="/admin/products" className="text-[10px] font-semibold text-[#9a6f16] hover:text-[#7c5a10]">View inventory →</Link>
+              <Link to="/admin/inventory" className="text-[10px] font-semibold text-[#9a6f16] hover:text-[#7c5a10]">View inventory →</Link>
             </div>
-            {lowStockList.length === 0 ? (
-              <p className="text-[11px] text-gray-400 py-3 text-center">All products well stocked ✓</p>
+            {inventoryReport ? (
+              inventoryReport.lowStock === 0 ? (
+                <div className="py-2.5 text-center">
+                  <p className="text-[11px] text-gray-600 font-medium">No low-stock products ✓</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    {inventoryReport.outOfStock > 0
+                      ? `${inventoryReport.outOfStock} out of stock · ${inventoryReport.rows.filter(r => r.tracksQuantity).length} tracked`
+                      : 'All products well stocked'}
+                  </p>
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {inventoryReport.rows.filter(r => r.lowStock).slice(0, 4).map(p => (
+                    <li key={p.id} className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-gray-700 truncate">{p.name}</span>
+                      <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                        {p.quantity !== null ? `${p.quantity} left` : 'Low stock'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )
             ) : (
-              <ul className="space-y-2">
-                {lowStockList.slice(0, 4).map(p => (
-                  <li key={p.id} className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-gray-700 truncate">{p.name}</span>
-                    <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${Number(p.inventoryQty ?? 0) <= 0 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>{p.inventoryQty ?? 0} left</span>
-                  </li>
-                ))}
-              </ul>
+              <p className="text-[11px] text-gray-400 py-3 text-center">Loading inventory…</p>
             )}
           </div>
 
@@ -2037,6 +2068,7 @@ const [open, setOpen] = useState<Record<string, boolean>>({
   password: false,
   adsense: true,
   integrations: false,
+  serviceKeys: true,
 });
   const toggle = (k: string) => setOpen(s => ({ ...s, [k]: !s[k] }));
 
@@ -2168,9 +2200,9 @@ const [open, setOpen] = useState<Record<string, boolean>>({
         <div className="pt-5 space-y-4">
           <div className="p-3 bg-green-50 border border-green-200 rounded-xl text-xs text-green-800">
             <p className="font-semibold mb-1">🔒 Himalayan Koh: keys live on the server, never in the browser</p>
-            <p>AI provider keys and scraping tokens are read from environment variables by the /api serverless functions. They are never stored in localStorage, never shipped in the bundle, and never logged.</p>
+            <p>AI provider keys and scraping tokens are read from environment variables by server-side API routes in the Cloudflare Worker environment. They are never stored in localStorage, never shipped in the bundle, and never logged.</p>
           </div>
-          <p className="text-sm text-gray-500">Set these env vars in your hosting dashboard (Vercel → Project → Settings → Environment Variables) and redeploy. Variable names: <code className="font-mono text-xs">OPENAI_API_KEY, DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY, SCRAPE_DO_TOKEN</code> — see <code className="font-mono text-xs">.env.example</code>.</p>
+          <p className="text-sm text-gray-500">Server-side credentials are stored securely in the Cloudflare Worker environment or Himalayan Koh server-side integration settings. They are never exposed to the browser. After changing a Cloudflare Worker secret, redeploy the Worker if required. Variable names: <code className="font-mono text-xs">OPENAI_API_KEY, DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, GEMINI_API_KEY, SCRAPE_DO_TOKEN</code> — see <code className="font-mono text-xs">.env.example</code>.</p>
           {envStatus ? (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Server status</p>
@@ -2185,7 +2217,7 @@ const [open, setOpen] = useState<Record<string, boolean>>({
               {!envStatus.providers.length && <p className="text-xs text-gray-400">No providers reported by server.</p>}
             </div>
           ) : (
-            <p className="text-xs text-gray-400">Checking server configuration… (requires the /api functions deployed)</p>
+            <p className="text-xs text-gray-400">Checking server configuration… (requires the server API routes deployed)</p>
           )}
         </div>
       </Accordion>
@@ -2422,6 +2454,11 @@ const [open, setOpen] = useState<Record<string, boolean>>({
             <li><span className="font-medium text-[#26211C]">Active Staging:</span> Synchronized with Salman OS control plane for <code className="text-[11px] bg-white px-1.5 py-0.5 rounded border border-[#E0D6C8]">preview.himalayankoh.com</code>.</li>
           </ul>
         </div>
+      </Accordion>
+
+      {/* Service & API keys — the credentials the server reads (Stripe, freight, email…) */}
+      <Accordion id="serviceKeys" title="Service &amp; API Keys" icon={<Key size={18} className="text-[#3F6550]" />} open={open} toggle={toggle}>
+        <ServiceKeysPanel />
       </Accordion>
     </div>
   );
@@ -6451,7 +6488,7 @@ export function AMarketingTraffic() {
       )}
 
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-500 leading-relaxed">
-        <strong className="text-gray-700">Global deployment note:</strong> This project is a static site served by Vercel with no backend. Browser
+        <strong className="text-gray-700">Global deployment note:</strong> This deployment runs on Cloudflare Workers backed by WordPress and WooCommerce. Browser
         localStorage only previews changes on this device. To make settings apply to <em>all</em> visitors, download
         <code className="bg-white px-1 rounded"> site-config.json </code>, commit it to the repo at
         <code className="bg-white px-1 rounded"> public/site-config.json </code>, and deploy. The <code className="bg-white px-1 rounded">ads.txt</code>

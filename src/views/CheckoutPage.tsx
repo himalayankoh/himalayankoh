@@ -71,7 +71,7 @@ interface StripeCheckoutSession {
 export default function CheckoutPage({ retailOnly = false }: { retailOnly?: boolean }) {
   const navigate = useNavigate();
   const { user, profile } = useAuthContext();
-  const { items, clearCart } = useCart();
+  const { items, clearCart, isLoaded, isLoading, updateCustomerAddress, serverTax } = useCart();
   const toast = useToast();
   const [form, setForm] = useState({
     ...initialForm,
@@ -101,8 +101,37 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [stripeConfig, setStripeConfig] = useState<StripePublicConfig | null>(null);
   const [shippoRuntimeEnabled, setShippoRuntimeEnabled] = useState<boolean | null>(null);
   const [shippingSelected, setShippingSelected] = useState(false);
+  const [authoritativeTax, setAuthoritativeTax] = useState<number | null>(null);
   const stripePaymentRef = useRef<HTMLDivElement>(null);
   const preparingPaymentRef = useRef(false);
+
+  const normalizedState = normalizeUsState(form.state);
+
+  useEffect(() => {
+    if (!normalizedState) {
+      setAuthoritativeTax(null);
+      return;
+    }
+    let cancelled = false;
+    updateCustomerAddress({
+      country: form.country === 'United States' ? 'US' : form.country,
+      state: normalizedState,
+      city: form.city,
+      postalCode: form.postalCode,
+    })
+      .then((res) => {
+        if (!cancelled && res && typeof res.totalTax === 'number' && res.totalTax > 0) {
+          setAuthoritativeTax(res.totalTax);
+        } else if (!cancelled) {
+          setAuthoritativeTax(null);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedState, form.city, form.postalCode, form.country, updateCustomerAddress]);
 
   const shippoEnabled = shippoRuntimeEnabled ?? publicEnv.shippoEnabled;
   const showShippoPanel = shippoEnabled && (
@@ -127,9 +156,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         couponCode,
         shippingMethod,
         shippingCostOverride: useLiveShippoRates ? selectedShippoRate?.amount : undefined,
+        taxAmountOverride: authoritativeTax ?? (serverTax ?? undefined),
+        destinationState: normalizedState || undefined,
       }
     ),
-    [couponCode, items, shippingMethod, useLiveShippoRates, selectedShippoRate?.amount]
+    [couponCode, items, shippingMethod, useLiveShippoRates, selectedShippoRate?.amount, authoritativeTax, serverTax, normalizedState]
   );
 
   const paymentDetailsReady = Boolean(
@@ -621,6 +652,20 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     }
   };
 
+  if (!isLoaded || (isLoading && items.length === 0)) {
+    return (
+      <div className="min-h-screen bg-warm-white py-24">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
+          <div className="bg-white rounded-2xl shadow-md p-12">
+            <Loader2 size={48} className="animate-spin mx-auto mb-5 text-himalayan" />
+            <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Preparing your checkout…</h1>
+            <p className="text-charcoal-light text-sm">Loading your cart and securing your items from Himalayan Koh.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (items.length === 0 && !submitting && !stripeSession && !paymentCompleting) {
     return (
       <div className="min-h-screen bg-warm-white py-16">
@@ -640,7 +685,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
 
   return (
     <div className="min-h-screen bg-warm-white">
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-12 md:py-16">
+      <div className="bg-cream border-b border-himalayan-line py-6 md:py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <Link to="/products" className="inline-flex items-center gap-2 text-white/70 hover:text-white mb-4 text-sm">
             <ArrowLeft size={16} />
@@ -649,11 +694,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="font-serif text-3xl md:text-4xl font-bold text-white"
+            className="font-serif text-3xl md:text-4xl font-bold text-charcoal"
           >
             Checkout
           </motion.h1>
-          <p className="text-white/70 mt-2 max-w-2xl">
+          <p className="text-charcoal-light mt-2 max-w-2xl">
             Secure order review, shipping details, and payment preparation for Himalayan Koh products.
           </p>
         </div>
@@ -662,18 +707,13 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       <form onSubmit={handleSubmit} className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
         {paymentMethod === 'stripe' && !stripeEnabled && (
           <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            <p className="font-semibold">Payments not configured on this machine</p>
-            <ul className="mt-2 list-disc pl-5 space-y-1">
-              <li>
-                Add Stripe test keys to <code className="text-xs">.env.local</code>, then restart with{' '}
-                <code className="text-xs">npm run dev:clean</code>.
-              </li>
-            </ul>
+            <p className="font-semibold">Card payments are currently unavailable.</p>
+            <p className="mt-2">Please choose another available payment method or contact our team for help.</p>
           </div>
         )}
         <div className="grid lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
-            <section className="bg-white rounded-2xl shadow-md p-6">
+            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
               <h2 className="font-serif text-xl font-bold text-charcoal mb-2">Contact Information</h2>
               {!user && (
                 <p className="mb-5 text-sm text-charcoal-light">
@@ -682,40 +722,40 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               )}
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label="Email address" error={fieldErrors.email}>
-                  <input required type="email" value={form.email} onChange={(event) => handleChange('email', event.target.value)} placeholder="you@example.com" className={inputClass} />
+                  <input required type="email" name="email" autoComplete="email" value={form.email} onChange={(event) => handleChange('email', event.target.value)} placeholder="you@example.com" className={inputClass} />
                 </Field>
                 <Field label="Phone number">
-                  <input value={form.phone} onChange={(event) => handleChange('phone', event.target.value)} placeholder="(832) 224-6466" className={inputClass} />
+                  <input type="tel" name="phone" autoComplete="tel" value={form.phone} onChange={(event) => handleChange('phone', event.target.value)} placeholder="(832) 224-6466" className={inputClass} />
                 </Field>
               </div>
             </section>
 
-            <section className="bg-white rounded-2xl shadow-md p-6">
+            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
               <div className="flex items-center gap-2 mb-5">
                 <Truck size={20} className="text-himalayan" />
                 <h2 className="font-serif text-xl font-bold text-charcoal">Shipping Address</h2>
               </div>
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label="Full name" error={fieldErrors.fullName}>
-                  <input required value={form.fullName} onChange={(event) => handleChange('fullName', event.target.value)} placeholder="Full name" className={inputClass} />
+                  <input required name="fullName" autoComplete="shipping name" value={form.fullName} onChange={(event) => handleChange('fullName', event.target.value)} placeholder="Full name" className={inputClass} />
                 </Field>
                 <Field label="Address line 1" error={fieldErrors.addressLine1}>
-                  <input required value={form.addressLine1} onChange={(event) => handleChange('addressLine1', event.target.value)} placeholder="Street address" className={inputClass} />
+                  <input required name="addressLine1" autoComplete="shipping address-line1" value={form.addressLine1} onChange={(event) => handleChange('addressLine1', event.target.value)} placeholder="Street address" className={inputClass} />
                 </Field>
                 <Field label="Address line 2">
-                  <input value={form.addressLine2} onChange={(event) => handleChange('addressLine2', event.target.value)} placeholder="Suite, building, ranch name" className={inputClass} />
+                  <input name="addressLine2" autoComplete="shipping address-line2" value={form.addressLine2} onChange={(event) => handleChange('addressLine2', event.target.value)} placeholder="Suite, building, ranch name" className={inputClass} />
                 </Field>
                 <Field label="City" error={fieldErrors.city}>
-                  <input required value={form.city} onChange={(event) => handleChange('city', event.target.value)} placeholder="City" className={inputClass} />
+                  <input required name="city" autoComplete="shipping address-level2" value={form.city} onChange={(event) => handleChange('city', event.target.value)} placeholder="City" className={inputClass} />
                 </Field>
                 <Field label="State" error={fieldErrors.state}>
-                  <input required value={form.state} onChange={(event) => handleChange('state', event.target.value)} placeholder="State" className={inputClass} />
+                  <input required name="state" autoComplete="shipping address-level1" value={form.state} onChange={(event) => handleChange('state', event.target.value)} placeholder="State" className={inputClass} />
                 </Field>
                 <Field label="Postal code" error={fieldErrors.postalCode}>
-                  <input required value={form.postalCode} onChange={(event) => handleChange('postalCode', event.target.value)} placeholder="Postal code" className={inputClass} />
+                  <input required name="postalCode" autoComplete="shipping postal-code" value={form.postalCode} onChange={(event) => handleChange('postalCode', event.target.value)} placeholder="Postal code" className={inputClass} />
                 </Field>
                 <Field label="Country" error={fieldErrors.country}>
-                  <input required value={form.country} onChange={(event) => handleChange('country', event.target.value)} placeholder="Country" className={inputClass} />
+                  <input required name="country" autoComplete="shipping country-name" value={form.country} onChange={(event) => handleChange('country', event.target.value)} placeholder="Country" className={inputClass} />
                 </Field>
               </div>
 
@@ -777,7 +817,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               )}
             </section>
 
-            <section className="bg-white rounded-2xl shadow-md p-6">
+            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
               <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Shipping Method</h2>
 
               {showShippoPanel && (
@@ -853,7 +893,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               </div>
               )}
             </section>
-            <section className="bg-white rounded-2xl shadow-md p-6">
+            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
               <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Billing Details</h2>
               <label className="flex items-center gap-2 cursor-pointer mb-5">
                 <input
@@ -892,7 +932,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               )}
             </section>
 
-            <section className="bg-white rounded-2xl shadow-md p-6">
+            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
               <h2 className={`font-serif text-xl font-bold text-charcoal ${retailOnly ? '' : 'mb-2'}`}>Payment</h2>
               {retailOnly ? (
                 stripeSession ? (
@@ -924,7 +964,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                           Online card payment is being configured on staging
                         </p>
                         <p className="text-xs text-charcoal-light">
-                          Checkout fail-safe is active: click <strong>Place order (invoice)</strong> below to place your order with invoice/bank transfer. We will email you payment details.
+                          Choose <strong>Place order (invoice)</strong> to request payment by invoice or bank transfer. Payment instructions will follow by email.
                         </p>
                       </div>
                     ) : (
@@ -966,9 +1006,9 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   <p className="text-sm text-charcoal-light mt-1">
                     {stripeEnabled
                       ? stripeMode === 'test'
-                        ? 'Enter card details after clicking Continue — test card 4242 4242 4242 4242.'
+                        ? 'Continue to enter your payment details securely.'
                         : 'Secure card payment via Stripe. Enter card number, expiry, and CVC on the next step.'
-                      : 'Add Stripe keys to enable online card payment.'}
+                      : 'Card payment is currently unavailable. Please choose invoice payment.'}
                   </p>
                 </button>
                 <button
@@ -977,7 +1017,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                     setPaymentMethod('invoice');
                     setStripeSession(null);
                   }}
-                  className={`text-left rounded-2xl border p-4 transition-colors ${paymentMethod === 'invoice' ? 'border-charcoal/30 bg-gray-50' : 'border-gray-200 hover:border-gray-300'}`}
+                  aria-pressed={paymentMethod === 'invoice'}
+                  className={`text-left rounded-xl border p-4 transition-colors ${paymentMethod === 'invoice' ? 'border-charcoal/30 bg-gray-50' : 'border-gray-200 hover:border-gray-300'}`}
                 >
                   <PackageCheck size={20} className="text-charcoal-light mb-2" />
                   <p className="font-semibold text-charcoal">Pay by Invoice</p>
@@ -1001,19 +1042,19 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               )}
             </section>
 
-            <section className="bg-white rounded-2xl shadow-md p-6">
+            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
               <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Delivery Notes</h2>
               <textarea
                 value={form.notes}
                 onChange={(event) => handleChange('notes', event.target.value)}
-                placeholder="Gate code, delivery instructions, ranch drop-off notes, or product preferences"
+                aria-label="Delivery notes" name="deliveryNotes" placeholder="Gate code, delivery instructions, ranch drop-off notes, or product preferences"
                 className={`${inputClass} min-h-28 resize-none`}
               />
             </section>
           </div>
 
           <aside className="lg:col-span-1">
-            <div className="bg-white rounded-2xl shadow-md p-6 sticky top-[var(--header-height)]">
+            <div className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6 sticky top-[var(--header-height)]">
               <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Order Summary</h2>
               <div className="space-y-4 mb-5">
                 {items.map((item) => (
@@ -1034,7 +1075,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   <input
                     value={couponInput}
                     onChange={(event) => setCouponInput(event.target.value)}
-                    placeholder="Enter coupon code"
+                    aria-label="Coupon code" name="coupon" placeholder="Enter coupon code"
                     className={inputClass}
                   />
                   <button type="button" onClick={applyCoupon} className="px-4 bg-charcoal text-white rounded-xl text-sm font-semibold hover:bg-charcoal-light">
@@ -1069,7 +1110,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       ? stripeSession
                         ? 'Enter your payment details in the Payment section to confirm your order.'
                         : 'Choose Enter secure payment details in the Payment section to continue.'
-                      : 'Invoice checkout fail-safe active — submit order without upfront card.'
+                      : 'Payment by invoice — no card required to place your order.'
                     : paymentMethod === 'stripe' && stripeEnabled
                     ? stripeSession
                       ? 'Complete card payment below to confirm your order.'
@@ -1129,7 +1170,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
     <label className="block">
       <span className={labelClass}>{label}</span>
       {children}
-      {error && <span className="text-xs text-red-600 mt-1 block">{error}</span>}
+      {error && <span role="alert" className="text-xs text-red-600 mt-1 block">{error}</span>}
     </label>
   );
 }
@@ -1145,7 +1186,8 @@ function ShippingOption({ active, title, detail, price, onClick }: {
     <button
       type="button"
       onClick={onClick}
-      className={`text-left rounded-2xl border p-4 transition-colors ${active ? 'border-himalayan bg-himalayan/10' : 'border-gray-200 hover:border-himalayan/40'}`}
+      aria-pressed={active}
+      className={`text-left rounded-xl border p-4 transition-colors ${active ? 'border-himalayan bg-himalayan/10' : 'border-gray-200 hover:border-himalayan/40'}`}
     >
       <div className="flex items-center justify-between gap-3">
         <div>

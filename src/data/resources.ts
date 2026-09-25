@@ -286,8 +286,8 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
       'How to manage hygroscopic salt storage in humid warehouse, barn, and shipping environments—preventing caking, pallet collapse, and packaging degradation.',
     metaDescription:
       'Best practices for storing bulk Himalayan salt bags and blocks. Control relative humidity, prevent pallet caking, manage floor elevation, and avoid product loss.',
-    featuredImage: '/images/products/himalayan-salt-fine-grain-25kg.jpg',
-    relatedProductSlugs: ['himalayan-salt-fine-grain-25kg', 'compressed-salt-block-20kg'],
+    featuredImage: '/images/legacy/salt-rock-bag.jpg',
+    relatedProductSlugs: ['himalayan-rock-salt-45-lbs-large-chunks', 'himalayan-salt-block-30-lbs'],
     relatedArticleSlugs: ['fine-vs-medium-vs-coarse-grain-salt', 'what-trace-minerals-in-himalayan-salt-actually-mean'],
     sources: [
       { title: 'The Chemistry and Technology of Salt', publication: 'American Chemical Society Monograph Series', year: '2012' },
@@ -326,8 +326,8 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
       'A technical breakdown of Himalayan salt particle sizing (granulometry) from 0.2 mm fine shaker grind to 4.0 mm coarse brining crystal, matching each to culinary and industrial needs.',
     metaDescription:
       'Guide to Himalayan pink salt grain sizes: fine grain (0.2–0.8 mm), medium coarse (1.0–2.0 mm), and extra coarse (2.0–4.0 mm). Selection for cooking, brining, and grinders.',
-    featuredImage: '/images/products/himalayan-salt-fine-grain-25kg.jpg',
-    relatedProductSlugs: ['himalayan-salt-fine-grain-25kg', 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs'],
+    featuredImage: '/images/legacy/salt-pouch-6lb.webp',
+    relatedProductSlugs: ['himalayan-salt-fine-grain-3-lbs', 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs'],
     relatedArticleSlugs: ['using-himalayan-salt-blocks-for-cooking', 'himalayan-pink-salt-vs-regular-salt-practical-differences'],
     sources: [
       { title: 'Standard Specification for Sodium Chloride (ASTM D632)', publication: 'ASTM International', year: '2020' },
@@ -551,8 +551,8 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
       'A head-to-head comparison between mined Himalayan rock salt and refined vacuum-evaporated table salt—covering processing methods, additives, moisture, and culinary performance.',
     metaDescription:
       'Himalayan pink salt vs regular white table salt: understand chemical processing, anti-caking additives, unrefined crystal texture, and culinary taste differences.',
-    featuredImage: '/images/products/himalayan-salt-fine-grain-25kg.jpg',
-    relatedProductSlugs: ['himalayan-pink-edible-salt-fine-grain-pouch-6-lbs', 'himalayan-salt-fine-grain-25kg'],
+    featuredImage: '/images/legacy/bowl-of-salt.jpg',
+    relatedProductSlugs: ['himalayan-pink-edible-salt-fine-grain-pouch-6-lbs', 'himalayan-pink-edible-salt-16-oz-jar'],
     relatedArticleSlugs: ['what-trace-minerals-in-himalayan-salt-actually-mean', 'fine-vs-medium-vs-coarse-grain-salt'],
     sources: [
       { title: 'Food Chemistry: Principles of Salt Refinement and Iodization', publication: 'CRC Press', year: '2018' },

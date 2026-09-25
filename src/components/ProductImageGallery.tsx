@@ -27,7 +27,7 @@ export default function ProductImageGallery({
         <img
           src="/images/placeholder-product.svg"
           alt={alt}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
         />
       </div>
     );
@@ -44,7 +44,7 @@ export default function ProductImageGallery({
   const currentImage = validImages[currentIndex] || validImages[0];
 
   return (
-    <div className={`relative w-full aspect-square bg-gray-50 overflow-hidden ${rounded}`}>
+    <div className={`relative w-full aspect-[4/3] sm:aspect-square bg-white overflow-hidden ${rounded}`}>
       <AnimatePresence mode="wait" initial={false}>
         <motion.img
           key={currentIndex}
@@ -52,11 +52,11 @@ export default function ProductImageGallery({
           alt={`${alt} - Image ${currentIndex + 1}`}
           fetchPriority={currentIndex === 0 ? 'high' : 'auto'}
           decoding="async"
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
           initial={false}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.12 }}
           onError={(e) => {
             (e.target as HTMLImageElement).src = '/images/placeholder-product.svg';
           }}
@@ -64,11 +64,11 @@ export default function ProductImageGallery({
       </AnimatePresence>
 
       {/* Navigation arrows - only show if multiple images */}
-      {images.length > 1 && (
+      {validImages.length > 1 && (
         <>
           <button
             onClick={goToPrevious}
-            className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg transition-all"
+            className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/80 hover:bg-white backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg transition-all"
             aria-label="Previous image"
           >
             <ChevronLeft size={20} className="text-charcoal" />
@@ -76,7 +76,7 @@ export default function ProductImageGallery({
 
           <button
             onClick={goToNext}
-            className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/80 hover:bg-white backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg transition-all"
+            className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 bg-white/80 hover:bg-white backdrop-blur-sm rounded-full flex items-center justify-center shadow-lg transition-all"
             aria-label="Next image"
           >
             <ChevronRight size={20} className="text-charcoal" />
@@ -84,13 +84,14 @@ export default function ProductImageGallery({
 
           {/* Thumbnail indicators */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-            {images.map((_, idx) => (
+            {validImages.map((_, idx) => (
               <button
                 key={idx}
                 onClick={() => setCurrentIndex(idx)}
-                className={`w-2 h-2 rounded-full transition-all ${
+                aria-pressed={idx === currentIndex}
+                className={`w-8 h-8 border-[10px] border-transparent bg-clip-content rounded-full transition-colors ${
                   idx === currentIndex
-                    ? 'bg-himalayan w-8'
+                    ? 'bg-himalayan-dark'
                     : 'bg-white/50 hover:bg-white/75'
                 }`}
                 aria-label={`Go to image ${idx + 1}`}
@@ -100,7 +101,7 @@ export default function ProductImageGallery({
 
           {/* Image counter */}
           <div className="absolute top-4 right-4 px-3 py-1 bg-black/50 text-white text-xs font-semibold rounded-full">
-            {currentIndex + 1} / {images.length}
+            {currentIndex + 1} / {validImages.length}
           </div>
         </>
       )}

@@ -177,15 +177,19 @@ export default function WooProductEditorModal({
 }: Props) {
   const [tab, setTab] = useState<TabId>('basic');
   const [form, setForm] = useState<Form>(EMPTY_FORM);
+  const [initialForm, setInitialForm] = useState<Form | null>(null);
+  const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set());
   const [variations, setVariations] = useState<VariationDraft[]>([]);
   const [isVariable, setIsVariable] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(productId !== null);
+  const [hydrated, setHydrated] = useState(productId === null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notices, setNotices] = useState<string[]>([]);
   const [imageUrl, setImageUrl] = useState('');
 
   function set<K extends keyof Form>(key: K, value: Form[K]) {
+    setDirtyFields((prev) => new Set(prev).add(key));
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -200,18 +204,27 @@ export default function WooProductEditorModal({
 
     if (productId === null) {
       setForm(EMPTY_FORM);
+      setInitialForm(EMPTY_FORM);
+      setDirtyFields(new Set());
       setVariations([]);
       setIsVariable(false);
+      setLoading(false);
+      setHydrated(true);
       return;
     }
 
     setLoading(true);
+    setHydrated(false);
     getWooAdminProduct(productId)
       .then(({ product, variations: rows }) => {
         if (cancelled) return;
-        setForm(formFrom(product));
+        const initial = formFrom(product);
+        setForm(initial);
+        setInitialForm(initial);
+        setDirtyFields(new Set());
         setIsVariable(product.type === 'variable');
         setVariations(variationDrafts(rows));
+        setHydrated(true);
         const missing = [
           product.price === null && product.type !== 'variable' ? 'price' : null,
           product.sku === null ? 'SKU' : null,
@@ -234,6 +247,7 @@ export default function WooProductEditorModal({
   }, [isOpen, productId]);
 
   async function handleSave(nextStatus?: 'publish' | 'draft') {
+    if (!hydrated || loading || saving) return;
     if (!form.name.trim()) {
       setError('A product needs a title before it can be saved.');
       setTab('basic');
@@ -243,37 +257,82 @@ export default function WooProductEditorModal({
     const status = nextStatus ?? form.status;
     const tags = form.tags.split(',').map((tag) => tag.trim()).filter(Boolean);
 
-    const patch: WooProductPatch = {
-      name: form.name.trim(),
-      slug: form.slug.trim() || undefined,
-      status,
-      shortDescription: form.shortDescription,
-      description: form.description,
-      sku: form.sku.trim(),
-      categoryIds: form.categoryIds,
-      tags,
-      images: form.images,
-      manageStock: form.manageStock,
-      stockStatus: form.stockStatus,
-      weight: numberField(form.weight) ?? null,
-      seo: {
-        title: form.seoTitle.trim() || null,
-        description: form.seoDescription.trim() || null,
-      },
-    };
+    // If existing product and nothing changed and status unchanged: exit cleanly
+    if (productId !== null && dirtyFields.size === 0 && !nextStatus) {
+      onClose();
+      return;
+    }
 
-    const quantity = numberField(form.stockQuantity);
-    if (quantity !== undefined) patch.stockQuantity = quantity;
-    const lowStock = numberField(form.lowStockAmount);
-    if (lowStock !== undefined && lowStock !== null) patch.lowStockAmount = lowStock;
-
-    // A variable product's price is its variations'. Sending one here would be
-    // ignored by the store, so the fields are not offered and not sent.
-    if (!isVariable) {
-      const price = numberField(form.price);
-      if (price !== undefined) patch.price = price;
-      const compareAt = numberField(form.compareAtPrice);
-      if (compareAt !== undefined) patch.compareAtPrice = compareAt;
+    let patch: WooProductPatch;
+    if (productId === null) {
+      // New product: send complete creation payload
+      patch = {
+        name: form.name.trim(),
+        slug: form.slug.trim() || undefined,
+        status,
+        shortDescription: form.shortDescription,
+        description: form.description,
+        sku: form.sku.trim(),
+        categoryIds: form.categoryIds,
+        tags,
+        images: form.images,
+        manageStock: form.manageStock,
+        stockStatus: form.stockStatus,
+        weight: numberField(form.weight) ?? null,
+        seo: {
+          title: form.seoTitle.trim() || null,
+          description: form.seoDescription.trim() || null,
+        },
+      };
+      const quantity = numberField(form.stockQuantity);
+      if (quantity !== undefined) patch.stockQuantity = quantity;
+      const lowStock = numberField(form.lowStockAmount);
+      if (lowStock !== undefined && lowStock !== null) patch.lowStockAmount = lowStock;
+      if (!isVariable) {
+        const price = numberField(form.price);
+        if (price !== undefined) patch.price = price;
+        const compareAt = numberField(form.compareAtPrice);
+        if (compareAt !== undefined) patch.compareAtPrice = compareAt;
+      }
+    } else {
+      // Existing product: send ONLY dirty fields (true PATCH/merge semantics)
+      patch = {};
+      if (dirtyFields.has('name')) patch.name = form.name.trim();
+      if (dirtyFields.has('slug')) patch.slug = form.slug.trim() || undefined;
+      if (nextStatus !== undefined || dirtyFields.has('status')) patch.status = status;
+      if (dirtyFields.has('shortDescription')) patch.shortDescription = form.shortDescription;
+      if (dirtyFields.has('description')) patch.description = form.description;
+      if (dirtyFields.has('sku')) patch.sku = form.sku.trim();
+      if (dirtyFields.has('categoryIds')) patch.categoryIds = form.categoryIds;
+      if (dirtyFields.has('tags')) patch.tags = tags;
+      if (dirtyFields.has('images')) patch.images = form.images;
+      if (dirtyFields.has('manageStock')) patch.manageStock = form.manageStock;
+      if (dirtyFields.has('stockStatus')) patch.stockStatus = form.stockStatus;
+      if (dirtyFields.has('weight')) patch.weight = numberField(form.weight) ?? null;
+      if (dirtyFields.has('stockQuantity')) {
+        const quantity = numberField(form.stockQuantity);
+        if (quantity !== undefined) patch.stockQuantity = quantity;
+      }
+      if (dirtyFields.has('lowStockAmount')) {
+        const lowStock = numberField(form.lowStockAmount);
+        if (lowStock !== undefined && lowStock !== null) patch.lowStockAmount = lowStock;
+      }
+      if (!isVariable) {
+        if (dirtyFields.has('price')) {
+          const price = numberField(form.price);
+          if (price !== undefined) patch.price = price;
+        }
+        if (dirtyFields.has('compareAtPrice')) {
+          const compareAt = numberField(form.compareAtPrice);
+          if (compareAt !== undefined) patch.compareAtPrice = compareAt;
+        }
+      }
+      if (dirtyFields.has('seoTitle') || dirtyFields.has('seoDescription')) {
+        patch.seo = {
+          ...(dirtyFields.has('seoTitle') ? { title: form.seoTitle.trim() || null } : {}),
+          ...(dirtyFields.has('seoDescription') ? { description: form.seoDescription.trim() || null } : {}),
+        };
+      }
     }
 
     const variationPatches: WooVariationPatch[] = isVariable

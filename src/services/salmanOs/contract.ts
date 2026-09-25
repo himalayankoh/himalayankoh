@@ -35,7 +35,10 @@ export const CONTRACT_DOC_VERSION = '1.0';
 export const CONTRACT_DOC_PATH = 'docs/SALMAN_OS_LUXEDGE_AI_CONTRACT.md';
 
 export const PROJECT_SLUG = (process.env.SALMAN_OS_PROJECT_SLUG || 'himalayan-koh').trim();
-const DISPLAY_ENV: 'PREVIEW' | 'PRODUCTION' = process.env.VERCEL_ENV === 'production' ? 'PRODUCTION' : 'PREVIEW';
+const DISPLAY_ENV: 'PREVIEW' | 'PRODUCTION' =
+  process.env.ENVIRONMENT === 'production' || process.env.CF_PAGES_BRANCH === 'main'
+    ? 'PRODUCTION'
+    : 'PREVIEW';
 const REQUEST_ENV = DISPLAY_ENV === 'PRODUCTION' ? 'production' : 'preview';
 
 /** Frozen endpoint paths (contract §3) — centralized for easy adoption. */
@@ -118,7 +121,7 @@ export function salmanOsStatus(creds?: { baseUrl?: string; token?: string }): Sa
   const token = creds?.token !== undefined ? creds.token : env('SALMAN_OS_TOKEN');
   const ready = Boolean(baseUrl && token);
   const reason = !baseUrl
-    ? 'SALMAN OS BASE URL REQUIRED — SALMAN_OS_BASE_URL is not configured in the server environment. The public HTTPS base URL from the Salman OS contract is required for the Vercel runtime.'
+    ? 'SALMAN OS BASE URL REQUIRED — SALMAN_OS_BASE_URL is not configured in the server environment. The public HTTPS base URL from the Salman OS contract is required for the Cloudflare Worker runtime.'
     : !token
       ? 'SALMAN OS AUTH PENDING — SALMAN_OS_TOKEN is not configured in the server environment (server-side only).'
       : 'CONFIGURED — awaiting live handshake with Salman OS.';

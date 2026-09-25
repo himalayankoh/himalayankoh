@@ -129,11 +129,18 @@ describe('toWooProductBody', () => {
     expect(body.images).toEqual([{ src: 'https://example.test/a.jpg' }]);
   });
 
-  it('writes SEO fields to the store plugin keys', () => {
-    const body = toWooProductBody({ seo: { title: 'Pink salt', description: 'Fine grain' } });
-    expect(body.meta_data).toEqual([
-      { key: '_yoast_wpseo_title', value: 'Pink salt' },
-      { key: '_yoast_wpseo_metadesc', value: 'Fine grain' },
+  it('maps images from both string URLs and image objects with src/alt/id', () => {
+    const body = toWooProductBody({
+      images: [
+        'https://example.com/image1.jpg',
+        { src: 'https://example.com/image2.jpg', alt: 'Test Alt 2' },
+        { id: 456, src: 'https://example.com/image3.jpg' },
+      ],
+    });
+    expect(body.images).toEqual([
+      { src: 'https://example.com/image1.jpg' },
+      { src: 'https://example.com/image2.jpg', alt: 'Test Alt 2' },
+      { id: 456, src: 'https://example.com/image3.jpg' },
     ]);
   });
 

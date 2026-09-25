@@ -36,16 +36,31 @@ export async function GET(request: Request) {
   try {
     const { orders, total } = await listWooOrders({ perPage: READ_LIMIT });
 
-    const labelable = orders
+    const mapped = orders
       .map((order) => orderWithItemsFromWoo(order))
-      .map(toLabelOrder)
-      // Paid and not cancelled: an order that has neither paid nor been cancelled is
-      // somebody else's problem (the payment step), and shipping it would be wrong.
-      .filter((order) => order.payment_status === 'paid' && order.status !== 'cancelled');
+      .map(toLabelOrder);
+
+    // Orders that already have a purchased label ready for download
+    const ready = mapped.filter((order) => Boolean(order.label_url));
+
+    // Ineligible statuses that must NEVER enter the label purchase queue:
+    // - delivered / completed: goods already received by customer (e.g. order 2588)
+    // - shipped: package already dispatched with carrier
+    // - cancelled / refunded / failed: terminal non-fulfillment states
+    const ineligibleStatuses = new Set(['delivered', 'completed', 'shipped', 'cancelled', 'refunded', 'failed']);
+
+    // Pending: Paid orders requiring fulfillment that have no label and are NOT delivered/shipped/cancelled/refunded
+    const pending = mapped.filter((order) => {
+      if (order.label_url || order.tracking_number) return false;
+      if (order.payment_status !== 'paid') return false;
+      const status = String(order.status || '').toLowerCase();
+      if (ineligibleStatuses.has(status)) return false;
+      return true;
+    });
 
     return NextResponse.json({
-      ready: labelable.filter((order) => Boolean(order.label_url)),
-      pending: labelable.filter((order) => !order.label_url),
+      ready,
+      pending,
       // The store's count for the read, so the screen can say when it is showing one
       // page of a longer list instead of implying the list is everything.
       scanned: orders.length,

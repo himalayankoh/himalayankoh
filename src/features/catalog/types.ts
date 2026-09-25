@@ -88,6 +88,7 @@ export interface CatalogProduct {
   currency: string;
   sku: string;
   inventoryQty: number;
+  trackInventory?: boolean | null;
   stockStatus: StockStatus;
   lowStockThreshold: number;
   shippingCost: number;

@@ -207,5 +207,54 @@ export const SETTINGS_REGISTRY: SettingsCategory[] = [
       },
     ],
   },
+  {
+    id: 'freight',
+    label: 'Ocean Freight — Live Rates',
+    description:
+      'The wholesale container calculator prices ocean legs from the rates you type under Wholesale → Ocean freight. Add a provider here to fetch live market rates for the same lanes; until a provider is connected the calculator keeps using your manual rates, clearly labelled, and never invents a number.',
+    docsHref: 'https://www.webfreightos.com/',
+    fields: [
+      {
+        key: 'provider',
+        label: 'Provider',
+        type: 'text',
+        placeholder: 'manual  ·  freightos',
+        hint: 'Leave as manual, or enter freightos to look up live rates on the lanes you quote.',
+        envFallback: 'FREIGHT_PROVIDER',
+      },
+      {
+        key: 'api_key',
+        label: 'API Key',
+        type: 'password',
+        placeholder: 'live_...',
+        hint: 'From your Freightos / WebCargo account. Server-side only — never shown on the storefront.',
+        envFallback: 'FREIGHT_API_KEY',
+      },
+      {
+        key: 'api_secret',
+        label: 'API Secret',
+        type: 'password',
+        placeholder: 'your API secret',
+        hint: 'Only when the provider issues a key/secret pair. Leave blank for a single token.',
+        envFallback: 'FREIGHT_API_SECRET',
+      },
+      {
+        key: 'account_code',
+        label: 'Account / Office Code',
+        type: 'text',
+        placeholder: 'e.g. your WebCargo office code',
+        hint: 'Some contracts price per account. Leave blank when the provider does not ask for one.',
+        envFallback: 'FREIGHT_ACCOUNT_CODE',
+      },
+      {
+        key: 'api_base',
+        label: 'API Base URL (optional)',
+        type: 'text',
+        placeholder: 'https://…',
+        hint: 'Leave blank to use the provider default. Set it when the provider gives you a regional endpoint.',
+        envFallback: 'FREIGHT_API_BASE',
+      },
+    ],
+  },
   // ─── Add future services below ───────────────────────────────────────────────
 ];

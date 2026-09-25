@@ -2,8 +2,8 @@
 // LUXEDGE V2 — SALMAN OS BROWSER CLIENT
 //
 // The browser NEVER talks to Salman OS directly and NEVER sees credentials.
-// It only calls Luxedge's own consolidated serverless proxy
-// (/api/salman-os — ONE Vercel function with ?action= dispatch), which
+// It only calls Luxedge's own consolidated server proxy
+// (/api/salman-os — ONE server route with ?action= dispatch), which
 // requires an admin JWT and returns safe payloads only.
 //
 // Contract-gated: when SALMAN_OS_BASE_URL / SALMAN_OS_TOKEN are not

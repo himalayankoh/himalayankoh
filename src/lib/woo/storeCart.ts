@@ -136,6 +136,8 @@ export interface StoreCartView {
   itemsCount: number;
   /** The store's own cart total in major units, or null when unreported. */
   totalPrice: number | null;
+  /** Authoritative WooCommerce cart tax in major units, or null when unreported. */
+  totalTax: number | null;
   currency: string;
   /** WooCommerce's own complaints about the cart, as plain sentences. */
   issues: string[];
@@ -254,6 +256,7 @@ export function mapStoreCart(raw: StoreCartRaw): StoreCartView {
     // count is what the header badge shows, so it follows the store.
     itemsCount: typeof raw.items_count === 'number' ? raw.items_count : items.reduce((sum, line) => sum + line.quantity, 0),
     totalPrice: parseMinorUnitPrice(raw.totals?.total_price, minorUnitFor(raw.totals)),
+    totalTax: parseMinorUnitPrice(raw.totals?.total_tax, minorUnitFor(raw.totals)),
     currency: raw.totals?.currency_code || '',
     issues: (raw.errors ?? [])
       .map((entry) => (entry?.message ? String(entry.message) : ''))
@@ -433,23 +436,29 @@ export async function readStoreCart(session: CartSession): Promise<{
  * simply worked.
  */
 function isStaleNonce(error: unknown): boolean {
+  if (!(error instanceof StoreCartError)) return false;
   return (
-    error instanceof StoreCartError &&
-    (error.code === 'woocommerce_rest_invalid_nonce' || (error.status === 403 && error.code === null))
+    error.code === 'woocommerce_rest_invalid_nonce' ||
+    error.code === 'woocommerce_rest_missing_nonce' ||
+    (error.status === 403 && error.code === null) ||
+    (error.status === 400 && typeof error.message === 'string' && error.message.toLowerCase().includes('nonce'))
   );
 }
 
 async function mutate(
   session: CartSession,
   path: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  timeoutMs?: number
 ): Promise<{ cart: StoreCartRaw; session: CartSession }> {
+  const timeout = timeoutMs ?? backendConfig.mutationTimeoutMs;
   try {
     const response = await storeApiRequest<StoreCartRaw>(`${STORE_API}${path}`, {
       method: 'POST',
       cartToken: session.cartToken,
       nonce: session.nonce,
       body,
+      timeoutMs: timeout,
     });
     return {
       cart: response.data,
@@ -466,6 +475,7 @@ async function mutate(
       cartToken: fresh.session.cartToken,
       nonce: fresh.session.nonce,
       body,
+      timeoutMs: timeout,
     });
     return {
       cart: retry.data,
@@ -485,20 +495,66 @@ async function mutate(
  * catalog read, the amount charged comes back from the store, and nothing the
  * browser sends is trusted for money. `variation` is omitted entirely for a simple
  * product, so a line can never claim an option the product does not have.
+ *
+ * Reconciles with the authoritative cart on timeout: if WordPress finishes adding
+ * the item despite a network timeout, the updated cart is returned rather than a
+ * false failure that would cause duplicate adds on retry.
  */
-export function addStoreCartItem(
+export async function addStoreCartItem(
   session: CartSession,
   productId: string | number,
   quantity: number,
-  variation?: { attribute: string; value: string }
-): Promise<{ cart: StoreCartRaw; session: CartSession }> {
+  variation?: { attribute: string; value: string },
+  options?: { previousQuantity?: number; timeoutMs?: number; settleMs?: number }
+): Promise<{ cart: StoreCartRaw; session: CartSession; reconciled?: boolean }> {
   const attribute = variation?.attribute?.trim();
   const value = variation?.value?.trim();
-  return mutate(session, '/cart/add-item', {
-    id: Number(productId),
+  const numId = Number(productId);
+  const body = {
+    id: numId,
     quantity,
     ...(attribute && value ? { variation: [{ attribute, value }] } : {}),
-  });
+  };
+
+  try {
+    return await mutate(session, '/cart/add-item', body, options?.timeoutMs);
+  } catch (error) {
+    // If the Store API timed out, WooCommerce may have still processed the
+    // add on the server. Reconcile with the authoritative cart before failing.
+    if (error instanceof StoreCartError && error.code === STORE_TIMEOUT && session.cartToken) {
+      try {
+        const settle = options?.settleMs ?? 600;
+        if (settle > 0) {
+          await new Promise((resolve) => setTimeout(resolve, settle));
+        }
+        const reconciled = await readStoreCart(session);
+        const matchingItem = (reconciled.cart.items ?? []).find((item) => {
+          if (item.id !== numId) return false;
+          if (attribute && value) {
+            return (item.variation ?? []).some(
+              (v) => v.attribute === attribute && v.value === value
+            );
+          }
+          return true;
+        });
+
+        const currentQty = matchingItem?.quantity ?? 0;
+        const prevQty = options?.previousQuantity;
+
+        // If previousQuantity was provided, check if current quantity increased
+        const didAdd = prevQty !== undefined
+          ? currentQty > prevQty
+          : currentQty >= quantity;
+
+        if (didAdd) {
+          return { ...reconciled, reconciled: true };
+        }
+      } catch {
+        // Reconciliation read failed; fall through to throw original timeout error
+      }
+    }
+    throw error;
+  }
 }
 
 export function updateStoreCartItem(
@@ -537,4 +593,33 @@ export async function clearStoreCart(session: CartSession): Promise<{
     current = await removeStoreCartItem(current.session, key);
   }
   return current;
+}
+
+export interface CartCustomerAddress {
+  country?: string;
+  state?: string;
+  city?: string;
+  postalCode?: string;
+}
+
+/**
+ * Updates customer destination address on the WooCommerce cart session.
+ *
+ * This triggers authoritative WooCommerce tax calculation based on nexus
+ * and tax rules configured in WordPress, returning the recalculated totals.
+ */
+export async function updateStoreCartCustomer(
+  session: CartSession,
+  address: CartCustomerAddress
+): Promise<{ cart: StoreCartRaw; session: CartSession }> {
+  const addr = {
+    country: address.country || 'US',
+    state: address.state || '',
+    city: address.city || '',
+    postcode: address.postalCode || '',
+  };
+  return mutate(session, '/cart/update-customer', {
+    shipping_address: addr,
+    billing_address: addr,
+  });
 }

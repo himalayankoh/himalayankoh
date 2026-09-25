@@ -84,17 +84,8 @@ export default function AdminInventory() {
         </AdminNotice>
       )}
 
-      {!loading && report && report.notes.length > 0 && (
-        <AdminNotice tone="warning" title="How stock is tracked on this store">
-          <ul className="list-disc space-y-1 pl-5">
-            {report.notes.map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
-        </AdminNotice>
-      )}
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 min-[375px]:grid-cols-2 lg:grid-cols-4 gap-4">
         <AdminStatTile
           label="Products in store"
           icon={Boxes}
@@ -108,7 +99,7 @@ export default function AdminInventory() {
           tone={report?.tracksQuantities ? 'green' : 'amber'}
           value={loading ? undefined : report?.rows.filter((row) => row.tracksQuantity).length}
           unavailable={loading ? 'Reading…' : undefined}
-          hint={report?.tracksQuantities ? undefined : 'WooCommerce is not managing stock'}
+          hint={loading || report?.tracksQuantities ? undefined : 'WooCommerce is not managing stock'}
         />
         <AdminStatTile
           label="Out of stock"
@@ -123,8 +114,22 @@ export default function AdminInventory() {
           tone={report && report.lowStock > 0 ? 'amber' : 'slate'}
           value={loading ? undefined : report?.lowStock}
           unavailable={loading ? 'Reading…' : undefined}
-          hint={report?.tracksQuantities ? undefined : 'No thresholds to breach'}
+          hint={loading || report?.tracksQuantities ? undefined : 'No thresholds to breach'}
         />
+      </div>
+
+      <div className="min-h-28">
+        {loading && <p role="status" className="text-sm text-admin-muted py-4">Reading stock policies from WooCommerce…</p>}
+      {!loading && report && report.notes.length > 0 && (
+        <AdminNotice tone="warning" title="How stock is tracked on this store">
+          <ul className="list-disc space-y-1 pl-5">
+            {report.notes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </AdminNotice>
+      )}
+
       </div>
 
       <AdminPanel

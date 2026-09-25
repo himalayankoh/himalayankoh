@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -61,7 +62,7 @@ export function AdminPageHeader({
       <div className="min-w-0">
         {eyebrow && <p className={MICRO_LABEL}>{eyebrow}</p>}
         <h1 className="mt-1 text-2xl font-bold tracking-tight text-admin-ink">{title}</h1>
-        {description && <p className="mt-1 max-w-3xl text-sm text-admin-muted">{description}</p>}
+        {description && <p className="mt-2 max-w-3xl text-sm leading-relaxed text-admin-muted">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
@@ -140,7 +141,7 @@ export function AdminStatTile({
         </span>
         {hint && <span className="text-[11px] font-medium text-admin-muted">{hint}</span>}
       </div>
-      <p className={`mt-4 ${MICRO_LABEL}`}>{label}</p>
+      <p className={`mt-3 ${MICRO_LABEL}`}>{label}</p>
       {unavailable ? (
         <p className="mt-1 text-sm font-semibold text-admin-muted">{unavailable}</p>
       ) : (
@@ -149,10 +150,10 @@ export function AdminStatTile({
     </>
   );
 
-  const className = `${SURFACE} block p-5 transition-shadow hover:shadow-[0_2px_4px_rgba(16,24,40,0.05),0_18px_40px_-24px_rgba(16,24,40,0.3)]`;
+  const className = `${SURFACE} block p-4 transition-shadow hover:shadow-[0_2px_4px_rgba(16,24,40,0.05),0_18px_40px_-24px_rgba(16,24,40,0.3)]`;
 
   return to ? (
-    <Link to={to} className={className}>
+    <Link prefetch={false} to={to} className={className}>
       {body}
     </Link>
   ) : (
@@ -200,7 +201,7 @@ export function AdminNotice({
   action?: ReactNode;
 }) {
   return (
-    <div className={`rounded-2xl border px-5 py-4 text-sm ${NOTICE_TONES[tone]}`}>
+    <div role={tone === 'danger' ? 'alert' : 'status'} className={`rounded-xl border px-4 py-3 text-sm ${NOTICE_TONES[tone]}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-semibold">{title}</p>
@@ -233,7 +234,7 @@ export function AdminTable({
   minWidth?: string;
 }) {
   return (
-    <div className={TABLE_WRAP}>
+    <div className={TABLE_WRAP} tabIndex={0} role="region" aria-label="Scrollable data table">
       <table className={TABLE} style={minWidth ? { minWidth } : undefined}>
         <thead className={TABLE_HEAD}>
           <tr>
@@ -288,7 +289,7 @@ export function AdminTabs<T extends string>({
   onChange: (id: T) => void;
 }) {
   return (
-    <div className="flex items-center gap-1 border-b border-admin-line">
+    <div className="flex flex-wrap items-center gap-1 border-b border-admin-line">
       {tabs.map((tab) => {
         const isActive = tab.id === active;
         const Icon = tab.icon;
@@ -297,6 +298,7 @@ export function AdminTabs<T extends string>({
             key={tab.id}
             type="button"
             onClick={() => onChange(tab.id)}
+            aria-pressed={isActive}
             className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors ${
               isActive
                 ? 'border-himalayan text-himalayan-dark'
@@ -364,6 +366,8 @@ export function AdminModal({
   className?: string;
 }) {
   const isDrawer = variant === 'drawer';
+  const dialogRef = useDialogFocus(true, onClose);
+  const titleId = useId();
 
   return (
     <div
@@ -382,6 +386,9 @@ export function AdminModal({
         aria-hidden="true"
       />
       <motion.div
+        ref={dialogRef}
+        tabIndex={-1}
+        aria-labelledby={titleId}
         role="dialog"
         aria-modal="true"
         initial={isDrawer ? { x: 32, opacity: 0 } : { opacity: 0, scale: 0.97, y: 12 }}
@@ -395,7 +402,7 @@ export function AdminModal({
       >
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-admin-line px-5 py-4">
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-admin-ink">{title}</h2>
+            <h2 id={titleId} className="text-lg font-bold text-admin-ink">{title}</h2>
             {description && <p className="mt-1 text-sm text-admin-muted">{description}</p>}
           </div>
           <button
@@ -440,7 +447,7 @@ export function AdminPendingPanel({
     <AdminPanel title={title} description={summary}>
       {/* Fixed two columns, never a breakpoint stack: the admin keeps its
           desktop layout at every viewport. */}
-      <div className="grid grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
           <p className={MICRO_LABEL}>Required to go live</p>
           <ul className="mt-3 space-y-2 text-sm text-admin-ink">
@@ -515,7 +522,7 @@ export function AdminKpiCard({
   to: string;
 }) {
   return (
-    <Link
+    <Link prefetch={false}
       to={to}
       className={`${SURFACE} block p-3.5 transition-shadow hover:shadow-[0_2px_4px_rgba(16,24,40,0.05),0_18px_40px_-24px_rgba(16,24,40,0.3)]`}
     >

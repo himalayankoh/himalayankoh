@@ -5,16 +5,14 @@ export const runtime = 'nodejs';
 
 /**
  * Runtime Shippo status for the client. Enabled = API key + warehouse address
- * are configured (via Admin → Settings DB or env). This lets the owner turn
- * Shippo on by saving keys in Settings — no redeploy / no NEXT_PUBLIC flag.
- * The build-time NEXT_PUBLIC_SHIPPO_ENABLED still forces-on as a fallback.
+ * are configured and valid. If either is missing, Shippo is disabled and explains why.
  */
 export async function GET() {
   const configError = await resolveShippoConfigError();
-  const envForced = process.env.NEXT_PUBLIC_SHIPPO_ENABLED === 'true';
+  const isConfigured = configError === null;
   return NextResponse.json({
-    enabled: configError === null || envForced,
-    configured: configError === null,
+    enabled: isConfigured,
+    configured: isConfigured,
     reason: configError,
   });
 }

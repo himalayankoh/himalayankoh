@@ -404,3 +404,15 @@ describe('the cart of a signed-in customer', () => {
     expect(wp.callsTo('/hk-storefront/v1/cart-session')).toHaveLength(0);
   });
 });
+
+describe('session cache isolation', () => {
+  it('marks successful cart reads private and uncacheable', async () => {
+    useWordPress([{ path: '/wc/store/v1/cart', body: { items: [] } }]);
+    expect((await GET(cartRequest())).headers.get('cache-control')).toBe('private, no-store, max-age=0');
+  });
+  it('also protects invalid cart requests', async () => {
+    const response = await POST(new Request('http://localhost/api/cart', { method: 'POST', body: '{' }));
+    expect(response.status).toBe(400);
+    expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');
+  });
+});

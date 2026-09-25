@@ -32,10 +32,18 @@ import {
   readStoreCart,
   removeStoreCartItem,
   updateStoreCartItem,
+  updateStoreCartCustomer,
   type CartSession,
 } from '@/lib/woo/storeCart';
 
-type CartAction = 'add' | 'setQuantity' | 'remove' | 'clear';
+// A cart is session-owned, including validation and upstream error responses.
+function privateJson(body: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set('Cache-Control', 'private, no-store, max-age=0');
+  return NextResponse.json(body, { ...init, headers });
+}
+
+type CartAction = 'add' | 'setQuantity' | 'remove' | 'clear' | 'updateCustomer';
 
 /** WooCommerce's own limit on an option's length (`varchar(191)` inside an index). */
 const MAX_OPTION_LENGTH = 191;
@@ -72,7 +80,7 @@ function storeErrorResponse(error: unknown, fallback: string) {
     // timeout would empty a shopper's cart and let them refill it with items the
     // server has never heard of.
     if (error.code === NOT_CONFIGURED) {
-      return NextResponse.json(
+      return privateJson(
         { error: error.message, code: 'store_unavailable' },
         { status: 503 }
       );
@@ -81,13 +89,13 @@ function storeErrorResponse(error: unknown, fallback: string) {
     // purchasable, the line is gone), so it is passed through as the client's
     // problem with the store's own wording. Anything else is our side failing.
     const clientFault = error.status >= 400 && error.status < 500;
-    return NextResponse.json(
+    return privateJson(
       { error: error.message || fallback },
       { status: clientFault ? 400 : 502 }
     );
   }
   console.error('Cart request failed:', error);
-  return NextResponse.json({ error: fallback }, { status: 502 });
+  return privateJson({ error: fallback }, { status: 502 });
 }
 
 /**
@@ -126,7 +134,7 @@ async function respondWith(
       console.warn('[customer-cart] the cart binding could not be saved:', error);
     }
   }
-  return NextResponse.json(mapStoreCart(cart));
+  return privateJson(mapStoreCart(cart));
 }
 
 /** The current cart, creating one if this browser has none yet. */
@@ -145,7 +153,7 @@ export async function POST(request: Request) {
   try {
     body = (await request.json()) as Record<string, unknown>;
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    return privateJson({ error: 'Invalid JSON body.' }, { status: 400 });
   }
 
   const action = body.action as CartAction;
@@ -159,22 +167,27 @@ export async function POST(request: Request) {
     if (action === 'add') {
       const productId = String(body.productId ?? '').trim();
       const quantity = Number(body.quantity ?? 1);
+      const previousQuantity =
+        typeof body.previousQuantity === 'number' && Number.isFinite(body.previousQuantity) && body.previousQuantity >= 0
+          ? body.previousQuantity
+          : undefined;
       if (!productId || !Number.isInteger(quantity) || quantity <= 0) {
-        return NextResponse.json(
+        return privateJson(
           { error: 'A product and a positive whole-number quantity are required.' },
           { status: 400 }
         );
       }
       const variation = readVariation(body.variation);
       if (!variation.ok) {
-        return NextResponse.json({ error: variation.error }, { status: 400 });
+        return privateJson({ error: variation.error }, { status: 400 });
       }
 
       const { cart, session: next } = await addStoreCartItem(
         session,
         productId,
         quantity,
-        variation.variation
+        variation.variation,
+        { previousQuantity }
       );
       return await respond(cart, next);
     }
@@ -183,10 +196,10 @@ export async function POST(request: Request) {
       const key = String(body.key ?? '').trim();
       const quantity = Number(body.quantity ?? 0);
       if (!key) {
-        return NextResponse.json({ error: 'A cart line is required.' }, { status: 400 });
+        return privateJson({ error: 'A cart line is required.' }, { status: 400 });
       }
       if (!Number.isInteger(quantity)) {
-        return NextResponse.json({ error: 'A whole-number quantity is required.' }, { status: 400 });
+        return privateJson({ error: 'A whole-number quantity is required.' }, { status: 400 });
       }
       // Zero and below mean "remove": WooCommerce rejects a zero quantity rather
       // than treating it as a deletion, and the UI's minus button is the same
@@ -201,7 +214,7 @@ export async function POST(request: Request) {
     if (action === 'remove') {
       const key = String(body.key ?? '').trim();
       if (!key) {
-        return NextResponse.json({ error: 'A cart line is required.' }, { status: 400 });
+        return privateJson({ error: 'A cart line is required.' }, { status: 400 });
       }
       const { cart, session: next } = await removeStoreCartItem(session, key);
       return await respond(cart, next);
@@ -212,7 +225,18 @@ export async function POST(request: Request) {
       return await respond(cart, next);
     }
 
-    return NextResponse.json({ error: 'Unknown cart action.' }, { status: 400 });
+    if (action === 'updateCustomer') {
+      const address = (typeof body.address === 'object' && body.address ? body.address : {}) as {
+        country?: string;
+        state?: string;
+        city?: string;
+        postalCode?: string;
+      };
+      const { cart, session: next } = await updateStoreCartCustomer(session, address);
+      return await respond(cart, next);
+    }
+
+    return privateJson({ error: 'Unknown cart action.' }, { status: 400 });
   } catch (error) {
     return storeErrorResponse(error, 'Your cart could not be updated right now.');
   }

@@ -25,7 +25,7 @@ export const ADMIN_CANVAS_MIN_WIDTH = 1280;
 
 /** Panel: the base surface every card, table and form section sits on. */
 export const SURFACE =
-  'rounded-2xl border border-admin-line bg-admin-surface shadow-[0_1px_2px_rgba(16,24,40,0.04),0_12px_32px_-24px_rgba(16,24,40,0.24)]';
+  'rounded-xl border border-admin-line bg-admin-surface shadow-sm';
 
 /** The header strip inside a panel, above its body. */
 export const SURFACE_HEADER =
@@ -43,7 +43,7 @@ export const MICRO_LABEL =
 /* ------------------------------------------------------------------ */
 
 export const CONTROL_BASE =
-  'inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55';
+  'inline-flex items-center justify-center gap-2 min-h-10 rounded-lg text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55';
 
 export const BUTTON = {
   primary: `${CONTROL_BASE} bg-himalayan px-4 py-2.5 text-white hover:bg-himalayan-dark`,
@@ -68,12 +68,12 @@ export const TEXTAREA = `${FIELD} py-2.5 resize-none`;
 /* Tables                                                              */
 /* ------------------------------------------------------------------ */
 
-export const TABLE_WRAP = 'w-full overflow-x-auto';
-export const TABLE = 'w-full min-w-[900px] border-collapse';
+export const TABLE_WRAP = 'w-full max-w-full overflow-x-auto overscroll-x-contain';
+export const TABLE = 'w-full min-w-[640px] border-collapse tabular-nums';
 export const TABLE_HEAD =
   'border-b border-admin-line bg-admin-canvas/70 text-left';
 export const TH = `px-4 py-3 ${MICRO_LABEL} whitespace-nowrap`;
-export const TABLE_BODY = 'divide-y divide-admin-line';
+export const TABLE_BODY = 'divide-y divide-admin-line [&>tr:hover]:bg-admin-canvas/50';
 export const ROW = 'transition-colors hover:bg-admin-canvas/60';
 export const TD = 'px-4 py-3 align-middle text-sm text-admin-ink';
 

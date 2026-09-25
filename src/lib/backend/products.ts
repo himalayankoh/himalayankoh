@@ -36,12 +36,13 @@
  */
 
 import type { Product } from '../../data/products';
-import { normalizeProductSlug } from '../products/slug';
+import { normalizeProductSlug, slugsMatch } from '../products/slug';
 import {
   fetchAdminProductBySlug,
   fetchAdminProducts,
   fetchStoreProductsSafe,
   fetchWpCoreProducts,
+  RETIRED_PRODUCT_SLUGS,
 } from './woocommerce';
 import type { ProductQuery } from './woocommerce';
 
@@ -115,8 +116,12 @@ async function wooList(query: CatalogQuery): Promise<CatalogResult> {
 }
 
 async function wooLookup(slug: string, signal?: AbortSignal): Promise<CatalogLookup> {
-  const normalized = normalizeProductSlug(slug);
+  let normalized = normalizeProductSlug(slug);
   if (!normalized) return { product: null, related: [], provenance: null, error: null };
+
+  if (RETIRED_PRODUCT_SLUGS[normalized]) {
+    normalized = RETIRED_PRODUCT_SLUGS[normalized];
+  }
 
   try {
     const admin = await fetchAdminProductBySlug(normalized, signal);
@@ -125,14 +130,24 @@ async function wooLookup(slug: string, signal?: AbortSignal): Promise<CatalogLoo
     /* fall through to the public routes */
   }
 
-  const store = await fetchStoreProductsSafe({ slug: normalized, perPage: 1, signal });
-  if (store.products.length > 0) {
-    return { product: store.products[0], related: [], provenance: 'direct', error: null };
+  // Store API /wc/store/v1/products ignores the ?slug= parameter.
+  // We match by slug or by numeric ID so that numeric ID or slug lookups resolve accurately.
+  const store = await fetchStoreProductsSafe({ slug: normalized, perPage: 50, signal });
+  const isNumeric = /^\d+$/.test(normalized);
+  const matchedStore = store.products.find(
+    (p) => slugsMatch(p.slug, normalized) || (isNumeric && String(p.id) === normalized)
+  );
+  if (matchedStore) {
+    return { product: matchedStore, related: [], provenance: 'direct', error: null };
   }
 
-  const core = await fetchWpCoreProducts({ slug: normalized, perPage: 1, signal });
-  if (core.products.length > 0) {
-    return { product: core.products[0], related: [], provenance: 'direct', error: core.error };
+  // Same strict slug verification for WordPress core fallback products.
+  const core = await fetchWpCoreProducts({ slug: normalized, perPage: 50, signal });
+  const matchedCore = core.products.find(
+    (p) => slugsMatch(p.slug, normalized) || (isNumeric && String(p.id) === normalized)
+  );
+  if (matchedCore) {
+    return { product: matchedCore, related: [], provenance: 'direct', error: core.error };
   }
 
   // No demo-catalog fallback: an unknown slug is genuinely unknown, and

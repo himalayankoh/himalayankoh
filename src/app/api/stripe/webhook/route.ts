@@ -14,7 +14,11 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getStripeClient, resolveStripeWebhookSecret } from '@/lib/stripe/server/stripe';
+import {
+  getStripeSignatureVerifier,
+  mayApplyPaymentsForMode,
+  resolveStripeWebhookSecret,
+} from '@/lib/stripe/server/stripe';
 import {
   finalizeWooOrderPayment,
   markWooOrderPaymentFailed,
@@ -35,10 +39,26 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
   let event;
   try {
-    const stripe = await getStripeClient();
-    event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
-  } catch {
-    return NextResponse.json({ error: 'Invalid webhook signature.' }, { status: 400 });
+    // Verification is not gated on charging permission: proving Stripe signed the
+    // body is separate from deciding whether this deployment may act on it, and
+    // conflating the two reported "invalid signature" for a valid delivery that was
+    // simply not destined for this environment.
+    const stripe = await getStripeSignatureVerifier();
+    event = await stripe.webhooks.constructEventAsync(rawBody, signature, webhookSecret);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error('Stripe webhook verification error:', detail);
+    return NextResponse.json({ error: 'Invalid webhook signature.', detail }, { status: 400 });
+  }
+
+  // A live delivery must not mark an order paid on a deployment that is not
+  // allowed to take live payments (staging, or a production deployment whose live
+  // readiness is incomplete). Acknowledged with 200 so Stripe stops retrying, and
+  // recorded, rather than pretending the signature was bad.
+  const permission = await mayApplyPaymentsForMode(event.livemode ? 'live' : 'test');
+  if (!permission.ok) {
+    console.warn('Stripe webhook received but not applied:', event.type, event.id, permission.reason);
+    return NextResponse.json({ received: true, applied: false, reason: permission.reason });
   }
 
   const paymentIntent = event.data.object as { id?: string; metadata?: unknown; payment_method_types?: string[] };

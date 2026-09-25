@@ -50,6 +50,10 @@ export interface CalculateOrderOptions {
   shippingMethod?: ShippingMethod;
   /** Live Shippo rate amount — overrides flat-rate shipping when set. */
   shippingCostOverride?: number;
+  /** Authoritative WooCommerce tax amount in major units. */
+  taxAmountOverride?: number;
+  /** Destination state (2-letter code or name) to determine nexus. */
+  destinationState?: string;
 }
 
 export function calculateOrderTotals(items: TotalsLineItem[], options: CalculateOrderOptions = {}): OrderTotals {
@@ -74,7 +78,20 @@ export function calculateOrderTotals(items: TotalsLineItem[], options: Calculate
         : subtotal >= FREE_SHIPPING_THRESHOLD
           ? 0
           : STANDARD_SHIPPING_COST;
-  const taxAmount = taxableSubtotal * TAX_RATE;
+
+  const destinationState = options.destinationState ? options.destinationState.trim().toUpperCase() : null;
+  const isTexas = destinationState === 'TX' || destinationState === 'TEXAS';
+
+  let taxAmount: number;
+  if (typeof options.taxAmountOverride === 'number' && options.taxAmountOverride >= 0) {
+    taxAmount = options.taxAmountOverride;
+  } else if (destinationState) {
+    // Authoritative WooCommerce tax nexus: Texas standard rate applies; non-nexus states are $0.00.
+    taxAmount = isTexas ? taxableSubtotal * TAX_RATE : 0;
+  } else {
+    taxAmount = taxableSubtotal * TAX_RATE;
+  }
+
   const total = taxableSubtotal + shippingCost + taxAmount;
 
   return { subtotal, shippingCost, discountAmount, taxAmount, total };

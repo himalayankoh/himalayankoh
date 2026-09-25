@@ -14,9 +14,9 @@ export function generateProductSlug(name: string): string {
 export function normalizeProductSlug(slug: string | undefined | null): string {
   if (!slug) return '';
   try {
-    return decodeURIComponent(slug).trim().toLowerCase();
+    return decodeURIComponent(slug).trim().toLowerCase().replace(/\/+$/, '');
   } catch {
-    return slug.trim().toLowerCase();
+    return slug.trim().toLowerCase().replace(/\/+$/, '');
   }
 }
 

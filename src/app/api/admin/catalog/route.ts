@@ -19,7 +19,7 @@
 
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { readAdminCatalogPage, readAdminCatalogStats } from '@/lib/backend/adminCatalog';
+import { readAdminCatalogWithStats } from '@/lib/backend/adminCatalog';
 import type { AdminCatalogQuery } from '@/lib/backend/adminCatalog';
 
 export async function GET(request: Request) {
@@ -43,11 +43,8 @@ export async function GET(request: Request) {
   };
 
   try {
-    const [page, stats] = await Promise.all([
-      readAdminCatalogPage(query),
-      readAdminCatalogStats(),
-    ]);
-    return NextResponse.json({ page, stats });
+    const result = await readAdminCatalogWithStats(query);
+    return NextResponse.json(result, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'The catalog could not be read.' },

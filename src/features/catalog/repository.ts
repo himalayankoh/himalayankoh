@@ -45,7 +45,7 @@ import { singleFlight } from '../../lib/admin/singleFlight';
 import {
   CatalogProduct, CatalogCategory, CatalogImage, CatalogVariant, Coupon,
   StoreOffer, StoreSettings, DEFAULT_STORE_SETTINGS,
-  CatalogStatus,
+  CatalogStatus, StockStatus,
 } from './types';
 import { parseTagList } from './tags';
 import { consoleStatusFromWoo, wooListingStatusOrDraft } from '../../lib/woo/productStatus';
@@ -172,14 +172,23 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     ?? (typeof r.categoryId === 'number' || typeof r.categoryId === 'string'
       ? String(r.categoryId)
       : `cat-${catName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`);
-  const stockQty = typeof r.stockQuantity === 'number' ? r.stockQuantity : (r.stockStatus === 'instock' || r.inStock ? 50 : 0);
-  const stockStat = r.stockStatus === 'instock' || r.inStock
-    ? 'in_stock'
-    : r.stockStatus === 'outofstock'
-      ? 'out_of_stock'
-      : r.stockStatus === 'onbackorder'
-        ? 'on_backorder'
-        : 'unknown';
+  const trackInventory = typeof r.trackInventory === 'boolean'
+    ? r.trackInventory
+    : (typeof r.manageStock === 'boolean' ? r.manageStock : false);
+  const rawStock = String(r.stockStatus ?? '').toLowerCase().trim();
+  const stockStat: StockStatus =
+    rawStock === 'instock' || rawStock === 'in_stock' || r.inStock === true
+      ? 'in_stock'
+      : rawStock === 'outofstock' || rawStock === 'out_of_stock'
+        ? 'out_of_stock'
+        : rawStock === 'onbackorder' || rawStock === 'on_backorder'
+          ? 'on_backorder'
+          : 'unknown';
+  const stockQty = typeof r.stockQuantity === 'number'
+    ? r.stockQuantity
+    : (trackInventory && typeof r.inventoryQty === 'number'
+        ? r.inventoryQty
+        : (stockStat === 'in_stock' ? (trackInventory ? 0 : 50) : 0));
   // The store's own listing state, read as itself: a draft is a draft and stays
   // a draft through a save. Rows with no `status` come from the published-only
   // public read, where every row is live by construction — reading those as a
@@ -215,6 +224,7 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     currency: 'USD',
     sku: (r.sku as string) || '',
     inventoryQty: stockQty,
+    trackInventory,
     stockStatus: stockStat as CatalogProduct['stockStatus'],
     lowStockThreshold: typeof r.lowStockThreshold === 'number' ? r.lowStockThreshold : 5,
     shippingCost: 0,
@@ -327,8 +337,8 @@ export async function listProducts(forceFresh = false): Promise<CatalogProduct[]
     .map(catalogRowToProduct);
 }
 
-export async function getProduct(id: string): Promise<CatalogProduct | null> {
-  if (typeof window !== 'undefined' && catalogMemoryCache && Date.now() - catalogMemoryCache.timestamp < CATALOG_CACHE_TTL_MS) {
+export async function getProduct(id: string, forceFresh = false): Promise<CatalogProduct | null> {
+  if (!forceFresh && typeof window !== 'undefined' && catalogMemoryCache && Date.now() - catalogMemoryCache.timestamp < CATALOG_CACHE_TTL_MS) {
     const found = catalogMemoryCache.products.find((p) => p.id === id || p.slug === id);
     if (found) return found;
   }

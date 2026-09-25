@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     || process.env.OPEN_ROUTER_API_KEY;
   if (!apiKey) {
     return jsonResponse(
-      { error: 'AI assistant is not configured yet. Please add OPENROUTER_API_KEY in Vercel.' },
+      { error: 'AI assistant is not configured yet. Please add OPENROUTER_API_KEY as a Cloudflare Worker secret or server environment variable.' },
       503,
       responseHeaders
     );
@@ -225,8 +225,8 @@ function corsHeaders(request: Request) {
   // A real allowlist, not a blind reflection of whatever Origin a caller sends —
   // that pattern lets any third-party site ride this API and its rate limit and
   // cost budget. The rule itself lives in `@/lib/http/originAllowlist` so it can be
-  // unit-tested and so it names no deployment (the Vercel-only version of it is
-  // gone; see that module for why a stale-host fallback is worse than none).
+  // unit-tested and so it names no deployment (see that module for why
+  // a stale-host fallback is worse than none).
   const origin = isAllowedRequestOrigin(requestOrigin, request.url) ? requestOrigin : '';
   return {
     ...(origin ? { 'Access-Control-Allow-Origin': origin } : {}),

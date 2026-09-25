@@ -80,6 +80,22 @@ export async function POST(request: Request) {
     const order = await getWooOrder(orderId);
     const projected = orderFromWoo(order);
 
+    const status = String(projected.status || '').toLowerCase();
+    const ineligibleStatuses = new Set(['delivered', 'completed', 'shipped', 'cancelled', 'refunded', 'failed']);
+    if (ineligibleStatuses.has(status)) {
+      return NextResponse.json(
+        { error: `Order ${orderId} is ${projected.status} and cannot have a shipping label purchased.` },
+        { status: 422 }
+      );
+    }
+
+    if (projected.payment_status !== 'paid') {
+      return NextResponse.json(
+        { error: `Order ${orderId} is unpaid (${projected.payment_status}) and ineligible for shipping label creation.` },
+        { status: 422 }
+      );
+    }
+
     const existingTracking = projected.tracking_number;
     const existingLabel = projected.label_url;
     if (existingTracking && existingLabel) {

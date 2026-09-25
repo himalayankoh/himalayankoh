@@ -34,6 +34,7 @@ import {
   type CatalogQuery,
   type CatalogResult,
 } from './products';
+import { normalizeProductSlug } from '../products/slug';
 
 /**
  * Scope a catalog read to what the storefront may serve, and say what was
@@ -103,16 +104,18 @@ export async function getCatalogProducts(query: CatalogQuery = {}): Promise<Cata
  * how a link, a search result or a shared URL would otherwise reach a product the
  * storefront is not allowed to serve. Name, category and copy are all judged,
  * because all three are what the page would show.
+ *
+ * Wrapped in React cache() so generateMetadata and Page share a single lookup
+ * during the same server request instead of issuing duplicate network calls.
  */
-export async function lookupCatalogProduct(
-  slug: string,
-  signal?: AbortSignal
-): Promise<CatalogLookup> {
-  const lookup = await readCatalogProductBySlug(slug, signal);
+const lookupProductForRequest = cache(async (slug: string): Promise<CatalogLookup> => {
+  const lookup = await readCatalogProductBySlug(slug);
 
   if (
     lookup.product &&
     !isNicheProduct({
+      id: lookup.product.id,
+      sku: lookup.product.sku,
       name: lookup.product.name,
       category: lookup.product.category,
       description: lookup.product.description,
@@ -122,6 +125,14 @@ export async function lookupCatalogProduct(
   }
 
   return lookup;
+});
+
+export async function lookupCatalogProduct(
+  slug: string,
+  _signal?: AbortSignal
+): Promise<CatalogLookup> {
+  const normalized = normalizeProductSlug(slug) || slug.trim().toLowerCase();
+  return lookupProductForRequest(normalized);
 }
 
 /**

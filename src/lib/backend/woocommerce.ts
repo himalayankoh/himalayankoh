@@ -23,7 +23,7 @@ import type { Product, StockStatus } from '../../data/products';
 import { collectMissingCatalogFields, priceDisplayFromRange } from '../products/price';
 import { productSlugFromName } from '../products/slug';
 import { resolveCuratedProductImages } from '../products/curatedImages';
-import { variationPriceRange, type WooVariationLike } from '../woo/productPayload';
+import { SEO_META_KEYS, variationPriceRange, type WooVariationLike } from '../woo/productPayload';
 import {
   productVariations,
   variationOptionLabels,
@@ -94,6 +94,7 @@ export interface StoreApiProduct {
 
 /** WooCommerce REST v3 product (authenticated; carries price and stock). */
 export interface RestV3Product {
+  status?: string;
   id?: number;
   name?: string;
   slug?: string;
@@ -117,6 +118,8 @@ export interface RestV3Product {
   variations?: number[];
   /** Declared attributes; the ones with `variation: true` are what a shopper picks. */
   attributes?: RestV3Attribute[];
+  meta_data?: Array<{ id?: number; key?: string; value?: unknown }>;
+  yoast_head_json?: { title?: string; description?: string };
 }
 
 /** WordPress core product (public; no price or stock, used only as fallback). */
@@ -131,6 +134,7 @@ export interface WpCoreProduct {
   excerpt?: { rendered?: string };
   product_cat?: number[];
   _embedded?: Record<string, Array<{ source_url?: string; alt_text?: string }>>;
+  yoast_head_json?: { title?: string; description?: string };
 }
 
 /**
@@ -144,10 +148,75 @@ export interface WpCoreProduct {
  * product; a retired slug with no entry here is a dead link on the storefront.
  */
 export const RETIRED_PRODUCT_SLUGS: Record<string, string> = {
+  // Product 2497 — 45 lbs rock salt
+  '2497': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'himalayan-rock-salt-45-lbs': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'himalayan-rock-salt-45lbs': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'himalayan-rock-salt-45-lbs-2-3-large-chunks': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'himalayan-rock-salt-chunks-18-lbs': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'himalayan-rock-salt-bag': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'rock-salt-45-lbs': 'himalayan-rock-salt-45-lbs-large-chunks',
+
+  // Product 2492 — 6 lb fine/coarse
+  '2492': 'himalayan-salt-6-lbs',
+  'himalayan-salt-6lbs': 'himalayan-salt-6-lbs',
   'himalayan-salt-fine-grain-6-lbs': 'himalayan-salt-6-lbs',
   'himalayan-salt-coarse-grain-6-lbs': 'himalayan-salt-6-lbs',
+  'himalayan-salt-fine-and-coarse-grain-6-lbs': 'himalayan-salt-6-lbs',
+  'himalayan-salt-pouches': 'himalayan-salt-6-lbs',
+  'pouches': 'himalayan-salt-6-lbs',
+
+  // Product 2490 — 3 lb fine grain
+  '2490': 'himalayan-salt-fine-grain-3-lbs',
+  'himalayan-salt-fine-grain-3lbs': 'himalayan-salt-fine-grain-3-lbs',
+  'himalayan-salt-3-lbs': 'himalayan-salt-fine-grain-3-lbs',
+  'himalayan-salt-3lbs': 'himalayan-salt-fine-grain-3-lbs',
+
+  // Product 2488 — 12-14 lb lick
+  '2488': 'himalayan-salt-lick-12-to-14-lbs',
+  'himalayan-salt-lick-12-14-lbs': 'himalayan-salt-lick-12-to-14-lbs',
+  'himalayan-salt-lick-12-14lbs': 'himalayan-salt-lick-12-to-14-lbs',
+  'himalayan-salt-lick-12-to-14lbs': 'himalayan-salt-lick-12-to-14-lbs',
+  'himalayan-salt-lick-14-lbs': 'himalayan-salt-lick-12-to-14-lbs',
+  'himalayan-salt-lick-14lbs': 'himalayan-salt-lick-12-to-14-lbs',
+
+  // Product 2487 — 5-6 lb lick
+  '2487': 'himalayan-salt-lick-5-to-6-lbs',
+  'himalayan-salt-lick-5-6-lbs': 'himalayan-salt-lick-5-to-6-lbs',
+  'himalayan-salt-lick-5-6lbs': 'himalayan-salt-lick-5-to-6-lbs',
+  'himalayan-salt-lick-5-to-6lbs': 'himalayan-salt-lick-5-to-6-lbs',
+  'salt-licks': 'himalayan-salt-lick-5-to-6-lbs',
+
+  // Product 2485 — 1-2 lb lick
+  '2485': 'himalayan-salt-lick-1-to-2-lbs',
+  'himalayan-salt-lick-1-2-lbs': 'himalayan-salt-lick-1-to-2-lbs',
+  'himalayan-salt-lick-1-2lbs': 'himalayan-salt-lick-1-to-2-lbs',
+  'himalayan-salt-lick-1-to-2lbs': 'himalayan-salt-lick-1-to-2-lbs',
+  'himalayan-salt-lick-2-lbs': 'himalayan-salt-lick-1-to-2-lbs',
+  'himalayan-salt-lick-2lbs': 'himalayan-salt-lick-1-to-2-lbs',
+
+  // Product 2484 — 30 lb block
+  '2484': 'himalayan-salt-block-30-lbs',
+  'himalayan-salt-block-30lbs': 'himalayan-salt-block-30-lbs',
+  'salt-block': 'himalayan-salt-block-30-lbs',
+
+  // Product 2482 — 6 lb edible pouch
+  '2482': 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs',
+  'himalayan-pink-edible-salt-fine-grain-pouch-6lbs': 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs',
+  'himalayan-edible-salt-6-lbs': 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs',
+
+  // Product 2481 — 3 lb edible pouch
+  '2481': 'himalayan-pink-edible-salt-fine-grain-pouch-3-lbs',
+  'himalayan-pink-edible-salt-fine-grain-pouch-3lbs': 'himalayan-pink-edible-salt-fine-grain-pouch-3-lbs',
+  'himalayan-edible-salt-3-lbs': 'himalayan-pink-edible-salt-fine-grain-pouch-3-lbs',
+
+  // Product 2479 — 16 oz spice jar
+  '2479': 'himalayan-pink-edible-salt-16-oz-jar',
+  'himalayan-pink-edible-salt-16oz-jar': 'himalayan-pink-edible-salt-16-oz-jar',
   'himalayan-pink-edible-salt-fine-grain-16-oz-jar': 'himalayan-pink-edible-salt-16-oz-jar',
   'himalayan-pink-edible-salt-coarse-grain-16-oz-jar': 'himalayan-pink-edible-salt-16-oz-jar',
+  'himalayan-edible-pink-salt-16-oz-jar': 'himalayan-pink-edible-salt-16-oz-jar',
+  'himalayan-edible-pink-salt': 'himalayan-pink-edible-salt-16-oz-jar',
 };
 
 /**
@@ -245,6 +314,8 @@ function buildProduct(input: {
   sku: string | null;
   isFeatured: boolean;
   updatedAt: string | null;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
 }): Product {
   const price = priceDisplayFromRange(input.priceMin, input.priceMax);
   const images = resolveCuratedProductImages(input.slug, input.sku, input.images);
@@ -266,6 +337,8 @@ function buildProduct(input: {
     stockStatus: input.stockStatus,
     stockQuantity: input.stockQuantity ?? null,
     updatedAt: input.updatedAt,
+    metaTitle: input.metaTitle ?? undefined,
+    metaDescription: input.metaDescription ?? undefined,
     missing: collectMissingCatalogFields({
       priceMin: input.priceMin,
       sku: input.sku,
@@ -273,6 +346,16 @@ function buildProduct(input: {
       images,
     }),
   };
+}
+
+function extractMetaString(
+  metaData: Array<{ key?: string; value?: unknown }> | undefined,
+  key: string
+): string | null {
+  const entry = metaData?.find((m) => m.key === key);
+  if (!entry || entry.value === undefined || entry.value === null) return null;
+  const str = String(entry.value).trim();
+  return str || null;
 }
 
 /**
@@ -304,9 +387,12 @@ export function mapStoreProduct(raw: StoreApiProduct): Product {
           ? 'out_of_stock'
           : 'unknown';
 
+  const slugFromPermalink = raw.permalink ? raw.permalink.replace(/\/+$/, '').split('/').pop() : '';
+  const resolvedSlug = raw.slug || slugFromPermalink || productSlugFromName(raw.name ?? '');
+
   return buildProduct({
     id: raw.id ?? '',
-    slug: raw.slug ?? '',
+    slug: resolvedSlug,
     name: htmlToText(raw.name),
     // WooCommerce sends markup, and the product page renders this value as text, so
     // `<p>` used to appear verbatim in the middle of a product's copy.
@@ -329,6 +415,15 @@ export function mapRestV3Product(raw: RestV3Product): Product {
   // priceMax — that field means "top of the variant range" everywhere else.
   const priceMin = parseMajorUnitPrice(raw.price) ?? parseMajorUnitPrice(raw.sale_price) ?? parseMajorUnitPrice(raw.regular_price);
 
+  const yoastTitle =
+    extractMetaString(raw.meta_data, SEO_META_KEYS.title) ??
+    raw.yoast_head_json?.title?.trim() ??
+    null;
+  const yoastDesc =
+    extractMetaString(raw.meta_data, SEO_META_KEYS.description) ??
+    raw.yoast_head_json?.description?.trim() ??
+    null;
+
   return buildProduct({
     id: raw.id ?? '',
     slug: raw.slug ?? '',
@@ -346,6 +441,8 @@ export function mapRestV3Product(raw: RestV3Product): Product {
     sku: raw.sku?.trim() ? raw.sku.trim() : null,
     isFeatured: raw.featured === true,
     updatedAt: raw.date_modified_gmt ?? null,
+    metaTitle: yoastTitle,
+    metaDescription: yoastDesc,
   });
 }
 
@@ -372,6 +469,8 @@ export function mapWpCoreProduct(raw: WpCoreProduct): Product {
     sku: null,
     isFeatured: false,
     updatedAt: raw.modified ?? null,
+    metaTitle: raw.yoast_head_json?.title?.trim() || null,
+    metaDescription: raw.yoast_head_json?.description?.trim() || null,
   });
 }
 
@@ -445,6 +544,18 @@ export async function fetchAdminProductBySlug(
   signal?: AbortSignal
 ): Promise<Product | null> {
   if (!hasWooCommerceCredentials()) return null;
+
+  // Direct single-product REST v3 lookup by ID if numeric
+  if (/^\d+$/.test(slug)) {
+    const single = await wordpressRequest<RestV3Product>(`${REST_V3}/products/${slug}`, {
+      useCredentials: true,
+      signal,
+    }).catch(() => null);
+    if (single && single.id && single.status === 'publish') {
+      const [product] = await withVariations([single], [mapRestV3Product(single)], signal);
+      if (product) return product;
+    }
+  }
 
   const exact = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
     params: { slug, status: 'publish', per_page: 1 },

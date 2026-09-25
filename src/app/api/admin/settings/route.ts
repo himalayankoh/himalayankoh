@@ -7,7 +7,7 @@ const MASKED = '••••••••';
 
 function maskSecret(value: string | null | undefined, source: 'db' | 'env' | 'unset'): string {
   if (!value) return '';
-  return source === 'db' ? MASKED : `${MASKED} (env)`;
+  return source === 'db' ? MASKED : `${MASKED} (Worker secret)`;
 }
 
 export async function GET(request: Request) {

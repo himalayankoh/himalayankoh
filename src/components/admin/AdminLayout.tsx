@@ -38,6 +38,7 @@ import {
 import { useAuthContext } from '../../context/AuthContext';
 import { signOutOfBrowser } from '../../lib/auth/browserSignOut';
 import { useApp } from '@/App';
+import { useDialogFocus } from '../../hooks/useDialogFocus';
 
 export interface AdminLayoutProps {
   children: ReactNode;
@@ -66,6 +67,15 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { to: '/admin/leados', icon: Target, label: 'LeadOS Workspace', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
       { to: '/admin/client-outreach', icon: PaperPlaneRight, label: 'Client Outreach', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
+    ],
+  },
+  {
+    title: 'Wholesale',
+    // One rail entry for the whole B2B side. Its fourteen views live inside the
+    // workspace's own tab set rather than as a second block of rail items — the
+    // retail catalogue keeps the rail it already had.
+    items: [
+      { to: '/admin/wholesale', icon: Truck, label: 'Wholesale', g: 'linear-gradient(135deg,#3F6550,#C98745)', dot: '#C98745' },
     ],
   },
   {
@@ -143,6 +153,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
   const [mobSide, setMobSide] = useState(false);
   const [searchVal, setSearchVal] = useState('');
+  const [railQuery, setRailQuery] = useState('');
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = () => { if (desktop.matches) setMobSide(false); };
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
+  const mobileDialog = useDialogFocus(mobSide, () => setMobSide(false));
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { const onKey = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); searchRef.current?.focus(); } if (event.key === 'Escape') setUserMenuOpen(false); }; document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey); }, []);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -208,13 +228,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const adminEmail = user?.email || appUser?.email || 'admin@himalayankoh.com';
   const adminInitial = String(adminName).charAt(0).toUpperCase() || 'S';
 
-  const Sidebar = ({ mobile }: { mobile?: boolean }) => (
+  const renderSidebar = ({ mobile }: { mobile?: boolean }) => (
     <aside
       className={`flex flex-col shrink-0 ${
         mobile ? 'w-full h-full' : 'w-60 fixed inset-y-0 left-0 z-40 hidden lg:flex'
       }`}
       style={{
-        background: 'linear-gradient(180deg, #26211C 0%, #1f1a16 55%, #181411 100%)',
+        background: '#26211C',
         boxShadow: 'inset -1px 0 0 rgba(224,214,200,0.1)',
       }}
     >
@@ -243,8 +263,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       </div>
 
       {/* Nav List */}
-      <nav className="flex-1 p-2 space-y-4 overflow-y-auto">
-        {SECTIONS.map((sec) => (
+      <div className="px-3 py-3"><input aria-label="Find an admin workspace" placeholder="Find a workspace…" value={railQuery} onChange={e => setRailQuery(e.target.value)} className="w-full min-w-0 min-h-10 rounded-lg border border-white/20 bg-white/5 px-3 text-sm text-white placeholder:text-white/60" /></div>
+      <nav aria-label="Admin workspaces" className="flex-1 p-2 space-y-4 overflow-y-auto">
+        {SECTIONS.map(sec => ({ ...sec, items: sec.items.filter(item => `${sec.title} ${item.label}`.toLowerCase().includes(railQuery.toLowerCase())) })).filter(sec => sec.items.length > 0).map((sec) => (
           <div key={sec.title}>
             <p className="px-2.5 mb-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#8e8276]">
               {sec.title}
@@ -256,10 +277,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   (l.to !== '/admin' && location.pathname.startsWith(`${l.to}/`));
                 const Icon = l.icon;
                 return (
-                  <Link
+                  <Link prefetch={false}
                     key={l.to}
                     to={l.to}
-                    className={`group relative flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-[12px] font-medium transition-all duration-200 ${
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`group relative flex items-center gap-2.5 px-2.5 py-2 min-h-10 rounded-lg text-[13px] font-medium transition-all duration-200 ${
                       isActive ? 'text-[#FAF7F1]' : 'text-[#b6aba0] hover:text-[#FAF7F1] hover:bg-white/[0.05]'
                     }`}
                     style={
@@ -281,8 +303,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         isActive ? 'scale-105' : 'opacity-90 group-hover:scale-105 group-hover:opacity-100'
                       }`}
                       style={{
-                        background: l.g,
-                        boxShadow: isActive ? `0 2px 10px ${l.dot}40` : '0 1px 4px rgba(0,0,0,0.3)',
+                        background: isActive ? '#8d4133' : 'rgba(255,255,255,0.07)',
+                        boxShadow: 'none',
                       }}
                     >
                       <Icon size={13} weight="bold" />
@@ -298,7 +320,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
       {/* Footer / Store / Logout */}
       <div className="p-2 border-t border-[#E0D6C8]/10 space-y-0.5">
-        <Link
+        <Link prefetch={false}
           to="/"
           className="flex items-center gap-2 text-[11px] text-[#b6aba0] hover:text-[#FAF7F1] px-2.5 py-1.5 rounded-lg hover:bg-white/[0.05] transition-colors"
         >
@@ -321,20 +343,21 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   );
 
   return (
-    <div className="h-screen w-full bg-[#FAF7F1] flex overflow-hidden font-sans">
-      <Sidebar />
+    <div className="hk-admin h-dvh w-full bg-[#FAF7F1] flex overflow-hidden font-sans">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip bg-white p-3 rounded-lg">Skip to workspace</a>
+      {renderSidebar({})}
 
       {/* Mobile Drawer */}
       {mobSide && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-modal lg:hidden">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setMobSide(false)} />
-          <div className="absolute left-0 top-0 h-full w-64 shadow-2xl">
-            <Sidebar mobile />
+          <div ref={mobileDialog} role="dialog" aria-modal="true" aria-label="Admin navigation" tabIndex={-1} className="absolute left-0 top-0 h-full w-72 max-w-[90vw] shadow-2xl">
+            {renderSidebar({ mobile: true })}
           </div>
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-60 h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-60 h-dvh overflow-hidden">
         {/* Header */}
         <header className="h-14 shrink-0 bg-[#FFFDF8]/95 backdrop-blur-md border-b border-[#E0D6C8] flex items-center justify-between gap-3 px-4 lg:px-6 z-30">
           <div className="flex items-center gap-3 min-w-0">
@@ -353,7 +376,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               <input
                 value={searchVal}
                 onChange={(e) => setSearchVal(e.target.value)}
-                placeholder="Search products…"
+                ref={searchRef} aria-label="Search admin products" placeholder="Search products…"
                 className="bg-transparent text-xs outline-none w-full placeholder:text-[#6D6258] text-[#26211C]"
               />
               <span className="text-[9px] text-[#6D6258] border border-[#E0D6C8] bg-white rounded px-1 py-px font-medium">
@@ -364,12 +387,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
           <div className="flex items-center gap-2.5">
             <span className="hidden sm:flex items-center gap-1.5 text-[10px] font-medium text-[#3F6550] bg-[#3F6550]/10 border border-[#3F6550]/20 rounded-full px-2.5 py-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#3F6550] animate-pulse" />
-              Live
+              <span className="w-1.5 h-1.5 rounded-full bg-[#3F6550]" />
+              Admin
             </span>
             <button
               className="relative p-2 hover:bg-[#FAF7F1] rounded-lg text-[#3F6550] hover:text-[#26211C] transition-colors"
-              title="System Secure & Verified"
+              aria-label="Store settings" onClick={() => navigate('/admin/settings')} title="Store settings"
             >
               <ShieldCheck size={16} />
               <span
@@ -437,7 +460,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
                   {/* Quick Navigation Links */}
                   <div className="p-1.5 space-y-0.5">
-                    <Link
+                    <Link prefetch={false}
                       to="/admin/users"
                       onClick={() => setUserMenuOpen(false)}
                       className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-[#26211C] hover:bg-[#FAF7F1] transition-colors group"
@@ -451,7 +474,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                       </div>
                     </Link>
 
-                    <Link
+                    <Link prefetch={false}
                       to="/admin/settings"
                       onClick={() => setUserMenuOpen(false)}
                       className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-[#26211C] hover:bg-[#FAF7F1] transition-colors group"
@@ -465,7 +488,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                       </div>
                     </Link>
 
-                    <Link
+                    <Link prefetch={false}
                       to="/"
                       onClick={() => setUserMenuOpen(false)}
                       className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-[#26211C] hover:bg-[#FAF7F1] transition-colors group"
@@ -508,7 +531,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         {/* Content Canvas */}
         <main
           id="main-content"
-          className="flex-1 overflow-y-auto min-w-0 p-3 pb-24 lg:p-5"
+          tabIndex={-1} className="admin-content flex-1 overflow-y-auto min-w-0 p-3 pb-24 lg:p-5"
           style={{ background: '#FAF7F1' }}
         >
           {children}
@@ -549,7 +572,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   : false;
               const Icon = it.icon;
               return (
-                <Link
+                <Link prefetch={false}
                   key={it.key}
                   to={it.to || '/admin'}
                   className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] min-h-[52px] ${

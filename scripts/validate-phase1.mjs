@@ -206,11 +206,15 @@ function staticChecks() {
     record('sitemap-file', 'public/sitemap.xml exists', 'FAIL');
   }
 
-  const vercel = readFileSync(path.join(root, 'vercel.json'), 'utf8');
-  if (vercel.includes('index.html')) {
-    record('vercel-json', 'vercel.json SPA rewrite present', 'PASS');
-  } else {
-    record('vercel-json', 'vercel.json SPA rewrite present', 'FAIL');
+  try {
+    const wrangler = readFileSync(path.join(root, 'wrangler.toml'), 'utf8');
+    if (wrangler.includes('preview.himalayankoh.com')) {
+      record('wrangler-toml', 'wrangler.toml staging route present', 'PASS');
+    } else {
+      record('wrangler-toml', 'wrangler.toml staging route present', 'FAIL');
+    }
+  } catch {
+    record('wrangler-toml', 'wrangler.toml exists', 'FAIL');
   }
 }
 

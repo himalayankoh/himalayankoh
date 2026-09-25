@@ -166,8 +166,8 @@ export async function readInventoryReport(): Promise<InventoryReport> {
   // Only when the store tracks units somewhere: otherwise there is nothing to
   // find on a variation, and reading each variable product would be the N+1
   // pattern this module exists to avoid.
-  for (const parent of toExpand) {
-    try {
+  const variationReads = await Promise.allSettled(
+    toExpand.map(async (parent) => {
       const variations = await wordpressRequest<
         Array<{
           id: number;
@@ -183,8 +183,15 @@ export async function readInventoryReport(): Promise<InventoryReport> {
         params: { per_page: 100 },
         timeoutMs: 25_000,
       });
+      return { parent, variations: Array.isArray(variations) ? variations : [] };
+    })
+  );
 
-      for (const variation of Array.isArray(variations) ? variations : []) {
+  for (let i = 0; i < variationReads.length; i++) {
+    const res = variationReads[i];
+    const parent = toExpand[i];
+    if (res.status === 'fulfilled') {
+      for (const variation of res.value.variations) {
         const quantity = count(variation.stock_quantity);
         const threshold = count(variation.low_stock_amount);
         rows.push({
@@ -203,7 +210,8 @@ export async function readInventoryReport(): Promise<InventoryReport> {
           price: null,
         });
       }
-    } catch (error) {
+    } else {
+      const error = res.reason;
       notes.push(
         `The variations of "${parent.name}" (product ${parent.id}) could not be read: ${
           error instanceof Error ? error.message : String(error)

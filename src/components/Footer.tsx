@@ -18,15 +18,9 @@ const aboutLinks = [
   { label: 'About Himalayan Koh', to: '/about' },
   { label: 'Quality & Sourcing', to: '/quality' },
   { label: 'Resource Center', to: '/resources' },
-  { label: 'Product Disclaimer', to: '/disclaimer' },
   { label: 'Shop Products', to: '/products' },
   { label: 'Contact Us', to: '/contact' },
-  { label: 'Shipping & Delivery', to: '/shipping' },
-  { label: 'Return Policy', to: '/returns' },
-  { label: 'Privacy Policy', to: '/privacy' },
-  { label: 'Terms of Service', to: '/terms' },
   { label: 'FAQs', to: '/faqs' },
-  { label: 'Sitemap', to: '/sitemap' },
 ];
 
 /**
@@ -85,7 +79,7 @@ export default function Footer() {
     <footer id="contact" className="bg-charcoal text-cream">
       {/* Newsletter Strip */}
       <div className="border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-14 md:py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-10">
           <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center">
             <div>
               <h3 className="font-serif text-2xl md:text-3xl font-bold mb-4 text-white">
@@ -100,7 +94,7 @@ export default function Footer() {
                 <div className="flex-1 relative">
                   <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal-light" />
                   <input
-                    type="email"
+                    type="email" name="newsletterEmail" autoComplete="email"
                     placeholder="Enter your email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -133,15 +127,15 @@ export default function Footer() {
                   )}
                 </motion.button>
               </form>
-              <p className="mt-2 text-xs text-white/60 leading-relaxed">
+              <p className="mt-2 text-xs text-white/75 leading-relaxed">
                 By subscribing, you agree to receive commercial and educational emails from Himalayan Koh. You may unsubscribe at any time. Read our{' '}
-                <Link to="/privacy" className="underline hover:text-white">
+                <Link prefetch={false} to="/privacy" className="underline hover:text-white">
                   Privacy Policy
                 </Link>
                 .
               </p>
               {subscribeError && (
-                <p className="mt-2 text-sm text-amber-300">{subscribeError}</p>
+                <p role="alert" className="mt-2 text-sm text-amber-300">{subscribeError}</p>
               )}
             </div>
           </div>
@@ -149,7 +143,7 @@ export default function Footer() {
       </div>
 
       {/* Main Footer */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-14 md:py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-10">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 md:gap-8">
           {/* Brand */}
           <div className="sm:col-span-2 lg:col-span-1">
@@ -160,7 +154,7 @@ export default function Footer() {
               decoding="async"
               className="h-12 mb-5 brightness-0 invert"
             />
-            <p className="text-white/60 text-sm leading-relaxed mb-6 max-w-xs">
+            <p className="text-white/75 text-sm leading-relaxed mb-6 max-w-xs">
               Pure, mineral-dense Himalayan pink rock salt for livestock, equine management, wildlife, and gourmet culinary cooking. Sourced from Khewra, Pakistan and distributed from Houston, Texas.
             </p>
 
@@ -172,7 +166,7 @@ export default function Footer() {
             <ul className="space-y-3">
               {aboutLinks.map((link) => (
                 <li key={link.label}>
-                  <Link to={link.to} state={'state' in link ? link.state : undefined} className="text-white/60 text-sm hover:text-himalayan transition-colors flex items-center gap-1 group">
+                  <Link prefetch={false} to={link.to} state={'state' in link ? link.state : undefined} className="text-white/75 text-sm hover:text-himalayan transition-colors flex items-center gap-1 group">
                     <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
                     {link.label}
                   </Link>
@@ -187,7 +181,7 @@ export default function Footer() {
             <ul className="space-y-3">
               {productLinks.map((link) => (
                 <li key={link.label}>
-                  <Link to={link.to} className="text-white/60 text-sm hover:text-himalayan transition-colors flex items-center gap-1 group">
+                  <Link prefetch={false} to={link.to} className="text-white/75 text-sm hover:text-himalayan transition-colors flex items-center gap-1 group">
                     <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
                     {link.label}
                   </Link>
@@ -200,11 +194,11 @@ export default function Footer() {
           <div>
             <h4 className="font-serif font-bold text-lg mb-6 text-white">Contact Us</h4>
             <div className="space-y-4">
-              <a href="mailto:sales@himalayankoh.com" className="flex items-center gap-3 text-white/60 text-sm hover:text-himalayan transition-colors">
+              <a href="mailto:sales@himalayankoh.com" className="flex items-center gap-3 text-white/75 text-sm hover:text-himalayan transition-colors">
                 <Mail size={18} className="text-himalayan flex-shrink-0" />
                 sales@himalayankoh.com
               </a>
-              <a href="tel:8322246466" className="flex items-center gap-3 text-white/60 text-sm hover:text-himalayan transition-colors">
+              <a href="tel:8322246466" className="flex items-center gap-3 text-white/75 text-sm hover:text-himalayan transition-colors">
                 <Phone size={18} className="text-himalayan flex-shrink-0" />
                 (832) 224-6466
               </a>
@@ -212,7 +206,7 @@ export default function Footer() {
 
             {/* Trust badges */}
             <div className="mt-6 flex items-center gap-3">
-              <div className="px-3 py-1.5 bg-white/10 rounded-lg text-xs text-white/60">
+              <div className="px-3 py-1.5 bg-white/10 rounded-lg text-xs text-white/75">
                 🔒 Secure Checkout
               </div>
             </div>
@@ -222,18 +216,18 @@ export default function Footer() {
 
       {/* Bottom Bar */}
       <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-white/40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-white/70">
           <p>Copyright © 2026 Himalayan Koh. All rights reserved.</p>
           <div className="flex flex-wrap items-center gap-4">
-            <Link to="/disclaimer" className="hover:text-white/60 transition-colors">Disclaimer</Link>
-            <Link to="/quality" className="hover:text-white/60 transition-colors">Quality Standards</Link>
-            <Link to="/resources" className="hover:text-white/60 transition-colors">Resource Center</Link>
-            <Link to="/privacy" className="hover:text-white/60 transition-colors">Privacy Policy</Link>
-            <Link to="/terms" className="hover:text-white/60 transition-colors">Terms of Service</Link>
-            <Link to="/shipping" className="hover:text-white/60 transition-colors">Shipping Policy</Link>
-            <Link to="/returns" className="hover:text-white/60 transition-colors">Return Policy</Link>
-            <Link to="/faqs" className="hover:text-white/60 transition-colors">FAQs</Link>
-            <Link to="/sitemap" className="hover:text-white/60 transition-colors">Sitemap</Link>
+            <Link prefetch={false} to="/disclaimer" className="hover:text-white/75 transition-colors">Disclaimer</Link>
+            <Link prefetch={false} to="/quality" className="hover:text-white/75 transition-colors">Quality Standards</Link>
+            <Link prefetch={false} to="/resources" className="hover:text-white/75 transition-colors">Resource Center</Link>
+            <Link prefetch={false} to="/privacy" className="hover:text-white/75 transition-colors">Privacy Policy</Link>
+            <Link prefetch={false} to="/terms" className="hover:text-white/75 transition-colors">Terms of Service</Link>
+            <Link prefetch={false} to="/shipping" className="hover:text-white/75 transition-colors">Shipping Policy</Link>
+            <Link prefetch={false} to="/returns" className="hover:text-white/75 transition-colors">Return Policy</Link>
+            <Link prefetch={false} to="/faqs" className="hover:text-white/75 transition-colors">FAQs</Link>
+            <Link prefetch={false} to="/sitemap" className="hover:text-white/75 transition-colors">Sitemap</Link>
           </div>
         </div>
       </div>
