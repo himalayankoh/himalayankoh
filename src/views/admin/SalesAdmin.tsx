@@ -744,42 +744,83 @@ export default function SalesAdmin() {
                               ${order.netTotal.toFixed(2)}
                             </td>
                             <td className="py-3 px-4 text-center">
-                              {order.items.length > 0 && (
-                                <button
-                                  onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
-                                  className="text-xs text-[#58a6ff] hover:underline inline-flex items-center gap-1"
-                                >
-                                  {isExpanded ? <CaretUp /> : <CaretDown />}
-                                  <span>{isExpanded ? 'Hide' : 'Items'}</span>
-                                </button>
-                              )}
+                              <button
+                                onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+                                className="text-xs text-[#58a6ff] hover:underline inline-flex items-center gap-1 font-medium"
+                              >
+                                {isExpanded ? <CaretUp className="w-3.5 h-3.5" /> : <CaretDown className="w-3.5 h-3.5" />}
+                                <span>{isExpanded ? 'Hide' : 'Details'}</span>
+                              </button>
                             </td>
                           </tr>
 
-                          {/* Expanded Items Row */}
+                          {/* Expanded Items & Financial Breakdown Row */}
                           {isExpanded && (
-                            <tr className="bg-[#1c2128]">
-                              <td colSpan={11} className="p-4">
-                                <div className="text-xs font-semibold text-[#8b949e] mb-2 uppercase tracking-wider">
-                                  Line Items ({order.items.length}):
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                  {order.items.map((it, idx) => (
-                                    <div
-                                      key={idx}
-                                      className="p-3 rounded-lg bg-[#161b22] border border-[#30363d] flex justify-between"
-                                    >
-                                      <div>
-                                        <div className="font-semibold text-white">{it.productName}</div>
-                                        <div className="text-[10px] text-[#8b949e]">SKU: {it.sku || 'N/A'}</div>
-                                        <div className="text-[10px] text-[#8b949e]">Qty: {it.quantity}</div>
-                                      </div>
-                                      <div className="text-right">
-                                        <div className="font-bold text-[#3fb950]">${it.lineTotal.toFixed(2)}</div>
-                                        <div className="text-[10px] text-[#8b949e]">${it.unitPrice.toFixed(2)} ea</div>
-                                      </div>
+                            <tr className="bg-[#1c2128]/90 border-b border-[#30363d]">
+                              <td colSpan={11} className="p-5">
+                                <div className="space-y-4">
+                                  {/* Order Financial Audit Bar */}
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 p-3.5 rounded-xl bg-[#161b22] border border-[#30363d] text-xs">
+                                    <div>
+                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Order Channel</div>
+                                      <div className="font-bold text-white capitalize mt-0.5">{order.channel}</div>
                                     </div>
-                                  ))}
+                                    <div>
+                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Payment Status</div>
+                                      <div className="font-bold text-[#3fb950] capitalize mt-0.5">{order.paymentStatus}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Payment Method</div>
+                                      <div className="font-mono text-white mt-0.5">{order.paymentMethod || 'bacs / direct'}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Shipping Charged</div>
+                                      <div className="font-bold text-white mt-0.5">${order.shipping.toFixed(2)}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Tax Collected</div>
+                                      <div className="font-bold text-white mt-0.5">${order.tax.toFixed(2)}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Net Received</div>
+                                      <div className="font-bold text-[#3fb950] mt-0.5">${order.netTotal.toFixed(2)}</div>
+                                    </div>
+                                  </div>
+
+                                  {/* Line Items or Wholesale Contract View */}
+                                  <div>
+                                    <div className="text-xs font-semibold text-[#8b949e] mb-2 uppercase tracking-wider flex items-center justify-between">
+                                      <span>Items in Order ({order.items.length})</span>
+                                      {order.channel === 'wholesale' && (
+                                        <span className="text-[10px] text-[#bc8cff] font-mono">Wholesale B2B Contract Allocation</span>
+                                      )}
+                                    </div>
+                                    {order.items.length > 0 ? (
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                        {order.items.map((it, idx) => (
+                                          <div
+                                            key={idx}
+                                            className="p-3.5 rounded-lg bg-[#161b22] border border-[#30363d] flex justify-between items-start"
+                                          >
+                                            <div>
+                                              <div className="font-semibold text-white">{it.productName}</div>
+                                              <div className="text-[11px] font-mono text-[#8b949e] mt-0.5">SKU: {it.sku || 'N/A'}</div>
+                                              <div className="text-[11px] text-[#8b949e] mt-0.5">Qty: <span className="font-bold text-white">{it.quantity}</span></div>
+                                            </div>
+                                            <div className="text-right flex-shrink-0">
+                                              <div className="font-bold text-[#3fb950] text-sm">${it.lineTotal.toFixed(2)}</div>
+                                              <div className="text-[10px] text-[#8b949e]">${it.unitPrice.toFixed(2)} ea</div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="p-4 rounded-lg bg-[#161b22] border border-[#30363d] text-xs text-[#8b949e] flex items-center justify-between">
+                                        <span>Bulk wholesale contract purchase — order line items tracked through wholesale quote pallet manifests.</span>
+                                        <span className="font-bold text-white">${order.total.toFixed(2)} USD</span>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </td>
                             </tr>
