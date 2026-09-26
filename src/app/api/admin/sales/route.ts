@@ -63,14 +63,14 @@ export async function GET(request: Request) {
       }
 
       for (const raw of (wsOrders as Array<Record<string, unknown>>)) {
-        const id = String(raw.id || raw.reference || '');
-        const ref = String(raw.reference || raw.id || 'WS-ORD');
+        const id = String(raw.id || raw.reference || raw.ref || '');
+        const ref = String(raw.reference || raw.ref || raw.id || 'WS-ORD');
         const accId = String(raw.accountId || raw.account_id || '');
         const status = String(raw.status || 'CONFIRMED');
         const currency = String(raw.currency || 'USD');
         const totals = raw.totals as Record<string, unknown> | undefined;
-        const total = Number(totals?.sellGrandTotal ?? raw.total ?? 0);
-        const deposit = Number(raw.depositCollected ?? raw.deposit_collected ?? 0);
+        const total = Number(totals?.sellGrandTotal ?? totals?.total ?? raw.total ?? 0);
+        const deposit = Number(raw.depositCollected ?? raw.deposit_collected ?? raw.paid_amount ?? 0);
         const balance = Number(raw.balanceCollected ?? raw.balance_collected ?? 0);
         const createdAt = String(raw.createdAt || raw.created_at || new Date().toISOString());
 
