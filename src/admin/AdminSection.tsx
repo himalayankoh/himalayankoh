@@ -84,6 +84,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       title: 'Overview',
       items: [
         { to: '/admin', icon: SquaresFour, label: 'Dashboard', g: 'linear-gradient(135deg,#3b82f6,#22d3ee)', dot: '#38bdf8' },
+        { to: '/admin/sales', icon: CurrencyDollar, label: 'Sales & Profit', g: 'linear-gradient(135deg,#10b981,#059669)', dot: '#34d399' },
       ],
     },
     {

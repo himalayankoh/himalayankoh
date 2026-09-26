@@ -24,6 +24,7 @@ import {
   Target,
   Cpu,
   CreditCard,
+  CurrencyDollar,
   GearSix,
   BookBookmark,
   Truck,
@@ -60,6 +61,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: 'Overview',
     items: [
       { to: '/admin', icon: SquaresFour, label: 'Dashboard', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
+      { to: '/admin/sales', icon: CurrencyDollar, label: 'Sales & Profit', g: 'linear-gradient(135deg,#3F6550,#238636)', dot: '#3fb950' },
     ],
   },
   {
