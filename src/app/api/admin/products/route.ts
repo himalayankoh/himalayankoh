@@ -76,7 +76,7 @@ export async function GET(request: Request) {
         ? Number(url.searchParams.get('categoryId'))
         : undefined,
     });
-    return NextResponse.json({ products: rows.map(fromWooProduct) });
+    return NextResponse.json({ products: rows.filter((r) => r.status !== 'trash').map(fromWooProduct) });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'The store could not be read.' },

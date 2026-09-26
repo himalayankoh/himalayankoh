@@ -318,6 +318,7 @@ async function readUnlistedProducts(): Promise<{ rows: AdminCatalogRow[]; error:
     const products = await listWooProducts({ status: 'any', perPage: WORDPRESS_MAX_PER_PAGE });
     return {
       rows: products
+        .filter((row) => row.status !== 'trash')
         .map(fromWooProduct)
         .filter((record) => !isPublicWooStatus(record.status))
         .map(rowFromWooAdminProduct),

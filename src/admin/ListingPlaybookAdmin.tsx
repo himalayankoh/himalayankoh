@@ -192,7 +192,7 @@ export function ListingPlaybookAdmin() {
               <NumField label="Max images" value={pb.global.maxImages ?? 5} onChange={(n) => updateRules('global', { maxImages: n })} min={0} max={10} />
             </div>
             <div className="flex flex-wrap gap-4">
-              <Toggle label="Require supplier data (URL, name, SKU)" value={pb.global.requiredSupplierData ?? true} onChange={(b) => updateRules('global', { requiredSupplierData: b })} />
+              <Toggle label="Require supplier data (URL, name, SKU)" value={pb.global.requiredSupplierData ?? false} onChange={(b) => updateRules('global', { requiredSupplierData: b })} />
               <Toggle label="Never placeholder / inline images" value={pb.global.neverPlaceholder ?? true} onChange={(b) => updateRules('global', { neverPlaceholder: b } as unknown as Partial<CategoryListingRules>)} hint="(recommended)" />
             </div>
             <div className="min-w-[140px] max-w-[200px]">

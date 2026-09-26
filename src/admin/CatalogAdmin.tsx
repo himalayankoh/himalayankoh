@@ -633,13 +633,16 @@ export function CatalogProductsPage() {
 
   const onHardDelete = async () => {
     if (!delId) return;
+    const targetId = delId;
+    setDelId(null);
+    setProducts((prev) => prev.filter((p) => p.id !== targetId));
     try {
-      await hardDeleteProduct(delId);
+      await hardDeleteProduct(targetId);
       notify('Product permanently deleted');
-      setDelId(null);
       await load();
     } catch (e) {
       notify(`Could not delete: ${(e as Error).message}`, 'error');
+      await load();
     }
   };
 
@@ -719,17 +722,19 @@ export function CatalogProductsPage() {
 
   const onBulkHardDelete = async () => {
     setBulkBusy(true);
+    const ids = [...selectedIds];
+    setSelectedIds(new Set());
+    setBulkOpen(false);
+    setProducts((prev) => prev.filter((p) => !ids.includes(p.id)));
     try {
-      const ids = [...selectedIds];
       for (const id of ids) {
         await hardDeleteProduct(id);
       }
       notify(`${ids.length} product${ids.length === 1 ? '' : 's'} permanently deleted`);
-      setSelectedIds(new Set());
-      setBulkOpen(false);
       await load();
     } catch (e) {
       notify(`Bulk delete stopped: ${(e as Error).message}`, 'error');
+      await load();
     } finally {
       setBulkBusy(false);
     }
@@ -2015,9 +2020,11 @@ export function CatalogProductEditor() {
       return;
     }
     if (currentProduct.status === 'active' && !verdict.ok && wasLive) {
-      notify(`Saved (already live). Playbook gaps: ${verdict.errors.join(' ')}`, 'error');
+      console.warn(`Playbook gaps on live product: ${verdict.errors.join(' ')}`);
     }
-    if (verdict.warnings.length) notify(verdict.warnings.join(' '), 'error');
+    if (verdict.warnings.length) {
+      console.warn(`Listing warnings: ${verdict.warnings.join(' ')}`);
+    }
     setSaveError(null);
     setSaving(true);
     try {

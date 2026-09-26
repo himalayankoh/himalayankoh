@@ -288,8 +288,12 @@ const shareBrowserCatalogRead = singleFlight<CatalogProduct[]>();
 let catalogMemoryCache: { products: CatalogProduct[]; timestamp: number } | null = null;
 const CATALOG_CACHE_TTL_MS = 60_000;
 
-export function invalidateCatalogCache(updatedProduct?: CatalogProduct | null) {
+export function invalidateCatalogCache(updatedProduct?: CatalogProduct | null, deletedId?: string | null) {
   if (!catalogMemoryCache) return;
+  if (deletedId) {
+    catalogMemoryCache.products = catalogMemoryCache.products.filter((p) => p.id !== deletedId);
+    return;
+  }
   if (updatedProduct) {
     const idx = catalogMemoryCache.products.findIndex((p) => p.id === updatedProduct.id);
     if (idx >= 0) {
@@ -303,7 +307,10 @@ export function invalidateCatalogCache(updatedProduct?: CatalogProduct | null) {
 /** The browser read: the console's own route, which holds the credentials. */
 async function readBrowserCatalog(): Promise<CatalogProduct[]> {
   try {
-    const res = await fetch('/api/admin/catalog?perPage=100', { headers: await adminHeaders() });
+    const res = await fetch(`/api/admin/catalog?perPage=100&_t=${Date.now()}`, {
+      headers: await adminHeaders(),
+      cache: 'no-store',
+    });
     if (res.ok) {
       const rows = parseAdminCatalogRows(await res.json());
       if (rows) return rows.map(catalogRowToProduct);
@@ -599,11 +606,11 @@ export async function archiveProduct(id: string): Promise<boolean> {
   }
 }
 
-/** Trash (not delete) — the console's bin, the store's own recycle path. */
+/** Hard delete — permanently removes the row and cleans up state. */
 export async function hardDeleteProduct(id: string): Promise<void> {
   if (!isWooId(id)) return;
-  await adminJson(`/api/admin/products/${id}?action=trash`, { method: 'DELETE' });
-  invalidateCatalogCache();
+  await adminJson(`/api/admin/products/${id}?action=delete`, { method: 'DELETE' });
+  invalidateCatalogCache(null, id);
 }
 
 /**

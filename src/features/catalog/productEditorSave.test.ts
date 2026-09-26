@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { updateProduct, getProduct } from './repository';
+import { updateProduct, getProduct, hardDeleteProduct } from './repository';
 import { toWooProductBody } from '../../lib/woo/productPayload';
+import { defaultListingPlaybook, validateListingAgainstPlaybook } from './listingPlaybook';
 
 describe('P0 — Product Editor Save / Hydration & Patch Semantics Regression', () => {
   afterEach(() => {
@@ -224,4 +225,52 @@ describe('P0 — Product Editor Save / Hydration & Patch Semantics Regression', 
     expect(p2?.sku).toBe('HK-LFH-6lbs');
     expect(fetchCount).toBe(2);
   });
+
+  it('Test H: hardDeleteProduct sends action=delete for permanent deletion', async () => {
+    let capturedUrl = '';
+    let capturedMethod = '';
+    const mockFetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      capturedUrl = url;
+      capturedMethod = init?.method ?? 'GET';
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, deleted: 2487 }),
+      } as unknown as Response);
+    });
+
+    vi.stubGlobal('fetch', mockFetch);
+
+    await hardDeleteProduct('2487');
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(capturedUrl).toContain('/api/admin/products/2487?action=delete');
+    expect(capturedMethod).toBe('DELETE');
+  });
+
+  it('Test I: Listing playbook does not block standard Himalayan products with supplier errors', () => {
+    const pb = defaultListingPlaybook();
+    // Default playbook must not require external supplier data
+    expect(pb.global.requiredSupplierData).toBe(false);
+
+    // Standard product with own stock or empty supplier must pass without supplier error
+    const verdict = validateListingAgainstPlaybook(pb, {
+      name: 'Himalayan Rock Salt Fine Grain 5 lbs',
+      status: 'active',
+      images: [
+        { url: 'https://preview.himalayankoh.com/img1.jpg' },
+        { url: 'https://preview.himalayankoh.com/img2.jpg' },
+        { url: 'https://preview.himalayankoh.com/img3.jpg' },
+      ],
+      supplierName: 'Own Stock',
+      supplierUrl: null,
+      supplierSku: null,
+    });
+
+    expect(verdict.ok).toBe(true);
+    expect(verdict.errors).toHaveLength(0);
+    // Must NOT have supplier SKU warning
+    expect(verdict.warnings.some((w) => w.toLowerCase().includes('supplier sku'))).toBe(false);
+  });
 });
+

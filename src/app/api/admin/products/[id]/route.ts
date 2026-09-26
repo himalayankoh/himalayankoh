@@ -15,6 +15,7 @@ import {
   duplicateWooProduct,
   getWooProduct,
   listWooVariations,
+  permanentlyDeleteWooProduct,
   restoreWooProduct,
   trashWooProduct,
   updateWooProduct,
@@ -202,8 +203,12 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   try {
     if (action === 'restore') return NextResponse.json(await restoreWooProduct(id));
     if (action === 'duplicate') return NextResponse.json(await duplicateWooProduct(id), { status: 201 });
+    if (action === 'delete' || action === 'force' || action === 'hard_delete') {
+      await permanentlyDeleteWooProduct(id);
+      return NextResponse.json({ success: true, deleted: id });
+    }
     return NextResponse.json(await trashWooProduct(id));
   } catch (error) {
-    return fail(error, 'The product could not be archived.');
+    return fail(error, 'The product could not be deleted.');
   }
 }

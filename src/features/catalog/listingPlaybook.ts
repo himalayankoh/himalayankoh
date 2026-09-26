@@ -79,7 +79,7 @@ export interface ListingPlaybook {
 const DEFAULT_GLOBAL: ListingPlaybook['global'] = {
   minImages: 3,
   maxImages: 5,
-  requiredSupplierData: true,
+  requiredSupplierData: false,
   defaultStatus: 'draft',
   neverPlaceholder: true,
   brand: '',
@@ -92,7 +92,7 @@ function defaultCategoryRules(): CategoryListingRules {
     maxImages: 5,
     defaultTags: [],
     defaultStatus: 'draft',
-    requiredSupplierData: true,
+    requiredSupplierData: false,
     markupPct: null,
     fixedSellingPrice: null,
     minMarginPct: null,
@@ -147,7 +147,7 @@ function normalizeRules(raw: unknown): CategoryListingRules {
     maxImages: clampInt(r.maxImages, 5, 0, 10),
     defaultTags: Array.isArray(r.defaultTags) ? r.defaultTags.filter((t): t is string => typeof t === 'string').slice(0, 20) : [],
     defaultStatus: r.defaultStatus === 'active' ? 'active' : 'draft',
-    requiredSupplierData: typeof r.requiredSupplierData === 'boolean' ? r.requiredSupplierData : true,
+    requiredSupplierData: typeof r.requiredSupplierData === 'boolean' ? r.requiredSupplierData : false,
     markupPct: typeof r.markupPct === 'number' && Number.isFinite(r.markupPct) ? r.markupPct : null,
     fixedSellingPrice: typeof r.fixedSellingPrice === 'number' && Number.isFinite(r.fixedSellingPrice) ? r.fixedSellingPrice : null,
     minMarginPct: typeof r.minMarginPct === 'number' && Number.isFinite(r.minMarginPct) ? r.minMarginPct : null,
@@ -204,7 +204,7 @@ export function rulesForCategory(pb: ListingPlaybook, categoryName?: string | nu
     maxImages: rules.maxImages ?? global.maxImages ?? 5,
     defaultTags: rules.defaultTags || [],
     defaultStatus: rules.defaultStatus || global.defaultStatus || 'draft',
-    requiredSupplierData: rules.requiredSupplierData ?? global.requiredSupplierData ?? true,
+    requiredSupplierData: rules.requiredSupplierData ?? global.requiredSupplierData ?? false,
     markupPct: rules.markupPct ?? null,
     fixedSellingPrice: rules.fixedSellingPrice ?? null,
     minMarginPct: rules.minMarginPct ?? null,
@@ -280,20 +280,16 @@ export function validateListingAgainstPlaybook(
     if (wantsActive) errors.push('Placeholder/inline images are not allowed on active listings.');
   }
   if (rules.requiredSupplierData) {
-    const missing: string[] = [];
-    if (!product.supplierUrl) missing.push('supplier URL');
-    if (!product.supplierName) missing.push('supplier name');
-    if (missing.length) {
-      const msg = `Missing supplier data: ${missing.join(', ')}.`;
-      if (wantsActive) errors.push(msg);
-      else warnings.push(`${msg} Product stays Draft.`);
-    }
-    // Supplier SKU is OPTIONAL metadata — the Quick Add form has no SKU
-    // field, so requiring it here blocks every quick Live save with no way
-    // to satisfy it. URL + name are the real supplier identity; a missing
-    // SKU alone is a warning, never a blocker.
-    if (!product.supplierSku) {
-      warnings.push('Supplier SKU is missing — optional; add it later in Detail for sourcing traceability.');
+    const isInternal = !product.supplierName || product.supplierName === 'Own Stock' || /himalayan/i.test(product.supplierName);
+    if (!isInternal) {
+      const missing: string[] = [];
+      if (!product.supplierUrl) missing.push('supplier URL');
+      if (!product.supplierName) missing.push('supplier name');
+      if (missing.length) {
+        const msg = `Missing supplier data: ${missing.join(', ')}.`;
+        if (wantsActive) errors.push(msg);
+        else warnings.push(`${msg} Product stays Draft.`);
+      }
     }
   }
   return { ok: errors.length === 0, errors, warnings };
