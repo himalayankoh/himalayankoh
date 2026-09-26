@@ -48,5 +48,7 @@ deploy/
 # QA, browser profiles and data backups
 .chrome-qa-profile/
 qa-visual-artifacts/
+public/qa-screenshots/
 supabase-backup/
 preview-*.png
+sales-*.png

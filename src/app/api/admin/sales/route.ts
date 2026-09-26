@@ -13,6 +13,7 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { listWooOrders, WooOrderError, type WooOrderLike } from '@/lib/woo/orders';
+import { listWooProducts } from '@/lib/woo/productWrite';
 import { listWholesaleRecords } from '@/lib/wholesale/store';
 import { buildSalesDashboard, type WholesaleOrderRecord } from '@/lib/sales/engine';
 import type { SalesPeriod, ManualExpense } from '@/lib/sales/types';
@@ -47,7 +48,29 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. Fetch Wholesale orders if available
+    // 2. Fetch authoritative catalog product costs
+    const catalogCostMap = new Map<number, number>();
+    try {
+      const products = await listWooProducts({ perPage: 100 });
+      for (const p of products) {
+        if (!p.id) continue;
+        const hkCost = Number(p.meta_data?.find(m => m.key === '_himalayan_koh_cost_price')?.value);
+        const landedCost = Number(p.meta_data?.find(m => m.key === '_himalayan_koh_landed_cost')?.value);
+        const wsCost = Number(p.meta_data?.find(m => m.key === '_owner_wholesale_price')?.value);
+
+        const cost = (Number.isFinite(hkCost) && hkCost > 0 ? hkCost : null)
+          ?? (Number.isFinite(landedCost) && landedCost > 0 ? landedCost : null)
+          ?? (Number.isFinite(wsCost) && wsCost > 0 ? wsCost : null);
+
+        if (cost !== null && cost > 0) {
+          catalogCostMap.set(p.id, cost);
+        }
+      }
+    } catch {
+      // Catalog costs are supplementary; orders can still resolve from order metadata
+    }
+
+    // 3. Fetch Wholesale orders if available
     const wholesaleOrders: WholesaleOrderRecord[] = [];
     try {
       const [wsOrders, wsAccounts] = await Promise.all([
@@ -90,13 +113,14 @@ export async function GET(request: Request) {
       // Wholesale records are optional if unconfigured
     }
 
-    // 3. Build comprehensive Sales dashboard
+    // 4. Build comprehensive Sales dashboard with unified financial reconciliation
     const dashboardData = buildSalesDashboard({
       orders: collectedOrders,
       period,
       wholesaleOrders,
       ordersScanned: collectedOrders.length,
       windowCapped: totalInStore > collectedOrders.length,
+      catalogCostMap,
     });
 
     return NextResponse.json(dashboardData);

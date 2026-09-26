@@ -53,6 +53,9 @@ export interface RevenueSummary {
   currency: string;
 }
 
+export type CostSourceType = 'auto' | 'manual' | 'estimated' | 'actual' | 'none';
+export type CogsStatus = 'verified' | 'missing';
+
 export interface CostSummary {
   /** Product cost / COGS — only when product cost meta is available. */
   cogs: number;
@@ -64,6 +67,8 @@ export interface CostSummary {
   otherExpenses: number;
   /** Total of all costs. */
   totalCosts: number;
+  /** Count of paid orders that are missing verified COGS. */
+  missingCogsCount: number;
 }
 
 export interface ProfitSummary {
@@ -73,14 +78,31 @@ export interface ProfitSummary {
   grossProfit: number;
   /** grossProfit / netRevenue * 100 */
   grossMarginPct: number;
-  /** After deducting manually-entered fixed expenses. */
+  /** After deducting all operational and supplementary order costs. */
   netProfit: number;
   netMarginPct: number;
+  /** Number of paid orders with verified complete costs. */
+  verifiedOrderCount: number;
+  /** Number of paid orders missing verified product costs. */
+  missingCogsCount: number;
+  /** True when one or more orders cannot compute verified profit. */
+  hasIncompleteProfit: boolean;
 }
 
 /* ------------------------------------------------------------------ */
 /* Order-level financial view                                          */
 /* ------------------------------------------------------------------ */
+
+export interface SalesOrderItemRow {
+  productName: string;
+  sku: string | null;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  unitCost: number | null;
+  lineCogs: number | null;
+  cogsSource: CostSourceType;
+}
 
 export interface SalesOrderRow {
   id: string;
@@ -102,14 +124,21 @@ export interface SalesOrderRow {
   currency: string;
   itemCount: number;
   items: SalesOrderItemRow[];
-}
 
-export interface SalesOrderItemRow {
-  productName: string;
-  sku: string | null;
-  quantity: number;
-  unitPrice: number;
-  lineTotal: number;
+  // Supplementary Financial Layer & Profit Breakdown
+  cogs: number | null;
+  cogsStatus: CogsStatus;
+  cogsSource: CostSourceType;
+  actualShippingCost: number;
+  shippingCostSource: CostSourceType;
+  paymentFee: number;
+  paymentFeeSource: CostSourceType;
+  otherExpense: number;
+  otherExpenseSource: CostSourceType;
+  totalCosts: number | null;
+  netProfit: number | null;
+  profitMarginPct: number | null;
+  isSnapshotted: boolean;
 }
 
 /* ------------------------------------------------------------------ */

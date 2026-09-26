@@ -39,6 +39,8 @@ import type {
   WholesaleFinancialSummary,
   TodayKpiSummary,
   ManualExpense,
+  CostSourceType,
+  CogsStatus,
 } from './types';
 
 /* ------------------------------------------------------------------ */
@@ -193,35 +195,37 @@ function computeTodayKpis(allOrders: WooOrderLike[]): TodayKpiSummary {
 }
 
 /* ------------------------------------------------------------------ */
-/* Costs (estimated from order data & manual expenses)                 */
+/* Costs (order-level accurate costs + manual expenses)                */
 /* ------------------------------------------------------------------ */
 
 /** Gateway fee estimate — Stripe's 2.9% + $0.30 per transaction. */
-const STRIPE_PCT = 0.029;
-const STRIPE_FIXED = 0.30;
+export const STRIPE_PCT = 0.029;
+export const STRIPE_FIXED = 0.30;
 
 function computeCosts(
-  orders: WooOrderLike[],
-  revenue: RevenueSummary,
+  salesOrders: SalesOrderRow[],
   manualExpenses: ManualExpense[] = []
 ): CostSummary {
-  let gatewayFees = 0;
-
-  for (const order of orders) {
-    if (!isOrderPaid(order)) continue;
-
-    const total = money(order.total);
-    const method = (order.payment_method ?? '').toLowerCase();
-    if (method.includes('stripe') || method.includes('card') || method === '') {
-      gatewayFees += total * STRIPE_PCT + STRIPE_FIXED;
-    }
-  }
-
-  gatewayFees = round2(gatewayFees);
-
   let cogs = 0;
   let shippingCost = 0;
+  let gatewayFees = 0;
   let otherExpenses = 0;
+  let missingCogsCount = 0;
+
+  for (const order of salesOrders) {
+    if (order.channel !== 'retail') continue;
+    if (order.paymentStatus !== 'paid') continue;
+
+    if (order.cogsStatus === 'verified' && order.cogs !== null) {
+      cogs += order.cogs;
+    } else {
+      missingCogsCount += 1;
+    }
+
+    shippingCost += order.actualShippingCost;
+    gatewayFees += order.paymentFee;
+    otherExpenses += order.otherExpense;
+  }
 
   for (const exp of manualExpenses) {
     if (exp.category === 'shipping') {
@@ -240,9 +244,10 @@ function computeCosts(
   return {
     cogs: round2(cogs),
     shippingCost: round2(shippingCost),
-    gatewayFees,
+    gatewayFees: round2(gatewayFees),
     otherExpenses: round2(otherExpenses),
     totalCosts,
+    missingCogsCount,
   };
 }
 
@@ -250,7 +255,10 @@ function computeCosts(
 /* Profit                                                              */
 /* ------------------------------------------------------------------ */
 
-function computeProfit(revenue: RevenueSummary, costs: CostSummary): ProfitSummary {
+function computeProfit(
+  revenue: RevenueSummary,
+  costs: CostSummary
+): ProfitSummary {
   const grossProfit = round2(revenue.netRevenue - costs.cogs);
   const grossMarginPct = revenue.netRevenue > 0
     ? round2((grossProfit / revenue.netRevenue) * 100)
@@ -261,6 +269,9 @@ function computeProfit(revenue: RevenueSummary, costs: CostSummary): ProfitSumma
     ? round2((netProfit / revenue.netRevenue) * 100)
     : 0;
 
+  const verifiedOrderCount = Math.max(0, revenue.orderCount - costs.missingCogsCount);
+  const hasIncompleteProfit = costs.missingCogsCount > 0;
+
   return {
     netRevenue: revenue.netRevenue,
     totalCosts: costs.totalCosts,
@@ -268,6 +279,9 @@ function computeProfit(revenue: RevenueSummary, costs: CostSummary): ProfitSumma
     grossMarginPct,
     netProfit,
     netMarginPct,
+    verifiedOrderCount,
+    missingCogsCount: costs.missingCogsCount,
+    hasIncompleteProfit,
   };
 }
 
@@ -317,28 +331,161 @@ function computeDailySeries(orders: WooOrderLike[], range: DateRange): DailySale
 }
 
 /* ------------------------------------------------------------------ */
-/* Order rows                                                          */
+/* Order rows & Supplementary Financial Layer                          */
 /* ------------------------------------------------------------------ */
 
-function lineItemToRow(line: WooOrderLineItem): SalesOrderItemRow {
+function getOrderMeta(order: WooOrderLike, key: string): string | null {
+  const item = order.meta_data?.find(m => m.key === key);
+  if (!item || item.value === undefined || item.value === null) return null;
+  const val = String(item.value).trim();
+  return val.length > 0 ? val : null;
+}
+
+function getLineItemMeta(line: WooOrderLineItem, key: string): string | null {
+  const item = line.meta_data?.find(m => m.key === key);
+  if (!item || item.value === undefined || item.value === null) return null;
+  const val = String(item.value).trim();
+  return val.length > 0 ? val : null;
+}
+
+function getCostFromMap(
+  map: Map<number, number> | Record<number, number> | undefined,
+  id: number
+): number | null {
+  if (!map || !id) return null;
+  if (map instanceof Map) {
+    const val = map.get(id);
+    return typeof val === 'number' && Number.isFinite(val) ? val : null;
+  }
+  const val = (map as Record<number, number>)[id];
+  return typeof val === 'number' && Number.isFinite(val) ? val : null;
+}
+
+function lineItemToRow(
+  line: WooOrderLineItem,
+  catalogCostMap?: Map<number, number> | Record<number, number>
+): SalesOrderItemRow {
+  const qty = Number(line.quantity ?? 0);
+  const unitPrice = Number(line.price ?? 0);
+  const lineTotal = money(line.total);
+
+  // 1. Line-item snapshotted cost
+  const unitCostMeta = getLineItemMeta(line, '_unit_cost');
+  const lineCogsMeta = getLineItemMeta(line, '_line_cogs');
+  const cogsSourceMeta = getLineItemMeta(line, '_cogs_source') as CostSourceType | null;
+
+  let unitCost: number | null = null;
+  let lineCogs: number | null = null;
+  let cogsSource: CostSourceType = 'none';
+
+  if (unitCostMeta !== null || lineCogsMeta !== null) {
+    unitCost = unitCostMeta !== null ? money(unitCostMeta) : round2(money(lineCogsMeta) / (qty || 1));
+    lineCogs = lineCogsMeta !== null ? money(lineCogsMeta) : round2(unitCost * qty);
+    cogsSource = cogsSourceMeta || 'manual';
+  } else if (catalogCostMap) {
+    // 2. Authoritative catalog cost (variation > product)
+    const varId = Number(line.variation_id ?? 0);
+    const prodId = Number(line.product_id ?? 0);
+    const catCost = (varId > 0 ? getCostFromMap(catalogCostMap, varId) : null)
+      ?? (prodId > 0 ? getCostFromMap(catalogCostMap, prodId) : null);
+
+    if (catCost !== null && catCost > 0) {
+      unitCost = catCost;
+      lineCogs = round2(unitCost * qty);
+      cogsSource = 'auto';
+    }
+  }
+
   return {
     productName: line.name ?? 'Unknown',
     sku: typeof line.sku === 'string' ? line.sku : null,
-    quantity: Number(line.quantity ?? 0),
-    unitPrice: Number(line.price ?? 0),
-    lineTotal: money(line.total),
+    quantity: qty,
+    unitPrice,
+    lineTotal,
+    unitCost,
+    lineCogs,
+    cogsSource,
   };
 }
 
-function orderToSalesRow(woo: WooOrderLike): SalesOrderRow {
+function orderToSalesRow(
+  woo: WooOrderLike,
+  catalogCostMap?: Map<number, number> | Record<number, number>
+): SalesOrderRow {
   const order = orderFromWoo(woo);
-  const items = lineItemsFromWoo(woo);
   const refundedAmount = order.status === 'refunded' ? order.total : 0;
+  const netTotal = round2(order.total - refundedAmount);
 
   const billingName = [woo.billing?.first_name, woo.billing?.last_name]
     .filter(Boolean)
     .join(' ')
     .trim();
+
+  const items = (woo.line_items ?? []).map(l => lineItemToRow(l, catalogCostMap));
+
+  // 1. Order COGS Resolution
+  const orderCogsMeta = getOrderMeta(woo, '_hk_cogs') || getOrderMeta(woo, '_cogs');
+  const orderCogsSourceMeta = (getOrderMeta(woo, '_hk_cogs_source') || getOrderMeta(woo, '_cogs_source')) as CostSourceType | null;
+
+  let cogs: number | null = null;
+  let cogsStatus: CogsStatus = 'missing';
+  let cogsSource: CostSourceType = 'none';
+  let isSnapshotted = false;
+
+  if (orderCogsMeta !== null) {
+    cogs = money(orderCogsMeta);
+    cogsStatus = 'verified';
+    cogsSource = orderCogsSourceMeta || 'manual';
+    isSnapshotted = true;
+  } else if (items.length > 0 && items.every(it => it.lineCogs !== null)) {
+    cogs = round2(items.reduce((sum, it) => sum + (it.lineCogs ?? 0), 0));
+    cogsStatus = 'verified';
+    cogsSource = items.every(it => it.cogsSource === 'auto') ? 'auto' : 'manual';
+    isSnapshotted = false;
+  }
+
+  // 2. Actual Business Shipping Cost (NOT customer shipping charged!)
+  const shipMeta = getOrderMeta(woo, '_hk_shipping_cost') || getOrderMeta(woo, '_shipping_cost');
+  const shipSourceMeta = (getOrderMeta(woo, '_hk_shipping_cost_source') || getOrderMeta(woo, '_shipping_cost_source')) as CostSourceType | null;
+  const actualShippingCost = shipMeta !== null ? money(shipMeta) : 0;
+  const shippingCostSource: CostSourceType = shipMeta !== null ? (shipSourceMeta || 'manual') : 'none';
+
+  // 3. Payment Gateway Fee
+  const feeMeta = getOrderMeta(woo, '_hk_payment_fee') || getOrderMeta(woo, '_payment_fee');
+  const feeSourceMeta = (getOrderMeta(woo, '_hk_payment_fee_source') || getOrderMeta(woo, '_payment_fee_source')) as CostSourceType | null;
+  let paymentFee = 0;
+  let paymentFeeSource: CostSourceType = 'none';
+
+  if (feeMeta !== null) {
+    paymentFee = money(feeMeta);
+    paymentFeeSource = feeSourceMeta || 'manual';
+  } else if (isOrderPaid(woo)) {
+    const method = (woo.payment_method ?? '').toLowerCase();
+    if (method.includes('stripe') || method.includes('card') || method === '') {
+      paymentFee = round2(money(woo.total) * STRIPE_PCT + STRIPE_FIXED);
+      paymentFeeSource = 'estimated';
+    } else {
+      paymentFee = 0;
+      paymentFeeSource = 'actual';
+    }
+  }
+
+  // 4. Other Direct Expense
+  const otherMeta = getOrderMeta(woo, '_hk_other_expense') || getOrderMeta(woo, '_other_expense');
+  const otherSourceMeta = (getOrderMeta(woo, '_hk_other_expense_source') || getOrderMeta(woo, '_other_expense_source')) as CostSourceType | null;
+  const otherExpense = otherMeta !== null ? money(otherMeta) : 0;
+  const otherExpenseSource: CostSourceType = otherMeta !== null ? (otherSourceMeta || 'manual') : 'none';
+
+  // 5. Total Costs & Profit
+  let totalCosts: number | null = null;
+  let netProfit: number | null = null;
+  let profitMarginPct: number | null = null;
+
+  if (cogsStatus === 'verified' && cogs !== null) {
+    totalCosts = round2(cogs + actualShippingCost + paymentFee + otherExpense);
+    netProfit = round2(netTotal - totalCosts);
+    profitMarginPct = netTotal > 0 ? round2((netProfit / netTotal) * 100) : 0;
+  }
 
   return {
     id: order.id,
@@ -348,7 +495,7 @@ function orderToSalesRow(woo: WooOrderLike): SalesOrderRow {
     customerName: billingName || 'Guest',
     customerEmail: order.email,
     status: order.status,
-    paymentStatus: order.payment_status,
+    paymentStatus: isOrderPaid(woo) ? 'paid' : order.payment_status,
     paymentMethod: order.payment_method,
     subtotal: order.subtotal,
     shipping: order.shipping_cost,
@@ -356,10 +503,23 @@ function orderToSalesRow(woo: WooOrderLike): SalesOrderRow {
     discount: order.discount_amount,
     total: order.total,
     refundedAmount,
-    netTotal: round2(order.total - refundedAmount),
+    netTotal,
     currency: order.currency,
     itemCount: items.length,
-    items: (woo.line_items ?? []).map(lineItemToRow),
+    items,
+    cogs,
+    cogsStatus,
+    cogsSource,
+    actualShippingCost,
+    shippingCostSource,
+    paymentFee,
+    paymentFeeSource,
+    otherExpense,
+    otherExpenseSource,
+    totalCosts,
+    netProfit,
+    profitMarginPct,
+    isSnapshotted,
   };
 }
 
@@ -374,10 +534,16 @@ function orderToPaymentRecord(woo: WooOrderLike): PaymentRecord | null {
 
   const order = orderFromWoo(woo);
   const total = order.total;
-  const method = (woo.payment_method ?? '').toLowerCase();
-  const fee = method.includes('stripe') || method.includes('card') || method === ''
-    ? round2(total * STRIPE_PCT + STRIPE_FIXED)
-    : 0;
+  const feeMeta = getOrderMeta(woo, '_hk_payment_fee') || getOrderMeta(woo, '_payment_fee');
+  let fee = 0;
+  if (feeMeta !== null) {
+    fee = money(feeMeta);
+  } else {
+    const method = (woo.payment_method ?? '').toLowerCase();
+    fee = method.includes('stripe') || method.includes('card') || method === ''
+      ? round2(total * STRIPE_PCT + STRIPE_FIXED)
+      : 0;
+  }
   const received = isRefunded ? 0 : total;
   const netReceived = round2(received - fee);
 
@@ -486,6 +652,7 @@ export interface BuildDashboardParams {
   manualExpenses?: ManualExpense[];
   ordersScanned?: number;
   windowCapped?: boolean;
+  catalogCostMap?: Map<number, number> | Record<number, number>;
 }
 
 export function buildSalesDashboard(
@@ -498,6 +665,7 @@ export function buildSalesDashboard(
   let manualExpenses: ManualExpense[] = [];
   let ordersScanned = 0;
   let windowCapped = false;
+  let catalogCostMap: Map<number, number> | Record<number, number> | undefined;
 
   if (Array.isArray(ordersOrParams)) {
     orders = ordersOrParams;
@@ -510,6 +678,7 @@ export function buildSalesDashboard(
     manualExpenses = ordersOrParams.manualExpenses ?? [];
     ordersScanned = ordersOrParams.ordersScanned ?? orders.length;
     windowCapped = ordersOrParams.windowCapped ?? false;
+    catalogCostMap = ordersOrParams.catalogCostMap;
   }
 
   const dateRange = periodToRange(period);
@@ -526,10 +695,10 @@ export function buildSalesDashboard(
 
   const revenue = computeRevenue(filtered);
   const todayKpis = computeTodayKpis(orders);
-  const costs = computeCosts(filtered, revenue, manualExpenses);
+  const salesOrders = filtered.map(o => orderToSalesRow(o, catalogCostMap));
+  const costs = computeCosts(salesOrders, manualExpenses);
   const profit = computeProfit(revenue, costs);
   const dailySeries = computeDailySeries(filtered, dateRange);
-  const salesOrders = filtered.map(orderToSalesRow);
   const payments = filtered.map(orderToPaymentRecord).filter(Boolean) as PaymentRecord[];
   const topProducts = computeTopProducts(filtered);
   const topCustomers = computeTopCustomers(filtered);
@@ -571,6 +740,19 @@ export function buildSalesDashboard(
         currency: ws.currency || 'USD',
         itemCount: 1,
         items: [],
+        cogs: null,
+        cogsStatus: 'verified',
+        cogsSource: 'none',
+        actualShippingCost: 0,
+        shippingCostSource: 'none',
+        paymentFee: 0,
+        paymentFeeSource: 'none',
+        otherExpense: 0,
+        otherExpenseSource: 'none',
+        totalCosts: 0,
+        netProfit: deposit + balance,
+        profitMarginPct: booked > 0 ? round2(((deposit + balance) / booked) * 100) : null,
+        isSnapshotted: true,
       });
     }
   }

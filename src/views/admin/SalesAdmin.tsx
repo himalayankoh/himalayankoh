@@ -26,8 +26,27 @@ import type {
   SalesChannel,
   ManualExpense,
   ExpenseCategory,
+  CostSourceType,
 } from '../../lib/sales/types';
 import { EXPENSE_CATEGORY_LABELS } from '../../lib/sales/types';
+
+function SourceBadge({ source }: { source?: CostSourceType }) {
+  if (!source || source === 'none') return null;
+  const labels: Record<CostSourceType, { text: string; bg: string; textCol: string }> = {
+    auto: { text: 'AUTO', bg: 'bg-[#1f6feb]/20', textCol: 'text-[#58a6ff]' },
+    manual: { text: 'MANUAL', bg: 'bg-[#d29922]/20', textCol: 'text-[#e3b341]' },
+    estimated: { text: 'ESTIMATED', bg: 'bg-[#8b949e]/20', textCol: 'text-[#c9d1d9]' },
+    actual: { text: 'ACTUAL', bg: 'bg-[#238636]/20', textCol: 'text-[#3fb950]' },
+    none: { text: '', bg: '', textCol: '' },
+  };
+  const conf = labels[source];
+  if (!conf || !conf.text) return null;
+  return (
+    <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold tracking-wider uppercase border border-current/20 ${conf.bg} ${conf.textCol}`}>
+      {conf.text}
+    </span>
+  );
+}
 
 const PERIOD_LABELS: Record<SalesPeriod, string> = {
   today: 'Today',
@@ -177,7 +196,7 @@ export default function SalesAdmin() {
 
   // Adjusted Net Profit including client-side manual expenses
   const adjustedProfit = useMemo(() => {
-    if (!data) return { grossProfit: 0, netProfit: 0, netMargin: 0 };
+    if (!data) return { grossProfit: 0, netProfit: 0, netMargin: 0, hasIncomplete: false, missingCogsCount: 0 };
     const grossProfit = data.revenue.netRevenue - data.costs.cogs;
     const totalCosts = data.costs.totalCosts + periodExpensesTotal;
     const netProfit = data.revenue.netRevenue - totalCosts;
@@ -186,6 +205,8 @@ export default function SalesAdmin() {
       grossProfit: Math.round(grossProfit * 100) / 100,
       netProfit: Math.round(netProfit * 100) / 100,
       netMargin: Math.round(netMargin * 10) / 10,
+      hasIncomplete: data.profit.hasIncompleteProfit,
+      missingCogsCount: data.profit.missingCogsCount,
     };
   }, [data, periodExpensesTotal]);
 
@@ -196,7 +217,11 @@ export default function SalesAdmin() {
     const filename = `himalayan-koh-sales-${scope}-${period}.csv`;
 
     if (scope === 'orders') {
-      const headers = ['Order Number', 'Date', 'Channel', 'Customer', 'Status', 'Payment Status', 'Subtotal', 'Shipping', 'Tax', 'Discount', 'Total', 'Refunded', 'Net Total', 'Payment Method'];
+      const headers = [
+        'Order Number', 'Date', 'Channel', 'Customer', 'Status', 'Payment Status',
+        'Subtotal', 'Shipping Charged', 'Tax', 'Discount', 'Order Total', 'Refunded', 'Net Sales',
+        'COGS', 'Actual Shipping Cost', 'Payment Fee', 'Other Expense', 'Net Profit', 'Profit Margin %', 'Payment Method'
+      ];
       const rows = filteredOrders.map(o => [
         o.orderNumber,
         o.date,
@@ -211,6 +236,12 @@ export default function SalesAdmin() {
         o.total.toFixed(2),
         o.refundedAmount.toFixed(2),
         o.netTotal.toFixed(2),
+        o.cogs !== null ? o.cogs.toFixed(2) : 'Needs Cost',
+        o.actualShippingCost.toFixed(2),
+        o.paymentFee.toFixed(2),
+        o.otherExpense.toFixed(2),
+        o.netProfit !== null ? o.netProfit.toFixed(2) : 'Incomplete',
+        o.profitMarginPct !== null ? `${o.profitMarginPct.toFixed(2)}%` : 'Incomplete',
         `"${(o.paymentMethod || 'None').replace(/"/g, '""')}"`,
       ]);
       csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -220,14 +251,16 @@ export default function SalesAdmin() {
         ['Gross Revenue (Paid Orders)', data.revenue.grossRevenue.toFixed(2)],
         ['Refunds Issued', data.revenue.refunds.toFixed(2)],
         ['Net Revenue', data.revenue.netRevenue.toFixed(2)],
-        ['Paid Orders Count', data.revenue.orderCount],
-        ['Average Order Value (AOV)', data.revenue.aov.toFixed(2)],
-        ['Shipping Collected', data.revenue.shippingRevenue.toFixed(2)],
-        ['Tax Collected', data.revenue.taxCollected.toFixed(2)],
-        ['Estimated Gateway Fees', data.costs.gatewayFees.toFixed(2)],
+        ['Cost of Goods Sold (COGS)', data.costs.cogs.toFixed(2)],
+        ['Actual Shipping Expense', data.costs.shippingCost.toFixed(2)],
+        ['Payment Gateway Fees', data.costs.gatewayFees.toFixed(2)],
+        ['Other Direct Expenses', data.costs.otherExpenses.toFixed(2)],
         ['Manual Business Expenses', periodExpensesTotal.toFixed(2)],
         ['Adjusted Net Profit', adjustedProfit.netProfit.toFixed(2)],
         ['Net Profit Margin %', `${adjustedProfit.netMargin}%`],
+        ['Profit Completeness', adjustedProfit.hasIncomplete ? `Incomplete (${adjustedProfit.missingCogsCount} orders need cost)` : 'Verified Complete'],
+        ['Paid Orders Count', data.revenue.orderCount],
+        ['Average Order Value (AOV)', data.revenue.aov.toFixed(2)],
         ['Wholesale Total Booked', data.wholesaleSummary.totalBooked.toFixed(2)],
         ['Wholesale Cash Collected', data.wholesaleSummary.totalCollected.toFixed(2)],
         ['Wholesale Pending Balance', data.wholesaleSummary.pendingBalance.toFixed(2)],
@@ -364,19 +397,26 @@ export default function SalesAdmin() {
         <div className="p-5 rounded-xl bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#30363d] shadow-sm relative overflow-hidden">
           <div className="flex items-center justify-between text-[#8b949e] text-xs font-semibold uppercase tracking-wider">
             <span>Estimated Net Profit</span>
-            <span className="p-1.5 rounded-lg bg-[#d29922]/10 text-[#e3b341]">
+            <span className="p-1.5 rounded-lg bg-[#238636]/10 text-[#3fb950]">
               <Receipt className="w-4 h-4" />
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-2xl md:text-3xl font-extrabold text-[#e3b341]">
+            <div className="text-2xl md:text-3xl font-extrabold text-[#3fb950]">
               ${adjustedProfit.netProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
-            <div className="text-xs text-[#8b949e] mt-1 flex items-center gap-1.5">
-              <span className="px-1.5 py-0.5 rounded bg-[#d29922]/20 text-[#e3b341] font-semibold">
-                {adjustedProfit.netMargin}% Margin
-              </span>
-              <span>after fees & expenses</span>
+            <div className="text-xs text-[#8b949e] mt-1 flex items-center gap-1.5 flex-wrap">
+              {adjustedProfit.hasIncomplete ? (
+                <span className="px-1.5 py-0.5 rounded bg-[#d29922]/20 text-[#e3b341] font-semibold flex items-center gap-1">
+                  <Warning className="w-3 h-3" />
+                  <span>Incomplete ({adjustedProfit.missingCogsCount} need cost)</span>
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded bg-[#238636]/20 text-[#3fb950] font-semibold">
+                  {adjustedProfit.netMargin}% Margin
+                </span>
+              )}
+              <span>after costs, fees & expenses</span>
             </div>
           </div>
         </div>
@@ -444,13 +484,23 @@ export default function SalesAdmin() {
             </div>
             <span className="text-[#8b949e] font-bold">-</span>
             <div className="flex items-center gap-2">
-              <span className="text-[#8b949e]">Est Gateway Fees:</span>
+              <span className="text-[#8b949e]">COGS:</span>
+              <span className="font-bold text-[#e3b341]">${data?.costs.cogs.toFixed(2) ?? '0.00'}</span>
+            </div>
+            <span className="text-[#8b949e] font-bold">-</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[#8b949e]">Shipping Cost:</span>
+              <span className="font-bold text-[#e3b341]">${data?.costs.shippingCost.toFixed(2) ?? '0.00'}</span>
+            </div>
+            <span className="text-[#8b949e] font-bold">-</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[#8b949e]">Gateway Fees:</span>
               <span className="font-bold text-[#e3b341]">${data?.costs.gatewayFees.toFixed(2) ?? '0.00'}</span>
             </div>
             <span className="text-[#8b949e] font-bold">-</span>
             <div className="flex items-center gap-2">
               <span className="text-[#8b949e]">Expenses:</span>
-              <span className="font-bold text-[#e3b341]">${periodExpensesTotal.toFixed(2)}</span>
+              <span className="font-bold text-[#e3b341]">${((data?.costs.otherExpenses ?? 0) + periodExpensesTotal).toFixed(2)}</span>
             </div>
             <span className="text-[#8b949e] font-bold">=</span>
             <div className="flex items-center gap-2">
@@ -659,7 +709,7 @@ export default function SalesAdmin() {
           {/* Orders Table */}
           <div className="rounded-xl border border-[#30363d] bg-[#161b22] overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] text-left text-xs whitespace-nowrap">
+              <table className="w-full min-w-[900px] text-left text-xs whitespace-nowrap">
                 <thead className="bg-[#21262d] text-[#8b949e] border-b border-[#30363d] font-semibold uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-4">Order #</th>
@@ -668,10 +718,9 @@ export default function SalesAdmin() {
                     <th className="py-3 px-4">Customer</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4">Payment</th>
-                    <th className="py-3 px-4 text-right">Subtotal</th>
-                    <th className="py-3 px-4 text-right">Shipping</th>
-                    <th className="py-3 px-4 text-right">Total</th>
-                    <th className="py-3 px-4 text-right">Net</th>
+                    <th className="py-3 px-4 text-right">Order Total</th>
+                    <th className="py-3 px-4 text-right">Net Sales</th>
+                    <th className="py-3 px-4 text-right">Net Profit</th>
                     <th className="py-3 px-4 text-center">Action</th>
                   </tr>
                 </thead>
@@ -731,17 +780,30 @@ export default function SalesAdmin() {
                                 {order.paymentStatus}
                               </span>
                             </td>
-                            <td className="py-3 px-4 text-right text-[#c9d1d9]">
-                              ${order.subtotal.toFixed(2)}
-                            </td>
-                            <td className="py-3 px-4 text-right text-[#8b949e]">
-                              ${order.shipping.toFixed(2)}
-                            </td>
                             <td className="py-3 px-4 text-right font-bold text-white">
                               ${order.total.toFixed(2)}
                             </td>
-                            <td className="py-3 px-4 text-right font-bold text-[#3fb950]">
+                            <td className="py-3 px-4 text-right font-medium text-[#c9d1d9]">
                               ${order.netTotal.toFixed(2)}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {order.channel === 'wholesale' ? (
+                                <div>
+                                  <span className="font-bold text-[#bc8cff]">${order.netProfit?.toFixed(2) ?? '0.00'}</span>
+                                  <div className="text-[10px] text-[#8b949e]">Cash Recv</div>
+                                </div>
+                              ) : order.cogsStatus === 'missing' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] bg-[#d29922]/20 text-[#e3b341] font-semibold">
+                                  Needs Cost
+                                </span>
+                              ) : order.netProfit !== null ? (
+                                <div>
+                                  <span className="font-bold text-[#3fb950]">${order.netProfit.toFixed(2)}</span>
+                                  <div className="text-[10px] text-[#8b949e]">{order.profitMarginPct?.toFixed(1)}%</div>
+                                </div>
+                              ) : (
+                                <span className="text-[#8b949e]">—</span>
+                              )}
                             </td>
                             <td className="py-3 px-4 text-center">
                               <button
@@ -757,70 +819,170 @@ export default function SalesAdmin() {
                           {/* Expanded Items & Financial Breakdown Row */}
                           {isExpanded && (
                             <tr className="bg-[#1c2128]/90 border-b border-[#30363d]">
-                              <td colSpan={11} className="p-5">
+                              <td colSpan={10} className="p-5">
                                 <div className="space-y-4">
-                                  {/* Order Financial Audit Bar */}
-                                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 p-3.5 rounded-xl bg-[#161b22] border border-[#30363d] text-xs">
-                                    <div>
-                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Order Channel</div>
-                                      <div className="font-bold text-white capitalize mt-0.5">{order.channel}</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Payment Status</div>
-                                      <div className="font-bold text-[#3fb950] capitalize mt-0.5">{order.paymentStatus}</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Payment Method</div>
-                                      <div className="font-mono text-white mt-0.5">{order.paymentMethod || 'bacs / direct'}</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Shipping Charged</div>
-                                      <div className="font-bold text-white mt-0.5">${order.shipping.toFixed(2)}</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Tax Collected</div>
-                                      <div className="font-bold text-white mt-0.5">${order.tax.toFixed(2)}</div>
-                                    </div>
-                                    <div>
-                                      <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Net Received</div>
-                                      <div className="font-bold text-[#3fb950] mt-0.5">${order.netTotal.toFixed(2)}</div>
-                                    </div>
-                                  </div>
-
-                                  {/* Line Items or Wholesale Contract View */}
-                                  <div>
-                                    <div className="text-xs font-semibold text-[#8b949e] mb-2 uppercase tracking-wider flex items-center justify-between">
-                                      <span>Items in Order ({order.items.length})</span>
-                                      {order.channel === 'wholesale' && (
-                                        <span className="text-[10px] text-[#bc8cff] font-mono">Wholesale B2B Contract Allocation</span>
-                                      )}
-                                    </div>
-                                    {order.items.length > 0 ? (
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                        {order.items.map((it, idx) => (
-                                          <div
-                                            key={idx}
-                                            className="p-3.5 rounded-lg bg-[#161b22] border border-[#30363d] flex justify-between items-start"
-                                          >
-                                            <div>
-                                              <div className="font-semibold text-white">{it.productName}</div>
-                                              <div className="text-[11px] font-mono text-[#8b949e] mt-0.5">SKU: {it.sku || 'N/A'}</div>
-                                              <div className="text-[11px] text-[#8b949e] mt-0.5">Qty: <span className="font-bold text-white">{it.quantity}</span></div>
-                                            </div>
-                                            <div className="text-right flex-shrink-0">
-                                              <div className="font-bold text-[#3fb950] text-sm">${it.lineTotal.toFixed(2)}</div>
-                                              <div className="text-[10px] text-[#8b949e]">${it.unitPrice.toFixed(2)} ea</div>
-                                            </div>
+                                  {order.channel === 'retail' ? (
+                                    <>
+                                      {/* Retail Comprehensive Financial Audit Bar */}
+                                      <div className="p-4 rounded-xl bg-[#161b22] border border-[#30363d] space-y-3">
+                                        <div className="flex items-center justify-between text-xs border-b border-[#30363d] pb-2">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-bold text-white">Order #{order.orderNumber} Financial Audit & Reconciliation</span>
+                                            {order.isSnapshotted && (
+                                              <span className="text-[10px] px-2 py-0.5 rounded bg-[#238636]/20 text-[#3fb950] border border-[#238636]/30 font-semibold uppercase">
+                                                Snapshotted
+                                              </span>
+                                            )}
                                           </div>
-                                        ))}
+                                          <div className="text-[#8b949e]">
+                                            Payment: <span className="text-white font-mono">{order.paymentMethod || 'Stripe'}</span>
+                                          </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-xs">
+                                          <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
+                                            <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Order Total</div>
+                                            <div className="font-bold text-white text-sm mt-0.5">${order.total.toFixed(2)}</div>
+                                            <div className="text-[10px] text-[#8b949e] mt-0.5">Refund: ${order.refundedAmount.toFixed(2)}</div>
+                                          </div>
+
+                                          <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
+                                            <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Net Sales</div>
+                                            <div className="font-bold text-[#58a6ff] text-sm mt-0.5">${order.netTotal.toFixed(2)}</div>
+                                            <div className="text-[10px] text-[#8b949e] mt-0.5">Charged Shipping: ${order.shipping.toFixed(2)}</div>
+                                          </div>
+
+                                          <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[10px] text-[#8b949e] uppercase font-semibold">Product COGS</span>
+                                              <SourceBadge source={order.cogsSource} />
+                                            </div>
+                                            <div className="font-bold text-[#e3b341] text-sm mt-0.5">
+                                              {order.cogs !== null ? `$${order.cogs.toFixed(2)}` : 'Needs Cost'}
+                                            </div>
+                                            <div className="text-[10px] text-[#8b949e] mt-0.5">{order.itemCount} items purchased</div>
+                                          </div>
+
+                                          <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[10px] text-[#8b949e] uppercase font-semibold">Shipping Cost</span>
+                                              <SourceBadge source={order.shippingCostSource} />
+                                            </div>
+                                            <div className="font-bold text-[#e3b341] text-sm mt-0.5">${order.actualShippingCost.toFixed(2)}</div>
+                                            <div className="text-[10px] text-[#8b949e] mt-0.5">Carrier fulfilment cost</div>
+                                          </div>
+
+                                          <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[10px] text-[#8b949e] uppercase font-semibold">Payment Fee</span>
+                                              <SourceBadge source={order.paymentFeeSource} />
+                                            </div>
+                                            <div className="font-bold text-[#e3b341] text-sm mt-0.5">${order.paymentFee.toFixed(2)}</div>
+                                            <div className="text-[10px] text-[#8b949e] mt-0.5">Processor fee</div>
+                                          </div>
+                                        </div>
+
+                                        {/* Reconciliation Summary Footer */}
+                                        <div className="p-3 rounded-lg bg-[#21262d] border border-[#30363d] flex flex-wrap items-center justify-between gap-3 text-xs">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-[#8b949e]">Other Direct Expense:</span>
+                                            <span className="font-bold text-white">${order.otherExpense.toFixed(2)}</span>
+                                            <SourceBadge source={order.otherExpenseSource} />
+                                            <span className="text-[#30363d]">|</span>
+                                            <span className="text-[#8b949e]">Total Order Costs:</span>
+                                            <span className="font-bold text-[#e3b341]">
+                                              {order.totalCosts !== null ? `$${order.totalCosts.toFixed(2)}` : 'Incomplete'}
+                                            </span>
+                                          </div>
+
+                                          <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="text-[#8b949e]">Net Profit:</span>
+                                              <span className="text-base font-extrabold text-[#3fb950]">
+                                                {order.netProfit !== null ? `$${order.netProfit.toFixed(2)}` : 'Incomplete'}
+                                              </span>
+                                            </div>
+                                            {order.profitMarginPct !== null && (
+                                              <span className="px-2 py-0.5 rounded bg-[#238636]/20 text-[#3fb950] font-bold text-xs">
+                                                {order.profitMarginPct.toFixed(2)}% Margin
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
                                       </div>
-                                    ) : (
-                                      <div className="p-4 rounded-lg bg-[#161b22] border border-[#30363d] text-xs text-[#8b949e] flex items-center justify-between">
-                                        <span>Bulk wholesale contract purchase — order line items tracked through wholesale quote pallet manifests.</span>
-                                        <span className="font-bold text-white">${order.total.toFixed(2)} USD</span>
+
+                                      {/* Line Items Details with unit costs and badges */}
+                                      <div>
+                                        <div className="text-xs font-semibold text-[#8b949e] mb-2 uppercase tracking-wider">
+                                          Line Items & Sourced Costs ({order.items.length})
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                          {order.items.map((it, idx) => (
+                                            <div
+                                              key={idx}
+                                              className="p-3.5 rounded-lg bg-[#161b22] border border-[#30363d] flex justify-between items-start"
+                                            >
+                                              <div>
+                                                <div className="font-semibold text-white">{it.productName}</div>
+                                                <div className="text-[11px] font-mono text-[#8b949e] mt-0.5">SKU: {it.sku || 'N/A'}</div>
+                                                <div className="text-[11px] text-[#8b949e] mt-0.5">
+                                                  Qty: <span className="font-bold text-white">{it.quantity}</span> · Selling Price: <span className="text-white">${it.unitPrice.toFixed(2)} ea</span>
+                                                </div>
+                                                {it.unitCost !== null && (
+                                                  <div className="text-[11px] text-[#e3b341] mt-1 flex items-center gap-1.5">
+                                                    <span>Cost: ${it.unitCost.toFixed(2)} ea</span>
+                                                    <SourceBadge source={it.cogsSource} />
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <div className="text-right flex-shrink-0">
+                                                <div className="font-bold text-white text-sm">${it.lineTotal.toFixed(2)}</div>
+                                                {it.lineCogs !== null ? (
+                                                  <div className="text-[11px] text-[#e3b341] font-semibold mt-0.5">COGS: ${it.lineCogs.toFixed(2)}</div>
+                                                ) : (
+                                                  <div className="text-[10px] text-[#e3b341] mt-0.5">Needs Cost</div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
                                       </div>
-                                    )}
-                                  </div>
+                                    </>
+                                  ) : (
+                                    /* Wholesale B2B Contract Audit */
+                                    <div className="p-4 rounded-xl bg-[#161b22] border border-[#30363d] space-y-3">
+                                      <div className="flex items-center justify-between text-xs border-b border-[#30363d] pb-2">
+                                        <span className="font-bold text-white">Wholesale Contract Reference: {order.orderNumber}</span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-[#a371f7]/20 text-[#bc8cff] font-semibold uppercase">
+                                          B2B Order
+                                        </span>
+                                      </div>
+                                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                        <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
+                                          <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Booked Contract Value</div>
+                                          <div className="font-bold text-white text-base mt-0.5">${order.total.toFixed(2)}</div>
+                                        </div>
+                                        <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
+                                          <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Cash Collected</div>
+                                          <div className="font-bold text-[#3fb950] text-base mt-0.5">${(order.netProfit ?? 0).toFixed(2)}</div>
+                                          <div className="text-[10px] text-[#8b949e] mt-0.5">Deposit / paid installments</div>
+                                        </div>
+                                        <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
+                                          <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Balance Due</div>
+                                          <div className="font-bold text-[#bc8cff] text-base mt-0.5">${Math.max(0, order.total - (order.netProfit ?? 0)).toFixed(2)}</div>
+                                          <div className="text-[10px] text-[#8b949e] mt-0.5">Pending collection</div>
+                                        </div>
+                                        <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
+                                          <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Payment Terms</div>
+                                          <div className="font-mono text-white mt-0.5">{order.paymentMethod}</div>
+                                          <div className="text-[10px] text-[#3fb950] capitalize mt-0.5">{order.paymentStatus}</div>
+                                        </div>
+                                      </div>
+                                      <div className="p-3 rounded-lg bg-[#21262d] border border-[#30363d] text-xs text-[#8b949e]">
+                                        Wholesale bulk pallet inventory allocation managed via B2B quote specifications.
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                             </tr>
