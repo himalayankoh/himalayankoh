@@ -139,4 +139,52 @@ describe('Sales Aggregation Engine', () => {
     expect(dashboard.todayKpis.netRevenue).toBe(70);
     expect(dashboard.todayKpis.orderCount).toBe(1);
   });
+
+  it('matches deterministic profit example: Paid 100, Refund 10, COGS 35, Shipping 8, Fee 3, Other 2 -> Net 90, Profit 42, Margin 46.67%', () => {
+    const deterministicOrders: WooOrderLike[] = [
+      {
+        id: 201,
+        number: '201',
+        status: 'processing',
+        date_created_gmt: new Date().toISOString(),
+        date_paid_gmt: new Date().toISOString(),
+        total: '100.00',
+        payment_method: 'manual', // no auto stripe calculation
+        line_items: [],
+      },
+      {
+        id: 202,
+        number: '202',
+        status: 'refunded',
+        date_created_gmt: new Date().toISOString(),
+        total: '10.00',
+        payment_method: 'manual',
+        line_items: [],
+      },
+    ];
+
+    const deterministicExpenses = [
+      { id: '1', date: new Date().toISOString().slice(0, 10), category: 'supplier_payment' as const, description: 'COGS', amount: 35, currency: 'USD', recurring: false, createdAt: '' },
+      { id: '2', date: new Date().toISOString().slice(0, 10), category: 'shipping' as const, description: 'Actual Shipping', amount: 8, currency: 'USD', recurring: false, createdAt: '' },
+      { id: '3', date: new Date().toISOString().slice(0, 10), category: 'gateway_fee' as const, description: 'Payment Fee', amount: 3, currency: 'USD', recurring: false, createdAt: '' },
+      { id: '4', date: new Date().toISOString().slice(0, 10), category: 'other' as const, description: 'Other Direct Cost', amount: 2, currency: 'USD', recurring: false, createdAt: '' },
+    ];
+
+    const dashboard = buildSalesDashboard({
+      orders: deterministicOrders,
+      period: 'all',
+      manualExpenses: deterministicExpenses,
+    });
+
+    expect(dashboard.revenue.grossRevenue).toBe(100);
+    expect(dashboard.revenue.refunds).toBe(10);
+    expect(dashboard.revenue.netRevenue).toBe(90);
+    expect(dashboard.costs.cogs).toBe(35);
+    expect(dashboard.costs.shippingCost).toBe(8);
+    expect(dashboard.costs.gatewayFees).toBe(3);
+    expect(dashboard.costs.otherExpenses).toBe(2);
+    expect(dashboard.costs.totalCosts).toBe(48);
+    expect(dashboard.profit.netProfit).toBe(42);
+    expect(dashboard.profit.netMarginPct).toBe(46.67);
+  });
 });
