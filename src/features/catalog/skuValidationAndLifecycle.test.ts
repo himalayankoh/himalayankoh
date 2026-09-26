@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { updateWooProduct, permanentlyDeleteWooProduct } from '../../lib/woo/productWrite';
+import { updateWooProduct, createWooProduct, permanentlyDeleteWooProduct } from '../../lib/woo/productWrite';
 import { humanSaveError } from './saveError';
 import { defaultListingPlaybook, validateListingAgainstPlaybook } from './listingPlaybook';
 
@@ -154,6 +154,28 @@ describe('SKU Ownership, Uniqueness & Lifecycle Regression Tests (A-F)', () => {
     const putBody = putCall?.[1]?.body as Record<string, unknown>;
     expect(putBody.sku).toBe('');
     expect(result.product.sku).toBeNull();
+  });
+
+  it('Case C2: Creating a new product with blank SKU omits sku from body and creates product cleanly', async () => {
+    const mockRequest = vi.mocked(wordpressRequest);
+    mockRequest.mockResolvedValueOnce({
+      id: 2999,
+      name: 'Brand New Product',
+      sku: '',
+      type: 'simple',
+      status: 'draft',
+    } as any);
+
+    const result = await createWooProduct({
+      name: 'Brand New Product',
+      sku: '   ',
+    });
+
+    const postCall = mockRequest.mock.calls.find((c) => c[1]?.method === 'POST');
+    expect(postCall).toBeDefined();
+    const postBody = postCall?.[1]?.body as Record<string, unknown>;
+    expect(postBody.sku).toBeUndefined();
+    expect(result.product.name).toBe('Brand New Product');
   });
 
   it('Case D: Own-stock Himalayan Koh product does not require Supplier SKU', () => {

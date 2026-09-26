@@ -204,16 +204,17 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   if (id === null) return NextResponse.json({ error: 'Invalid product id.' }, { status: 400 });
 
   const url = new URL(request.url);
-  const action = url.searchParams.get('action') ?? 'trash';
+  const action = url.searchParams.get('action') ?? 'delete';
 
   try {
     if (action === 'restore') return NextResponse.json(await restoreWooProduct(id));
     if (action === 'duplicate') return NextResponse.json(await duplicateWooProduct(id), { status: 201 });
-    if (action === 'delete' || action === 'force' || action === 'hard_delete') {
-      await permanentlyDeleteWooProduct(id);
-      return NextResponse.json({ success: true, deleted: id });
+    if (action === 'trash') {
+      return NextResponse.json(await trashWooProduct(id));
     }
-    return NextResponse.json(await trashWooProduct(id));
+    // Permanent deletion is authoritative so deleted products never resurrect
+    await permanentlyDeleteWooProduct(id);
+    return NextResponse.json({ success: true, deleted: id });
   } catch (error) {
     return fail(error, 'The product could not be deleted.');
   }

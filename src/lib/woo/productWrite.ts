@@ -133,10 +133,23 @@ export async function listWooVariations(productId: number): Promise<WooVariation
 export async function createWooProduct(patch: AdminProductPatch): Promise<WooWriteResult> {
   requireWooCredentials();
   const type = patch.type ?? 'simple';
+  const cleanPatch: AdminProductPatch = { ...patch };
+
+  // Sanitize SKU on creation: if empty or only whitespace, omit it so WooCommerce
+  // creates the product without an empty string SKU collision.
+  if (cleanPatch.sku !== undefined) {
+    const trimmed = cleanPatch.sku.trim();
+    if (!trimmed) {
+      delete cleanPatch.sku;
+    } else {
+      cleanPatch.sku = trimmed;
+    }
+  }
+
   const body = toWooProductBody({
     status: 'draft',
     type,
-    ...patch,
+    ...cleanPatch,
   });
 
   try {
