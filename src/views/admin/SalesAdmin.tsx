@@ -659,7 +659,7 @@ export default function SalesAdmin() {
           {/* Orders Table */}
           <div className="rounded-xl border border-[#30363d] bg-[#161b22] overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[850px] text-left text-xs whitespace-nowrap">
                 <thead className="bg-[#21262d] text-[#8b949e] border-b border-[#30363d] font-semibold uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-4">Order #</th>
@@ -862,7 +862,7 @@ export default function SalesAdmin() {
 
           <div className="rounded-xl border border-[#30363d] bg-[#161b22] overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[850px] text-left text-xs whitespace-nowrap">
                 <thead className="bg-[#21262d] text-[#8b949e] border-b border-[#30363d] font-semibold uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-4">Order #</th>
