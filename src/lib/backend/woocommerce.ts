@@ -650,6 +650,10 @@ async function withVariations(
         product.variations = variations;
         product.grainSizes = variationOptionLabels(variations);
       }
+      if (!product.sku) {
+        const firstSku = data.find((v) => (v.sku ?? '').trim())?.sku?.trim();
+        if (firstSku) product.sku = firstSku;
+      }
 
       // A parent that prices itself needs no range derived from its variations.
       if (product.priceMin !== null && product.priceMin > 0) return;

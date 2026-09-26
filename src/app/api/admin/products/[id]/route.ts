@@ -126,6 +126,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         record.compareAtPrice = range.max > range.min ? range.max : null;
       }
     }
+    if (!record.sku && variations.length > 0) {
+      const firstSku = variations.find((v) => (v.sku ?? '').trim())?.sku?.trim();
+      if (firstSku) {
+        record.sku = firstSku;
+      }
+    }
     return NextResponse.json({
       product: record,
       variations,

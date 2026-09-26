@@ -167,27 +167,112 @@ export async function updateWooProduct(
   // anything, so read the type rather than trusting the caller's idea of it.
   const existing = await getWooProduct(id);
   const isVariable = existing.type === 'variable';
-  const body = toWooProductBody(isVariable ? stripVariableParentFields(patch) : patch);
+  const variations = isVariable ? await listWooVariations(id) : [];
 
-  if (!Object.keys(body).length) {
-    return { product: asRecord(existing), applied: [], ignored: ignoredOnVariable(patch) };
+  // Build clean patch for parent product
+  const parentPatch: AdminProductPatch = { ...(isVariable ? stripVariableParentFields(patch) : patch) };
+
+  // Handle SKU ownership and uniqueness:
+  if (parentPatch.sku !== undefined) {
+    const requestedSku = parentPatch.sku.trim();
+    const existingSku = (existing.sku ?? '').trim();
+
+    if (!requestedSku) {
+      // Blank SKU is explicitly allowed: clears the SKU
+      parentPatch.sku = '';
+    } else if (requestedSku.toLowerCase() === existingSku.toLowerCase()) {
+      // Unchanged SKU on self: omit from body so WooCommerce doesn't re-validate
+      delete parentPatch.sku;
+    } else if (isVariable) {
+      const ownVariationSkus = new Set(
+        variations.map((v) => (v.sku ?? '').trim().toLowerCase()).filter(Boolean)
+      );
+      if (ownVariationSkus.has(requestedSku.toLowerCase())) {
+        // The SKU belongs to one of this variable product's own variations (e.g. HK-SFL-C-6lbs).
+        // It is THIS product's SKU, not a duplicate from a different product.
+        // In WooCommerce, a parent cannot share a variation's SKU in postmeta,
+        // so omit from parent body to allow the save without false duplicate-SKU rejection.
+        delete parentPatch.sku;
+      }
+    }
   }
 
-  try {
-    const updated = await wordpressRequest<WooProductLike>(`${REST_V3}/products/${id}`, {
-      useCredentials: true,
-      method: 'PUT',
-      body,
-      timeoutMs: 30000,
-    });
-    return {
-      product: asRecord(updated),
-      applied: Object.keys(body),
-      ignored: isVariable ? ignoredOnVariable(patch) : [],
-    };
-  } catch (error) {
-    throw new WooWriteError(`Product ${id} could not be updated: ${message(error)}`);
+  const body = toWooProductBody(parentPatch);
+  let updatedProduct: WooProductLike = existing;
+  const applied: string[] = [];
+
+  if (Object.keys(body).length) {
+    try {
+      updatedProduct = await wordpressRequest<WooProductLike>(`${REST_V3}/products/${id}`, {
+        useCredentials: true,
+        method: 'PUT',
+        body,
+        timeoutMs: 30000,
+      });
+      applied.push(...Object.keys(body));
+    } catch (error) {
+      throw new WooWriteError(`Product ${id} could not be updated: ${message(error)}`);
+    }
   }
+
+  // Handle price/stock propagation to variations when edited on variable parent
+  const ignored = isVariable ? ignoredOnVariable(patch) : [];
+  if (isVariable && variations.length > 0) {
+    const priceEdit = patch.price !== undefined || patch.compareAtPrice !== undefined;
+    const stockEdit = patch.stockQuantity !== undefined || patch.stockStatus !== undefined || patch.manageStock !== undefined;
+
+    if (priceEdit || stockEdit) {
+      const varPatch: AdminVariationPatch = {};
+      if (patch.price !== undefined) {
+        const pNum = Number(patch.price);
+        if (Number.isFinite(pNum)) varPatch.regularPrice = pNum;
+      }
+      if (patch.compareAtPrice !== undefined) {
+        const cNum = Number(patch.compareAtPrice);
+        if (Number.isFinite(cNum) && typeof varPatch.regularPrice === 'number' && cNum > varPatch.regularPrice) {
+          varPatch.salePrice = varPatch.regularPrice;
+          varPatch.regularPrice = cNum;
+        }
+      }
+      if (patch.manageStock !== undefined) varPatch.manageStock = patch.manageStock;
+      if (patch.stockQuantity !== undefined) varPatch.stockQuantity = patch.stockQuantity;
+      if (patch.stockStatus !== undefined) varPatch.stockStatus = patch.stockStatus;
+
+      for (const v of variations) {
+        if (v.id) {
+          await updateWooVariation(id, v.id, varPatch);
+        }
+      }
+      // Successfully applied to variations, so remove from ignored list
+      if (priceEdit) {
+        for (let i = ignored.length - 1; i >= 0; i--) {
+          if (ignored[i].field === 'price' || ignored[i].field === 'compareAtPrice') {
+            ignored.splice(i, 1);
+          }
+        }
+      }
+      if (stockEdit) {
+        for (let i = ignored.length - 1; i >= 0; i--) {
+          if (ignored[i].field === 'stockQuantity' || ignored[i].field === 'stockStatus' || ignored[i].field === 'manageStock') {
+            ignored.splice(i, 1);
+          }
+        }
+      }
+    }
+  }
+
+  const record = asRecord(updatedProduct);
+  // Ensure variable product record preserves its variation SKU if parent SKU is blank
+  if (!record.sku && isVariable && variations.length > 0) {
+    const firstSku = variations.find((v) => (v.sku ?? '').trim())?.sku?.trim();
+    if (firstSku) record.sku = firstSku;
+  }
+
+  return {
+    product: record,
+    applied,
+    ignored,
+  };
 }
 
 /**
