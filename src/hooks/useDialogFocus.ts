@@ -18,7 +18,8 @@ export function useDialogFocus(isOpen: boolean, onClose: () => void, initialFocu
     const focusable = () => Array.from(ref.current?.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex="0"]') ?? []).filter(el => el.getClientRects().length > 0);
     const frame = requestAnimationFrame(() => (initialFocusRef?.current ?? focusable()[0] ?? ref.current)?.focus());
     const key = (event: KeyboardEvent) => {
-      if (dialogStack[dialogStack.length - 1] !== owner) return;
+      // An inline editor may own Escape or Tab before the enclosing dialog.
+      if (event.defaultPrevented || dialogStack[dialogStack.length - 1] !== owner) return;
       if (event.key === 'Escape') { event.preventDefault(); closeRef.current(); }
       if (event.key !== 'Tab') return;
       const nodes = focusable(); const first = nodes[0]; const last = nodes[nodes.length - 1];
