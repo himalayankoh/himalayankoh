@@ -160,15 +160,15 @@ export default function AIChatWidget() {
               initial={{ opacity: 0, y: 30, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 30, scale: 0.96 }}
-              className="fixed left-3 right-3 top-4 bottom-20 md:top-auto md:left-auto md:bottom-24 md:right-5 z-chat md:w-[420px] md:h-[620px] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+              className="fixed left-3 right-3 bottom-20 h-[30rem] max-h-[calc(100dvh-6rem)] md:left-auto md:right-5 md:bottom-24 md:w-[360px] md:h-[32rem] md:max-h-[calc(100dvh-7rem)] z-chat bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
             >
-              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <div className="shrink-0 p-4 border-b border-gray-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-himalayan-lighter text-himalayan flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-xl bg-himalayan-lighter text-himalayan flex items-center justify-center">
                     <Bot size={20} />
                   </div>
                   <div>
-                    <h2 className="font-serif text-lg font-bold text-charcoal">Himalayan Koh AI</h2>
+                    <h2 className="font-serif text-base font-bold text-charcoal">Himalayan Koh AI</h2>
                     <p className="text-xs text-charcoal-light">Product guidance and support</p>
                   </div>
                 </div>
@@ -184,7 +184,7 @@ export default function AIChatWidget() {
                   )}
                   <button
                     onClick={() => setIsOpen(false)}
-                    className="w-9 h-9 rounded-full hover:bg-gray-100 flex items-center justify-center"
+                    className="w-9 h-9 rounded-full hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-himalayan flex items-center justify-center"
                     aria-label="Close AI assistant"
                   >
                     <X size={18} />
@@ -192,9 +192,9 @@ export default function AIChatWidget() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-warm-white">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-3 bg-warm-white">
                 {messages.length === 0 && (
-                  <div className="text-center py-6">
+                  <div className="text-center py-4">
                     <Sparkles size={40} className="mx-auto mb-4 text-himalayan" />
                     <h3 className="font-serif text-xl font-bold text-charcoal mb-2">
                       How can I help?
@@ -207,7 +207,7 @@ export default function AIChatWidget() {
                         <button
                           key={prompt}
                           onClick={() => sendMessage(prompt)}
-                          className="text-left px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm text-charcoal hover:border-himalayan/40 hover:bg-himalayan-lighter transition-colors"
+                          className="text-left px-4 py-2.5 bg-white border border-gray-100 rounded-xl text-sm text-charcoal hover:border-himalayan/40 hover:bg-himalayan-lighter transition-colors"
                         >
                           {prompt}
                         </button>
@@ -256,7 +256,7 @@ export default function AIChatWidget() {
                 <div ref={scrollRef} />
               </div>
 
-              <form onSubmit={handleSubmit} className="p-4 border-t border-gray-100 bg-white">
+              <form onSubmit={handleSubmit} className="shrink-0 p-3 border-t border-gray-100 bg-white">
                 <div className="flex items-end gap-2">
                   <textarea
                     value={input}
