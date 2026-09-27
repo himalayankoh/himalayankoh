@@ -1,1299 +1,1694 @@
-'use client';
-
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+"use client";
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
-  CurrencyDollar,
-  TrendUp,
-  Receipt,
-  ArrowClockwise,
-  DownloadSimple,
-  MagnifyingGlass,
+  Download,
   Plus,
-  Trash,
-  CheckCircle,
-  Warning,
-  Clock,
-  CaretDown,
-  CaretUp,
-  BuildingOffice,
-  ShoppingBag,
-} from '@phosphor-icons/react';
-import { getFreshAccessToken } from '../../services/wordpressAdminAuth';
-import { getErrorMessage } from '../../lib/errors';
-import type {
-  SalesDashboardData,
-  SalesPeriod,
-  SalesChannel,
-  ManualExpense,
-  ExpenseCategory,
-  CostSourceType,
-} from '../../lib/sales/types';
-import { EXPENSE_CATEGORY_LABELS } from '../../lib/sales/types';
+  RefreshCw,
+  SlidersHorizontal,
+  ArrowUpRight,
+  CircleDollarSign, TrendingUp, Wallet, ShoppingBag,
+} from "lucide-react";
+import { getFreshAccessToken } from "../../services/wordpressAdminAuth";
+import { AdminModal, AdminPageHeader } from "../../components/admin/AdminUI";
+import { ICON_TILE, ICON_TILE_TONES } from "../../components/admin/adminTheme";
+import { InlineCell } from "../../components/admin/sales/InlineCell";
+import { SalesTrend } from "../../components/admin/sales/SalesTrend";
+import { csv, summarizeRetail } from "../../lib/sales/workspace";
+import {
+  EXPENSE_CATEGORY_LABELS,
+  type ManualExpense,
+  type SalesDashboardData,
+  type SalesOrderRow,
+} from "../../lib/sales/types";
+import styles from "./SalesWorkspace.module.css";
 
-function SourceBadge({ source }: { source?: CostSourceType }) {
-  if (!source || source === 'none') return null;
-  const labels: Record<CostSourceType, { text: string; bg: string; textCol: string }> = {
-    auto: { text: 'AUTO', bg: 'bg-[#1f6feb]/20', textCol: 'text-[#58a6ff]' },
-    manual: { text: 'MANUAL', bg: 'bg-[#d29922]/20', textCol: 'text-[#e3b341]' },
-    estimated: { text: 'ESTIMATED', bg: 'bg-[#8b949e]/20', textCol: 'text-[#c9d1d9]' },
-    actual: { text: 'ACTUAL', bg: 'bg-[#238636]/20', textCol: 'text-[#3fb950]' },
-    none: { text: '', bg: '', textCol: '' },
-  };
-  const conf = labels[source];
-  if (!conf || !conf.text) return null;
+type Tab = "Overview" | "Orders" | "Payments" | "Expenses" | "Reports";
+type CostField =
+  | "cogs"
+  | "actualShippingCost"
+  | "paymentFee"
+  | "otherExpense"
+  | "supplier"
+  | "supplierReference"
+  | "notes";
+const COST_LABELS: Record<CostField, string> = {
+  cogs: "COGS",
+  actualShippingCost: "Shipping cost",
+  paymentFee: "Payment fee",
+  otherExpense: "Other cost",
+  supplier: "Supplier",
+  supplierReference: "Supplier reference",
+  notes: "Notes",
+};
+const OPTIONAL = {
+  subtotal: "Subtotal",
+  refundedAmount: "Refund",
+  tax: "Tax",
+  supplier: "Supplier",
+  supplierReference: "Supplier reference",
+  tracking: "Tracking",
+  paymentMethod: "Method",
+  transactionId: "Transaction",
+  notes: "Notes",
+};
+const LEGACY_KEY = "hk_sales_manual_expenses_v1";
+const money = (value: number | null | undefined, currency = "USD") =>
+  value == null
+    ? "—"
+    : new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 2,
+      }).format(value);
+const day = (value: string) => value.slice(0, 10);
+const today = () => new Date().toISOString().slice(0, 10);
+const dateBefore = (days: number) => {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - days + 1);
+  return day(d.toISOString());
+};
+const keyOf = (r: SalesOrderRow) => r.channel + "-" + r.id;
+async function api<T>(
+  path: string,
+  method = "GET",
+  body?: unknown,
+): Promise<T> {
+  const token = await getFreshAccessToken();
+  if (!token)
+    throw new Error("Your session expired. Sign in again to continue.");
+  const response = await fetch(path, {
+    method,
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const result = await response.json();
+  if (!response.ok)
+    throw new Error(result.error || "The request could not be completed.");
+  return result as T;
+}
+function Badge({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: string;
+}) {
   return (
-    <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold tracking-wider uppercase border border-current/20 ${conf.bg} ${conf.textCol}`}>
-      {conf.text}
-    </span>
+    <span className={`${styles.badge} ${styles[tone] || ""}`}>{children}</span>
   );
 }
-
-const PERIOD_LABELS: Record<SalesPeriod, string> = {
-  today: 'Today',
-  '7d': 'Last 7 Days',
-  '30d': 'Last 30 Days',
-  '90d': 'Last 90 Days',
-  '12m': 'Last 12 Months',
-  ytd: 'Year to Date',
-  all: 'All Time',
-};
-
-const EXPENSE_STORAGE_KEY = 'hk_sales_manual_expenses_v1';
+function Metric({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+}) {
+  return (
+    <div className={styles.metric}>
+      <div className={styles.metricHeading}><span>{label}</span><span aria-hidden="true" className={`${ICON_TILE} ${label.startsWith('Net sales')?ICON_TILE_TONES.brand:label.startsWith('Net profit')?ICON_TILE_TONES.green:label.startsWith('Cash')?ICON_TILE_TONES.amber:ICON_TILE_TONES.violet}`}>{label.startsWith('Net sales')?<CircleDollarSign size={16}/>:label.startsWith('Net profit')?<TrendingUp size={16}/>:label.startsWith('Cash')?<Wallet size={16}/>:<ShoppingBag size={16}/>}</span></div>
+      <strong>{value}</strong>
+      {note && <small>{note}</small>}
+    </div>
+  );
+}
+function TableFrame({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={styles.tableFrame}
+      role="region"
+      aria-label={label}
+      tabIndex={0}
+      data-sales-sheet
+    >
+      {children}
+    </div>
+  );
+}
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div className={styles.empty}>{children}</div>;
+}
 
 export default function SalesAdmin() {
-  const [data, setData] = useState<SalesDashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [period, setPeriod] = useState<SalesPeriod>('30d');
-  const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'reconciliation' | 'expenses' | 'reports'>('overview');
-  const [channelFilter, setChannelFilter] = useState<SalesChannel>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
-
-  // Manual Expenses state
-  const [expenses, setExpenses] = useState<ManualExpense[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const saved = localStorage.getItem(EXPENSE_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [showAddExpense, setShowAddExpense] = useState(false);
-  const [newExpCategory, setNewExpCategory] = useState<ExpenseCategory>('shipping');
-  const [newExpDesc, setNewExpDesc] = useState('');
-  const [newExpAmount, setNewExpAmount] = useState('');
-  const [newExpDate, setNewExpDate] = useState(() => new Date().toISOString().slice(0, 10));
-
-  const saveExpenses = (newExpenses: ManualExpense[]) => {
-    setExpenses(newExpenses);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem(EXPENSE_STORAGE_KEY, JSON.stringify(newExpenses));
-      } catch {
-        // Storage might fail if full
-      }
-    }
-  };
-
-  const handleAddExpense = (e: React.FormEvent) => {
-    e.preventDefault();
-    const amt = parseFloat(newExpAmount);
-    if (!amt || amt <= 0 || !newExpDesc.trim()) return;
-
-    const newExp: ManualExpense = {
-      id: `exp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      date: newExpDate,
-      category: newExpCategory,
-      description: newExpDesc.trim(),
-      amount: amt,
-      currency: 'USD',
-      recurring: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    saveExpenses([newExp, ...expenses]);
-    setNewExpDesc('');
-    setNewExpAmount('');
-    setShowAddExpense(false);
-  };
-
-  const handleDeleteExpense = (id: string) => {
-    saveExpenses(expenses.filter(e => e.id !== id));
-  };
-
-  // Fetch dashboard data
+  const [data, setData] = useState<SalesDashboardData | null>(null),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState("");
+  const [tab, setTab] = useState<Tab>("Overview"),
+    [range, setRange] = useState("30"),
+    [from, setFrom] = useState(dateBefore(30)),
+    [to, setTo] = useState(today());
+  const [channel, setChannel] = useState("all"),
+    [currency, setCurrency] = useState("USD"),
+    [status, setStatus] = useState("all"),
+    [method, setMethod] = useState("all"),
+    [search, setSearch] = useState("");
+  const query = useDeferredValue(search.trim().toLowerCase());
+  const [columns, setColumns] = useState<string[]>([]),
+    [chooser, setChooser] = useState(false),
+    [selected, setSelected] = useState<string | null>(null),
+    [page, setPage] = useState(1);
+  const [legacy, setLegacy] = useState<ManualExpense[]>([]),
+    [importing, setImporting] = useState(false),
+    [notice, setNotice] = useState("");
+  const [draft, setDraft] = useState<ManualExpense | null>(null),
+    [expenseBusy, setExpenseBusy] = useState(false),
+    [expenseError, setExpenseError] = useState(""),
+    [showArchived, setShowArchived] = useState(false);
+  const expenseQueue = useRef(Promise.resolve());
+  const latest = useRef(data);
+  latest.current = data;
   const fetchData = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setError("");
     try {
-      const token = await getFreshAccessToken();
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const res = await fetch(`/api/admin/sales?period=${period}`, {
-        headers,
-        cache: 'no-store',
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `HTTP ${res.status}: Failed to fetch sales data`);
-      }
-
-      const result: SalesDashboardData = await res.json();
-      setData(result);
-    } catch (err) {
-      setError(getErrorMessage(err, 'Failed to load sales information'));
+      setData(await api<SalesDashboardData>("/api/admin/sales?period=all"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load Sales.");
     } finally {
       setLoading(false);
     }
-  }, [period]);
-
+  }, []);
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Filtered orders for table
-  const filteredOrders = useMemo(() => {
-    if (!data?.orders) return [];
-    return data.orders.filter(order => {
-      // Channel filter
-      if (channelFilter !== 'all' && order.channel !== channelFilter) return false;
-      // Status filter
-      if (statusFilter !== 'all') {
-        if (statusFilter === 'paid' && order.paymentStatus !== 'paid') return false;
-        if (statusFilter === 'pending' && order.paymentStatus !== 'pending' && order.paymentStatus !== 'partially_paid') return false;
-        if (statusFilter === 'refunded' && order.paymentStatus !== 'refunded') return false;
-      }
-      // Search
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesNumber = order.orderNumber.toLowerCase().includes(q);
-        const matchesCustomer = order.customerName.toLowerCase().includes(q);
-        const matchesEmail = order.customerEmail.toLowerCase().includes(q);
-        const matchesItems = order.items.some(it => it.productName.toLowerCase().includes(q) || (it.sku && it.sku.toLowerCase().includes(q)));
-        return matchesNumber || matchesCustomer || matchesEmail || matchesItems;
-      }
-      return true;
-    });
-  }, [data?.orders, channelFilter, statusFilter, searchQuery]);
-
-  // Expenses in current period
-  const periodExpensesTotal = useMemo(() => {
-    if (!data?.dateRange) return 0;
-    const from = data.dateRange.from;
-    const to = data.dateRange.to;
-    return expenses
-      .filter(e => e.date >= from && e.date <= to)
-      .reduce((sum, e) => sum + e.amount, 0);
-  }, [expenses, data?.dateRange]);
-
-  // Adjusted Net Profit including client-side manual expenses
-  const adjustedProfit = useMemo(() => {
-    if (!data) return { grossProfit: 0, netProfit: 0, netMargin: 0, hasIncomplete: false, missingCogsCount: 0 };
-    const grossProfit = data.revenue.netRevenue - data.costs.cogs;
-    const totalCosts = data.costs.totalCosts + periodExpensesTotal;
-    const netProfit = data.revenue.netRevenue - totalCosts;
-    const netMargin = data.revenue.netRevenue > 0 ? (netProfit / data.revenue.netRevenue) * 100 : 0;
-    return {
-      grossProfit: Math.round(grossProfit * 100) / 100,
-      netProfit: Math.round(netProfit * 100) / 100,
-      netMargin: Math.round(netMargin * 10) / 10,
-      hasIncomplete: data.profit.hasIncompleteProfit,
-      missingCogsCount: data.profit.missingCogsCount,
-    };
-  }, [data, periodExpensesTotal]);
-
-  // CSV Export utility
-  const handleExportCSV = (scope: 'orders' | 'revenue' | 'expenses') => {
-    if (!data) return;
-    let csvContent = '';
-    const filename = `himalayan-koh-sales-${scope}-${period}.csv`;
-
-    if (scope === 'orders') {
-      const headers = [
-        'Order Number', 'Date', 'Channel', 'Customer', 'Status', 'Payment Status',
-        'Subtotal', 'Shipping Charged', 'Tax', 'Discount', 'Order Total', 'Refunded', 'Net Sales',
-        'COGS', 'Actual Shipping Cost', 'Payment Fee', 'Other Expense', 'Net Profit', 'Profit Margin %', 'Payment Method'
-      ];
-      const rows = filteredOrders.map(o => [
-        o.orderNumber,
-        o.date,
-        o.channel.toUpperCase(),
-        `"${o.customerName.replace(/"/g, '""')}"`,
-        o.status,
-        o.paymentStatus,
-        o.subtotal.toFixed(2),
-        o.shipping.toFixed(2),
-        o.tax.toFixed(2),
-        o.discount.toFixed(2),
-        o.total.toFixed(2),
-        o.refundedAmount.toFixed(2),
-        o.netTotal.toFixed(2),
-        o.cogs !== null ? o.cogs.toFixed(2) : 'Needs Cost',
-        o.actualShippingCost.toFixed(2),
-        o.paymentFee.toFixed(2),
-        o.otherExpense.toFixed(2),
-        o.netProfit !== null ? o.netProfit.toFixed(2) : 'Incomplete',
-        o.profitMarginPct !== null ? `${o.profitMarginPct.toFixed(2)}%` : 'Incomplete',
-        `"${(o.paymentMethod || 'None').replace(/"/g, '""')}"`,
-      ]);
-      csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    } else if (scope === 'revenue') {
-      const rows = [
-        ['Metric', 'Amount (USD)'],
-        ['Gross Revenue (Paid Orders)', data.revenue.grossRevenue.toFixed(2)],
-        ['Refunds Issued', data.revenue.refunds.toFixed(2)],
-        ['Net Revenue', data.revenue.netRevenue.toFixed(2)],
-        ['Cost of Goods Sold (COGS)', data.costs.cogs.toFixed(2)],
-        ['Actual Shipping Expense', data.costs.shippingCost.toFixed(2)],
-        ['Payment Gateway Fees', data.costs.gatewayFees.toFixed(2)],
-        ['Other Direct Expenses', data.costs.otherExpenses.toFixed(2)],
-        ['Manual Business Expenses', periodExpensesTotal.toFixed(2)],
-        ['Adjusted Net Profit', adjustedProfit.netProfit.toFixed(2)],
-        ['Net Profit Margin %', `${adjustedProfit.netMargin}%`],
-        ['Profit Completeness', adjustedProfit.hasIncomplete ? `Incomplete (${adjustedProfit.missingCogsCount} orders need cost)` : 'Verified Complete'],
-        ['Paid Orders Count', data.revenue.orderCount],
-        ['Average Order Value (AOV)', data.revenue.aov.toFixed(2)],
-        ['Wholesale Total Booked', data.wholesaleSummary.totalBooked.toFixed(2)],
-        ['Wholesale Cash Collected', data.wholesaleSummary.totalCollected.toFixed(2)],
-        ['Wholesale Pending Balance', data.wholesaleSummary.pendingBalance.toFixed(2)],
-      ];
-      csvContent = rows.map(r => r.join(',')).join('\n');
-    } else if (scope === 'expenses') {
-      const headers = ['Date', 'Category', 'Description', 'Amount', 'Currency'];
-      const rows = expenses.map(e => [
-        e.date,
-        `"${EXPENSE_CATEGORY_LABELS[e.category] || e.category}"`,
-        `"${e.description.replace(/"/g, '""')}"`,
-        e.amount.toFixed(2),
-        e.currency,
-      ]);
-      csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    void fetchData();
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem("hk_sales_columns_v1") || "[]",
+      );
+      if (Array.isArray(saved))
+        setColumns(saved.filter((c) => Object.hasOwn(OPTIONAL, c)));
+      const old = JSON.parse(localStorage.getItem(LEGACY_KEY) || "[]");
+      if (Array.isArray(old)) setLegacy(old);
+    } catch {
+      /* Financial reads still come from WordPress. */
     }
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  }, [fetchData]);
+  useEffect(() => {
+    setPage(1);
+  }, [query, channel, currency, status, method, from, to]);
+  const chooseRange = (value: string) => {
+    setRange(value);
+    if (value !== "custom") {
+      setTo(today());
+      setFrom(value === "all" ? "" : dateBefore(Number(value)));
+    }
   };
-
+  const inRange = (date: string) =>
+    (!from || day(date) >= from) && (!to || day(date) <= to);
+  const baseRows = useMemo(
+    () =>
+      data?.orders.filter(
+        (r) =>
+          r.currency === currency &&
+          (!from || day(r.date) >= from) &&
+          (!to || day(r.date) <= to),
+      ) ?? [],
+    [data, currency, from, to],
+  );
+  const rows = useMemo(
+    () =>
+      baseRows.filter(
+        (r) =>
+          (channel === "all" || r.channel === channel) &&
+          (status === "all" || r.paymentStatus === status) &&
+          (method === "all" || r.paymentMethod === method) &&
+          (!query ||
+            [
+              r.orderNumber,
+              r.customerName,
+              r.customerEmail,
+              r.supplier,
+              r.supplierReference,
+              r.notes,
+              ...r.items.flatMap((i) => [i.productName, i.sku]),
+            ]
+              .join(" ")
+              .toLowerCase()
+              .includes(query)),
+      ),
+    [baseRows, channel, status, method, query],
+  );
+  const expenses = (data?.expenses ?? []).filter(
+    (e) => e.currency === currency && inRange(e.date),
+  );
+  const activeExpenses = expenses.filter((e) => !e.archived);
+  const { revenue, costs, profit } = summarizeRetail(
+    rows,
+    activeExpenses,
+    currency,
+  );
+  const profitIncomplete =
+    profit.hasIncompleteProfit ||
+    Boolean(data?.warnings?.some((w) => w.includes("expense ledger")));
+  const wholesaleUnavailable = Boolean(
+    data?.warnings?.some((w) => w.includes("Wholesale records")),
+  );
+  const ws = rows.filter((r) => r.channel === "wholesale");
+  const booked = ws.reduce((a, r) => a + r.total, 0),
+    collected = ws.reduce((a, r) => a + (r.collectedAmount ?? 0), 0),
+    balance = ws.reduce((a, r) => a + (r.balanceDue ?? 0), 0);
+  const missing = rows.filter((r) => r.cogs == null),
+    negative = rows.filter((r) => r.netProfit != null && r.netProfit < 0);
+  const selectedRow = data?.orders.find((r) => keyOf(r) === selected);
+  const visibleRows = rows.slice((page - 1) * 50, page * 50);
+  const payments = (data?.payments ?? []).filter((p) =>
+    rows.some((r) => r.channel === "retail" && r.id === p.orderId),
+  );
+  const unappliedLegacy = legacy.filter(
+    (e) => !(data?.expenses ?? []).some((saved) => saved.id === e.id),
+  );
+  const setExpense = (expense: ManualExpense) =>
+    setData((current) =>
+      current
+        ? {
+            ...current,
+            expenses: [
+              ...(current.expenses ?? []).filter((e) => e.id !== expense.id),
+              expense,
+            ],
+          }
+        : current,
+    );
+  const saveExpense = async (expense: ManualExpense) => {
+    const result = await api<{ expense: ManualExpense }>(
+      "/api/admin/sales/expenses",
+      "POST",
+      expense,
+    );
+    setExpense(result.expense);
+    return result.expense;
+  };
+  const editExpense = (
+    id: string,
+    field: keyof ManualExpense,
+    value: string | number,
+  ) => {
+    const run = expenseQueue.current
+      .catch(() => {})
+      .then(async () => {
+        const current = latest.current?.expenses?.find((e) => e.id === id);
+        if (!current) throw new Error("Refresh this expense before editing.");
+        await saveExpense({ ...current, [field]: value });
+      });
+    expenseQueue.current = run;
+    return run;
+  };
+  const updateOrder = async (
+    order: SalesOrderRow,
+    field: CostField,
+    value: string | number,
+  ) => {
+    if (order.channel === "wholesale") {
+      const fieldMap: Partial<Record<CostField, string>> = {
+        cogs: "costTotal",
+        actualShippingCost: "freightTotal",
+        otherExpense: "otherCosts",
+      };
+      if (!fieldMap[field] || !/^\d+$/.test(order.id))
+        throw new Error("Edit this field in the Wholesale workspace.");
+      const result = await api<{
+        breakdown: {
+          costTotal: number;
+          freightTotal: number;
+          otherCosts: number;
+          commissionAmount: number;
+          hkNetProfit: number;
+          hkNetMarginPct: number;
+          totalCost: number;
+        };
+      }>("/api/admin/wholesale/profit", "POST", {
+        orderId: Number(order.id),
+        [fieldMap[field]!]: value,
+        reason: "Sales workspace cost edit",
+      });
+      const b = result.breakdown;
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              orders: current.orders.map((r) =>
+                keyOf(r) !== keyOf(order)
+                  ? r
+                  : {
+                      ...r,
+                      cogs: b.costTotal,
+                      cogsStatus: "verified",
+                      cogsSource: "manual",
+                      actualShippingCost: b.freightTotal,
+                      otherExpense: b.otherCosts,
+                      dealerCommission: b.commissionAmount,
+                      totalCosts: b.totalCost + b.commissionAmount,
+                      netProfit: b.hkNetProfit,
+                      profitMarginPct: b.hkNetMarginPct,
+                      isSnapshotted: true,
+                    },
+              ),
+            }
+          : current,
+      );
+    } else {
+      const result = await api<{ order: SalesOrderRow }>(
+        "/api/admin/sales/orders",
+        "PATCH",
+        { id: order.id, field, value },
+      );
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              orders: current.orders.map((r) => {
+                if (keyOf(r) !== keyOf(order)) return r;
+                const next = { ...result.order };
+                // A metadata-only response has no catalogue lookup; preserve its sourced cost until refresh.
+                if (next.cogs == null && r.cogs != null && field !== "cogs") {
+                  next.cogs = r.cogs;
+                  next.cogsStatus = r.cogsStatus;
+                  next.cogsSource = r.cogsSource;
+                  next.totalCosts =
+                    r.cogs +
+                    next.actualShippingCost +
+                    next.paymentFee +
+                    next.otherExpense;
+                  next.netProfit = next.netTotal - next.totalCosts;
+                  next.profitMarginPct = next.netTotal
+                    ? (next.netProfit / next.netTotal) * 100
+                    : 0;
+                }
+                return next;
+              }),
+              payments:
+                field === "paymentFee"
+                  ? current.payments.map((p) =>
+                      p.orderId === order.id
+                        ? {
+                            ...p,
+                            gatewayFee: Number(value),
+                            netReceived: p.receivedAmount - Number(value),
+                          }
+                        : p,
+                    )
+                  : current.payments,
+            }
+          : current,
+      );
+    }
+  };
+  const editCell = (
+    order: SalesOrderRow,
+    field: CostField,
+    prefix = "table",
+  ) => {
+    const unsupported =
+      order.channel === "wholesale" &&
+      (!["cogs", "actualShippingCost", "otherExpense"].includes(field) ||
+        !/^\d+$/.test(order.id));
+    return unsupported ? (
+      <span title="Managed in Wholesale">
+        {order[field] == null ? "—" : String(order[field])}
+      </span>
+    ) : (
+      <InlineCell
+        id={`${prefix}-${keyOf(order)}-${field}`}
+        label={`${COST_LABELS[field]} for order ${order.orderNumber}`}
+        value={order[field]}
+        numeric={!["supplier", "supplierReference", "notes"].includes(field)}
+        hint={
+          field === "cogs"
+            ? `Cost source: ${order.cogsSource}. ${order.isSnapshotted ? "Recorded on order" : "Current catalogue cost; not frozen"}`
+            : undefined
+        }
+        onSave={(value) => updateOrder(order, field, value)}
+      />
+    );
+  };
+  const download = (kind: string) => {
+    let content: unknown[][] = [];
+    if (kind === "orders")
+      content = [
+        [
+          "Date",
+          "Order",
+          "Channel",
+          "Customer",
+          "Currency",
+          "Sale / booked",
+          "Cash collected",
+          "COGS",
+          "Shipping cost",
+          "Fee",
+          "Other",
+          "Dealer commission",
+          "Profit / projected if unpaid",
+          "Margin %",
+          "Payment",
+          "Status",
+          "Supplier",
+          "Supplier reference",
+          "Notes",
+        ],
+        ...rows.map((r) => [
+          day(r.date),
+          r.orderNumber,
+          r.channel,
+          r.customerName,
+          r.currency,
+          r.total,
+          r.collectedAmount,
+          r.cogs,
+          r.actualShippingCost,
+          r.paymentFee,
+          r.otherExpense,
+          r.dealerCommission ?? 0,
+          r.netProfit,
+          r.profitMarginPct,
+          r.paymentStatus,
+          r.status,
+          r.supplier,
+          r.supplierReference,
+          r.notes,
+        ]),
+      ];
+    if (kind === "expenses")
+      content = [
+        [
+          "Date",
+          "Category",
+          "Description",
+          "Amount",
+          "Currency",
+          "Method",
+          "Reference",
+          "Notes",
+        ],
+        ...activeExpenses.map((e) => [
+          e.date,
+          EXPENSE_CATEGORY_LABELS[e.category],
+          e.description,
+          e.amount,
+          e.currency,
+          e.paymentMethod,
+          e.reference,
+          e.notes,
+        ]),
+      ];
+    if (kind === "payments")
+      content = [
+        [
+          "Order",
+          "Date",
+          "Method",
+          "Transaction",
+          "Currency",
+          "Expected",
+          "Received",
+          "Fee",
+          "Net received",
+          "Status",
+        ],
+        ...payments.map((p) => [
+          p.orderNumber,
+          day(p.date),
+          p.paymentMethod,
+          p.transactionId,
+          p.currency,
+          p.expectedAmount,
+          p.receivedAmount,
+          p.gatewayFee,
+          p.netReceived,
+          p.status,
+        ]),
+      ];
+    if (kind === "summary")
+      content = [
+        ["Metric", "Amount", "Currency"],
+        ["Retail net sales", revenue.netRevenue, currency],
+        ["Recorded costs incl period expenses", costs.totalCosts, currency],
+        [
+          "Indicative retail net profit",
+          profitIncomplete ? "Incomplete" : profit.netProfit,
+          currency,
+        ],
+        ["Missing cost orders", profit.missingCogsCount, ""],
+        ["Wholesale booked", booked, currency],
+        ["Wholesale collected", collected, currency],
+        ["Wholesale balance", balance, currency],
+        ["Order filter", `${channel}; ${status}; ${method}; ${query}`, ""],
+        ["Date range", `${from || "All"} to ${to}`, ""],
+        [
+          "Data scope",
+          data?.windowCapped ? "Capped order window" : "Fetched order window",
+          "",
+        ],
+        ["Warnings", (data?.warnings ?? []).join("; "), ""],
+      ];
+    const url = URL.createObjectURL(
+      new Blob([csv(content)], { type: "text/csv;charset=utf-8" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `hk-sales-${kind}-${today()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setNotice(`${kind} CSV exported with the current filters.`);
+  };
+  const importLegacy = async () => {
+    setImporting(true);
+    setError("");
+    try {
+      for (const expense of unappliedLegacy) await saveExpense(expense);
+      localStorage.removeItem(LEGACY_KEY);
+      setLegacy([]);
+      setNotice("Browser expenses are now saved in WordPress.");
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Import failed. Your browser copy is preserved.",
+      );
+    } finally {
+      setImporting(false);
+    }
+  };
+  const addExpense = () => {
+    setExpenseError("");
+    setDraft({
+      id: crypto.randomUUID(),
+      date: today(),
+      description: "",
+      category: "other",
+      amount: 0,
+      currency,
+      recurring: false,
+      createdAt: new Date().toISOString(),
+      paymentMethod: "",
+      reference: "",
+      notes: "",
+    });
+  };
+  const saveDraft = async () => {
+    if (!draft) return;
+    setExpenseBusy(true);
+    setExpenseError("");
+    try {
+      await saveExpense(draft);
+      setDraft(null);
+      setNotice("Expense saved to WordPress.");
+    } catch (e) {
+      setExpenseError(e instanceof Error ? e.message : "Expense save failed.");
+    } finally {
+      setExpenseBusy(false);
+    }
+  };
   return (
-    <div className="min-h-screen bg-[#0d1117] text-[#e6edf3] p-4 md:p-8 space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#30363d] pb-6">
-        <div>
-          <div className="flex items-center gap-3">
-            <span className="w-3 h-3 rounded-full bg-[#238636] animate-pulse" />
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white flex items-center gap-2">
-              Himalayan Koh Sales
-            </h1>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#238636]/20 text-[#3fb950] border border-[#238636]/40 font-medium">
-              Authoritative
-            </span>
-          </div>
-          <p className="text-sm text-[#8b949e] mt-1">
-            Real-time financial metrics, paid revenue, profit margins, and reconciliation. No unverified estimates.
-          </p>
-        </div>
-
-        {/* Period Selector & Refresh */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex rounded-lg bg-[#161b22] border border-[#30363d] p-1">
-            {(['today', '7d', '30d', '90d', '12m', 'ytd', 'all'] as SalesPeriod[]).map(p => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  period === p
-                    ? 'bg-[#238636] text-white shadow-sm'
-                    : 'text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#21262d]'
-                }`}
-              >
-                {PERIOD_LABELS[p]}
-              </button>
-            ))}
-          </div>
-
+    <div className={styles.workspace}>
+      <AdminPageHeader
+        eyebrow="Commerce operations"
+        title="Sales & Profit"
+        description="Understand each sale. Record costs. Keep cash and profit clear."
+        actions={
+          <>
+            <button
+              className={styles.button}
+              onClick={() => void fetchData()}
+              disabled={loading}
+            >
+              <RefreshCw size={15} /> {loading ? "Refreshing…" : "Refresh"}
+            </button>
+            <button
+              className={styles.primary}
+              disabled={!data || Boolean(error)}
+              onClick={() =>
+                download(
+                  tab === "Expenses"
+                    ? "expenses"
+                    : tab === "Payments"
+                      ? "payments"
+                      : "orders",
+                )
+              }
+            >
+              <Download size={15} /> Export CSV
+            </button>
+          </>
+        }
+      />
+      <nav className={styles.tabs} aria-label="Sales views">
+        {(
+          ["Overview", "Orders", "Payments", "Expenses", "Reports"] as Tab[]
+        ).map((t) => (
           <button
-            onClick={() => fetchData()}
-            disabled={loading}
-            className="p-2 rounded-lg bg-[#21262d] border border-[#30363d] text-[#c9d1d9] hover:bg-[#30363d] transition-colors disabled:opacity-50"
-            title="Refresh Data"
+            key={t}
+            aria-current={tab === t ? "page" : undefined}
+            onClick={() => setTab(t)}
           >
-            <ArrowClockwise className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Error Notice */}
-      {error && (
-        <div className="p-4 rounded-xl bg-[#da3633]/10 border border-[#da3633]/30 text-[#f85149] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Warning className="w-5 h-5 flex-shrink-0" />
-            <span className="text-sm font-medium">{error}</span>
-          </div>
-          <button
-            onClick={() => fetchData()}
-            className="text-xs underline font-semibold hover:text-white"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {/* Owner Quick Answer KPIs — 1-second view */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1: Today's Real Paid Sales */}
-        <div className="p-5 rounded-xl bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#30363d] shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between text-[#8b949e] text-xs font-semibold uppercase tracking-wider">
-            <span>Today&apos;s Real Paid Sale</span>
-            <span className="p-1.5 rounded-lg bg-[#238636]/10 text-[#3fb950]">
-              <CurrencyDollar className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl md:text-3xl font-extrabold text-white">
-              ${data ? data.todayKpis.paidRevenue.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00'}
-            </div>
-            <div className="text-xs text-[#8b949e] mt-1 flex items-center gap-1.5">
-              <span className="text-[#3fb950] font-medium">{data?.todayKpis.orderCount ?? 0} paid orders</span>
-              {data && data.todayKpis.refunds > 0 && (
-                <span className="text-[#f85149]">(-${data.todayKpis.refunds.toFixed(2)} refunded)</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* KPI 2: Period Net Revenue */}
-        <div className="p-5 rounded-xl bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#30363d] shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between text-[#8b949e] text-xs font-semibold uppercase tracking-wider">
-            <span>Net Revenue ({PERIOD_LABELS[period]})</span>
-            <span className="p-1.5 rounded-lg bg-[#1f6feb]/10 text-[#58a6ff]">
-              <TrendUp className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl md:text-3xl font-extrabold text-[#58a6ff]">
-              ${data ? data.revenue.netRevenue.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00'}
-            </div>
-            <div className="text-xs text-[#8b949e] mt-1">
-              Gross: ${data?.revenue.grossRevenue.toFixed(2) ?? '0.00'} · Refunds: ${data?.revenue.refunds.toFixed(2) ?? '0.00'}
-            </div>
-          </div>
-        </div>
-
-        {/* KPI 3: Adjusted Net Profit & Margin */}
-        <div className="p-5 rounded-xl bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#30363d] shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between text-[#8b949e] text-xs font-semibold uppercase tracking-wider">
-            <span>Estimated Net Profit</span>
-            <span className="p-1.5 rounded-lg bg-[#238636]/10 text-[#3fb950]">
-              <Receipt className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl md:text-3xl font-extrabold text-[#3fb950]">
-              ${adjustedProfit.netProfit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </div>
-            <div className="text-xs text-[#8b949e] mt-1 flex items-center gap-1.5 flex-wrap">
-              {adjustedProfit.hasIncomplete ? (
-                <span className="px-1.5 py-0.5 rounded bg-[#d29922]/20 text-[#e3b341] font-semibold flex items-center gap-1">
-                  <Warning className="w-3 h-3" />
-                  <span>Incomplete ({adjustedProfit.missingCogsCount} need cost)</span>
-                </span>
-              ) : (
-                <span className="px-1.5 py-0.5 rounded bg-[#238636]/20 text-[#3fb950] font-semibold">
-                  {adjustedProfit.netMargin}% Margin
-                </span>
-              )}
-              <span>after costs, fees & expenses</span>
-            </div>
-          </div>
-        </div>
-
-        {/* KPI 4: Wholesale Pending Balance */}
-        <div className="p-5 rounded-xl bg-gradient-to-br from-[#161b22] to-[#1c2128] border border-[#30363d] shadow-sm relative overflow-hidden">
-          <div className="flex items-center justify-between text-[#8b949e] text-xs font-semibold uppercase tracking-wider">
-            <span>Wholesale Balance Due</span>
-            <span className="p-1.5 rounded-lg bg-[#a371f7]/10 text-[#bc8cff]">
-              <BuildingOffice className="w-4 h-4" />
-            </span>
-          </div>
-          <div className="mt-3">
-            <div className="text-2xl md:text-3xl font-extrabold text-[#bc8cff]">
-              ${data ? data.wholesaleSummary.pendingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00'}
-            </div>
-            <div className="text-xs text-[#8b949e] mt-1">
-              Collected: ${data?.wholesaleSummary.totalCollected.toFixed(2) ?? '0.00'} of ${data?.wholesaleSummary.totalBooked.toFixed(2) ?? '0.00'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Navigation Tabs */}
-      <div className="flex border-b border-[#30363d] space-x-6 text-sm font-medium">
-        {([
-          { key: 'overview' as const, label: 'Executive Overview' },
-          { key: 'orders' as const, label: `Orders (${filteredOrders.length})` },
-          { key: 'reconciliation' as const, label: 'Payment Reconciliation' },
-          { key: 'expenses' as const, label: `Expenses & Costs (${expenses.length})` },
-          { key: 'reports' as const, label: 'Reports & Export' },
-        ]).map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`pb-3 border-b-2 transition-colors ${
-              activeTab === tab.key
-                ? 'border-[#238636] text-white font-semibold'
-                : 'border-transparent text-[#8b949e] hover:text-[#e6edf3]'
-            }`}
-          >
-            {tab.label}
+            {t}
+            {t === "Orders" && data && <span>{rows.length}</span>}
           </button>
         ))}
+      </nav>
+      <div className={styles.filters}>
+        <div className={styles.periods} aria-label="Date range">
+          {[
+            ["7", "7D"],
+            ["30", "30D"],
+            ["90", "90D"],
+            ["all", "All"],
+            ["custom", "Custom"],
+          ].map(([v, label]) => (
+            <button
+              key={v}
+              aria-pressed={range === v}
+              onClick={() => chooseRange(v)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {range === "custom" && (
+          <>
+            <label>
+              From
+              <input
+                aria-label="From date"
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+            </label>
+            <label>
+              To
+              <input
+                aria-label="To date"
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </label>
+          </>
+        )}
+        <label>
+          Channel
+          <select value={channel} onChange={(e) => setChannel(e.target.value)}>
+            <option value="all">All channels</option>
+            <option value="retail">Retail</option>
+            <option value="wholesale">Wholesale</option>
+          </select>
+        </label>
+        <label>
+          Currency
+          <select
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+          >
+            {[
+              ...new Set([
+                "USD",
+                ...(data?.orders.map((r) => r.currency) ?? []),
+                ...(data?.expenses?.map((e) => e.currency) ?? []),
+              ]),
+            ].map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </label>
+        {(status !== "all" || method !== "all" || query) && (
+          <button
+            className={styles.button}
+            onClick={() => {
+              setStatus("all");
+              setMethod("all");
+              setSearch("");
+            }}
+          >
+            Clear order filters
+          </button>
+        )}
+        <span className={styles.rangeNote}>
+          {from || "All available dates"} → {to}
+        </span>
       </div>
-
-      {/* TAB 1: EXECUTIVE OVERVIEW */}
-      {activeTab === 'overview' && (
-        <div className="space-y-6">
-          {/* Financial Breakdown Formula Bar */}
-          <div className="p-4 rounded-xl bg-[#161b22] border border-[#30363d] flex flex-wrap items-center justify-between gap-4 text-xs font-mono">
-            <div className="flex items-center gap-2">
-              <span className="text-[#8b949e]">Gross Revenue:</span>
-              <span className="font-bold text-white">${data?.revenue.grossRevenue.toFixed(2) ?? '0.00'}</span>
-            </div>
-            <span className="text-[#8b949e] font-bold">-</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[#8b949e]">Refunds:</span>
-              <span className="font-bold text-[#f85149]">${data?.revenue.refunds.toFixed(2) ?? '0.00'}</span>
-            </div>
-            <span className="text-[#8b949e] font-bold">=</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[#8b949e]">Net Revenue:</span>
-              <span className="font-bold text-[#58a6ff]">${data?.revenue.netRevenue.toFixed(2) ?? '0.00'}</span>
-            </div>
-            <span className="text-[#8b949e] font-bold">-</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[#8b949e]">COGS:</span>
-              <span className="font-bold text-[#e3b341]">${data?.costs.cogs.toFixed(2) ?? '0.00'}</span>
-            </div>
-            <span className="text-[#8b949e] font-bold">-</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[#8b949e]">Shipping Cost:</span>
-              <span className="font-bold text-[#e3b341]">${data?.costs.shippingCost.toFixed(2) ?? '0.00'}</span>
-            </div>
-            <span className="text-[#8b949e] font-bold">-</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[#8b949e]">Gateway Fees:</span>
-              <span className="font-bold text-[#e3b341]">${data?.costs.gatewayFees.toFixed(2) ?? '0.00'}</span>
-            </div>
-            <span className="text-[#8b949e] font-bold">-</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[#8b949e]">Expenses:</span>
-              <span className="font-bold text-[#e3b341]">${((data?.costs.otherExpenses ?? 0) + periodExpensesTotal).toFixed(2)}</span>
-            </div>
-            <span className="text-[#8b949e] font-bold">=</span>
-            <div className="flex items-center gap-2">
-              <span className="text-[#8b949e]">Net Profit:</span>
-              <span className="font-bold text-[#3fb950]">${adjustedProfit.netProfit.toFixed(2)}</span>
-            </div>
-          </div>
-
-          {/* Daily Trend Sparkline / Bar Chart */}
-          <div className="p-6 rounded-xl bg-[#161b22] border border-[#30363d]">
-            <h3 className="text-sm font-semibold text-white mb-4 flex items-center justify-between">
-              <span>Daily Revenue Timeline ({PERIOD_LABELS[period]})</span>
-              <span className="text-xs text-[#8b949e] font-normal">
-                {data?.dailySeries.length ?? 0} data points
-              </span>
-            </h3>
-
-            {data && data.dailySeries.length > 0 ? (
-              <div className="h-48 flex items-end gap-1 sm:gap-2 pt-6 overflow-x-auto">
-                {(() => {
-                  const maxRev = Math.max(...data.dailySeries.map(d => d.revenue), 1);
-                  return data.dailySeries.map((point, idx) => {
-                    const heightPct = Math.round((point.revenue / maxRev) * 100);
-                    return (
-                      <div
-                        key={point.date}
-                        className="flex-1 min-w-[20px] max-w-[40px] flex flex-col items-center group relative"
-                      >
-                        {/* Tooltip */}
-                        <div className="absolute bottom-full mb-2 hidden group-hover:flex flex-col items-center z-20 pointer-events-none">
-                          <div className="bg-[#21262d] border border-[#30363d] rounded-md px-2 py-1 text-[11px] text-white whitespace-nowrap shadow-xl">
-                            <div className="font-bold">{point.date}</div>
-                            <div className="text-[#3fb950]">Revenue: ${point.revenue.toFixed(2)}</div>
-                            <div className="text-[#8b949e]">Orders: {point.orders}</div>
-                            {point.refunds > 0 && (
-                              <div className="text-[#f85149]">Refunds: ${point.refunds.toFixed(2)}</div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Bar */}
-                        <div className="w-full flex flex-col justify-end h-36">
-                          <div
-                            style={{ height: `${Math.max(heightPct, 4)}%` }}
-                            className={`w-full rounded-t transition-all ${
-                              point.revenue > 0
-                                ? 'bg-gradient-to-t from-[#238636] to-[#3fb950] group-hover:opacity-80'
-                                : 'bg-[#30363d]/40'
-                            }`}
-                          />
-                        </div>
-                        {/* Label (sampled) */}
-                        <span className="text-[9px] text-[#8b949e] mt-1.5 truncate max-w-full">
-                          {idx % Math.ceil(data.dailySeries.length / 10) === 0 ? point.date.slice(5) : ''}
-                        </span>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            ) : (
-              <div className="h-32 flex items-center justify-center text-sm text-[#8b949e]">
-                No sales recorded in this period
-              </div>
-            )}
-          </div>
-
-          {/* 2-Column: Channels & Top Products */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Channel Breakdown */}
-            <div className="p-6 rounded-xl bg-[#161b22] border border-[#30363d]">
-              <h3 className="text-sm font-semibold text-white mb-4">Sales by Channel</h3>
-              <div className="space-y-4">
-                {/* Retail */}
-                <div className="p-4 rounded-lg bg-[#21262d] border border-[#30363d] flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="p-2 rounded-lg bg-[#1f6feb]/20 text-[#58a6ff]">
-                      <ShoppingBag className="w-5 h-5" />
-                    </span>
-                    <div>
-                      <div className="text-sm font-bold text-white">Retail Web Store</div>
-                      <div className="text-xs text-[#8b949e]">WooCommerce direct checkouts</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-base font-bold text-white">
-                      ${data ? data.revenue.netRevenue.toFixed(2) : '0.00'}
-                    </div>
-                    <div className="text-xs text-[#8b949e]">
-                      {data?.revenue.orderCount ?? 0} orders · AOV: ${data?.revenue.aov.toFixed(2) ?? '0.00'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Wholesale */}
-                <div className="p-4 rounded-lg bg-[#21262d] border border-[#30363d] flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="p-2 rounded-lg bg-[#a371f7]/20 text-[#bc8cff]">
-                      <BuildingOffice className="w-5 h-5" />
-                    </span>
-                    <div>
-                      <div className="text-sm font-bold text-white">Wholesale / B2B</div>
-                      <div className="text-xs text-[#8b949e]">B2B quotes & contracts</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-base font-bold text-[#bc8cff]">
-                      ${data ? data.wholesaleSummary.totalCollected.toFixed(2) : '0.00'} collected
-                    </div>
-                    <div className="text-xs text-[#8b949e]">
-                      ${data?.wholesaleSummary.pendingBalance.toFixed(2) ?? '0.00'} pending · {data?.wholesaleSummary.orderCount ?? 0} orders
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Top Products */}
-            <div className="p-6 rounded-xl bg-[#161b22] border border-[#30363d]">
-              <h3 className="text-sm font-semibold text-white mb-4">Top Performing Products (Paid)</h3>
-              {data && data.topProducts.length > 0 ? (
-                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                  {data.topProducts.slice(0, 6).map((prod, i) => (
-                    <div
-                      key={prod.name + i}
-                      className="flex items-center justify-between p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]/60 text-xs"
-                    >
-                      <div className="flex items-center gap-3 truncate mr-2">
-                        <span className="w-5 h-5 rounded-full bg-[#30363d] text-[#8b949e] flex items-center justify-center font-bold text-[10px]">
-                          {i + 1}
-                        </span>
-                        <div className="truncate">
-                          <div className="font-semibold text-white truncate">{prod.name}</div>
-                          {prod.sku && <div className="text-[10px] text-[#8b949e]">SKU: {prod.sku}</div>}
-                        </div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="font-bold text-[#3fb950]">${prod.revenue.toFixed(2)}</div>
-                        <div className="text-[10px] text-[#8b949e]">{prod.quantity} sold</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="h-32 flex items-center justify-center text-sm text-[#8b949e]">
-                  No product sales in this period
-                </div>
-              )}
-            </div>
-          </div>
+      {error && (
+        <div role="alert" className={styles.alert}>
+          {error} <button onClick={() => void fetchData()}>Retry</button>
         </div>
       )}
-
-      {/* TAB 2: ORDERS TABLE (Google Sheets Simplicity) */}
-      {activeTab === 'orders' && (
-        <div className="space-y-4">
-          {/* Table Filters & Search */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#161b22] p-4 rounded-xl border border-[#30363d]">
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Search */}
-              <div className="relative min-w-[220px]">
-                <MagnifyingGlass className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8b949e]" />
-                <input
-                  type="text"
-                  placeholder="Search order #, customer, SKU..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg pl-9 pr-3 py-1.5 text-xs text-white placeholder-[#8b949e] focus:outline-none focus:border-[#238636]"
+      {from && to && from > to && (
+        <div role="alert" className={styles.alert}>
+          The start date must come before the end date.
+        </div>
+      )}
+      {data?.warnings?.map((w) => (
+        <div className={styles.alert} role="status" key={w}>
+          {w}
+        </div>
+      ))}
+      {data?.windowCapped && (
+        <div className={styles.alert}>
+          Showing the most recent {data.ordersScanned} retail orders. Older
+          records are outside this report; exports use the same window.
+        </div>
+      )}
+      {unappliedLegacy.length > 0 && (
+        <div className={styles.alert}>
+          {unappliedLegacy.length} expenses exist only in this browser. Import
+          them to make them available across devices.{" "}
+          <button
+            disabled={importing || !data}
+            onClick={() => void importLegacy()}
+          >
+            {importing ? "Importing…" : "Import browser expenses"}
+          </button>
+        </div>
+      )}
+      <p role="status" aria-live="polite" className={styles.feedback}>
+        {notice}
+      </p>
+      {!data && loading ? (
+        <div className={styles.skeleton} role="status">
+          Loading financial records…
+          <div />
+          <div />
+          <div />
+        </div>
+      ) : !data ? (
+        <Empty>Sales records are unavailable. Retry to reconnect.</Empty>
+      ) : (
+        <>
+          {tab === "Overview" && (
+            <>
+              <div className={styles.metrics}>
+                <Metric
+                  label="Net sales · retail"
+                  value={money(revenue.netRevenue, currency)}
+                  note="Paid orders less refunds"
+                />
+                <Metric
+                  label="Net profit · retail"
+                  value={
+                    profitIncomplete
+                      ? "Incomplete"
+                      : money(profit.netProfit, currency)
+                  }
+                  note="Indicative · recorded costs & period expenses"
+                />
+                <Metric
+                  label="Cash collected"
+                  value={
+                    wholesaleUnavailable
+                      ? "Incomplete"
+                      : money(
+                          rows.reduce(
+                            (a, r) => a + (r.collectedAmount ?? 0),
+                            0,
+                          ),
+                          currency,
+                        )
+                  }
+                  note="Retail & wholesale · before fees"
+                />
+                <Metric
+                  label="Paid retail orders"
+                  value={String(revenue.orderCount)}
+                  note={`${ws.length} wholesale contracts in this view`}
                 />
               </div>
-
-              {/* Channel */}
-              <select
-                value={channelFilter}
-                onChange={e => setChannelFilter(e.target.value as SalesChannel)}
-                className="bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#238636]"
-              >
-                <option value="all">All Channels</option>
-                <option value="retail">Retail Only</option>
-                <option value="wholesale">Wholesale Only</option>
-              </select>
-
-              {/* Payment Status */}
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
-                className="bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#238636]"
-              >
-                <option value="all">All Payment Statuses</option>
-                <option value="paid">Paid Only</option>
-                <option value="pending">Pending / Partial</option>
-                <option value="refunded">Refunded</option>
-              </select>
-            </div>
-
-            {/* Export Button */}
-            <button
-              onClick={() => handleExportCSV('orders')}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#21262d] border border-[#30363d] hover:bg-[#30363d] text-xs font-medium text-white transition-colors"
-            >
-              <DownloadSimple className="w-4 h-4" />
-              <span>Export CSV</span>
-            </button>
-          </div>
-
-          {/* Orders Table */}
-          <div className="rounded-xl border border-[#30363d] bg-[#161b22] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-xs whitespace-nowrap">
-                <thead className="bg-[#21262d] text-[#8b949e] border-b border-[#30363d] font-semibold uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3 px-4">Order #</th>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Channel</th>
-                    <th className="py-3 px-4">Customer</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4">Payment</th>
-                    <th className="py-3 px-4 text-right">Order Total</th>
-                    <th className="py-3 px-4 text-right">Net Sales</th>
-                    <th className="py-3 px-4 text-right">Net Profit</th>
-                    <th className="py-3 px-4 text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#30363d]">
-                  {filteredOrders.length > 0 ? (
-                    filteredOrders.map(order => {
-                      const isExpanded = expandedOrder === order.id;
-                      const isPaid = order.paymentStatus === 'paid';
-                      const isRefunded = order.paymentStatus === 'refunded';
-
-                      return (
-                        <React.Fragment key={order.id}>
-                          <tr className="hover:bg-[#21262d]/50 transition-colors">
-                            <td className="py-3 px-4 font-mono font-bold text-white">
-                              {order.orderNumber}
-                            </td>
-                            <td className="py-3 px-4 text-[#8b949e]">
-                              {order.date ? order.date.slice(0, 10) : '—'}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                                  order.channel === 'wholesale'
-                                    ? 'bg-[#a371f7]/20 text-[#bc8cff]'
-                                    : 'bg-[#1f6feb]/20 text-[#58a6ff]'
-                                }`}
-                              >
-                                {order.channel}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="font-medium text-white">{order.customerName}</div>
-                              {order.customerEmail && (
-                                <div className="text-[10px] text-[#8b949e]">{order.customerEmail}</div>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className="text-[11px] text-[#c9d1d9] capitalize">{order.status}</span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <span
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
-                                  isPaid
-                                    ? 'bg-[#238636]/20 text-[#3fb950]'
-                                    : isRefunded
-                                    ? 'bg-[#da3633]/20 text-[#f85149]'
-                                    : 'bg-[#d29922]/20 text-[#e3b341]'
-                                }`}
-                              >
-                                {isPaid ? (
-                                  <CheckCircle className="w-3 h-3" />
-                                ) : isRefunded ? (
-                                  <Warning className="w-3 h-3" />
-                                ) : (
-                                  <Clock className="w-3 h-3" />
-                                )}
-                                {order.paymentStatus}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-right font-bold text-white">
-                              ${order.total.toFixed(2)}
-                            </td>
-                            <td className="py-3 px-4 text-right font-medium text-[#c9d1d9]">
-                              ${order.netTotal.toFixed(2)}
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              {order.channel === 'wholesale' ? (
-                                <div>
-                                  <span className="font-bold text-[#bc8cff]">${order.netProfit?.toFixed(2) ?? '0.00'}</span>
-                                  <div className="text-[10px] text-[#8b949e]">Cash Recv</div>
-                                </div>
-                              ) : order.cogsStatus === 'missing' ? (
-                                <span className="px-2 py-0.5 rounded text-[10px] bg-[#d29922]/20 text-[#e3b341] font-semibold">
-                                  Needs Cost
-                                </span>
-                              ) : order.netProfit !== null ? (
-                                <div>
-                                  <span className="font-bold text-[#3fb950]">${order.netProfit.toFixed(2)}</span>
-                                  <div className="text-[10px] text-[#8b949e]">{order.profitMarginPct?.toFixed(1)}%</div>
-                                </div>
-                              ) : (
-                                <span className="text-[#8b949e]">—</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              <button
-                                onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
-                                className="text-xs text-[#58a6ff] hover:underline inline-flex items-center gap-1 font-medium"
-                              >
-                                {isExpanded ? <CaretUp className="w-3.5 h-3.5" /> : <CaretDown className="w-3.5 h-3.5" />}
-                                <span>{isExpanded ? 'Hide' : 'Details'}</span>
-                              </button>
-                            </td>
-                          </tr>
-
-                          {/* Expanded Items & Financial Breakdown Row */}
-                          {isExpanded && (
-                            <tr className="bg-[#1c2128]/90 border-b border-[#30363d]">
-                              <td colSpan={10} className="p-5">
-                                <div className="space-y-4">
-                                  {order.channel === 'retail' ? (
-                                    <>
-                                      {/* Retail Comprehensive Financial Audit Bar */}
-                                      <div className="p-4 rounded-xl bg-[#161b22] border border-[#30363d] space-y-3">
-                                        <div className="flex items-center justify-between text-xs border-b border-[#30363d] pb-2">
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-bold text-white">Order #{order.orderNumber} Financial Audit & Reconciliation</span>
-                                            {order.isSnapshotted && (
-                                              <span className="text-[10px] px-2 py-0.5 rounded bg-[#238636]/20 text-[#3fb950] border border-[#238636]/30 font-semibold uppercase">
-                                                Snapshotted
-                                              </span>
-                                            )}
-                                          </div>
-                                          <div className="text-[#8b949e]">
-                                            Payment: <span className="text-white font-mono">{order.paymentMethod || 'Stripe'}</span>
-                                          </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-xs">
-                                          <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
-                                            <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Order Total</div>
-                                            <div className="font-bold text-white text-sm mt-0.5">${order.total.toFixed(2)}</div>
-                                            <div className="text-[10px] text-[#8b949e] mt-0.5">Refund: ${order.refundedAmount.toFixed(2)}</div>
-                                          </div>
-
-                                          <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
-                                            <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Net Sales</div>
-                                            <div className="font-bold text-[#58a6ff] text-sm mt-0.5">${order.netTotal.toFixed(2)}</div>
-                                            <div className="text-[10px] text-[#8b949e] mt-0.5">Charged Shipping: ${order.shipping.toFixed(2)}</div>
-                                          </div>
-
-                                          <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-[10px] text-[#8b949e] uppercase font-semibold">Product COGS</span>
-                                              <SourceBadge source={order.cogsSource} />
-                                            </div>
-                                            <div className="font-bold text-[#e3b341] text-sm mt-0.5">
-                                              {order.cogs !== null ? `$${order.cogs.toFixed(2)}` : 'Needs Cost'}
-                                            </div>
-                                            <div className="text-[10px] text-[#8b949e] mt-0.5">{order.itemCount} items purchased</div>
-                                          </div>
-
-                                          <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-[10px] text-[#8b949e] uppercase font-semibold">Shipping Cost</span>
-                                              <SourceBadge source={order.shippingCostSource} />
-                                            </div>
-                                            <div className="font-bold text-[#e3b341] text-sm mt-0.5">${order.actualShippingCost.toFixed(2)}</div>
-                                            <div className="text-[10px] text-[#8b949e] mt-0.5">Carrier fulfilment cost</div>
-                                          </div>
-
-                                          <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-[10px] text-[#8b949e] uppercase font-semibold">Payment Fee</span>
-                                              <SourceBadge source={order.paymentFeeSource} />
-                                            </div>
-                                            <div className="font-bold text-[#e3b341] text-sm mt-0.5">${order.paymentFee.toFixed(2)}</div>
-                                            <div className="text-[10px] text-[#8b949e] mt-0.5">Processor fee</div>
-                                          </div>
-                                        </div>
-
-                                        {/* Reconciliation Summary Footer */}
-                                        <div className="p-3 rounded-lg bg-[#21262d] border border-[#30363d] flex flex-wrap items-center justify-between gap-3 text-xs">
-                                          <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-[#8b949e]">Other Direct Expense:</span>
-                                            <span className="font-bold text-white">${order.otherExpense.toFixed(2)}</span>
-                                            <SourceBadge source={order.otherExpenseSource} />
-                                            <span className="text-[#30363d]">|</span>
-                                            <span className="text-[#8b949e]">Total Order Costs:</span>
-                                            <span className="font-bold text-[#e3b341]">
-                                              {order.totalCosts !== null ? `$${order.totalCosts.toFixed(2)}` : 'Incomplete'}
-                                            </span>
-                                          </div>
-
-                                          <div className="flex items-center gap-3">
-                                            <div className="flex items-center gap-1.5">
-                                              <span className="text-[#8b949e]">Net Profit:</span>
-                                              <span className="text-base font-extrabold text-[#3fb950]">
-                                                {order.netProfit !== null ? `$${order.netProfit.toFixed(2)}` : 'Incomplete'}
-                                              </span>
-                                            </div>
-                                            {order.profitMarginPct !== null && (
-                                              <span className="px-2 py-0.5 rounded bg-[#238636]/20 text-[#3fb950] font-bold text-xs">
-                                                {order.profitMarginPct.toFixed(2)}% Margin
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      {/* Line Items Details with unit costs and badges */}
-                                      <div>
-                                        <div className="text-xs font-semibold text-[#8b949e] mb-2 uppercase tracking-wider">
-                                          Line Items & Sourced Costs ({order.items.length})
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                          {order.items.map((it, idx) => (
-                                            <div
-                                              key={idx}
-                                              className="p-3.5 rounded-lg bg-[#161b22] border border-[#30363d] flex justify-between items-start"
-                                            >
-                                              <div>
-                                                <div className="font-semibold text-white">{it.productName}</div>
-                                                <div className="text-[11px] font-mono text-[#8b949e] mt-0.5">SKU: {it.sku || 'N/A'}</div>
-                                                <div className="text-[11px] text-[#8b949e] mt-0.5">
-                                                  Qty: <span className="font-bold text-white">{it.quantity}</span> · Selling Price: <span className="text-white">${it.unitPrice.toFixed(2)} ea</span>
-                                                </div>
-                                                {it.unitCost !== null && (
-                                                  <div className="text-[11px] text-[#e3b341] mt-1 flex items-center gap-1.5">
-                                                    <span>Cost: ${it.unitCost.toFixed(2)} ea</span>
-                                                    <SourceBadge source={it.cogsSource} />
-                                                  </div>
-                                                )}
-                                              </div>
-                                              <div className="text-right flex-shrink-0">
-                                                <div className="font-bold text-white text-sm">${it.lineTotal.toFixed(2)}</div>
-                                                {it.lineCogs !== null ? (
-                                                  <div className="text-[11px] text-[#e3b341] font-semibold mt-0.5">COGS: ${it.lineCogs.toFixed(2)}</div>
-                                                ) : (
-                                                  <div className="text-[10px] text-[#e3b341] mt-0.5">Needs Cost</div>
-                                                )}
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    </>
-                                  ) : (
-                                    /* Wholesale B2B Contract Audit */
-                                    <div className="p-4 rounded-xl bg-[#161b22] border border-[#30363d] space-y-3">
-                                      <div className="flex items-center justify-between text-xs border-b border-[#30363d] pb-2">
-                                        <span className="font-bold text-white">Wholesale Contract Reference: {order.orderNumber}</span>
-                                        <span className="text-[10px] px-2 py-0.5 rounded bg-[#a371f7]/20 text-[#bc8cff] font-semibold uppercase">
-                                          B2B Order
-                                        </span>
-                                      </div>
-                                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                                        <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
-                                          <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Booked Contract Value</div>
-                                          <div className="font-bold text-white text-base mt-0.5">${order.total.toFixed(2)}</div>
-                                        </div>
-                                        <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
-                                          <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Cash Collected</div>
-                                          <div className="font-bold text-[#3fb950] text-base mt-0.5">${(order.netProfit ?? 0).toFixed(2)}</div>
-                                          <div className="text-[10px] text-[#8b949e] mt-0.5">Deposit / paid installments</div>
-                                        </div>
-                                        <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
-                                          <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Balance Due</div>
-                                          <div className="font-bold text-[#bc8cff] text-base mt-0.5">${Math.max(0, order.total - (order.netProfit ?? 0)).toFixed(2)}</div>
-                                          <div className="text-[10px] text-[#8b949e] mt-0.5">Pending collection</div>
-                                        </div>
-                                        <div className="p-2.5 rounded-lg bg-[#21262d]/60 border border-[#30363d]">
-                                          <div className="text-[10px] text-[#8b949e] uppercase font-semibold">Payment Terms</div>
-                                          <div className="font-mono text-white mt-0.5">{order.paymentMethod}</div>
-                                          <div className="text-[10px] text-[#3fb950] capitalize mt-0.5">{order.paymentStatus}</div>
-                                        </div>
-                                      </div>
-                                      <div className="p-3 rounded-lg bg-[#21262d] border border-[#30363d] text-xs text-[#8b949e]">
-                                        Wholesale bulk pallet inventory allocation managed via B2B quote specifications.
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={11} className="py-12 text-center text-sm text-[#8b949e]">
-                        No orders match the current filter criteria
-                      </td>
-                    </tr>
+              <div className={styles.secondary}>
+                {[
+                  ["Refunds", revenue.refunds],
+                  ["COGS", costs.cogs],
+                  ["Shipping cost", costs.shippingCost],
+                  ["Fees", costs.gatewayFees],
+                  ["Other expenses", costs.otherExpenses],
+                  ["AOV", revenue.aov],
+                ].map(([label, value]) => (
+                  <div key={String(label)}>
+                    <span>{label}</span>
+                    <strong>{money(Number(value), currency)}</strong>
+                  </div>
+                ))}
+                <div>
+                  <span>Net margin</span>
+                  <strong>
+                    {profitIncomplete
+                      ? "Incomplete"
+                      : profit.netMarginPct.toFixed(1) + "%"}
+                  </strong>
+                </div>
+              </div>
+              <div className={styles.wholesale}>
+                <strong>Wholesale</strong>
+                <span>
+                  Booked <b>{money(booked, currency)}</b>
+                </span>
+                <span>
+                  Collected <b>{money(collected, currency)}</b>
+                </span>
+                <span>
+                  Balance due <b>{money(balance, currency)}</b>
+                </span>
+                <small>
+                  Contracts and cash are separate from retail profit.
+                </small>
+              </div>
+              <SalesTrend
+                rows={rows}
+                expenses={activeExpenses}
+                currency={currency}
+              />
+              <section className={styles.panel}>
+                <div className={styles.panelHeading}>
+                  <h2>Needs attention</h2>
+                  <span>Based on recorded data</span>
+                </div>
+                <div className={styles.attention}>
+                  {missing.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setTab("Orders");
+                        setNotice(
+                          "Orders with a dash in COGS need a recorded cost.",
+                        );
+                      }}
+                    >
+                      <span>{missing.length} orders without COGS</span>
+                      <ArrowUpRight size={16} />
+                    </button>
                   )}
-                </tbody>
-              </table>
+                  {negative.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setSelected(keyOf(negative[0]));
+                      }}
+                    >
+                      <span>{negative.length} orders with negative margin</span>
+                      <ArrowUpRight size={16} />
+                    </button>
+                  )}
+                  {payments.some((p) => p.status !== "matched") && (
+                    <button onClick={() => setTab("Payments")}>
+                      <span>Review payment differences</span>
+                      <ArrowUpRight size={16} />
+                    </button>
+                  )}
+                  {rows.some((r) => r.paymentFeeSource === "estimated") && (
+                    <p>
+                      Some payment fees are estimated. Record actual settlement
+                      fees to refine profit.
+                    </p>
+                  )}
+                  {rows.some((r) => r.cogsSource === "auto") && (
+                    <p>
+                      Catalogue costs reflect current prices. Record order COGS
+                      to freeze historical cost.
+                    </p>
+                  )}
+                  {!missing.length &&
+                    !negative.length &&
+                    !payments.some((p) => p.status !== "matched") && (
+                      <p>
+                        No missing COGS or payment differences in this view.
+                        Review unrecorded shipping and fee estimates before
+                        closing the period.
+                      </p>
+                    )}
+                </div>
+              </section>
+            </>
+          )}
+          {(tab === "Orders" || tab === "Payments" || tab === "Reports") && (
+            <div className={styles.toolbar}>
+              <label className={styles.search}>
+                Search
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Order, customer, product, SKU, supplier…"
+                />
+              </label>
+              <label>
+                Payment
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  {[...new Set(data.orders.map((r) => r.paymentStatus))].map(
+                    (s) => (
+                      <option key={s} value={s}>
+                        {s.replaceAll("_", " ")}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+              <label>
+                Method
+                <select
+                  value={method}
+                  onChange={(e) => setMethod(e.target.value)}
+                >
+                  <option value="all">All methods</option>
+                  {[
+                    ...new Set(
+                      data.orders.map((r) => r.paymentMethod).filter(Boolean),
+                    ),
+                  ].map((s) => (
+                    <option key={s} value={s!}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {tab === "Orders" && (
+                <button
+                  className={styles.button}
+                  aria-expanded={chooser}
+                  onClick={() => setChooser(!chooser)}
+                >
+                  <SlidersHorizontal size={15} />
+                  Columns
+                </button>
+              )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: PAYMENT RECONCILIATION */}
-      {activeTab === 'reconciliation' && (
-        <div className="space-y-6">
-          <div className="p-4 rounded-xl bg-[#161b22] border border-[#30363d] flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Payment Status & Gateway Fees</h3>
-              <p className="text-xs text-[#8b949e]">
-                Every transaction matched against expected totals. Unmatched or refunded transactions are flagged.
-              </p>
-            </div>
-            <div className="text-right">
-              <span className="text-xs text-[#8b949e]">Est. Total Gateway Fees: </span>
-              <span className="text-sm font-bold text-[#e3b341]">
-                ${data?.costs.gatewayFees.toFixed(2) ?? '0.00'}
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-[#30363d] bg-[#161b22] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] text-left text-xs whitespace-nowrap">
-                <thead className="bg-[#21262d] text-[#8b949e] border-b border-[#30363d] font-semibold uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3 px-4">Order #</th>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Payment Method</th>
-                    <th className="py-3 px-4">Transaction ID</th>
-                    <th className="py-3 px-4 text-right">Expected</th>
-                    <th className="py-3 px-4 text-right">Received</th>
-                    <th className="py-3 px-4 text-right">Gateway Fee</th>
-                    <th className="py-3 px-4 text-right">Net Received</th>
-                    <th className="py-3 px-4 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#30363d]">
-                  {data && data.payments.length > 0 ? (
-                    data.payments.map((p, idx) => (
-                      <tr key={p.orderId || idx} className="hover:bg-[#21262d]/50">
-                        <td className="py-3 px-4 font-mono font-bold text-white">{p.orderNumber}</td>
-                        <td className="py-3 px-4 text-[#8b949e]">{p.date ? p.date.slice(0, 10) : '—'}</td>
-                        <td className="py-3 px-4 text-[#c9d1d9]">{p.paymentMethod}</td>
-                        <td className="py-3 px-4 font-mono text-[11px] text-[#8b949e]">
-                          {p.transactionId || '—'}
+          )}
+          {tab === "Orders" && (
+            <>
+              {chooser && (
+                <fieldset className={styles.columnChoices}>
+                  <legend>Additional columns · saved on this device</legend>
+                  {Object.entries(OPTIONAL).map(([key, label]) => (
+                    <label key={key}>
+                      <input
+                        type="checkbox"
+                        checked={columns.includes(key)}
+                        onChange={() => {
+                          const next = columns.includes(key)
+                            ? columns.filter((c) => c !== key)
+                            : [...columns, key];
+                          setColumns(next);
+                          try {
+                            localStorage.setItem(
+                              "hk_sales_columns_v1",
+                              JSON.stringify(next),
+                            );
+                          } catch {
+                            /* Preferences are optional. */
+                          }
+                        }}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+              <div className={styles.tableNote}>
+                <span>{rows.length} orders · Click a cost to edit</span>
+                <span>Enter saves down · Tab saves across · Esc cancels</span>
+              </div>
+              <TableFrame label="Orders spreadsheet; scroll horizontally for costs and status">
+                <table className={styles.orders}>
+                  <caption className={styles.srOnly}>
+                    Order financials. Editable costs are buttons. Sale means
+                    booked value for wholesale; profit is projected for unpaid
+                    orders.
+                  </caption>
+                  <thead>
+                    <tr>
+                      {[
+                        "Date",
+                        "Order",
+                        "Channel",
+                        "Customer",
+                        "Items",
+                        "Sale / booked",
+                        "Paid",
+                        "COGS",
+                        "Ship",
+                        "Fee",
+                        "Other",
+                        "Profit",
+                        "Margin",
+                        "Payment",
+                        "Status",
+                        ...columns.map(
+                          (c) => OPTIONAL[c as keyof typeof OPTIONAL],
+                        ),
+                      ].map((label) => (
+                        <th scope="col" key={label}>
+                          {label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRows.map((r) => (
+                      <tr key={keyOf(r)}>
+                        <td>{day(r.date)}</td>
+                        <td className={styles.sticky}>
+                          <button
+                            className={styles.orderLink}
+                            onClick={() => setSelected(keyOf(r))}
+                          >
+                            #{r.orderNumber}
+                          </button>
                         </td>
-                        <td className="py-3 px-4 text-right text-white">${p.expectedAmount.toFixed(2)}</td>
-                        <td className="py-3 px-4 text-right font-medium text-[#3fb950]">
-                          ${p.receivedAmount.toFixed(2)}
+                        <td>
+                          <Badge>{r.channel}</Badge>
                         </td>
-                        <td className="py-3 px-4 text-right text-[#e3b341]">-${p.gatewayFee.toFixed(2)}</td>
-                        <td className="py-3 px-4 text-right font-bold text-white">
-                          ${p.netReceived.toFixed(2)}
-                        </td>
-                        <td className="py-3 px-4 text-center">
+                        <td>
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                              p.status === 'matched'
-                                ? 'bg-[#238636]/20 text-[#3fb950]'
-                                : p.status === 'partial'
-                                ? 'bg-[#d29922]/20 text-[#e3b341]'
-                                : 'bg-[#da3633]/20 text-[#f85149]'
-                            }`}
+                            className={styles.truncate}
+                            title={r.customerEmail}
+                          >
+                            {r.customerName}
+                          </span>
+                        </td>
+                        <td
+                          title={r.items.map((i) => i.productName).join(", ")}
+                        >
+                          {r.items.length
+                            ? r.items.reduce((a, i) => a + i.quantity, 0)
+                            : "Contract"}
+                        </td>
+                        <td>{money(r.total, currency)}</td>
+                        <td>{money(r.collectedAmount, currency)}</td>
+                        <td>{editCell(r, "cogs")}</td>
+                        <td>{editCell(r, "actualShippingCost")}</td>
+                        <td>{editCell(r, "paymentFee")}</td>
+                        <td>{editCell(r, "otherExpense")}</td>
+                        <td
+                          className={
+                            r.netProfit != null && r.netProfit < 0
+                              ? styles.negative
+                              : styles.profit
+                          }
+                        >
+                          {money(r.netProfit, currency)}
+                          {r.paymentStatus !== "paid" &&
+                            r.netProfit != null && <small>Projected</small>}
+                        </td>
+                        <td>
+                          {r.profitMarginPct == null
+                            ? "—"
+                            : r.profitMarginPct.toFixed(1) + "%"}
+                        </td>
+                        <td>
+                          <Badge
+                            tone={
+                              r.paymentStatus === "paid"
+                                ? "positive"
+                                : "neutral"
+                            }
+                          >
+                            {r.paymentStatus.replaceAll("_", " ")}
+                          </Badge>
+                        </td>
+                        <td>{r.status.replaceAll("_", " ")}</td>
+                        {columns.map((c) => (
+                          <td key={c}>
+                            {[
+                              "supplier",
+                              "supplierReference",
+                              "notes",
+                            ].includes(c)
+                              ? editCell(r, c as CostField)
+                              : ["subtotal", "refundedAmount", "tax"].includes(
+                                    c,
+                                  )
+                                ? money(
+                                    Number(r[c as keyof SalesOrderRow]),
+                                    currency,
+                                  )
+                                : String(r[c as keyof SalesOrderRow] ?? "—")}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!rows.length && <Empty>No orders match these filters.</Empty>}
+              </TableFrame>
+              <div className={styles.pagination}>
+                <span>
+                  Profit = net sale − COGS − shipping − fees − other − dealer
+                  share (wholesale).
+                </span>
+                <button
+                  className={styles.button}
+                  disabled={page <= 1}
+                  onClick={() => setPage(page - 1)}
+                >
+                  Previous
+                </button>
+                <span>
+                  {page} / {Math.max(1, Math.ceil(rows.length / 50))}
+                </span>
+                <button
+                  className={styles.button}
+                  disabled={page * 50 >= rows.length}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            </>
+          )}
+          {tab === "Payments" && (
+            <section className={styles.panel}>
+              <div className={styles.panelHeading}>
+                <h2>Payment reconciliation</h2>
+                <span>WooCommerce records · fees may be estimated</span>
+              </div>
+              <p className={styles.explanation}>
+                “Matched” compares recorded payment and order amounts. It does
+                not confirm a bank settlement. Wholesale collections are shown
+                separately.
+              </p>
+              <TableFrame label="Payment reconciliation">
+                <table>
+                  <thead>
+                    <tr>
+                      {[
+                        "Order",
+                        "Date",
+                        "Method",
+                        "Transaction",
+                        "Expected",
+                        "Received",
+                        "Refund",
+                        "Fee",
+                        "Net received",
+                        "Status",
+                      ].map((h) => (
+                        <th scope="col" key={h}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((p) => (
+                      <tr key={p.orderId}>
+                        <td>
+                          <button
+                            className={styles.orderLink}
+                            onClick={() => setSelected("retail-" + p.orderId)}
+                          >
+                            #{p.orderNumber}
+                          </button>
+                        </td>
+                        <td>{day(p.date)}</td>
+                        <td>{p.paymentMethod}</td>
+                        <td>{p.transactionId || "Not recorded"}</td>
+                        <td>{money(p.expectedAmount, currency)}</td>
+                        <td>{money(p.receivedAmount, currency)}</td>
+                        <td>
+                          {money(
+                            rows.find(
+                              (r) =>
+                                r.id === p.orderId && r.channel === "retail",
+                            )?.refundedAmount,
+                            currency,
+                          )}
+                        </td>
+                        <td>{money(p.gatewayFee, currency)}</td>
+                        <td>{money(p.netReceived, currency)}</td>
+                        <td>
+                          <Badge
+                            tone={
+                              p.status === "matched"
+                                ? "positive"
+                                : "attentionTone"
+                            }
                           >
                             {p.status}
-                          </span>
+                          </Badge>
                         </td>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={9} className="py-12 text-center text-sm text-[#8b949e]">
-                        No payment records found
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 4: EXPENSES & COSTS */}
-      {activeTab === 'expenses' && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-[#161b22] border border-[#30363d]">
-            <div>
-              <h3 className="text-sm font-semibold text-white">Business Expenses & COGS Tracking</h3>
-              <p className="text-xs text-[#8b949e]">
-                Record manual freight, packaging, supplier payments, and overhead to deduct from gross revenue.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowAddExpense(!showAddExpense)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#238636] hover:bg-[#2ea043] text-xs font-semibold text-white transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>{showAddExpense ? 'Cancel' : 'Add Expense'}</span>
-            </button>
-          </div>
-
-          {/* Add Expense Form */}
-          {showAddExpense && (
-            <form onSubmit={handleAddExpense} className="p-5 rounded-xl bg-[#21262d] border border-[#30363d] space-y-4">
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">Record New Expense</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-xs text-[#8b949e] mb-1 font-medium">Category</label>
-                  <select
-                    value={newExpCategory}
-                    onChange={e => setNewExpCategory(e.target.value as ExpenseCategory)}
-                    className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#238636]"
-                  >
-                    {Object.entries(EXPENSE_CATEGORY_LABELS).map(([k, v]) => (
-                      <option key={k} value={k}>{v}</option>
                     ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-[#8b949e] mb-1 font-medium">Description</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Ocean freight for Batch #12"
-                    value={newExpDesc}
-                    onChange={e => setNewExpDesc(e.target.value)}
-                    required
-                    className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-1.5 text-xs text-white placeholder-[#8b949e] focus:outline-none focus:border-[#238636]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-[#8b949e] mb-1 font-medium">Amount (USD)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={newExpAmount}
-                    onChange={e => setNewExpAmount(e.target.value)}
-                    required
-                    className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-1.5 text-xs text-white placeholder-[#8b949e] focus:outline-none focus:border-[#238636]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-[#8b949e] mb-1 font-medium">Date</label>
-                  <input
-                    type="date"
-                    value={newExpDate}
-                    onChange={e => setNewExpDate(e.target.value)}
-                    required
-                    className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#238636]"
-                  />
-                </div>
+                  </tbody>
+                </table>
+                {!payments.length && (
+                  <Empty>
+                    No recorded retail payments match these filters.
+                  </Empty>
+                )}
+              </TableFrame>
+              <div className={styles.wholesale}>
+                <strong>Wholesale collections</strong>
+                <span>Booked {money(booked, currency)}</span>
+                <span>Collected {money(collected, currency)}</span>
+                <span>Balance {money(balance, currency)}</span>
               </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddExpense(false)}
-                  className="px-3 py-1.5 rounded-lg bg-[#30363d] text-xs font-medium text-white hover:bg-[#3d444d]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-[#238636] hover:bg-[#2ea043] text-xs font-semibold text-white"
-                >
-                  Save Expense
-                </button>
-              </div>
-            </form>
+            </section>
           )}
-
-          {/* Expenses Table */}
-          <div className="rounded-xl border border-[#30363d] bg-[#161b22] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#21262d] text-[#8b949e] border-b border-[#30363d] font-semibold uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Category</th>
-                    <th className="py-3 px-4">Description</th>
-                    <th className="py-3 px-4 text-right">Amount</th>
-                    <th className="py-3 px-4 text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#30363d]">
-                  {expenses.length > 0 ? (
-                    expenses.map(exp => (
-                      <tr key={exp.id} className="hover:bg-[#21262d]/50">
-                        <td className="py-3 px-4 text-[#8b949e]">{exp.date}</td>
-                        <td className="py-3 px-4">
-                          <span className="px-2 py-0.5 rounded bg-[#30363d] text-[#c9d1d9] font-medium text-[11px]">
-                            {EXPENSE_CATEGORY_LABELS[exp.category] || exp.category}
-                          </span>
+          {tab === "Expenses" && (
+            <section className={styles.panel}>
+              <div className={styles.panelHeading}>
+                <div>
+                  <h2>Expense ledger</h2>
+                  <p>
+                    Saved in WordPress · {currency} · {activeExpenses.length}{" "}
+                    active entries
+                  </p>
+                </div>
+                <button
+                  className={styles.primary}
+                  disabled={
+                    !!draft ||
+                    data.warnings?.some((w) => w.includes("expense ledger"))
+                  }
+                  onClick={addExpense}
+                >
+                  <Plus size={15} />
+                  Add row
+                </button>
+              </div>
+              <p className={styles.explanation}>
+                Record general business costs here. Costs already recorded on an
+                order should not be entered again. Channel and payment filters
+                do not apply to general expenses.
+              </p>
+              <TableFrame label="Editable expense ledger">
+                <table>
+                  <thead>
+                    <tr>
+                      {[
+                        "Date",
+                        "Category",
+                        "Description",
+                        "Amount",
+                        "Payment method",
+                        "Reference",
+                        "Notes",
+                        "Action",
+                      ].map((h) => (
+                        <th key={h} scope="col">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {draft && (
+                      <tr className={styles.draft}>
+                        <td>
+                          <input
+                            aria-label="New expense date"
+                            type="date"
+                            value={draft.date}
+                            onChange={(e) =>
+                              setDraft({ ...draft, date: e.target.value })
+                            }
+                          />
                         </td>
-                        <td className="py-3 px-4 font-medium text-white">{exp.description}</td>
-                        <td className="py-3 px-4 text-right font-bold text-[#e3b341]">
-                          ${exp.amount.toFixed(2)}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <button
-                            onClick={() => handleDeleteExpense(exp.id)}
-                            className="text-[#f85149] hover:text-[#ff7b72] p-1"
-                            title="Delete Expense"
+                        <td>
+                          <select
+                            aria-label="New expense category"
+                            value={draft.category}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                category: e.target
+                                  .value as ManualExpense["category"],
+                              })
+                            }
                           >
-                            <Trash className="w-4 h-4" />
+                            {Object.entries(EXPENSE_CATEGORY_LABELS).map(
+                              ([k, v]) => (
+                                <option key={k} value={k}>
+                                  {v}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </td>
+                        <td>
+                          <input
+                            autoFocus
+                            aria-label="New expense description"
+                            value={draft.description}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                description: e.target.value,
+                              })
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            aria-label="New expense amount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={draft.amount}
+                            onChange={(e) =>
+                              setDraft({
+                                ...draft,
+                                amount: Number(e.target.value),
+                              })
+                            }
+                          />
+                        </td>
+                        {(["paymentMethod", "reference", "notes"] as const).map(
+                          (f) => (
+                            <td key={f}>
+                              <input
+                                aria-label={`New expense ${f}`}
+                                value={draft[f]}
+                                onChange={(e) =>
+                                  setDraft({ ...draft, [f]: e.target.value })
+                                }
+                              />
+                            </td>
+                          ),
+                        )}
+                        <td>
+                          <button
+                            className={styles.primary}
+                            disabled={expenseBusy}
+                            onClick={() => void saveDraft()}
+                          >
+                            {expenseBusy ? "Saving…" : "Save row"}
+                          </button>
+                          <button
+                            className={styles.button}
+                            disabled={expenseBusy}
+                            onClick={() => setDraft(null)}
+                          >
+                            Cancel
                           </button>
                         </td>
                       </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-sm text-[#8b949e]">
-                        No manual expenses recorded yet. Click &quot;Add Expense&quot; to track freight, packaging, or marketing costs.
-                      </td>
-                    </tr>
+                    )}
+                    {expenses
+                      .filter((e) => showArchived || !e.archived)
+                      .sort((a, b) => b.date.localeCompare(a.date))
+                      .map((e) => (
+                        <tr
+                          key={e.id}
+                          className={e.archived ? styles.archived : ""}
+                        >
+                          {(
+                            [
+                              "date",
+                              "category",
+                              "description",
+                              "amount",
+                              "paymentMethod",
+                              "reference",
+                              "notes",
+                            ] as const
+                          ).map((f) => (
+                            <td key={f}>
+                              <InlineCell
+                                id={`expense-${e.id}-${f}`}
+                                label={`${f} for expense ${e.description}`}
+                                value={e[f]}
+                                numeric={f === "amount"}
+                                type={f === "date" ? "date" : "text"}
+                                options={
+                                  f === "category"
+                                    ? EXPENSE_CATEGORY_LABELS
+                                    : undefined
+                                }
+                                disabled={e.archived}
+                                onSave={(value) => editExpense(e.id, f, value)}
+                              />
+                            </td>
+                          ))}
+                          <td>
+                            <button
+                              className={styles.button}
+                              onClick={() =>
+                                void saveExpense({
+                                  ...e,
+                                  archived: !e.archived,
+                                }).catch((err) => setExpenseError(err.message))
+                              }
+                            >
+                              {e.archived ? "Restore" : "Archive"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                {!expenses.length && !draft && (
+                  <Empty>
+                    No expenses in this range. Add a row to record your first
+                    business cost.
+                  </Empty>
+                )}
+              </TableFrame>
+              {expenseError && (
+                <p className={styles.alert} role="alert">
+                  {expenseError}
+                </p>
+              )}
+              <div className={styles.ledgerFooter}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={showArchived}
+                    onChange={(e) => setShowArchived(e.target.checked)}
+                  />
+                  Show archived entries
+                </label>
+                <strong>
+                  Total{" "}
+                  {money(
+                    activeExpenses.reduce((a, e) => a + e.amount, 0),
+                    currency,
                   )}
+                </strong>
+              </div>
+            </section>
+          )}
+          {tab === "Reports" && (
+            <section className={styles.panel}>
+              <div className={styles.panelHeading}>
+                <h2>Reports & exports</h2>
+                <span>Current date, currency and order filters</span>
+              </div>
+              <p className={styles.explanation}>
+                Order and payment exports follow all filters above. General
+                expenses use date and currency only. Retail profit excludes
+                wholesale contracts and uses recorded costs; missing COGS and
+                estimates must be reviewed.
+              </p>
+              <div className={styles.reports}>
+                {[
+                  [
+                    "orders",
+                    "Order profitability",
+                    "Sales, collections, direct costs, supplier references and margins.",
+                  ],
+                  [
+                    "payments",
+                    "Payment reconciliation",
+                    "Recorded payment amounts, references, fees and differences.",
+                  ],
+                  [
+                    "expenses",
+                    "Expense journal",
+                    "Active business expenses in the selected date range.",
+                  ],
+                  [
+                    "summary",
+                    "Financial summary",
+                    "Retail profit and separate wholesale booked, collected and balance totals.",
+                  ],
+                ].map(([kind, label, description]) => (
+                  <div key={kind}>
+                    <div>
+                      <h3>{label}</h3>
+                      <p>{description}</p>
+                    </div>
+                    <button
+                      className={styles.button}
+                      onClick={() => download(kind)}
+                    >
+                      <Download size={15} />
+                      CSV
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+      {selectedRow && (
+        <AdminModal
+          title={`Order #${selectedRow.orderNumber}`}
+          description={`${selectedRow.channel === "wholesale" ? "Wholesale contract" : "Retail order"} · ${selectedRow.customerName}`}
+          variant="drawer"
+          onClose={() => setSelected(null)}
+          className={styles.drawer}
+        >
+          <div className={styles.drawerContent} data-sales-sheet>
+            <section>
+              <h3>Order</h3>
+              <dl>
+                <dt>Date</dt>
+                <dd>{day(selectedRow.date)}</dd>
+                <dt>Status</dt>
+                <dd>{selectedRow.status}</dd>
+                <dt>
+                  {selectedRow.channel === "wholesale"
+                    ? "Booked value"
+                    : "Sale"}
+                </dt>
+                <dd>{money(selectedRow.total, selectedRow.currency)}</dd>
+                <dt>Refund</dt>
+                <dd>
+                  {money(selectedRow.refundedAmount, selectedRow.currency)}
+                </dd>
+                <dt>Tax collected</dt>
+                <dd>{money(selectedRow.tax, selectedRow.currency)}</dd>
+              </dl>
+              {selectedRow.items.map((i, index) => (
+                <p key={index}>
+                  {i.quantity} × {i.productName}
+                  <small>
+                    {i.sku || "No SKU"} · Cost source: {i.cogsSource}
+                  </small>
+                </p>
+              ))}
+            </section>
+            <section>
+              <h3>Payment</h3>
+              <dl>
+                <dt>Method</dt>
+                <dd>{selectedRow.paymentMethod || "Not recorded"}</dd>
+                <dt>Payment status</dt>
+                <dd>{selectedRow.paymentStatus}</dd>
+                <dt>Cash collected</dt>
+                <dd>
+                  {money(selectedRow.collectedAmount, selectedRow.currency)}
+                </dd>
+                {selectedRow.channel === "wholesale" && (
+                  <>
+                    <dt>Balance due</dt>
+                    <dd>
+                      {money(selectedRow.balanceDue, selectedRow.currency)}
+                    </dd>
+                  </>
+                )}
+                <dt>Transaction</dt>
+                <dd>{selectedRow.transactionId || "Not recorded"}</dd>
+              </dl>
+            </section>
+            <section>
+              <h3>Costs</h3>
+              <p>
+                Editable amounts save to the same record as the spreadsheet.
+              </p>
+              <table>
+                <tbody>
+                  {(
+                    [
+                      "cogs",
+                      "actualShippingCost",
+                      "paymentFee",
+                      "otherExpense",
+                    ] as CostField[]
+                  ).map((f) => (
+                    <tr key={f}>
+                      <th scope="row">{COST_LABELS[f]}</th>
+                      <td>{editCell(selectedRow, f, "drawer")}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
-            </div>
+              <small>
+                COGS: {selectedRow.cogsSource} ·{" "}
+                {selectedRow.isSnapshotted ? "Recorded on order" : "Not frozen"}
+                <br />
+                Shipping: {selectedRow.shippingCostSource} · Fee:{" "}
+                {selectedRow.paymentFeeSource}
+              </small>
+            </section>
+            <section>
+              <h3>Profit</h3>
+              <dl>
+                <dt>Total recorded costs</dt>
+                <dd>{money(selectedRow.totalCosts, selectedRow.currency)}</dd>
+                {selectedRow.channel === "wholesale" && (
+                  <>
+                    <dt>Dealer share included</dt>
+                    <dd>
+                      {money(
+                        selectedRow.dealerCommission,
+                        selectedRow.currency,
+                      )}
+                    </dd>
+                  </>
+                )}
+                <dt>
+                  {selectedRow.paymentStatus === "paid"
+                    ? "Indicative net profit"
+                    : "Projected profit"}
+                </dt>
+                <dd>
+                  {selectedRow.cogs == null
+                    ? "Missing COGS"
+                    : money(selectedRow.netProfit, selectedRow.currency)}
+                </dd>
+                <dt>Margin</dt>
+                <dd>
+                  {selectedRow.profitMarginPct == null
+                    ? "—"
+                    : selectedRow.profitMarginPct.toFixed(2) + "%"}
+                </dd>
+              </dl>
+              <p>
+                Unrecorded costs and estimated fees can overstate profit. Cash
+                received is not profit.
+              </p>
+            </section>
+            <section>
+              <h3>Operations</h3>
+              {selectedRow.channel === "retail" ? (
+                <table>
+                  <tbody>
+                    {(
+                      ["supplier", "supplierReference", "notes"] as CostField[]
+                    ).map((f) => (
+                      <tr key={f}>
+                        <th scope="row">{COST_LABELS[f]}</th>
+                        <td>{editCell(selectedRow, f, "drawer")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <a href="/admin/wholesale">Open Wholesale workspace →</a>
+              )}
+            </section>
           </div>
-        </div>
-      )}
-
-      {/* TAB 5: REPORTS & EXPORT */}
-      {activeTab === 'reports' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Card 1: Orders CSV */}
-            <div className="p-6 rounded-xl bg-[#161b22] border border-[#30363d] flex flex-col justify-between space-y-4">
-              <div>
-                <div className="p-3 rounded-lg bg-[#1f6feb]/10 text-[#58a6ff] w-fit mb-3">
-                  <ShoppingBag className="w-6 h-6" />
-                </div>
-                <h4 className="text-base font-bold text-white">Orders & Line Items Export</h4>
-                <p className="text-xs text-[#8b949e] mt-1">
-                  Complete spreadsheet of all orders in current filter ({PERIOD_LABELS[period]}) with subtotals, shipping, taxes, and customer details.
-                </p>
-              </div>
-              <button
-                onClick={() => handleExportCSV('orders')}
-                className="w-full py-2 px-4 rounded-lg bg-[#21262d] border border-[#30363d] hover:bg-[#30363d] text-xs font-semibold text-white flex items-center justify-center gap-2 transition-colors"
-              >
-                <DownloadSimple className="w-4 h-4" />
-                <span>Download Orders CSV</span>
-              </button>
-            </div>
-
-            {/* Card 2: Financial Summary CSV */}
-            <div className="p-6 rounded-xl bg-[#161b22] border border-[#30363d] flex flex-col justify-between space-y-4">
-              <div>
-                <div className="p-3 rounded-lg bg-[#238636]/10 text-[#3fb950] w-fit mb-3">
-                  <TrendUp className="w-6 h-6" />
-                </div>
-                <h4 className="text-base font-bold text-white">Revenue & Profit Statement</h4>
-                <p className="text-xs text-[#8b949e] mt-1">
-                  Executive financial summary matching UI figures: Gross revenue, refunds, net revenue, margins, and wholesale metrics.
-                </p>
-              </div>
-              <button
-                onClick={() => handleExportCSV('revenue')}
-                className="w-full py-2 px-4 rounded-lg bg-[#21262d] border border-[#30363d] hover:bg-[#30363d] text-xs font-semibold text-white flex items-center justify-center gap-2 transition-colors"
-              >
-                <DownloadSimple className="w-4 h-4" />
-                <span>Download P&L Summary</span>
-              </button>
-            </div>
-
-            {/* Card 3: Expenses Journal CSV */}
-            <div className="p-6 rounded-xl bg-[#161b22] border border-[#30363d] flex flex-col justify-between space-y-4">
-              <div>
-                <div className="p-3 rounded-lg bg-[#d29922]/10 text-[#e3b341] w-fit mb-3">
-                  <Receipt className="w-6 h-6" />
-                </div>
-                <h4 className="text-base font-bold text-white">Expense Journal Export</h4>
-                <p className="text-xs text-[#8b949e] mt-1">
-                  Itemized record of all logged operating expenses, categorized by freight, supplier payments, packaging, and overhead.
-                </p>
-              </div>
-              <button
-                onClick={() => handleExportCSV('expenses')}
-                className="w-full py-2 px-4 rounded-lg bg-[#21262d] border border-[#30363d] hover:bg-[#30363d] text-xs font-semibold text-white flex items-center justify-center gap-2 transition-colors"
-              >
-                <DownloadSimple className="w-4 h-4" />
-                <span>Download Expenses CSV</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        </AdminModal>
       )}
     </div>
   );

@@ -1,3 +1,4 @@
+import { computeCosts, computeProfit } from './summary';
 /**
  * Himalayan Koh Sales — server-side aggregation engine.
  *
@@ -22,12 +23,9 @@ import {
   paymentStatusFromWoo,
   appStatusFromWoo,
   orderFromWoo,
-  lineItemsFromWoo,
 } from '@/lib/woo/orders';
 import type {
   RevenueSummary,
-  CostSummary,
-  ProfitSummary,
   DailySalesPoint,
   SalesOrderRow,
   SalesOrderItemRow,
@@ -202,89 +200,6 @@ function computeTodayKpis(allOrders: WooOrderLike[]): TodayKpiSummary {
 export const STRIPE_PCT = 0.029;
 export const STRIPE_FIXED = 0.30;
 
-function computeCosts(
-  salesOrders: SalesOrderRow[],
-  manualExpenses: ManualExpense[] = []
-): CostSummary {
-  let cogs = 0;
-  let shippingCost = 0;
-  let gatewayFees = 0;
-  let otherExpenses = 0;
-  let missingCogsCount = 0;
-
-  for (const order of salesOrders) {
-    if (order.channel !== 'retail') continue;
-    if (order.paymentStatus !== 'paid') continue;
-
-    if (order.cogsStatus === 'verified' && order.cogs !== null) {
-      cogs += order.cogs;
-    } else {
-      missingCogsCount += 1;
-    }
-
-    shippingCost += order.actualShippingCost;
-    gatewayFees += order.paymentFee;
-    otherExpenses += order.otherExpense;
-  }
-
-  for (const exp of manualExpenses) {
-    if (exp.category === 'shipping') {
-      shippingCost += exp.amount;
-    } else if (exp.category === 'supplier_payment' || exp.category === 'packaging') {
-      cogs += exp.amount;
-    } else if (exp.category === 'gateway_fee') {
-      gatewayFees += exp.amount;
-    } else {
-      otherExpenses += exp.amount;
-    }
-  }
-
-  const totalCosts = round2(cogs + shippingCost + gatewayFees + otherExpenses);
-
-  return {
-    cogs: round2(cogs),
-    shippingCost: round2(shippingCost),
-    gatewayFees: round2(gatewayFees),
-    otherExpenses: round2(otherExpenses),
-    totalCosts,
-    missingCogsCount,
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/* Profit                                                              */
-/* ------------------------------------------------------------------ */
-
-function computeProfit(
-  revenue: RevenueSummary,
-  costs: CostSummary
-): ProfitSummary {
-  const grossProfit = round2(revenue.netRevenue - costs.cogs);
-  const grossMarginPct = revenue.netRevenue > 0
-    ? round2((grossProfit / revenue.netRevenue) * 100)
-    : 0;
-
-  const netProfit = round2(revenue.netRevenue - costs.totalCosts);
-  const netMarginPct = revenue.netRevenue > 0
-    ? round2((netProfit / revenue.netRevenue) * 100)
-    : 0;
-
-  const verifiedOrderCount = Math.max(0, revenue.orderCount - costs.missingCogsCount);
-  const hasIncompleteProfit = costs.missingCogsCount > 0;
-
-  return {
-    netRevenue: revenue.netRevenue,
-    totalCosts: costs.totalCosts,
-    grossProfit,
-    grossMarginPct,
-    netProfit,
-    netMarginPct,
-    verifiedOrderCount,
-    missingCogsCount: costs.missingCogsCount,
-    hasIncompleteProfit,
-  };
-}
-
 /* ------------------------------------------------------------------ */
 /* Daily series                                                        */
 /* ------------------------------------------------------------------ */
@@ -408,7 +323,7 @@ function lineItemToRow(
   };
 }
 
-function orderToSalesRow(
+export function orderToSalesRow(
   woo: WooOrderLike,
   catalogCostMap?: Map<number, number> | Record<number, number>
 ): SalesOrderRow {
@@ -520,6 +435,12 @@ function orderToSalesRow(
     netProfit,
     profitMarginPct,
     isSnapshotted,
+    collectedAmount: isOrderPaid(woo) ? netTotal : 0,
+    supplier: getOrderMeta(woo, '_hk_supplier') ?? '',
+    supplierReference: getOrderMeta(woo, '_hk_supplier_reference') ?? '',
+    notes: getOrderMeta(woo, '_hk_sales_notes') ?? '',
+    transactionId: woo.transaction_id ?? '',
+    tracking: getOrderMeta(woo, '_tracking_number') ?? '',
   };
 }
 
@@ -639,6 +560,7 @@ export interface WholesaleOrderRecord {
   depositCollected?: number;
   balanceCollected?: number;
   createdAt: string;
+  financials?: { cogs: number; shipping: number; other: number; commission: number; netProfit: number; margin: number };
 }
 
 /* ------------------------------------------------------------------ */
@@ -696,7 +618,7 @@ export function buildSalesDashboard(
   const revenue = computeRevenue(filtered);
   const todayKpis = computeTodayKpis(orders);
   const salesOrders = filtered.map(o => orderToSalesRow(o, catalogCostMap));
-  const costs = computeCosts(salesOrders, manualExpenses);
+  const costs = computeCosts(salesOrders, manualExpenses.filter(e => !e.archived && (period === 'all' || (e.date >= dateRange.from.slice(0,10) && e.date <= dateRange.to.slice(0,10)))));
   const profit = computeProfit(revenue, costs);
   const dailySeries = computeDailySeries(filtered, dateRange);
   const payments = filtered.map(orderToPaymentRecord).filter(Boolean) as PaymentRecord[];
@@ -740,19 +662,22 @@ export function buildSalesDashboard(
         currency: ws.currency || 'USD',
         itemCount: 1,
         items: [],
-        cogs: null,
-        cogsStatus: 'verified',
-        cogsSource: 'none',
-        actualShippingCost: 0,
+        cogs: ws.financials?.cogs ?? null,
+        cogsStatus: ws.financials ? 'verified' : 'missing',
+        cogsSource: ws.financials ? 'actual' : 'none',
+        actualShippingCost: ws.financials?.shipping ?? 0,
         shippingCostSource: 'none',
         paymentFee: 0,
         paymentFeeSource: 'none',
-        otherExpense: 0,
-        otherExpenseSource: 'none',
-        totalCosts: 0,
-        netProfit: deposit + balance,
-        profitMarginPct: booked > 0 ? round2(((deposit + balance) / booked) * 100) : null,
-        isSnapshotted: true,
+        otherExpense: ws.financials?.other ?? 0,
+        otherExpenseSource: ws.financials ? 'actual' : 'none',
+        totalCosts: ws.financials ? round2(ws.financials.cogs + ws.financials.shipping + ws.financials.other + ws.financials.commission) : null,
+        netProfit: ws.financials?.netProfit ?? null,
+        profitMarginPct: ws.financials?.margin ?? null,
+        dealerCommission: ws.financials?.commission ?? 0,
+        collectedAmount: round2(deposit + balance),
+        balanceDue: round2(Math.max(0, booked - deposit - balance)),
+        isSnapshotted: Boolean(ws.financials),
       });
     }
   }

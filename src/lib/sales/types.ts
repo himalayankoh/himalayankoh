@@ -139,6 +139,14 @@ export interface SalesOrderRow {
   netProfit: number | null;
   profitMarginPct: number | null;
   isSnapshotted: boolean;
+  collectedAmount?: number;
+  balanceDue?: number;
+  supplier?: string;
+  supplierReference?: string;
+  notes?: string;
+  transactionId?: string;
+  tracking?: string;
+  dealerCommission?: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -174,7 +182,7 @@ export interface DailySalesPoint {
 }
 
 /* ------------------------------------------------------------------ */
-/* Expense tracking (manual entries persisted in localStorage)         */
+/* Expense tracking (WordPress admin records)                          */
 /* ------------------------------------------------------------------ */
 
 export interface ManualExpense {
@@ -186,6 +194,10 @@ export interface ManualExpense {
   currency: string;
   recurring: boolean;
   createdAt: string;
+  paymentMethod?: string;
+  reference?: string;
+  notes?: string;
+  archived?: boolean;
 }
 
 export type ExpenseCategory =
@@ -246,6 +258,8 @@ export interface SalesDashboardData {
   todayKpis: TodayKpiSummary;
   ordersScanned: number;
   windowCapped: boolean;
+  expenses?: ManualExpense[];
+  warnings?: string[];
 }
 
 /* ------------------------------------------------------------------ */
