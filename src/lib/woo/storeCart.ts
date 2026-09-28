@@ -55,8 +55,12 @@ export interface StoreCartItemRaw {
   key?: string;
   /** The product's id, or the *variation's* id when the line is a variation. */
   id?: number;
+  /** Parent product id on variation cart items, where the store exposes it. */
+  parent_id?: number;
+  type?: string;
   quantity?: number;
   name?: string;
+
   sku?: string;
   /**
    * The chosen options, as the store reports them (`pa_grain-size` =
@@ -88,12 +92,15 @@ interface StoreCartItemTotals {
 
 export interface StoreCartRaw {
   items?: StoreCartItemRaw[];
+  coupons?: Array<{ code?: string; discount_type?: string }>;
   items_count?: number;
   totals?: {
     total_items?: string;
     total_price?: string;
     total_shipping?: string;
     total_tax?: string;
+    total_discount?: string;
+    total_discount_tax?: string;
     currency_code?: string;
     currency_minor_unit?: number;
   };
@@ -117,6 +124,8 @@ export interface StoreCartLine {
   key: string;
   /** The variation's id on a variation line, otherwise the product's id. */
   productId: string;
+  /** Parent product id when the cart line is a variation. */
+  parentProductId: string | null;
   name: string;
   /** The chosen option in readable form (`Coarse Grain`), or null. */
   variationLabel: string | null;
@@ -138,6 +147,10 @@ export interface StoreCartView {
   totalPrice: number | null;
   /** Authoritative WooCommerce cart tax in major units, or null when unreported. */
   totalTax: number | null;
+  /** WooCommerce's server-calculated discount, or null when not reported. */
+  totalDiscount: number | null;
+  /** The coupon codes applied to this WooCommerce cart. */
+  couponCodes: string[];
   currency: string;
   /** WooCommerce's own complaints about the cart, as plain sentences. */
   issues: string[];
@@ -230,6 +243,10 @@ export function mapStoreCartLine(raw: StoreCartItemRaw): StoreCartLine {
   return {
     key: String(raw.key ?? ''),
     productId: raw.id === undefined ? '' : String(raw.id),
+    parentProductId:
+      raw.parent_id === undefined || raw.parent_id === null || Number(raw.parent_id) <= 0
+        ? null
+        : String(raw.parent_id),
     // The store sends a product name with its entities intact (`Fine &amp; Coarse`),
     // exactly as the catalog read receives it — so it is decoded the same way, by
     // the one helper that does that, rather than reaching a cart line as `&amp;`.
@@ -257,6 +274,8 @@ export function mapStoreCart(raw: StoreCartRaw): StoreCartView {
     itemsCount: typeof raw.items_count === 'number' ? raw.items_count : items.reduce((sum, line) => sum + line.quantity, 0),
     totalPrice: parseMinorUnitPrice(raw.totals?.total_price, minorUnitFor(raw.totals)),
     totalTax: parseMinorUnitPrice(raw.totals?.total_tax, minorUnitFor(raw.totals)),
+    totalDiscount: parseMinorUnitPrice(raw.totals?.total_discount, minorUnitFor(raw.totals)),
+    couponCodes: (raw.coupons ?? []).map((coupon) => String(coupon.code ?? '').trim()).filter(Boolean),
     currency: raw.totals?.currency_code || '',
     issues: (raw.errors ?? [])
       .map((entry) => (entry?.message ? String(entry.message) : ''))
@@ -608,6 +627,25 @@ export interface CartCustomerAddress {
  * This triggers authoritative WooCommerce tax calculation based on nexus
  * and tax rules configured in WordPress, returning the recalculated totals.
  */
+export async function setStoreCartCoupon(
+  session: CartSession,
+  couponCode: string | null,
+): Promise<{ cart: StoreCartRaw; session: CartSession }> {
+  let current = await readStoreCart(session);
+
+  // One customer-entered code is supported by the storefront. Remove any coupon
+  // already carried by this WooCommerce session before validating the new one.
+  for (const coupon of current.cart.coupons ?? []) {
+    const code = String(coupon.code ?? '').trim();
+    if (!code) continue;
+    current = await mutate(current.session, '/cart/remove-coupon', { code });
+  }
+
+  const normalized = couponCode?.trim();
+  if (!normalized) return current;
+  return mutate(current.session, '/cart/apply-coupon', { code: normalized });
+}
+
 export async function updateStoreCartCustomer(
   session: CartSession,
   address: CartCustomerAddress

@@ -29,15 +29,24 @@ import {
   WooOrderError,
   type WooOrderLike,
 } from '@/lib/woo/orders';
+import { checkoutTotalsFromWoo } from '@/lib/woo/checkoutPricing';
 import { clearReservedCart } from '@/lib/orders/serverCreateOrder';
 import { dispatchPaymentReceivedNotifications } from '@/lib/orders/notifyOrderEvents';
 
 /**
- * Map a Stripe PaymentIntent's payment_method_types[] to the label we persist on
- * the order. Cards stay 'stripe_card' (unchanged); BNPL and other methods get a
- * descriptive label so admins/emails don't mislabel a Klarna order as a card.
+ * Map the payment method actually used to the label we persist on the order.
+ *
+ * Cards stay 'stripe_card' (unchanged); BNPL and other methods get a descriptive
+ * label so admins/emails/Sales don't mislabel a Klarna order as a card. When Stripe
+ * reports the *chosen* method type (`chosenType`) it wins over the list of eligible
+ * types, because `payment_method_types` only says what could have been used.
  */
-export function resolveStripePaymentMethodLabel(paymentMethodTypes?: string[] | null): string {
+export function resolveStripePaymentMethodLabel(
+  paymentMethodTypes?: string[] | null,
+  chosenType?: string | null
+): string {
+  const chosen = chosenType?.trim().toLowerCase();
+  if (chosen) return `stripe_${chosen}`;
   const types = paymentMethodTypes || [];
   if (types.includes('klarna')) return 'stripe_klarna';
   if (types.includes('afterpay_clearpay')) return 'stripe_afterpay_clearpay';
@@ -45,6 +54,26 @@ export function resolveStripePaymentMethodLabel(paymentMethodTypes?: string[] | 
   const primary = types.find((t) => t && t !== 'card');
   if (primary) return `stripe_${primary}`;
   return 'stripe_card';
+}
+
+/** A short, human label for a persisted `stripe_*` payment method. */
+export function stripePaymentMethodTitle(label: string): string {
+  switch (label) {
+    case 'stripe_card':
+      return 'Credit / Debit Card';
+    case 'stripe_klarna':
+      return 'Klarna';
+    case 'stripe_afterpay_clearpay':
+      return 'Afterpay / Clearpay';
+    case 'stripe_affirm':
+      return 'Affirm';
+    case 'stripe_link':
+      return 'Link';
+    default: {
+      const raw = label.replace(/^stripe_/, '').replace(/_/g, ' ').trim();
+      return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Card';
+    }
+  }
 }
 
 /** Only a signed Stripe success event may mark an order paid. */
@@ -61,24 +90,62 @@ export function wooOrderIdFromMetadata(metadata: unknown): number | null {
 }
 
 /**
- * The paid transition: mark the order paid, empty its cart, alert the store.
+ * Does the captured payment at least cover the order, in the order's currency?
+ *
+ * The intent is created for the order's own total, so a genuine success always
+ * matches. A shortfall means the order total changed after the intent was created
+ * (or a mismatched delivery arrived) and it must not be marked paid on money that
+ * does not cover it. An overpayment is treated as covering, since the customer was
+ * charged at least the order and the order is the thing being settled.
+ */
+export function paymentCoversWooOrder(
+  order: WooOrderLike,
+  amount: number,
+  currency: string
+): boolean {
+  const orderCents = Math.round(checkoutTotalsFromWoo(order).total * 100);
+  const currencyOk = (order.currency ?? 'usd').toLowerCase() === currency.toLowerCase();
+  return currencyOk && Number.isInteger(amount) && amount >= orderCents;
+}
+
+/**
+ * The paid transition: mark the order paid (with how it was paid), empty its cart,
+ * alert the store.
  *
  * Returns `alreadyPaid: true` without side effects when the order is already paid,
  * so a replayed `payment_intent.succeeded` cannot send a second confirmation email
- * or disturb a cart the customer may have refilled since.
+ * or disturb a cart the customer may have refilled since. Returns
+ * `amountMismatch: true` and does *not* mark paid when the captured amount does not
+ * cover the order.
  */
 export async function finalizeWooOrderPayment(
   orderId: number,
   paymentIntentId: string,
-  paymentMethodLabel: string = 'stripe_card'
-): Promise<{ alreadyPaid: boolean; order: WooOrderLike | null }> {
+  paymentMethodLabel: string = 'stripe_card',
+  expected?: { amount: number; currency: string }
+): Promise<{ alreadyPaid: boolean; amountMismatch: boolean; order: WooOrderLike | null }> {
   const order = await getWooOrder(orderId);
 
   if (paymentStatusFromWoo(order) === 'paid') {
-    return { alreadyPaid: true, order };
+    return { alreadyPaid: true, amountMismatch: false, order };
   }
 
-  const updated = await markWooOrderPaid(orderId, { paymentIntentId });
+  if (expected && !paymentCoversWooOrder(order, expected.amount, expected.currency)) {
+    console.error(
+      'Stripe payment does not cover WooCommerce order; not marking paid.',
+      { orderId, paymentIntentId, expected, orderTotal: order.total, orderCurrency: order.currency }
+    );
+    return { alreadyPaid: false, amountMismatch: true, order };
+  }
+
+  const updated = await markWooOrderPaid(orderId, {
+    paymentIntentId,
+    // The PaymentIntent id is the gateway transaction reference; the label records
+    // how it was actually paid so Sales and the store agree.
+    transactionId: paymentIntentId,
+    paymentMethod: paymentMethodLabel,
+    paymentMethodTitle: stripePaymentMethodTitle(paymentMethodLabel),
+  });
 
   // Emptied only now: an abandoned or failed payment leaves the shopper's cart
   // intact so they can retry without rebuilding it.
@@ -87,7 +154,7 @@ export async function finalizeWooOrderPayment(
   // Fire-and-forget; never awaited, so a mail failure cannot fail the webhook.
   dispatchPaymentReceivedNotifications(String(orderId));
 
-  return { alreadyPaid: false, order: updated };
+  return { alreadyPaid: false, amountMismatch: false, order: updated };
 }
 
 /**

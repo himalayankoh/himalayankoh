@@ -341,3 +341,31 @@ describe('Sales Aggregation Engine', () => {
     expect(dashboard.profit.missingCogsCount).toBe(1);
   });
 });
+
+describe('partial refunds', () => {
+  it('counts a partial refund against revenue without reversing the whole order', () => {
+    const partial: WooOrderLike = {
+      id: 4001,
+      number: '4001',
+      status: 'processing',
+      date_created_gmt: new Date().toISOString(),
+      date_paid_gmt: new Date().toISOString(),
+      total: '100.00',
+      payment_method: 'stripe_klarna',
+      refunds: [{ id: 9, total: '-10.00' }],
+      billing: { first_name: 'Partial', last_name: 'Refund', email: 'partial@example.com' },
+      line_items: [{ id: 1, product_id: 10, name: 'Salt', quantity: 1, price: 100, total: '100.00' }],
+    };
+
+    const dashboard = buildSalesDashboard({ orders: [partial], period: 'all' });
+
+    expect(dashboard.revenue.grossRevenue).toBe(100);
+    expect(dashboard.revenue.refunds).toBe(10);
+    expect(dashboard.revenue.netRevenue).toBe(90);
+
+    const row = dashboard.orders[0];
+    expect(row.refundedAmount).toBe(10);
+    expect(row.netTotal).toBe(90);
+    expect(row.paymentStatus).toBe('partially_refunded');
+  });
+});

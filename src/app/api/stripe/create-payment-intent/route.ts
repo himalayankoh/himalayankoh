@@ -1,5 +1,5 @@
 /**
- * Starts a card payment for a cart.
+ * Starts a payment for a cart.
  *
  * ## The order exists before the payment
  *
@@ -8,6 +8,16 @@
  * metadata carries it, the webhook marks *that* order paid, and the tracker and
  * the customer's history read it. Nothing here consults Supabase.
  *
+ * ## The amount is WooCommerce's, not ours
+ *
+ * The PaymentIntent is created for the total **WooCommerce saved on the reserved
+ * order** (`checkoutTotalsFromWoo`). The order is what the store calculated — its
+ * own tax, coupon and shipping rules — so the amount charged is exactly the total
+ * on the order the customer will see. An app-side estimate is never used for money:
+ * if our arithmetic and the store's ever diverge, the store's number is what the
+ * order says, and charging anything else would leave a paid order that does not
+ * match its own record.
+ *
  * ## Idempotency, in two layers
  *
  * 1. **The order is reserved once per cart.** A double-click, a retry or a
@@ -15,12 +25,8 @@
  *    pending order already reserved, so no second order is created.
  * 2. **The intent is created once per order.** The intent id is recorded on the
  *    order meta before this response is returned, and any later attempt reuses it
- *    (or asks Stripe for it by idempotency key, whose key is
- *    `hk-pi-<orderId>-<cartFingerprint>`). Two intents that could both be confirmed
- *    are exactly how one cart becomes two charges; there is only ever one.
- *
- * The amount is the store's cart total, computed here from the WooCommerce cart —
- * never a sum the browser supplied.
+ *    (or asks Stripe for it by idempotency key). Two intents that could both be
+ *    confirmed are exactly how one cart becomes two charges; there is only ever one.
  */
 
 import { NextResponse } from 'next/server';
@@ -33,10 +39,10 @@ import {
   cartFingerprint,
   loadCartForCheckout,
   reserveOrderForCheckout,
-  resolveServerShippingCost,
   validateCheckoutCartItems,
 } from '@/lib/orders/serverCreateOrder';
-import { calculateOrderTotals, type CreateOrderData } from '@/lib/orders/totals';
+import type { CreateOrderData } from '@/lib/orders/totals';
+import { checkoutTotalsFromWoo } from '@/lib/woo/checkoutPricing';
 import { HK_META, readWooOrderMeta, setWooOrderPaymentIntent } from '@/lib/woo/orders';
 
 const MIN_AMOUNT_CENTS = 50;
@@ -79,27 +85,13 @@ export async function POST(request: Request) {
 
   try {
     validateCheckoutCartItems(cart.cart_items);
-    const pricedItems = cart.cart_items.map((item) => ({ quantity: item.quantity, unitPrice: Number(item.product?.price || 0) }));
-    const resolvedShipping = await resolveServerShippingCost({
-      shippingAddress: data.shippingAddress,
-      email: data.email,
-      shippingMethod: data.shippingMethod,
-      shippoRateId: data.shippoRateId,
-      lineItems: cart.cart_items.map((item) => ({ productId: item.product_id, quantity: item.quantity })),
-    });
-    const totals = calculateOrderTotals(pricedItems, {
-      couponCode: data.couponCode,
-      shippingMethod: data.shippingMethod,
-      shippingCostOverride: resolvedShipping.shippingCostOverride,
-    });
-    const amountCents = Math.round(totals.total * 100);
-    if (amountCents < MIN_AMOUNT_CENTS) {
-      return NextResponse.json({ error: 'Order total is below the minimum charge amount.' }, { status: 400 });
-    }
 
     const stripe = await getStripeClient();
 
-    // Reserve the store's order first: its id is what the payment is attached to.
+    // Reserve the store's order first: its id is what the payment is attached to,
+    // and its own calculated total is what we charge. Shipping is re-quoted
+    // server-side inside the reservation so the order and the intent share one
+    // server-approved figure.
     const reserved = await reserveOrderForCheckout(
       { ...data, paymentProvider: 'stripe', paymentMethod: 'stripe_card', paymentStatus: 'pending', clearCart: true } as CreateOrderData,
       {
@@ -109,6 +101,13 @@ export async function POST(request: Request) {
     );
     const orderId = Number(reserved.raw.id);
     const fingerprint = cartFingerprint(cart.cart_items);
+
+    // The authoritative amount: the total WooCommerce saved on this order.
+    const authoritative = checkoutTotalsFromWoo(reserved.raw);
+    const amountCents = Math.round(authoritative.total * 100);
+    if (amountCents < MIN_AMOUNT_CENTS) {
+      return NextResponse.json({ error: 'Order total is below the minimum charge amount.' }, { status: 400 });
+    }
 
     // Reuse the intent this order already carries, when it can still be paid. This
     // is what a refresh or a second click lands on: the same intent, not a new one.
@@ -121,7 +120,7 @@ export async function POST(request: Request) {
             clientSecret: existing.client_secret,
             paymentIntentId: existing.id,
             amount: existing.amount,
-            currency: 'usd',
+            currency: existing.currency,
             mode: await getStripeMode(),
             reservedOrderId: String(orderId),
           });
@@ -132,6 +131,12 @@ export async function POST(request: Request) {
         console.warn('Recorded payment intent could not be read; creating a new one:', error);
       }
     }
+
+    // The idempotency key is stable per attempt-kind so two concurrent first
+    // attempts collapse to one intent, while a retry after a *cancelled* intent
+    // (which can no longer be paid) gets a fresh key and therefore a fresh intent
+    // instead of Stripe replaying the cancelled one back to us.
+    const attemptKind = recordedIntentId ? `r${recordedIntentId}` : 'new';
 
     const paymentIntent = await stripe.paymentIntents.create(
       {
@@ -152,7 +157,7 @@ export async function POST(request: Request) {
       },
       // Belt and braces with the id recorded on the order below: two simultaneous
       // requests for the same order and cart return one intent.
-      { idempotencyKey: `hk-pi-${orderId}-${fingerprint}` }
+      { idempotencyKey: `hk-pi-${orderId}-${fingerprint}-${attemptKind}` }
     );
 
     await setWooOrderPaymentIntent(orderId, {
@@ -164,8 +169,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
-      amount: amountCents,
-      currency: 'usd',
+      amount: paymentIntent.amount,
+      currency: paymentIntent.currency,
       mode: await getStripeMode(),
       reservedOrderId: String(orderId),
     });

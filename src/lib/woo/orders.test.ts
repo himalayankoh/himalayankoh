@@ -7,6 +7,7 @@ import {
   paymentStatusFromWoo,
   statsFromWooOrders,
   wooWritePlan,
+  wooRefundedAmount,
   type WooOrderLike,
 } from './orders';
 
@@ -124,6 +125,24 @@ describe('payment status', () => {
   it('reports a failed or refunded order as such', () => {
     expect(paymentStatusFromWoo(order({ status: 'failed' }))).toBe('failed');
     expect(paymentStatusFromWoo(order({ status: 'refunded' }))).toBe('refunded');
+  });
+
+  it('reports a partial refund without calling the whole order refunded', () => {
+    const partial = order({
+      date_paid_gmt: '2026-09-18T10:01:00',
+      refunds: [{ id: 1, total: '-5.00' }],
+    });
+    expect(paymentStatusFromWoo(partial)).toBe('partially_refunded');
+    expect(wooRefundedAmount(partial)).toBe(5);
+  });
+
+  it('treats a full refund recorded in refund rows as refunded', () => {
+    const full = order({
+      date_paid_gmt: '2026-09-18T10:01:00',
+      refunds: [{ id: 1, total: '-17.42' }],
+    });
+    expect(paymentStatusFromWoo(full)).toBe('refunded');
+    expect(wooRefundedAmount(full)).toBe(17.42);
   });
 });
 

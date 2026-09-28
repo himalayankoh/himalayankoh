@@ -50,6 +50,8 @@ export interface CalculateOrderOptions {
   shippingMethod?: ShippingMethod;
   /** Live Shippo rate amount — overrides flat-rate shipping when set. */
   shippingCostOverride?: number;
+  /** Discount amount returned by WooCommerce after validating the coupon. */
+  discountAmountOverride?: number;
   /** Authoritative WooCommerce tax amount in major units. */
   taxAmountOverride?: number;
   /** Destination state (2-letter code or name) to determine nexus. */
@@ -67,7 +69,11 @@ export function calculateOrderTotals(items: TotalsLineItem[], options: Calculate
   // the unrounded discount (e.g. $9.95 * 10% = $0.995) makes the displayed
   // total off by a cent from subtotal - discount + tax + shipping, since each
   // of those is independently rounded for display but the total wasn't.
-  const discountAmount = coupon ? Math.round(subtotal * coupon.percentage * 100) / 100 : 0;
+  const calculatedDiscount = coupon ? Math.round(subtotal * coupon.percentage * 100) / 100 : 0;
+  const discountAmount =
+    typeof options.discountAmountOverride === 'number' && options.discountAmountOverride >= 0
+      ? Math.min(subtotal, options.discountAmountOverride)
+      : calculatedDiscount;
   const taxableSubtotal = Math.max(0, subtotal - discountAmount);
   const shippingMethod = options.shippingMethod || 'standard';
   const shippingCost =

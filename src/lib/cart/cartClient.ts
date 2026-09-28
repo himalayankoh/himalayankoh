@@ -13,6 +13,8 @@
 export interface CartLineView {
   key: string;
   productId: string;
+  /** Parent product id for a variable-product line when WooCommerce supplies it. */
+  parentProductId?: string | null;
   name: string;
   /** The chosen option in readable form (`Coarse Grain`), or null on a plain line. */
   variationLabel?: string | null;
@@ -30,6 +32,8 @@ export interface CartView {
   itemsCount: number;
   totalPrice: number | null;
   totalTax?: number | null;
+  totalDiscount?: number | null;
+  couponCodes?: string[];
   currency: string;
   /** WooCommerce's own complaints about this cart, as sentences. */
   issues: string[];
@@ -109,4 +113,6 @@ export const cartClient = {
   /** Updates customer destination for authoritative tax recalculation. */
   updateCustomer: (address: { country?: string; state?: string; city?: string; postalCode?: string }) =>
     request({ action: 'updateCustomer', address }),
+  /** Validates/applies one WooCommerce coupon on the server-owned cart. */
+  setCoupon: (code: string | null) => request({ action: 'setCoupon', code }),
 };

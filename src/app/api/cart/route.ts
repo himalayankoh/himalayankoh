@@ -33,6 +33,7 @@ import {
   removeStoreCartItem,
   updateStoreCartItem,
   updateStoreCartCustomer,
+  setStoreCartCoupon,
   type CartSession,
 } from '@/lib/woo/storeCart';
 
@@ -43,7 +44,7 @@ function privateJson(body: unknown, init: ResponseInit = {}) {
   return NextResponse.json(body, { ...init, headers });
 }
 
-type CartAction = 'add' | 'setQuantity' | 'remove' | 'clear' | 'updateCustomer';
+type CartAction = 'add' | 'setQuantity' | 'remove' | 'clear' | 'updateCustomer' | 'setCoupon';
 
 /** WooCommerce's own limit on an option's length (`varchar(191)` inside an index). */
 const MAX_OPTION_LENGTH = 191;
@@ -222,6 +223,16 @@ export async function POST(request: Request) {
 
     if (action === 'clear') {
       const { cart, session: next } = await clearStoreCart(session);
+      return await respond(cart, next);
+    }
+
+    if (action === 'setCoupon') {
+      const rawCode = body.code;
+      const code = rawCode === null || rawCode === undefined ? null : String(rawCode).trim();
+      if (code && (code.length > 100 || !/^[a-zA-Z0-9_-]+$/.test(code))) {
+        return privateJson({ error: 'Enter a valid coupon code.' }, { status: 400 });
+      }
+      const { cart, session: next } = await setStoreCartCoupon(session, code);
       return await respond(cart, next);
     }
 

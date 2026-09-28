@@ -55,7 +55,9 @@ let loaded = false;
 let isLoading = false;
 let cartMutationVersion = 0;
 let serverTax: number | null = null;
+let serverDiscount: number | null = null;
 let serverTotal: number | null = null;
+let appliedCoupons: string[] = [];
 
 // Serializes concurrent mutations so API calls don't interleave
 let mutationQueue: Promise<void> = Promise.resolve();
@@ -127,6 +129,7 @@ function mapLine(line: CartLineView): CartItem {
     // A variation line says which option it is; without this the drawer and the
     // order would show the same product twice with no way to tell them apart.
     grainSize: line.variationLabel ?? undefined,
+    variation: line.parentProductId ? { attribute: '', value: '' } : undefined,
   };
 }
 
@@ -149,7 +152,9 @@ function reportIssues(issues: string[]) {
 function applyView(view: CartView) {
   cartItems = view.items.map(mapLine);
   serverTax = typeof view.totalTax === 'number' ? view.totalTax : null;
+  serverDiscount = typeof view.totalDiscount === 'number' ? view.totalDiscount : null;
   serverTotal = typeof view.totalPrice === 'number' ? view.totalPrice : null;
+  appliedCoupons = view.couponCodes ?? [];
   emitChange();
   reportIssues(view.issues);
 }
@@ -320,6 +325,20 @@ export function useCart() {
     });
   }, []);
 
+  const setCoupon = useCallback(async (code: string | null) => {
+    return enqueue(async () => {
+      if (mode === 'local') {
+        throw new Error('Coupons are unavailable until the store connection is configured.');
+      }
+      const view = await remote(() => cartClient.setCoupon(code));
+      if (!view) throw new Error('Coupons are unavailable until the store connection is configured.');
+      mode = 'remote';
+      loaded = true;
+      applyView(view);
+      return view;
+    });
+  }, []);
+
   const updateCustomerAddress = useCallback(
     async (address: { country?: string; state?: string; city?: string; postalCode?: string }) => {
       return enqueue(async () => {
@@ -347,10 +366,13 @@ export function useCart() {
     updateQuantity,
     clearCart,
     updateCustomerAddress,
+    setCoupon,
     totalItems,
     totalPrice,
     serverTax,
+    serverDiscount,
     serverTotal,
+    appliedCoupons,
     isLoaded: loaded,
     isLoading,
   };

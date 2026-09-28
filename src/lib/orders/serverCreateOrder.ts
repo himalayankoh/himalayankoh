@@ -12,6 +12,7 @@ import type { OrderWithItems } from '@/lib/commerce/types';
 import { resolveShippoConfigError } from '@/lib/shippo/config';
 import { fetchShippoRatesForOrder, pickRateForShippingMethod } from '@/lib/shippo/server/rates';
 import type { CheckoutShippingAddress, RatesLineItem } from '@/lib/shippo/types';
+import { checkoutInputFingerprint } from '@/lib/woo/checkoutPricing';
 
 /**
  * Authoritative server-side shipping cost. The client-supplied
@@ -69,6 +70,10 @@ export async function resolveServerShippingCost(params: {
 export interface CheckoutCartItem {
   id: string;
   product_id: string;
+  /** Parent product id when this line is a variation, else null. */
+  parent_product_id?: string | null;
+  /** The variation id when this line is a variation, else null. */
+  variation_id?: string | null;
   quantity: number;
   grain_size: string | null;
   unit_price: number;
@@ -189,6 +194,8 @@ function toCheckoutItem(line: StoreCartLine): CheckoutCartItem {
   return {
     id: line.key,
     product_id: line.productId,
+    parent_product_id: line.parentProductId ?? null,
+    variation_id: line.parentProductId ? line.productId : null,
     quantity: line.quantity,
     // A WooCommerce cart line carries no grain size — see
     // docs/STOREFRONT-WORDPRESS-CONTRACT.md for why the storefront's grain
@@ -225,6 +232,12 @@ export interface ReserveOrderOptions {
    */
   paymentMethod?: string;
   paymentMethodTitle?: string;
+  /** The verified server-side shipping quote shared with PaymentIntent pricing. */
+  shippingCostOverride?: number;
+  /** Recomputed from WooCommerce order fields and included in checkout identity. */
+  discountAmountOverride?: number;
+  /** WooCommerce tax applied to the order for the verified destination. */
+  taxAmountOverride?: number;
 }
 
 export interface ReservedOrder {
@@ -275,9 +288,46 @@ export async function reserveOrderForCheckout(
   const pricedItems = priceCartItems(cart.cart_items);
   const fingerprint = cartFingerprint(cart.cart_items);
 
-  // A previous attempt at this same cart may already hold a pending order.
+  // Recompute shipping server-side; the browser's amounts are display only. The
+  // Stripe route can pass a quote it has already revalidated against Shippo so
+  // the order and PaymentIntent share one server-approved charge.
+  const shippingMethod = (data.shippingMethod || 'standard') as ShippingMethod;
+  const resolvedShipping = options.shippingCostOverride !== undefined
+    ? {
+        shippingCostOverride: options.shippingCostOverride,
+        shippoRateId: data.shippoRateId || null,
+        carrier: data.shippingCarrier || null,
+        service: data.shippingService || null,
+      }
+    : await resolveServerShippingCost({
+        shippingAddress: data.shippingAddress,
+        email: data.email,
+        shippingMethod,
+        shippoRateId: data.shippoRateId,
+        lineItems: pricedItems.map((item) => ({
+          productId: item.product_id ?? undefined,
+          quantity: item.quantity,
+        })),
+      });
+
+  const checkoutFingerprint = checkoutInputFingerprint({
+    cartFingerprint: fingerprint,
+    email: data.email,
+    shippingAddress: data.shippingAddress,
+    billingAddress: data.billingAddress ?? data.shippingAddress,
+    shippingMethod,
+    shippingRateId: resolvedShipping.shippoRateId,
+    shippingCost: resolvedShipping.shippingCostOverride ?? 0,
+    couponCode: data.couponCode,
+    discountAmount: options.discountAmountOverride ?? 0,
+    taxAmount: options.taxAmountOverride ?? 0,
+  });
+
+  // A retried request at identical checkout inputs reuses its pending reservation;
+  // an address, shipping, coupon, or pricing change gets its own immutable order.
   const existing = await findPendingWooOrderByFingerprint({
     fingerprint,
+    checkoutFingerprint,
     email: data.email,
     customerId: options.customerId,
   });
@@ -289,19 +339,6 @@ export async function reserveOrderForCheckout(
       cartToken: cart.id,
     };
   }
-
-  // Recompute shipping server-side; never trust data.shippingCostOverride.
-  const shippingMethod = (data.shippingMethod || 'standard') as ShippingMethod;
-  const resolvedShipping = await resolveServerShippingCost({
-    shippingAddress: data.shippingAddress,
-    email: data.email,
-    shippingMethod,
-    shippoRateId: data.shippoRateId,
-    lineItems: pricedItems.map((item) => ({
-      productId: item.product_id ?? undefined,
-      quantity: item.quantity,
-    })),
-  });
 
   const wooOrder = await createWooOrder({
     email: data.email,
@@ -329,11 +366,14 @@ export async function reserveOrderForCheckout(
       country: data.shippingAddress.country || 'US',
     },
     lineItems: pricedItems.map((item) => ({
-      productId: Number(item.product_id),
+      productId: Number(item.parent_product_id ?? item.product_id),
+      variationId: item.variation_id ? Number(item.variation_id) : undefined,
       quantity: item.quantity,
       price: item.unitPrice,
     })),
     shippingMethod,
+    shippingTotal: resolvedShipping.shippingCostOverride,
+    shippingMethodTitle: resolvedShipping.service || resolvedShipping.carrier || shippingMethod,
     couponCode: data.couponCode,
     customerNote: data.notes,
     // The store's own customer record, so the order appears under the customer in
@@ -345,6 +385,7 @@ export async function reserveOrderForCheckout(
     meta: {
       [HK_META.userId]: options.customerId ? String(options.customerId) : null,
       [HK_META.cartFingerprint]: fingerprint,
+      [HK_META.checkoutFingerprint]: checkoutFingerprint,
       [HK_META.cartToken]: cart.id,
       [HK_META.shippoRateId]: resolvedShipping.shippoRateId,
       [HK_META.carrier]: resolvedShipping.carrier ?? data.shippingCarrier ?? null,

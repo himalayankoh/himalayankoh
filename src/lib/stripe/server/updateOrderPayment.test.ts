@@ -14,10 +14,13 @@ const state = {
   order: {
     id: 512,
     status: 'pending',
+    total: '10.00',
+    currency: 'USD',
     date_paid_gmt: null as string | null,
     meta_data: [{ key: '_hk_cart_token', value: 'cart-abc' }],
   } as Record<string, unknown>,
   markPaidCalls: 0,
+  lastMarkPaidInput: null as Record<string, unknown> | null,
   clearedCarts: [] as (string | null)[],
   notificationCalls: 0,
   updateStatusCalls: [] as unknown[],
@@ -39,6 +42,7 @@ vi.mock('@/lib/woo/orders', () => ({
   getWooOrder: async () => ({ ...state.order }),
   markWooOrderPaid: async (_id: number, input: { paymentIntentId?: string }) => {
     state.markPaidCalls += 1;
+    state.lastMarkPaidInput = input as Record<string, unknown>;
     state.paid = true;
     state.order.date_paid_gmt = '2026-09-01T00:00:00Z';
     state.order.meta_data = [
@@ -80,7 +84,9 @@ vi.mock('@/lib/orders/notifyOrderEvents', () => ({
 import {
   finalizeWooOrderPayment,
   markWooOrderPaymentFailed,
+  paymentCoversWooOrder,
   resolveStripePaymentMethodLabel,
+  stripePaymentMethodTitle,
   shouldFinalizeSuccessfulPayment,
   wooOrderIdFromMetadata,
 } from './updateOrderPayment';
@@ -170,5 +176,78 @@ describe('markWooOrderPaymentFailed', () => {
     await markWooOrderPaymentFailed(512);
 
     expect(state.updateStatusCalls).toEqual([]);
+  });
+});
+
+describe('paymentCoversWooOrder', () => {
+  it('accepts a payment that covers the order in its currency', () => {
+    const order = { total: '10.00', currency: 'USD' } as never;
+    expect(paymentCoversWooOrder(order, 1000, 'usd')).toBe(true);
+    expect(paymentCoversWooOrder(order, 1200, 'usd')).toBe(true);
+  });
+
+  it('rejects an underpayment or a currency mismatch', () => {
+    const order = { total: '10.00', currency: 'USD' } as never;
+    expect(paymentCoversWooOrder(order, 999, 'usd')).toBe(false);
+    expect(paymentCoversWooOrder(order, 1000, 'eur')).toBe(false);
+  });
+});
+
+describe('stripePaymentMethodTitle', () => {
+  it('names the method the customer used', () => {
+    expect(stripePaymentMethodTitle('stripe_card')).toBe('Credit / Debit Card');
+    expect(stripePaymentMethodTitle('stripe_klarna')).toBe('Klarna');
+    expect(stripePaymentMethodTitle('stripe_afterpay_clearpay')).toBe('Afterpay / Clearpay');
+    expect(stripePaymentMethodTitle('stripe_affirm')).toBe('Affirm');
+  });
+});
+
+describe('the chosen payment method', () => {
+  it('prefers the method actually used over the eligible list', () => {
+    expect(resolveStripePaymentMethodLabel(['card', 'klarna'], 'klarna')).toBe('stripe_klarna');
+    expect(resolveStripePaymentMethodLabel(['card', 'klarna'], 'card')).toBe('stripe_card');
+  });
+});
+
+describe('finalizing with the real method and amount', () => {
+  beforeEach(() => {
+    state.paid = false;
+    state.markPaidCalls = 0;
+    state.lastMarkPaidInput = null;
+    state.clearedCarts = [];
+    state.notificationCalls = 0;
+    state.order.date_paid_gmt = null;
+    state.order.meta_data = [{ key: '_hk_cart_token', value: 'cart-abc' }];
+  });
+
+  it('records how the order was paid and its transaction reference', async () => {
+    await finalizeWooOrderPayment(512, 'pi_test_1', 'stripe_klarna');
+
+    expect(state.lastMarkPaidInput).toMatchObject({
+      paymentIntentId: 'pi_test_1',
+      transactionId: 'pi_test_1',
+      paymentMethod: 'stripe_klarna',
+      paymentMethodTitle: 'Klarna',
+    });
+  });
+
+  it('does not mark paid when the captured amount does not cover the order', async () => {
+    const result = await finalizeWooOrderPayment(512, 'pi_test_1', 'stripe_card', {
+      amount: 500,
+      currency: 'usd',
+    });
+
+    expect(result.amountMismatch).toBe(true);
+    expect(state.markPaidCalls).toBe(0);
+  });
+
+  it('marks paid when the captured amount covers the order', async () => {
+    const result = await finalizeWooOrderPayment(512, 'pi_test_1', 'stripe_card', {
+      amount: 1000,
+      currency: 'usd',
+    });
+
+    expect(result.amountMismatch).toBe(false);
+    expect(state.markPaidCalls).toBe(1);
   });
 });

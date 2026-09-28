@@ -46,9 +46,10 @@ function useWordPress(routes: WordPressStubRoute[]): WordPressStub {
 /** A cart line shaped the way the Store API actually sends one. */
 function cartLine(overrides: Partial<StoreCartItemRaw> = {}): StoreCartItemRaw {
   return {
-    key: 'a1b2c3',
-    id: 2493,
-    quantity: 2,
+    key: 'a1b2c3',      id: 2493,
+      parent_id: undefined,
+      quantity: 2,
+
     name: 'Himalayan Salt Coarse Grain — 6 lbs',
     sku: 'HK-SFL-C-6lbs ',
     images: [{ src: 'https://cdn.test/6lbs.webp', thumbnail: 'https://cdn.test/6lbs-573.webp' }],

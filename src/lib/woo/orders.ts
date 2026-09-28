@@ -60,6 +60,11 @@ export const HK_META = {
   userId: '_hk_user_id',
   couponCode: '_hk_coupon',
   paymentIntent: '_hk_payment_intent',
+  /** Checkout inputs that affect pricing/address, hashed so PII is not stored. */
+  checkoutFingerprint: '_hk_checkout_fingerprint',
+  /** Stripe refund IDs recorded in WooCommerce refund metadata for deduplication. */
+  stripeRefundId: '_hk_stripe_refund_id',
+  refundedAmount: '_hk_refunded_amount',
   /**
    * The checkout that reserved this order, so a double-click reuses it.
    *
@@ -156,6 +161,14 @@ export interface WooOrderLineItem {
 }
 
 /** A WooCommerce order as REST v3 reports it (the fields this module reads). */
+export interface WooOrderRefundLike {
+  id?: number;
+  reason?: string;
+  /** WooCommerce may serialize an order refund total as a signed amount. */
+  total?: string;
+  meta_data?: Array<{ id?: number; key?: string; value?: unknown }>;
+}
+
 export interface WooOrderLike {
   id: number;
   number?: string;
@@ -175,6 +188,7 @@ export interface WooOrderLike {
   payment_method_title?: string;
   transaction_id?: string;
   needs_payment?: boolean;
+  refunds?: WooOrderRefundLike[];
   billing?: WooOrderAddress;
   shipping?: WooOrderAddress;
   line_items?: WooOrderLineItem[];
@@ -268,7 +282,27 @@ export function appStatusFromWoo(order: WooOrderLike): AppOrderStatus {
  * anything recorded here; the meta value exists for the pause between a Stripe
  * `payment_intent.succeeded` and the store being updated.
  */
+export function wooRefundedAmount(order: WooOrderLike): number {
+  const refundRowsTotal = (order.refunds ?? []).reduce((sum, refund) => {
+    const amount = Math.abs(money(refund.total));
+    return sum + (Number.isFinite(amount) ? amount : 0);
+  }, 0);
+  const recordedTotal = Math.max(0, money(metaString(order, HK_META.refundedAmount)));
+  const total = Math.max(0, money(order.total));
+  const refunded = Math.min(total, Math.max(refundRowsTotal, recordedTotal));
+
+  // Some WooCommerce responses omit refund details on the order projection even
+  // though the native status is already `refunded`. Keep historical full refunds
+  // correct without treating a partial refund as a full reversal.
+  return order.status === 'refunded' ? total : refunded;
+}
+
 export function paymentStatusFromWoo(order: WooOrderLike): AppPaymentStatus {
+  const total = Math.max(0, money(order.total));
+  const refunded = wooRefundedAmount(order);
+  if (refunded > 0 && total > 0 && refunded >= total - 0.01) return 'refunded';
+  if (refunded > 0) return 'partially_refunded';
+
   const metaStatus = metaString(order, HK_META.paymentStatus) as AppPaymentStatus | null;
   if (metaStatus) return metaStatus;
   if (order.date_paid_gmt) return 'paid';
@@ -318,6 +352,7 @@ export function orderFromWoo(order: WooOrderLike): Order {
     status: appStatusFromWoo(order),
     payment_status: paymentStatusFromWoo(order),
     payment_method: order.payment_method ?? null,
+    payment_method_title: order.payment_method_title ?? null,
     subtotal: lineSubtotal,
     shipping_cost: money(order.shipping_total),
     tax_amount: money(order.total_tax),
@@ -440,7 +475,10 @@ export async function listWooOrders(query: WooOrderQuery = {}): Promise<{
  * identical cart do not share an order.
  */
 export async function findPendingWooOrderByFingerprint(input: {
+  /** The raw cart fingerprint (`_hk_cart_fingerprint`). */
   fingerprint: string;
+  /** The wider checkout identity (`_hk_checkout_fingerprint`), when the caller has it. */
+  checkoutFingerprint?: string | null;
   email: string;
   customerId?: number | null;
 }): Promise<WooOrderLike | null> {
@@ -451,6 +489,13 @@ export async function findPendingWooOrderByFingerprint(input: {
   const page = await listWooOrders({ status: 'pending', perPage: 100 });
   const match = page.orders.find((order) => {
     if (metaString(order, HK_META.cartFingerprint) !== input.fingerprint) return false;
+    // A reservation is priced for its checkout inputs (cart + addresses + shipping
+    // + coupon + totals). When the order records that wider identity and it no
+    // longer matches, reusing it would attach a new address/total to an old order,
+    // so it is left alone and a fresh order is reserved. Legacy orders without the
+    // key still match on the cart alone.
+    const storedCheckout = metaString(order, HK_META.checkoutFingerprint);
+    if (storedCheckout && input.checkoutFingerprint && storedCheckout !== input.checkoutFingerprint) return false;
     const owner = String(order.billing?.email ?? '').trim().toLowerCase();
     if (email && owner !== email) return false;
     if (input.customerId) {
@@ -673,7 +718,12 @@ export async function setWooOrderPaymentIntent(
 /** Marks an order paid, recording the payment intent that paid it. */
 export async function markWooOrderPaid(
   id: number,
-  input: { paymentIntentId?: string; transactionId?: string } = {}
+  input: {
+    paymentIntentId?: string;
+    transactionId?: string;
+    paymentMethod?: string;
+    paymentMethodTitle?: string;
+  } = {}
 ): Promise<WooOrderLike> {
   requireWooCredentials();
   const body: Record<string, unknown> = {
@@ -684,6 +734,8 @@ export async function markWooOrderPaid(
     }),
   };
   if (input.transactionId) body.transaction_id = input.transactionId;
+  if (input.paymentMethod) body.payment_method = input.paymentMethod;
+  if (input.paymentMethodTitle) body.payment_method_title = input.paymentMethodTitle;
 
   try {
     return await wordpressRequest<WooOrderLike>(`${REST_V3}/orders/${id}`, {
@@ -774,6 +826,9 @@ export interface CreateWooOrderInput {
   billing?: WooOrderAddress;
   shipping?: WooOrderAddress;
   shippingMethod?: string;
+  /** Server-verified customer shipping charge; WooCommerce calculates configured shipping tax. */
+  shippingTotal?: number;
+  shippingMethodTitle?: string;
   couponCode?: string;
   customerNote?: string;
   customerId?: number;
@@ -823,8 +878,12 @@ export async function createWooOrder(input: CreateWooOrderInput): Promise<WooOrd
       // `total` (not `subtotal`) is what pins the charged amount for the line.
       total: (line.price * line.quantity).toFixed(2),
     })),
-    shipping_lines: input.shippingMethod
-      ? [{ method_id: 'flat_rate', method_title: input.shippingMethod, total: '0.00' }]
+    shipping_lines: typeof input.shippingTotal === 'number'
+      ? [{
+          method_id: 'flat_rate',
+          method_title: input.shippingMethodTitle || input.shippingMethod || 'Shipping',
+          total: input.shippingTotal.toFixed(2),
+        }]
       : undefined,
     coupon_lines: input.couponCode ? [{ code: input.couponCode }] : undefined,
     customer_note: input.customerNote,

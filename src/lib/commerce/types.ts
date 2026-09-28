@@ -61,8 +61,9 @@ export interface Order {
   email: string;
   phone: string | null;
   status: 'pending' | 'confirmed' | 'processing' | 'packed' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
-  payment_status: 'pending' | 'paid' | 'failed' | 'refunded';
+  payment_status: 'pending' | 'paid' | 'failed' | 'partially_refunded' | 'refunded';
   payment_method: string | null;
+  payment_method_title?: string | null;
   subtotal: number;
   shipping_cost: number;
   tax_amount: number;

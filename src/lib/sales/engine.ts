@@ -23,6 +23,7 @@ import {
   paymentStatusFromWoo,
   appStatusFromWoo,
   orderFromWoo,
+  wooRefundedAmount,
 } from '@/lib/woo/orders';
 import type {
   RevenueSummary,
@@ -138,6 +139,8 @@ function computeRevenue(orders: WooOrderLike[]): RevenueSummary {
     if (!isOrderPaid(order)) continue;
 
     paidCount += 1;
+    const partialRefund = wooRefundedAmount(order);
+    if (partialRefund > 0) refunds += partialRefund;
     grossRevenue += money(order.total);
     shippingRevenue += money(order.shipping_total);
     taxCollected += money(order.total_tax);
@@ -177,6 +180,8 @@ function computeTodayKpis(allOrders: WooOrderLike[]): TodayKpiSummary {
     if (isOrderRefunded(order)) {
       refunds += money(order.total);
     } else if (isOrderPaid(order)) {
+      const partialToday = wooRefundedAmount(order);
+      if (partialToday > 0) refunds += partialToday;
       paidRev += money(order.total);
       count += 1;
     }
@@ -229,6 +234,7 @@ function computeDailySeries(orders: WooOrderLike[], range: DateRange): DailySale
     if (isOrderRefunded(order)) {
       point.refunds += total;
     } else if (isOrderPaid(order)) {
+      point.refunds += wooRefundedAmount(order);
       point.revenue += total;
       point.orders += 1;
     }
@@ -328,7 +334,7 @@ export function orderToSalesRow(
   catalogCostMap?: Map<number, number> | Record<number, number>
 ): SalesOrderRow {
   const order = orderFromWoo(woo);
-  const refundedAmount = order.status === 'refunded' ? order.total : 0;
+  const refundedAmount = wooRefundedAmount(woo);
   const netTotal = round2(order.total - refundedAmount);
 
   const billingName = [woo.billing?.first_name, woo.billing?.last_name]
@@ -410,7 +416,7 @@ export function orderToSalesRow(
     customerName: billingName || 'Guest',
     customerEmail: order.email,
     status: order.status,
-    paymentStatus: isOrderPaid(woo) ? 'paid' : order.payment_status,
+    paymentStatus: isOrderPaid(woo) ? (order.payment_status === 'partially_refunded' ? 'partially_refunded' : 'paid') : order.payment_status,
     paymentMethod: order.payment_method,
     subtotal: order.subtotal,
     shipping: order.shipping_cost,
@@ -465,7 +471,7 @@ function orderToPaymentRecord(woo: WooOrderLike): PaymentRecord | null {
       ? round2(total * STRIPE_PCT + STRIPE_FIXED)
       : 0;
   }
-  const received = isRefunded ? 0 : total;
+  const received = round2(total - wooRefundedAmount(woo));
   const netReceived = round2(received - fee);
 
   let status: ReconciliationStatus = 'matched';
