@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSettingsForCategoryWithStatus } from '@/lib/settings/serverSettings';
-import { resolveStripeSecretKey } from '@/lib/stripe/server/stripe';
+import { evaluateCurrentStripeReadiness, resolveStripeSecretKey } from '@/lib/stripe/server/stripe';
 import { describeStripeConfigStatus } from '@/lib/stripe/server/configStatus';
 
 export const runtime = 'nodejs';
@@ -41,10 +41,22 @@ export async function GET() {
 
   const status = describeStripeConfigStatus({ publishableKey, secretKey, webhookSecret });
 
+  // `configured` has to mean "this deployment will actually let that form charge",
+  // not merely "the two keys pair up". A live pair on a deployment that is not the
+  // production origin is refused by the same gate `create-payment-intent` uses
+  // (readiness blocks live charging off the production origin), so calling it
+  // configured would mount a live Stripe.js card form on staging that can never
+  // complete — a checkout that looks real and cannot work. Asking the gate the same
+  // question the payment route asks keeps the screen and the refusal in agreement.
+  const readiness = await evaluateCurrentStripeReadiness();
+
   return NextResponse.json({
     publishableKey,
     publishableKeySource: settings.publishable_key ? 'db' : envPublishable ? 'env' : 'unset',
     ...status,
+    configured: status.configured && readiness.chargingEnabled,
+    /** The first reason this deployment may not charge, or null when it may. */
+    chargingBlockedReason: readiness.chargingEnabled ? null : readiness.blockers[0] ?? null,
     settingsRead: { ok: read.ok, status: read.status },
   });
 }

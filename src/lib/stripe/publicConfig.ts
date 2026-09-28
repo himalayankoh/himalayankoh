@@ -21,6 +21,11 @@ export interface StripePublicConfig {
   /** Two usable keys from different Stripe modes: a checkout that cannot confirm. */
   modeMismatch?: boolean;
   /**
+   * The first reason this deployment may not charge at all — e.g. a live key on a
+   * non-production origin. Null when it may charge. Shown to staff, never a value.
+   */
+  chargingBlockedReason?: string | null;
+  /**
    * Whether the WordPress settings category behind the keys could be read, and
    * with what HTTP status. `ok:false` with 401/403 means this deployment cannot
    * see stored settings at all, so every stored key looks unset.
