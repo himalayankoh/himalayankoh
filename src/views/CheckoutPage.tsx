@@ -571,6 +571,10 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     }
 
     if (retailOnly && stripeEnabled) return;
+    if (retailOnly && !stripeEnabled) {
+      setError('Online payment is temporarily unavailable. Please contact us to complete your purchase.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -593,7 +597,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         notes: form.notes || undefined,
       };
 
-      if (paymentMethod === 'invoice') {
+      if (!retailOnly && paymentMethod === 'invoice') {
         const order = await ordersApi.createOrder({
           ...orderPayload,
           paymentProvider: 'invoice',
@@ -606,7 +610,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       }
 
       if (stripeSession) {
-        setError('Complete card payment below, or switch to invoice checkout.');
+        setError('Complete card payment below.');
         return;
       }
       await prepareStripePayment();
@@ -961,10 +965,10 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       <div className="space-y-1.5">
                         <p className="font-semibold text-charcoal flex items-center gap-2">
                           <CreditCard size={18} className="text-himalayan" />
-                          Online card payment is being configured on staging
+                          Online payment is temporarily unavailable
                         </p>
                         <p className="text-xs text-charcoal-light">
-                          Choose <strong>Place order (invoice)</strong> to request payment by invoice or bank transfer. Payment instructions will follow by email.
+                          Card and digital wallet payments are being configured. Please contact us to complete your purchase.
                         </p>
                       </div>
                     ) : (
@@ -977,7 +981,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 <p className="text-sm text-charcoal-light mb-5">
                 {stripeEnabled
                   ? 'Pay securely with your card at checkout. Invoice billing is available on request.'
-                  : 'Card payments are not configured on this site. Place your order and pay by invoice.'}
+                  : 'Card payments are not configured on this site.'}
               </p>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -1008,7 +1012,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       ? stripeMode === 'test'
                         ? 'Continue to enter your payment details securely.'
                         : 'Secure card payment via Stripe. Enter card number, expiry, and CVC on the next step.'
-                      : 'Card payment is currently unavailable. Please choose invoice payment.'}
+                      : 'Card payment is currently unavailable.'}
                   </p>
                 </button>
                 <button
@@ -1110,12 +1114,12 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       ? stripeSession
                         ? 'Enter your payment details in the Payment section to confirm your order.'
                         : 'Choose Enter secure payment details in the Payment section to continue.'
-                      : 'Payment by invoice — no card required to place your order.'
+                      : 'Online payment is temporarily unavailable.'
                     : paymentMethod === 'stripe' && stripeEnabled
                     ? stripeSession
                       ? 'Complete card payment below to confirm your order.'
                       : 'Step 1: Continue to payment, then enter your card details on this page.'
-                    : 'Invoice order — no card needed. Payment will be arranged by email before shipping.'}
+                    : 'Online payment is temporarily unavailable.'}
                 </p>
               </div>
 
@@ -1124,7 +1128,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               {(!retailOnly || !stripeEnabled) && (
               <button
                 type="submit"
-                disabled={submitting || (paymentMethod === 'stripe' && Boolean(stripeSession))}
+                disabled={submitting || (retailOnly && !stripeEnabled) || (paymentMethod === 'stripe' && Boolean(stripeSession))}
                 className="w-full mt-6 flex items-center justify-center gap-2 py-4 bg-himalayan hover:bg-himalayan-dark disabled:bg-gray-300 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-himalayan/25"
               >
                 {submitting && <Loader2 size={18} className="animate-spin" />}
@@ -1134,7 +1138,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                     ? stripeSession
                       ? 'Enter card details above'
                       : retailOnly ? `Pay $${totals.total.toFixed(2)}` : 'Continue to payment'
-                    : 'Place order (invoice)'}
+                    : retailOnly ? 'Online payment unavailable' : 'Place order (invoice)'}
               </button>
               )}
             </div>
