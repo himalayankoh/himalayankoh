@@ -52,19 +52,43 @@ export async function getSetting(category: string, key: string): Promise<string 
   }
 }
 
-export async function getSettingsForCategory(
+/**
+ * The same read, with the failure kept instead of swallowed.
+ *
+ * `getSettingsForCategory` answers `{}` for both "nothing is stored" and "the store
+ * could not be reached", and for a page render that is the right answer — blank is
+ * already what "not configured" means. A *status* screen needs the difference,
+ * though: "the owner has not saved a key yet" and "this deployment is not allowed
+ * to read the stored keys" are different problems with different fixes, and only
+ * one of them is the owner's. So this variant reports the HTTP status rather than
+ * hiding it behind an empty object.
+ */
+export async function getSettingsForCategoryWithStatus(
   category: string,
-): Promise<Record<string, string | null>> {
+): Promise<{ values: Record<string, string | null>; ok: boolean; status: number | null }> {
   try {
     const values = await siteSettingsApi.read(category);
     const now = Date.now();
     for (const [key, value] of Object.entries(values)) {
       cache.set(cacheKey(category, key), { value: value ?? null, expiresAt: now + TTL_MS });
     }
-    return values;
-  } catch {
-    return {};
+    return { values, ok: true, status: 200 };
+  } catch (error) {
+    // A `WordPressApiError` carries the status the origin answered with; anything
+    // else (a bad URL, an abort) has none, and `null` says exactly that rather
+    // than inventing a 500.
+    const status =
+      typeof (error as { status?: unknown } | null)?.status === 'number'
+        ? (error as { status: number }).status
+        : null;
+    return { values: {}, ok: false, status };
   }
+}
+
+export async function getSettingsForCategory(
+  category: string,
+): Promise<Record<string, string | null>> {
+  return (await getSettingsForCategoryWithStatus(category)).values;
 }
 
 export async function upsertSettings(

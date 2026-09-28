@@ -94,11 +94,16 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [addressValidating, setAddressValidating] = useState(false);
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() =>
-    publicEnv.stripePublishableKey ? 'stripe' : 'invoice'
+    // Retail is card-or-nothing, so it must never *hold* `invoice` as its
+    // selection even before the Stripe config has loaded. The legacy checkout
+    // keeps the old default.
+    retailOnly || publicEnv.stripePublishableKey ? 'stripe' : 'invoice'
   );
   const [stripeSession, setStripeSession] = useState<StripeCheckoutSession | null>(null);
   const [paymentCompleting, setPaymentCompleting] = useState(false);
   const [stripeConfig, setStripeConfig] = useState<StripePublicConfig | null>(null);
+  /** False until the server has answered — a payment form must not mount before that. */
+  const [stripeConfigLoaded, setStripeConfigLoaded] = useState(false);
   const [shippoRuntimeEnabled, setShippoRuntimeEnabled] = useState<boolean | null>(null);
   const [shippingSelected, setShippingSelected] = useState(false);
   const [authoritativeTax, setAuthoritativeTax] = useState<number | null>(null);
@@ -142,9 +147,18 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   );
   const selectedShippoRate = shippoRates.find((rate) => rate.objectId === selectedShippoRateId) || null;
   const useLiveShippoRates = shippoEnabled && shippoRates.length > 0 && Boolean(selectedShippoRate);
-  const stripeEnabled = stripeConfig?.configured ?? Boolean(publicEnv.stripePublishableKey);
-  const stripePublishableKey = stripeConfig?.publishableKey ?? publicEnv.stripePublishableKey;
-  const stripeMode = stripeConfig?.mode ?? (stripePublishableKey.startsWith('pk_live_') ? 'live' : 'test');
+  // The server decides, and it is the only thing that may decide.
+  //
+  // `configured` means "both keys are present AND from the same Stripe mode", which
+  // is the only answer that guarantees the card form can confirm the PaymentIntent
+  // this deployment created. A baked-in publishable key is NOT evidence of that: a
+  // `pk_live_` compiled into a test deployment would load Stripe.js in live mode
+  // against a test intent — the broken checkout `readiness.ts` exists to prevent.
+  // So there is deliberately no fallback to `publicEnv` here; the page stays
+  // fail-closed until the server has answered.
+  const stripeEnabled = stripeConfig?.configured === true;
+  const stripePublishableKey = stripeConfig?.publishableKey ?? '';
+  const stripeMode = stripeConfig?.mode ?? 'test';
 
   const totals = useMemo(
     () => calculateOrderTotals(
@@ -200,12 +214,6 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     paymentDetailsReady;
 
   useEffect(() => {
-    getStripeClientConfig()
-      .then((config) => setStripeConfig(config))
-      .catch((error) => console.error('Unable to load Stripe config:', error));
-  }, []);
-
-  useEffect(() => {
     const onCartWarning = (event: Event) => {
       // The store's own words. It no longer claims the line was removed, because
       // nothing removes it: WooCommerce refuses the line when the order is written,
@@ -223,14 +231,20 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       .catch((error) => {
         console.error('Unable to load Stripe config:', error);
         setStripeConfig(null);
-      });
+      })
+      // Loaded either way: a failed config fetch means "Stripe is not usable here",
+      // not "keep waiting". `finally` is what lets the payment section stop saying
+      // "checking…" and say the honest thing instead.
+      .finally(() => setStripeConfigLoaded(true));
   }, []);
 
   useEffect(() => {
-    if (retailOnly) {
-      setPaymentMethod(stripeEnabled ? 'stripe' : 'invoice');
-    }
-  }, [retailOnly, stripeEnabled]);
+    // Retail is card-or-nothing. An invoice is never a retail payment method, so the
+    // retail page must not hold `invoice` as its selection even while Stripe is
+    // unconfigured — otherwise the submit path would still be an invoice path that
+    // only the render layer hides, which is exactly the fallback this replaced.
+    if (retailOnly) setPaymentMethod('stripe');
+  }, [retailOnly]);
 
   useEffect(() => {
     getShippoClientConfig()
@@ -476,7 +490,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
 
     if (paymentMethod === 'stripe' && !stripeEnabled) {
       nextErrors.coupon =
-        'Card payments need a Stripe publishable key and secret key configured in environment variables or Supabase settings.';
+        'Card payments are not available yet. An administrator can add the Stripe keys under Admin → Settings → Service & API Keys.';
     }
 
     setFieldErrors(nextErrors);
@@ -709,7 +723,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
-        {paymentMethod === 'stripe' && !stripeEnabled && (
+        {/*
+          Legacy checkout only. Retail has exactly one payment path, so the Payment
+          section owns that message rather than two banners saying it at once.
+        */}
+        {!retailOnly && paymentMethod === 'stripe' && !stripeEnabled && (
           <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             <p className="font-semibold">Card payments are currently unavailable.</p>
             <p className="mt-2">Please choose another available payment method or contact our team for help.</p>
@@ -961,6 +979,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   <div className="mt-5 rounded-2xl border border-himalayan/30 bg-himalayan/5 p-5 text-sm text-charcoal-light">
                     {submitting ? (
                       <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Preparing secure payment…</span>
+                    ) : !stripeConfigLoaded ? (
+                      <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Checking payment options…</span>
                     ) : !stripeEnabled ? (
                       <div className="space-y-1.5">
                         <p className="font-semibold text-charcoal flex items-center gap-2">
@@ -1110,11 +1130,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 <ShieldCheck size={16} className="text-himalayan flex-shrink-0 mt-0.5" />
                 <p>
                   {retailOnly
-                    ? stripeEnabled
-                      ? stripeSession
-                        ? 'Enter your payment details in the Payment section to confirm your order.'
-                        : 'Choose Enter secure payment details in the Payment section to continue.'
-                      : 'Online payment is temporarily unavailable.'
+                    ? stripeSession
+                      ? 'Enter your payment details in the Payment section to confirm your order.'
+                      : stripeEnabled
+                        ? 'Enter your secure payment details in the Payment section to continue.'
+                        : 'Online payment is temporarily unavailable.'
                     : paymentMethod === 'stripe' && stripeEnabled
                     ? stripeSession
                       ? 'Complete card payment below to confirm your order.'
@@ -1125,6 +1145,12 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
 
               {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
+              {/*
+                This button only renders when the order cannot be paid inline. For
+                retail that means a disabled label that says what is actually wrong —
+                a greyed-out "Pay $99.90" reads as a broken button rather than as
+                payment not being open yet, and neither is an invoice action.
+              */}
               {(!retailOnly || !stripeEnabled) && (
               <button
                 type="submit"
@@ -1134,11 +1160,17 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 {submitting && <Loader2 size={18} className="animate-spin" />}
                 {submitting
                   ? paymentMethod === 'stripe' ? 'Preparing payment…' : 'Placing order…'
-                  : paymentMethod === 'stripe'
-                    ? stripeSession
-                      ? 'Enter card details above'
-                      : retailOnly ? `Pay $${totals.total.toFixed(2)}` : 'Continue to payment'
-                    : retailOnly ? 'Online payment unavailable' : 'Place order (invoice)'}
+                  : retailOnly
+                    ? !stripeConfigLoaded
+                      ? 'Checking payment options…'
+                      : !stripeEnabled
+                        ? 'Online payment unavailable'
+                        : stripeSession
+                          ? 'Enter card details above'
+                          : `Pay $${totals.total.toFixed(2)}`
+                    : paymentMethod === 'stripe'
+                      ? stripeSession ? 'Enter card details above' : 'Continue to payment'
+                      : 'Place order (invoice)'}
               </button>
               )}
             </div>

@@ -121,7 +121,9 @@ export default function StripePaymentForm({
   if (!stripePromise) {
     return (
       <p className="text-sm text-red-600">
-        Stripe publishable key is missing. Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_... to .env.local or Supabase site settings and restart the dev server.
+        Card payments are not configured yet. An administrator can add the Stripe
+        publishable key under Admin → Settings → Service &amp; API Keys, or set
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_… for local development.
       </p>
     );
   }
