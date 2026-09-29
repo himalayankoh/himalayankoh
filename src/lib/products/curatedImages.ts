@@ -44,19 +44,39 @@ export const CURATED_PRODUCT_IMAGES: Record<string, readonly string[]> = {
   'hk-lfh-2lbs': ROPE_SALT_LICK_IMAGES,
 };
 
-export function resolveCuratedProductImages(
-  slug: string,
-  sku?: string | null,
-  existingImages: string[] = []
-): string[] {
-  const normSlug = slug.toLowerCase().trim();
+/**
+ * The app-shipped defaults configured for one product, or `[]`.
+ *
+ * This is the overlay on its own — the images that live in *this repository*
+ * rather than in the store. Exported separately from
+ * `resolveCuratedProductImages` because the two questions are different:
+ *
+ * - the storefront wants the merged list it should render (`resolve…`);
+ * - the admin editor wants to know which of a product's storefront images
+ *   WooCommerce does not hold, so it can say so instead of hiding them.
+ *
+ * Matched case-insensitively on slug or SKU, the same way the storefront does
+ * it.
+ */
+export function curatedProductImages(slug: string, sku?: string | null): readonly string[] {
+  const normSlug = (slug ?? '').toLowerCase().trim();
   const normSku = sku ? sku.toLowerCase().trim() : '';
 
   const curated =
     CURATED_PRODUCT_IMAGES[normSlug] ||
     (normSku ? CURATED_PRODUCT_IMAGES[normSku] : undefined);
 
-  if (!curated || curated.length === 0) {
+  return curated ?? [];
+}
+
+export function resolveCuratedProductImages(
+  slug: string,
+  sku?: string | null,
+  existingImages: string[] = []
+): string[] {
+  const curated = curatedProductImages(slug, sku);
+
+  if (curated.length === 0) {
     return existingImages;
   }
 

@@ -40,6 +40,19 @@ export interface AdminCatalogRow {
   slug: string;
   image: string;
   images: string[];
+  /**
+   * Images the product page shows that WooCommerce does not hold.
+   *
+   * The console reads products two ways — this list read and the single-product
+   * read at `/api/admin/products/:id` — and the editor prefers whichever answer
+   * it already has cached, which is normally this one. So the field has to be on
+   * the row too: with it only on the single-product DTO, reaching the editor
+   * through the products list silently showed a product with no images at all
+   * while its page displayed four.
+   *
+   * Read-only; see `AdminProductRecord.storefrontDefaultImages`.
+   */
+  storefrontDefaultImages: string[];
   categoryName: string | null;
   /** The source's own facet id for the category — see `AdminCatalogFacet`. */
   categoryId: string | null;
@@ -160,6 +173,11 @@ export function rowFromCatalogProduct(product: CatalogProduct): AdminCatalogRow 
     slug: product.slug,
     image: product.image,
     images: product.images ?? [],
+    // This row came from the *storefront* read, which has already merged the
+    // curated defaults into `images` — so there is nothing this row is holding
+    // back, and an empty list is the truth rather than a shrug. (`Product` here
+    // is `data/products`, not the console's own model.)
+    storefrontDefaultImages: [],
     categoryName,
     categoryId: categoryName,
     // This row came from the public read, which returns published products only,
@@ -218,6 +236,7 @@ export function rowFromWooAdminProduct(record: AdminProductRecord): AdminCatalog
     slug: record.slug || String(record.id),
     image: record.images[0] ?? '',
     images: record.images,
+    storefrontDefaultImages: record.storefrontDefaultImages ?? [],
     categoryName,
     categoryId: categoryName,
     price: record.price === null ? '' : `$${record.price.toFixed(2)}`,

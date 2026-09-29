@@ -131,6 +131,15 @@ export interface CatalogProduct {
   canonicalSlug?: string;
   ogImage?: string;
   images: CatalogImage[];
+  /**
+   * The images the storefront shows that WooCommerce does not hold.
+   *
+   * Site-shipped defaults (see `lib/products/curatedImages.ts`) matched to this
+   * product by slug or SKU. They are read-only here on purpose: they are relative
+   * paths in this app, WooCommerce cannot store them, and writing them back as
+   * gallery images would make the product page list the same file twice.
+   */
+  storefrontDefaultImages?: string[];
   variants: CatalogVariant[];
   createdAt: string;
   updatedAt: string;

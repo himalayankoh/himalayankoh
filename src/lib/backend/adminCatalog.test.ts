@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Product as CatalogProduct } from '../../data/products';
+import { fromWooProduct } from '../woo/productPayload';
 import {
   rowFromCatalogProduct,
+  rowFromWooAdminProduct,
   sortAdminCatalogRows,
   statsFromRows,
   type AdminCatalogRow,
@@ -123,5 +125,52 @@ describe('statsFromRows', () => {
 
     expect(statsFromRows(rows).categories).toBe(2);
     expect(statsFromRows(rows).total).toBe(5);
+  });
+});
+
+/**
+ * The bug these pin, measured on staging: product 2484's page showed four
+ * photographs while its editor showed none. The single-product route had been
+ * taught about the app-shipped defaults, but the console opens the editor
+ * through the products list, whose rows had not — so the editor was handed a
+ * product whose extra images had been quietly dropped in transit, and the
+ * panel that was supposed to explain the gap never rendered.
+ */
+describe('rowFromWooAdminProduct', () => {
+  it('carries the storefront-only imagery, so the list read cannot lose it', () => {
+    const row = rowFromWooAdminProduct(
+      fromWooProduct({
+        id: 2484,
+        name: 'Himalayan Salt Block — 30 lbs',
+        slug: 'himalayan-salt-block-30-lbs',
+        sku: 'HK-LB-30LBS',
+        status: 'publish',
+        images: [],
+      })
+    );
+
+    expect(row.images).toEqual([]);
+    expect(row.storefrontDefaultImages).toHaveLength(4);
+    expect(row.storefrontDefaultImages[0]).toBe(
+      '/images/products/himalayan-salt-block-30lbs-hero.webp'
+    );
+  });
+
+  it('reports nothing storefront-only for a product the curated map does not cover', () => {
+    const row = rowFromWooAdminProduct(
+      fromWooProduct({ id: 2479, slug: 'himalayan-pink-edible-salt-16-oz-jar', images: [] })
+    );
+
+    expect(row.storefrontDefaultImages).toEqual([]);
+  });
+
+  it('does not claim a storefront-only image when the storefront read already merged it', () => {
+    // `rowFromCatalogProduct` reads `data/products`, where the curated set has
+    // already been folded into `images`; the row owes the editor no second list.
+    const row = rowFromCatalogProduct(
+      catalogProduct({ slug: 'himalayan-salt-block-30-lbs', sku: 'HK-LB-30LBS' })
+    );
+
+    expect(row.storefrontDefaultImages).toEqual([]);
   });
 });

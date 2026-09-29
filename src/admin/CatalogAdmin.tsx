@@ -3960,6 +3960,40 @@ function ImageManager({ product, onProduct }: { product: CatalogProduct; onProdu
           ))}
         </div>
       )}
+
+      {/*
+        The other half of the product page's imagery: the images this site ships
+        for the product, which the store has no record of. Before this panel the
+        editor showed only the WooCommerce gallery, so a product whose page
+        displayed four photographs showed one placeholder card here and nothing
+        explained the gap.
+      */}
+      {(product.storefrontDefaultImages?.length ?? 0) > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+          <p className="text-sm font-semibold text-amber-900 flex items-center gap-1.5">
+            <Globe size={14} />
+            {product.storefrontDefaultImages!.length} storefront image
+            {product.storefrontDefaultImages!.length === 1 ? '' : 's'} WooCommerce does not hold
+          </p>
+          <p className="text-xs text-amber-800 mt-1">
+            The product page shows these <strong>before</strong> the images above. They ship with this
+            site and are matched to the product by slug or SKU, so they are not media items in the
+            store, they cannot be edited or removed from here, and a save never writes them into the
+            WooCommerce gallery. The way to make them ordinary store images is to import them into
+            WordPress media, then retire this product&apos;s curated defaults.
+          </p>
+          <div className="mt-3 grid grid-cols-3 sm:grid-cols-5 gap-2">
+            {product.storefrontDefaultImages!.map((src) => (
+              <figure key={src} className="rounded-lg overflow-hidden border border-amber-200 bg-white">
+                <img src={src} alt="" className="w-full aspect-square object-cover" loading="lazy" />
+                <figcaption className="px-1.5 py-1 text-[10px] font-medium text-amber-700 truncate" title={src}>
+                  Site default
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

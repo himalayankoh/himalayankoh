@@ -244,6 +244,52 @@ describe('fromWooProduct', () => {
     expect(record.canonicalSlug).toBe('himalayan-rock-salt-45-lbs-2-3-large-chunks');
   });
 
+  it('reports the storefront imagery the store holds no record of', () => {
+    // Product 2484 as the store reports it: a published product with no gallery
+    // image at all, whose product page nonetheless shows four photographs (the
+    // app-shipped defaults). Before this field the editor could not tell that
+    // apart from a product with one placeholder image.
+    const record = fromWooProduct({
+      id: 2484,
+      name: 'Himalayan Salt Block — 30 lbs',
+      slug: 'himalayan-salt-block-30-lbs',
+      sku: 'HK-LB-30LBS',
+      status: 'publish',
+      images: [],
+    });
+
+    expect(record.images).toEqual([]);
+    expect(record.storefrontDefaultImages).toHaveLength(4);
+    expect(record.storefrontDefaultImages[0]).toBe('/images/products/himalayan-salt-block-30lbs-hero.webp');
+  });
+
+  it('does not report a default twice when the gallery already holds that URL', () => {
+    // The storefront's own overlay de-duplicates by URL, so an image that is in
+    // both places is one image to a customer and must count as one here.
+    const shared = '/images/products/himalayan-salt-lick-rope-hero.webp';
+    const record = fromWooProduct({
+      id: 2487,
+      slug: 'himalayan-salt-lick-5-to-6-lbs',
+      sku: 'HK-LFH-6lbs',
+      images: [{ src: shared }, { src: 'https://himalayankoh.com/staging/wp-content/uploads/2022/04/lick-4.jpg' }],
+    });
+
+    expect(record.images).toHaveLength(2);
+    expect(record.storefrontDefaultImages).toHaveLength(4);
+    expect(record.storefrontDefaultImages).not.toContain(shared);
+  });
+
+  it('claims no storefront-only imagery for a product the curated map does not cover', () => {
+    const record = fromWooProduct({
+      id: 2479,
+      slug: 'himalayan-pink-edible-salt-16-oz-jar',
+      sku: 'HK-ESC-16oz',
+      images: [{ src: 'https://himalayankoh.com/staging/wp-content/uploads/2024/08/jar.jpeg' }],
+    });
+
+    expect(record.storefrontDefaultImages).toEqual([]);
+  });
+
   it('treats a non-publish status as not listed', () => {
     expect(fromWooProduct({ id: 1, status: 'draft' }).isListed).toBe(false);
     expect(fromWooProduct({ id: 1, status: 'trash' }).isListed).toBe(false);

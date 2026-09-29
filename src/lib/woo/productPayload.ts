@@ -27,6 +27,8 @@
  * on a variable product did anything.
  */
 
+import { curatedProductImages } from '../products/curatedImages';
+
 /** Stock status as WooCommerce reports and accepts it. */
 export type WooStockStatus = 'instock' | 'outofstock' | 'onbackorder';
 
@@ -393,6 +395,23 @@ export interface AdminProductRecord {
   categoryNames: string[];
   tags: string[];
   images: string[];
+  /**
+   * Images the storefront renders that WooCommerce does not hold.
+   *
+   * These are the app-shipped defaults in `lib/products/curatedImages.ts`, the
+   * photography this repository carries for the products whose upstream gallery
+   * is empty or legacy. The storefront overlays them on the product read
+   * (`buildProduct`), so a customer sees them — but they are not media items in
+   * WordPress, they are not in `images` above, and before this field existed the
+   * admin editor showed a single placeholder for a product whose storefront page
+   * displayed four photographs, with nothing saying why.
+   *
+   * Read-only by construction: the editor must never write them back as gallery
+   * image URLs. They are relative paths in this app (`/images/products/…`), which
+   * WooCommerce cannot accept, and the storefront would then list the same file
+   * twice — once as a default and once as a gallery image.
+   */
+  storefrontDefaultImages: string[];
   stockStatus: WooStockStatus | 'unknown';
   stockQuantity: number | null;
   manageStock: boolean;
@@ -437,6 +456,15 @@ export function fromWooProduct(row: WooProductLike): AdminProductRecord {
     .map((image) => image.src)
     .filter((src): src is string => Boolean(src));
 
+  // The storefront-only half of the product's imagery: the app-shipped defaults
+  // that are not already a gallery image. The filter matters — a product whose
+  // owner has uploaded the same file Woo holds must not be reported as showing
+  // something extra, and the storefront's own overlay de-duplicates by URL, so
+  // an image present in both places is one image to the customer.
+  const storefrontDefaultImages = curatedProductImages(String(row.slug ?? ''), row.sku).filter(
+    (src) => !images.includes(src)
+  );
+
   const categories = row.categories ?? [];
   const selling = sellingPrice(row);
 
@@ -457,6 +485,7 @@ export function fromWooProduct(row: WooProductLike): AdminProductRecord {
     categoryNames: categories.map((c) => String(c.name ?? '')).filter(Boolean),
     tags: (row.tags ?? []).map((tag) => String(tag.name ?? '')).filter(Boolean),
     images,
+    storefrontDefaultImages,
     stockStatus: normaliseStockStatus(row.stock_status),
     stockQuantity: typeof row.stock_quantity === 'number' ? row.stock_quantity : null,
     manageStock: Boolean(row.manage_stock),

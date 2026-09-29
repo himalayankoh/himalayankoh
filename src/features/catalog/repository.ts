@@ -197,7 +197,12 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     ? (consoleStatusFromWoo(r.status) as CatalogStatus)
     : (r.isListed === false ? 'draft' : 'active');
   const isListed = consoleStatus === 'active';
-  const imagesList = rawImgs.length > 0 ? rawImgs : ['/images/placeholder-product.svg'];
+  // No placeholder is invented here any more. Injecting
+  // `/images/placeholder-product.svg` as a real entry made a product with no
+  // images read as a product with one: the editor drew a single bogus image
+  // card, the "at least one image is required" guard never fired, and the "no
+  // images" list filter never matched. An empty list is the truth, and both
+  // screens already render their own placeholder for it.
 
   const desc = (r.description as string) || (name ? `${name} — authentic pure Himalayan pink salt from the Himalayan Koh collection.` : '');
   const shortDesc = (r.shortDescription as string) || desc;
@@ -255,7 +260,12 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     seoDescriptionStored: typeof r.seoDescription === 'string' && r.seoDescription ? r.seoDescription : null,
     seoKeywords: Array.isArray(r.seoKeywords) ? r.seoKeywords.filter((x): x is string => typeof x === 'string') : [],
     canonicalSlug: typeof r.canonicalSlug === 'string' && r.canonicalSlug ? r.canonicalSlug : slug,
-    images: imagesList.map((url, i) => ({
+    // The other half of what the product page shows: imagery this app ships
+    // rather than the store's. Carried through read-only — see `CatalogProduct`.
+    storefrontDefaultImages: Array.isArray(r.storefrontDefaultImages)
+      ? (r.storefrontDefaultImages as unknown[]).map(String).filter(Boolean)
+      : [],
+    images: rawImgs.map((url, i) => ({
       id: `img-${id}-${i}`,
       productId: id,
       url,

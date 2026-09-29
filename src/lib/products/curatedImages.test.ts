@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CURATED_PRODUCT_IMAGES, resolveCuratedProductImages } from './curatedImages';
+import { CURATED_PRODUCT_IMAGES, curatedProductImages, resolveCuratedProductImages } from './curatedImages';
 
 describe('Curated product images for salt blocks and licks', () => {
   it('defines 4 high quality images for himalayan-salt-block-30-lbs and himalayan-salt-lick-30-lbs', () => {
@@ -57,5 +59,43 @@ describe('Curated product images for salt blocks and licks', () => {
     const existing = ['/images/products/pouch.webp'];
     const resolved = resolveCuratedProductImages('unrelated-product', 'HK-OTHER', existing);
     expect(resolved).toEqual(existing);
+  });
+});
+
+// The defaults on their own, which is the half the admin editor needs: the
+// storefront shows them, WooCommerce has never heard of them, and the editor
+// has to be able to say so.
+describe('curatedProductImages', () => {
+  it('reports the app-shipped defaults for a slug or SKU, case-insensitively', () => {
+    expect(curatedProductImages('himalayan-salt-block-30-lbs')).toHaveLength(4);
+    expect(curatedProductImages('an-unknown-slug', 'hk-lb-30lbs')).toHaveLength(4);
+    expect(curatedProductImages('an-unknown-slug', 'HK-LFh-6LBS')[0]).toBe(
+      '/images/products/himalayan-salt-lick-rope-hero.webp'
+    );
+  });
+
+  it('is empty rather than throwing for a product the map does not cover', () => {
+    expect(curatedProductImages('unrelated-product', 'HK-OTHER')).toEqual([]);
+    expect(curatedProductImages('', null)).toEqual([]);
+    expect(curatedProductImages('himalayan-salt-block-30-lbs', undefined)).toHaveLength(4);
+  });
+
+  it('is exactly the set resolveCuratedProductImages overlays ahead of the gallery', () => {
+    const defaults = curatedProductImages('himalayan-salt-lick-30-lbs', 'HK-LFH-30lbs');
+    const resolved = resolveCuratedProductImages('himalayan-salt-lick-30-lbs', 'HK-LFH-30lbs', [
+      'https://example.com/lick-4.jpg',
+    ]);
+    expect(resolved).toEqual([...defaults, 'https://example.com/lick-4.jpg']);
+  });
+
+  it('serves only image files that exist in this repository', () => {
+    // A default that 404s would be a broken product page, and the failure mode
+    // is invisible: the storefront would render an empty gallery frame.
+    for (const [key, images] of Object.entries(CURATED_PRODUCT_IMAGES)) {
+      for (const url of images) {
+        expect(url.startsWith('/images/products/'), `${key} → ${url}`).toBe(true);
+        expect(existsSync(join(process.cwd(), 'public', url)), `missing file for ${key} → ${url}`).toBe(true);
+      }
+    }
   });
 });

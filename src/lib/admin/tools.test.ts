@@ -154,6 +154,7 @@ function row(overrides: Partial<AdminCatalogRow> = {}): AdminCatalogRow {
     slug: 'pink-salt-5lb',
     image: '/images/salt.png',
     images: [],
+    storefrontDefaultImages: [],
     categoryName: 'Bulk Order',
     categoryId: 'bulk-order',
     price: '$19.95',
