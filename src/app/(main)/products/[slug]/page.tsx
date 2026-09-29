@@ -11,6 +11,20 @@ import ProductDetailClient from './ProductDetailClient';
 
 type Params = { slug: string };
 
+/**
+ * Product pages are cached at the edge for a minute.
+ *
+ * Measured 2026-09-29: an uncached product page took 865–885 ms on the preview
+ * Worker, and the origin read behind it ~730 ms, for a page that is identical
+ * for every visitor. One minute is the window `STOREFRONT_READ_TTL_SECONDS`
+ * already documents — browsing may be a minute stale, buying never is:
+ * add-to-cart, cart recalculation and checkout read WooCommerce directly and
+ * uncached, and WooCommerce refuses a quantity it cannot stock, so a cached
+ * listing cannot oversell. Saving a product in the admin console purges the
+ * page immediately rather than waiting out the window.
+ */
+export const revalidate = 60;
+
 export async function generateMetadata({
   params,
 }: {

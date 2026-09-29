@@ -29,6 +29,7 @@
 
 import { WordPressApiError, wordpressRequest } from '@/lib/backend/wordpress';
 import { requireWordPressCredentials } from '@/lib/backend/wordpressCredentials';
+import { purgePublicBlog } from '@/lib/backend/publicCache';
 import { findMediaByUrl, uploadMediaToWordPress } from '@/lib/media/wordpressMedia';
 
 const TIMEOUT_MS = 30_000;
@@ -369,6 +370,10 @@ export async function updatePost(id: string, patch: Partial<BlogPostInput>): Pro
     timeoutMs: TIMEOUT_MS,
   });
 
+  // An edited article is stale on the public blog the moment it is saved, and
+  // the blog read is cached for five minutes — longer than the catalogue.
+  purgePublicBlog(updated.slug, `post ${id} was updated`);
+
   return rowFromWpPost(updated);
 }
 
@@ -413,6 +418,11 @@ export async function setLifecycle(
     timeoutMs: TIMEOUT_MS,
   });
 
+  // Publishing, unpublishing and archiving all change what the public blog
+  // serves, and a scheduled post becomes public without any console action at
+  // all — that case is covered by the read's own five-minute window.
+  purgePublicBlog(updated.slug, `post ${id} changed status to ${action}`);
+
   return rowFromWpPost(updated);
 }
 
@@ -429,6 +439,10 @@ export async function deletePost(id: string, permanent = false): Promise<void> {
     params: permanent ? { force: 'true' } : {},
     timeoutMs: TIMEOUT_MS,
   });
+
+  // The slug is gone with the post, so the index purge is the one that matters:
+  // a deleted article must leave the listing at once.
+  purgePublicBlog(null, `post ${id} was deleted`);
 }
 
 /** WordPress's own revision history for one post, newest first. */

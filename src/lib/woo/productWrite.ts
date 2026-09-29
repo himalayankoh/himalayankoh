@@ -19,6 +19,7 @@
 
 import { wordpressRequest } from '../backend/wordpress';
 import { requireWooCredentials } from '../backend/credentials';
+import { purgePublicProduct, slugOf } from '../backend/publicCache';
 import { attachExistingMedia } from './productImageAttachments';
 import {
   fromWooProduct,
@@ -194,7 +195,17 @@ export async function updateWooProduct(
   const parentPatch: AdminProductPatch = { ...(isVariable ? stripVariableParentFields(patch) : patch) };
 
   // Handle SKU ownership and uniqueness:
-  if (parentPatch.sku !== undefined) {
+  //
+  // A SKU that arrives as `null` (or as anything but a string) is treated as "no
+  // SKU edit", not as "clear the SKU". Reading it as a clear-the-SKU would let a
+  // client that sends `sku: null` by accident — the shape WooCommerce itself
+  // reports for a product without a SKU — silently wipe a real one, and reading
+  // it as a string crashed the save outright: `null.trim()` answered 502 and the
+  // owner saw "Cannot read properties of null". A blank *string* still clears the
+  // SKU, which is the documented way to do that on purpose.
+  if (typeof parentPatch.sku !== 'string') {
+    delete parentPatch.sku;
+  } else if (parentPatch.sku !== undefined) {
     const requestedSku = parentPatch.sku.trim();
     const existingSku = (existing.sku ?? '').trim();
 
@@ -300,6 +311,11 @@ export async function updateWooProduct(
     if (firstSku) record.sku = firstSku;
   }
 
+  // The store has accepted the change, so the pages built from this product
+  // must stop being served from the edge now rather than in a minute: a price
+  // or stock edit is exactly the change a shopper must never see stale.
+  purgePublicProduct(slugOf(record) ?? slugOf(existing), `product ${id} was updated`);
+
   return {
     product: record,
     applied,
@@ -331,12 +347,36 @@ export async function updateWooVariation(
     throw new WooWriteError('No variation fields were supplied.', 400);
   }
   try {
-    return await wordpressRequest<WooVariationLike>(
+    const updated = await wordpressRequest<WooVariationLike>(
       `${REST_V3}/products/${productId}/variations/${variationId}`,
       { useCredentials: true, method: 'PUT', body, timeoutMs: 30000 }
     );
+    // A variation's price or stock is what the parent's page shows, so the
+    // parent page is the page that goes stale.
+    purgePublicProduct(await slugForProduct(productId), `variation ${variationId} was updated`);
+    return updated;
   } catch (error) {
     throw new WooWriteError(`Variation ${variationId} could not be updated: ${message(error)}`);
+  }
+}
+
+/**
+ * The slug of a product, for purging its public page.
+ *
+ * The write paths that do not already hold the record (variation edits, deletes)
+ * need it, and a lookup that fails must not fail the write: the caller gets the
+ * catalogue purge either way, which is where the change is visible.
+ */
+async function slugForProduct(id: number): Promise<string | null> {
+  try {
+    return slugOf(await getWooProduct(id));
+  } catch (error) {
+    console.warn(
+      `[cache] could not resolve the slug of product ${id} for purging: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return null;
   }
 }
 
@@ -354,6 +394,9 @@ export async function trashWooProduct(id: number): Promise<{ product: AdminProdu
       params: { force: 'false' },
       timeoutMs: 30000,
     });
+    // An archived product must leave the shelf and its own page at once — a
+    // purge that waited out the window would keep selling it for a minute.
+    purgePublicProduct(slugOf(trashed), `product ${id} was archived`);
     return { product: asRecord(trashed) };
   } catch (error) {
     throw new WooWriteError(`Product ${id} could not be archived: ${message(error)}`);
@@ -370,12 +413,16 @@ export async function trashWooProduct(id: number): Promise<{ product: AdminProdu
  */
 export async function permanentlyDeleteWooProduct(id: number): Promise<void> {
   requireWooCredentials();
+  // Resolved before the delete: afterwards the product answers 404 and the
+  // slug could not be found at all.
+  const slug = await slugForProduct(id);
   await wordpressRequest<unknown>(`${REST_V3}/products/${id}`, {
     useCredentials: true,
     method: 'DELETE',
     params: { force: 'true' },
     timeoutMs: 30000,
   });
+  purgePublicProduct(slug, `product ${id} was permanently deleted`);
 }
 
 /** Restores a trashed product to draft. */

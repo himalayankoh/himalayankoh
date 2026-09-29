@@ -12,10 +12,15 @@ import { middleware } from './middleware';
 
 function run(url: string) {
   const response = middleware(new NextRequest(new URL(url, 'https://himalayankoh.com')));
+  const rewrite = response.headers.get('x-middleware-rewrite');
   return {
     passesThrough: response.headers.get('x-middleware-next') === '1',
     status: response.status,
     location: response.headers.get('location'),
+    /** The internal path a rewrite answers on, or null when nothing was rewritten. */
+    rewriteTo: rewrite ? new URL(rewrite).pathname : null,
+    /** The query the rewritten request kept, so the browser URL is unchanged. */
+    rewriteSearch: rewrite ? new URL(rewrite).search : null,
   };
 }
 
@@ -25,6 +30,8 @@ describe('middleware — content URLs that name something off-niche', () => {
       passesThrough: false,
       status: 308,
       location: 'https://himalayankoh.com/products',
+      rewriteTo: null,
+      rewriteSearch: null,
     });
     expect(run('/products/salt-block-for-deer').status).toBe(308);
   });
@@ -46,6 +53,8 @@ describe('middleware — content URLs that name something off-niche', () => {
       passesThrough: false,
       status: 308,
       location: 'https://himalayankoh.com/blog',
+      rewriteTo: null,
+      rewriteSearch: null,
     });
   });
 
@@ -84,10 +93,32 @@ describe('middleware — browse query strings', () => {
     expect(run('/products?category=Bulk').location).toBe('https://himalayankoh.com/products?category=bulk');
   });
 
-  it('passes through a query it has no business rewriting', () => {
-    for (const url of ['/products', '/products?category=bulk', '/products?page=2&sort=price']) {
-      expect(run(url).passesThrough).toBe(true);
-    }
+  it('passes the bare catalogue through untouched, so it stays prerenderable', () => {
+    // `/products` is the page that must remain free of `searchParams`: it is
+    // prerendered and edge-cached, and any query string is answered by the shelf
+    // route below instead. See src/app/(main)/products/page.tsx.
+    const bare = run('/products');
+    expect(bare.passesThrough).toBe(true);
+    expect(bare.rewriteTo).toBe(null);
+  });
+
+  it('answers a query-bearing catalogue request on the shelf route, without changing the URL', () => {
+    // A rewrite, not a redirect: the shopper's address bar keeps
+    // `/products?category=bulk`, which is the URL the canonical names, while the
+    // shelf route renders the per-shelf title and breadcrumb.
+    const shelf = run('/products?category=bulk');
+    expect(shelf.passesThrough).toBe(false);
+    expect(shelf.status).toBe(200);
+    expect(shelf.rewriteTo).toBe('/products/shelf/bulk');
+    // The query rides along, so the client still reads the shelf off the URL it
+    // was given and the address bar is untouched.
+    expect(shelf.rewriteSearch).toBe('?category=bulk');
+
+    // Anything else — a search, a sort, a page — is the whole catalogue under the
+    // plain `/products` metadata, so it lands on `all` rather than creating one
+    // edge cache entry per term.
+    expect(run('/products?page=2&sort=price').rewriteTo).toBe('/products/shelf/all');
+    expect(run('/products?search=salt').rewriteTo).toBe('/products/shelf/all');
   });
 
   it('applies the same rule to the blog index', () => {

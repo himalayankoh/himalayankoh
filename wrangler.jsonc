@@ -24,33 +24,28 @@
   },
 
   /**
-   * The `/blog` route is ISR (`revalidate = 3600`), and a Worker has no
-   * persistent filesystem, so the revalidation cache needs a real backend.
-   * Without this binding `vinext-cloudflare deploy` refuses to deploy the app
-   * at all ("This app uses ISR / caching but no cache adapter is configured").
+   * There is deliberately no KV namespace binding here any more.
    *
-   * KV is the right home for it: this is a cache of WordPress blog reads, not
-   * application state and not commerce data — an eviction costs one upstream
-   * fetch. Commerce data (products, prices, stock, orders) is never cached
-   * here; it is read from WooCommerce per request, because stock has to stay
-   * live (see docs/CLOUDFLARE-MIGRATION.md, "Never cached").
+   * It used to carry the ISR page cache, and it could not do the job: a Workers
+   * KV namespace on this account allows a thousand writes a day, while a
+   * storefront cache writes one entry per render. Measured 2026-09-29, every
+   * write answered "KV put() limit exceeded for the day", so `/products` and
+   * `/blog` served a fresh render to every visitor (≈900 ms each), the ISR cache
+   * never hit, and saving a product failed with a 502 when the purge tried to
+   * write its tag marker.
    *
-   * The id belongs to the account this Worker is deployed into, and that is not a
-   * free choice: a Worker custom domain — which is how preview.himalayankoh.com is
-   * attached — requires the zone and the Worker to be in the *same* account, and
-   * `himalayankoh.com` lives in `Himalayankoh.pk@gmail.com`'s account
-   * (fd383fa3284298b20cd3ca9ba8b1dffa). The Worker was first built in
-   * `8002salman@gmail.com`'s account (f542683e97458480452b0b8ef37a898a), whose
-   * namespace id was `1cab497b7f394525941245bc84ff43cb`; that deployment is kept as
-   * rollback and still runs, but its binding is fixed at its last deploy, so this
-   * file describes the live staging deployment only. A binding id is not a secret.
+   * Public pages are now cached by Cloudflare's edge (Workers Cache), configured
+   * as `cache.cdn` in vite.config.ts. It has no per-day write budget, it is
+   * purged by `revalidatePath` when the admin console saves something, and the
+   * Worker itself stores nothing — so an eviction costs one upstream fetch
+   * instead of a failed write.
+   *
+   * Commerce data (products, prices, stock, orders) is still never cached by the
+   * application: add-to-cart, checkout and every admin read go to WooCommerce
+   * directly (see docs/CLOUDFLARE-MIGRATION.md, "Never cached"). What the edge
+   * holds is the *rendered public page*, for one minute, and it is purged the
+   * moment the store accepts a change to it.
    */
-  "kv_namespaces": [
-    {
-      "binding": "VINEXT_KV_CACHE",
-      "id": "7e62970fbe5049dfb678409d6f28d064"
-    }
-  ],
 
   /**
    * Public deployment configuration. These are inlined into the bundle at

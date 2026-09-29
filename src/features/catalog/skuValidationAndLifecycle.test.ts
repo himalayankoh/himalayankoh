@@ -202,15 +202,18 @@ describe('SKU Ownership, Uniqueness & Lifecycle Regression Tests (A-F)', () => {
 
   it('Case E: Permanent delete sends the correct WooCommerce force-delete behavior', async () => {
     const mockRequest = vi.mocked(wordpressRequest);
-    mockRequest.mockResolvedValueOnce({ id: 2487, force: true });
+    mockRequest.mockResolvedValue({ id: 2487, force: true, slug: 'himalayan-koh-edible-salt' });
 
     await permanentlyDeleteWooProduct(2487);
 
-    expect(mockRequest).toHaveBeenCalledTimes(1);
-    const deleteCall = mockRequest.mock.calls[0];
-    expect(deleteCall[0]).toContain('/products/2487');
-    expect(deleteCall[1]?.method === 'DELETE').toBe(true);
-    expect(deleteCall[1]?.params).toEqual({ force: 'true' });
+    // Two calls, and the order matters: the slug is resolved *before* the delete,
+    // because afterwards the product answers 404 and its public page could not be
+    // purged by slug. The delete is what this case is about, so it is selected by
+    // method rather than assumed to be the first call.
+    const deleteCall = mockRequest.mock.calls.find(([, init]) => init?.method === 'DELETE');
+    expect(deleteCall).toBeDefined();
+    expect(deleteCall?.[0]).toContain('/products/2487');
+    expect(deleteCall?.[1]?.params).toEqual({ force: 'true' });
   });
 
   it('Case F: Trashed products are filtered out and cannot re-enter Admin listing as drafts', async () => {

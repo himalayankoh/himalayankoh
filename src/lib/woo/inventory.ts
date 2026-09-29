@@ -29,6 +29,7 @@
 
 import { wordpressRequest } from '../backend/wordpress';
 import { requireWooCredentials } from '../backend/credentials';
+import { purgePublicProduct, slugOf } from '../backend/publicCache';
 
 const REST_V3 = '/wc/v3';
 
@@ -268,10 +269,17 @@ export async function updateWooStock(
 
   if (Object.keys(body).length === 0) throw new Error('No stock fields were supplied.');
 
-  return wordpressRequest<unknown>(path, {
+  const updated = await wordpressRequest<unknown>(path, {
     useCredentials: true,
     method: 'PUT',
     body,
     timeoutMs: 25_000,
   });
+
+  // Stock is the field a shopper must never see stale: the moment the store
+  // accepts a quantity, the product's page and the shelf it sits on stop being
+  // served from the edge. A variation edit changes the parent's page.
+  purgePublicProduct(slugOf(updated), `stock for product ${productId} was updated`);
+
+  return updated;
 }

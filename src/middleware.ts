@@ -36,6 +36,10 @@ import { NICHE_SECTIONS } from '@/lib/catalog/nicheSections';
  * Scoped to the two public browse routes that take user-supplied text. Admin,
  * account, checkout, order confirmation and API routes are untouched: their query
  * strings carry payment and session parameters and are never rewritten.
+ *
+ * One rewrite completes the picture: a query-bearing `/products` request is
+ * answered by the shelf route without changing the URL, so the bare catalogue
+ * can stay prerendered and edge-cached while a shelf keeps its own metadata.
  */
 
 /** Routes whose trailing segment is user-supplied, and where a refused URL lands. */
@@ -49,6 +53,23 @@ const BROWSE_PATHS = new Set(['/products', '/blog']);
 
 const CATALOG_PATH = '/products';
 const CATEGORY_PARAM = 'category';
+
+/**
+ * Where a query-bearing catalogue request is answered.
+ *
+ * `/products` itself reads no `searchParams`, which is what lets it be
+ * prerendered and cached at the edge; the query string therefore has to reach a
+ * route that is allowed to read it. That route is a rewrite target, never a
+ * URL a shopper sees: the address bar keeps `/products?category=edible`, so the
+ * canonical, the links and the shopper's history are all unchanged.
+ */
+const SHELF_PATH = '/products/shelf';
+
+/** The shelf the catalogue request actually names, or `all` for any other query. */
+function shelfRouteFor(params: URLSearchParams): string {
+  const shelf = params.get(CATEGORY_PARAM);
+  return `${SHELF_PATH}/${shelf && VALID_SHELF_KEYS.has(shelf) ? shelf : 'all'}`;
+}
 
 const VALID_SHELF_KEYS = new Set<string>(NICHE_SECTIONS.map((section) => section.key));
 
@@ -109,11 +130,23 @@ export function middleware(request: NextRequest): NextResponse {
   }
 
   const query = params.toString();
-  if (query === searchParams.toString()) return NextResponse.next();
+  if (query !== searchParams.toString()) {
+    // The requested URL names something this shop does not serve. Normalise it
+    // first, so the rewrite below only ever sees a clean query string.
+    const url = request.nextUrl.clone();
+    url.search = query ? `?${query}` : '';
+    return NextResponse.redirect(url, 308);
+  }
 
-  const url = request.nextUrl.clone();
-  url.search = query ? `?${query}` : '';
-  return NextResponse.redirect(url, 308);
+  // A bare `/products` is the cacheable default shelf and is served as-is. Any
+  // query string rides to the shelf route, which owns the per-shelf title,
+  // canonical and breadcrumb — and which keeps the bare page's edge cache entry
+  // free of one entry per search term.
+  if (pathname !== CATALOG_PATH || !query) return NextResponse.next();
+
+  const shelfUrl = request.nextUrl.clone();
+  shelfUrl.pathname = shelfRouteFor(params);
+  return NextResponse.rewrite(shelfUrl);
 }
 
 export const config = {
