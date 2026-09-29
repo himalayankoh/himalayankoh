@@ -1,8 +1,16 @@
 export interface SettingField {
   key: string;
   label: string;
-  type: 'text' | 'password' | 'email' | 'url';
-  placeholder: string;
+  /**
+   * `toggle` is stored as the literal strings `'true'` / `'false'`.
+   *
+   * It exists so a feature switch is a stored setting rather than a deploy: the same
+   * read, masking and write path serves it, and the console can flip it without a
+   * release. A toggle is never masked — it is a boolean, not a credential — so the
+   * value is returned to the admin screen as-is.
+   */
+  type: 'text' | 'password' | 'email' | 'url' | 'toggle';
+  placeholder?: string;
   hint?: string;
   /** Matching process.env key used as fallback when DB value is absent. */
   envFallback: string;
@@ -122,6 +130,15 @@ export const SETTINGS_REGISTRY: SettingsCategory[] = [
         placeholder: 'whsec_...',
         hint: 'From Stripe Dashboard → Webhooks, or Stripe CLI for local testing.',
         envFallback: 'STRIPE_WEBHOOK_SECRET',
+      },
+      {
+        key: 'staging_simulator',
+        label: 'Staging Payment Simulator',
+        type: 'toggle',
+        hint:
+          'Allows simulated payments on preview.himalayankoh.com for end-to-end QA. No real money is charged. ' +
+          'It can only ever run on the staging origin — the production store refuses it even when this is on.',
+        envFallback: 'STAGING_PAYMENT_SIMULATOR',
       },
     ],
   },

@@ -4,6 +4,14 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, CheckCircle, CreditCard, Loader2, MapPin, PackageCheck, ShieldCheck, Truck } from 'lucide-react';
 import { useAuthContext } from '../context/AuthContext';
 import StripePaymentForm from '../components/checkout/StripePaymentForm';
+import StagingTestPaymentForm from '../components/checkout/StagingTestPaymentForm';
+import { submitStagingSimulatorPayment } from '../lib/payments/stagingSimulatorClient';
+import {
+  STAGING_SIMULATOR_UNAVAILABLE_MESSAGE,
+  STAGING_TEST_CUSTOMER_NAME,
+  STAGING_TEST_EMAIL,
+  type StagingTestOutcome,
+} from '../lib/payments/stagingSimulator';
 import {
   calculateOrderTotals,
   supportedCoupons,
@@ -159,6 +167,12 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const stripeEnabled = stripeConfig?.configured === true;
   const stripePublishableKey = stripeConfig?.publishableKey ?? '';
   const stripeMode = stripeConfig?.mode ?? 'test';
+  // The payment priority, decided by the server in `/api/stripe/config`: a real card
+  // form when Stripe may charge, the staging-only simulator when it may not, and an
+  // honest refusal otherwise. Reading one field rather than combining `configured`
+  // with a simulator flag is deliberate — the order is the server's answer, so this
+  // screen cannot mount a form the routes would refuse. An invoice is never an option.
+  const stagingSimulatorEnabled = stripeConfig?.checkoutPaymentOption === 'staging_simulator';
 
   const totals = useMemo(
     () => calculateOrderTotals(
@@ -488,7 +502,9 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       });
     }
 
-    if (paymentMethod === 'stripe' && !stripeEnabled) {
+    // Only when there is genuinely no way to pay: the simulator is a real payment
+    // path here, so blocking submit would contradict the form the page just mounted.
+    if (paymentMethod === 'stripe' && !stripeEnabled && !stagingSimulatorEnabled) {
       nextErrors.coupon =
         'Card payments are not available yet. An administrator can add the Stripe keys under Admin → Settings → Service & API Keys.';
     }
@@ -584,9 +600,12 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       return;
     }
 
-    if (retailOnly && stripeEnabled) return;
-    if (retailOnly && !stripeEnabled) {
-      setError('Online payment is temporarily unavailable. Please contact us to complete your purchase.');
+    // Retail pays from the payment section's own button — the Stripe Element's Pay
+    // button, or the simulator's Test pay button. Reaching here means there is no
+    // payment path at all, which is the one case that must say so.
+    if (retailOnly) {
+      if (stripeEnabled || stagingSimulatorEnabled) return;
+      setError(STAGING_SIMULATOR_UNAVAILABLE_MESSAGE);
       return;
     }
 
@@ -668,6 +687,70 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     } finally {
       setSubmitting(false);
     }
+  };
+
+  /**
+   * The staging-only simulated payment.
+   *
+   * The same checkout payload the card path sends, plus the simulated outcome — and
+   * no card data at all. A decline is handled as the expected QA result it is: the
+   * error is shown and the shopper stays on the page with their cart and their
+   * reserved order, so the retry test is the same flow as the success test.
+   */
+  const handleStagingTestPayment = async (outcome: StagingTestOutcome) => {
+    if (items.length === 0) {
+      setError('Your cart is empty.');
+      return;
+    }
+    if (!validateForm()) {
+      setError('Please fix the highlighted checkout fields.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const shippingAddress = buildShippingAddress(form);
+      const billingAddress = billingSameAsShipping ? shippingAddress : buildBillingAddress(form);
+
+      const result = await submitStagingSimulatorPayment({
+        email: form.email,
+        phone: form.phone || undefined,
+        shippingAddress,
+        billingAddress,
+        couponCode,
+        shippingMethod,
+        shippoRateId: useLiveShippoRates ? selectedShippoRate?.objectId : undefined,
+        shippingCarrier: useLiveShippoRates ? selectedShippoRate?.provider : undefined,
+        shippingService: useLiveShippoRates ? selectedShippoRate?.serviceName : undefined,
+        notes: form.notes || undefined,
+        userId: user?.id,
+        items,
+        outcome,
+      });
+
+      if (result.declined) {
+        // The order is untouched and unpaid, and the cart is still full: nothing to
+        // navigate to, and the shopper can pay again with the success test card.
+        setError(result.message);
+        return;
+      }
+
+      // The server has already marked the store's order paid, so the confirmation is
+      // rendered from the store's own record rather than a client-side placeholder.
+      navigate(orderConfirmationUrl(result.orderId), { state: { order: result.order } });
+      await clearCart();
+    } catch (err) {
+      setError(getErrorMessage(err, 'The simulated payment could not be completed.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /** A clearly fake customer, so a QA order is never attributed to a real person. */
+  const useStagingTestCustomer = () => {
+    setForm((prev) => ({ ...prev, fullName: STAGING_TEST_CUSTOMER_NAME, email: STAGING_TEST_EMAIL }));
+    setFieldErrors({});
   };
 
   if (!isLoaded || (isLoading && items.length === 0)) {
@@ -975,6 +1058,13 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       onError={(message) => toast.error(message)}
                     />
                   </div>
+                ) : stagingSimulatorEnabled ? (
+                  <StagingTestPaymentForm
+                    amountLabel={`$${totals.total.toFixed(2)}`}
+                    disabled={submitting || paymentCompleting}
+                    onPay={handleStagingTestPayment}
+                    onUseTestCustomer={useStagingTestCustomer}
+                  />
                 ) : (
                   <div className="mt-5 rounded-2xl border border-himalayan/30 bg-himalayan/5 p-5 text-sm text-charcoal-light">
                     {submitting ? (
@@ -1119,7 +1209,9 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       ? 'Enter your payment details in the Payment section to confirm your order.'
                       : stripeEnabled
                         ? 'Enter your secure payment details in the Payment section to continue.'
-                        : 'Online payment is temporarily unavailable.'
+                        : stagingSimulatorEnabled
+                          ? 'Complete the Test Payment section to confirm this staging order. No real money is charged.'
+                          : 'Online payment is temporarily unavailable.'
                     : paymentMethod === 'stripe' && stripeEnabled
                     ? stripeSession
                       ? 'Complete card payment below to confirm your order.'
@@ -1136,10 +1228,15 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 a greyed-out "Pay $99.90" reads as a broken button rather than as
                 payment not being open yet, and neither is an invoice action.
               */}
-              {(!retailOnly || !stripeEnabled) && (
+              {/*
+                Hidden whenever the payment section owns the action, simulator included:
+                two buttons that both look like "pay" is how one of them gets clicked for
+                the wrong reason.
+              */}
+              {(!retailOnly || (!stripeEnabled && !stagingSimulatorEnabled)) && (
               <button
                 type="submit"
-                disabled={submitting || (retailOnly && !stripeEnabled) || (paymentMethod === 'stripe' && Boolean(stripeSession))}
+                disabled={submitting || (retailOnly && !stripeEnabled && !stagingSimulatorEnabled) || (paymentMethod === 'stripe' && Boolean(stripeSession))}
                 className="w-full mt-6 flex items-center justify-center gap-2 py-4 bg-himalayan hover:bg-himalayan-dark disabled:bg-gray-300 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-himalayan/25"
               >
                 {submitting && <Loader2 size={18} className="animate-spin" />}

@@ -125,7 +125,12 @@ export interface CreateOrderData {
     country: string;
   };
   paymentMethod?: string;
-  paymentProvider?: 'invoice' | 'stripe';
+  /**
+   * `staging_simulator` is the staging-only QA path — a simulated card result on an
+   * otherwise real order. It is deliberately its own provider rather than a flavour
+   * of `stripe`, because nothing in that path touches Stripe.
+   */
+  paymentProvider?: 'invoice' | 'stripe' | 'staging_simulator';
   paymentIntentId?: string;
   paymentStatus?: Order['payment_status'];
   couponCode?: string;

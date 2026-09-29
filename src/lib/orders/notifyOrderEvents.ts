@@ -19,6 +19,16 @@
  *
  * Email is a side effect, never the source of truth: every dispatch is
  * fire-and-forget, so a mail failure cannot fail the payment or the order write.
+ *
+ * ## Simulated orders are never announced
+ *
+ * A staging payment-simulator order must not mail anybody. `loadOrderSummary`
+ * therefore answers null for one, which makes every dispatcher below skip it by
+ * construction — a guard per caller would have been three chances to forget one, and
+ * the check lives here so a dispatcher added later inherits it. The rule is a
+ * *property of the order* (its stored `staging_test_card` payment method), not of
+ * whether `RESEND_API_KEY` happens to be set, which is what makes it hold even on a
+ * deployment that can genuinely send mail.
  */
 
 import {
@@ -28,6 +38,7 @@ import {
 } from '@/lib/email/orderEmails';
 import { orderFromWoo, getWooOrder } from '@/lib/woo/orders';
 import { resolveTrackingUrl } from '@/lib/orders/tracking';
+import { isStagingSimulatorPaymentMethod } from '@/lib/payments/stagingSimulator';
 
 interface OrderNotifyRow {
   order_number: string;
@@ -46,6 +57,8 @@ async function loadOrderSummary(orderId: string): Promise<OrderNotifyRow | null>
   if (!Number.isInteger(numeric) || numeric <= 0) return null;
 
   const order = orderFromWoo(await getWooOrder(numeric));
+  if (isStagingSimulatorPaymentMethod(order.payment_method)) return null;
+
   return {
     order_number: order.order_number,
     email: order.email,

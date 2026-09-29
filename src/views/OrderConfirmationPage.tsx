@@ -192,7 +192,9 @@ export default function OrderConfirmationPage() {
             </p>
 
             <section className="bg-white rounded-2xl shadow-md p-6">
-              <h3 className="font-serif text-lg font-bold text-charcoal mb-4">Invoice Summary</h3>
+              {/* "Order Summary", not "Invoice Summary": there is no invoice step for a
+                  retail order, and the confirmation should not imply one. */}
+              <h3 className="font-serif text-lg font-bold text-charcoal mb-4">Order Summary</h3>
               <div className="space-y-2">
                 <SummaryRow label="Subtotal" value={order.subtotal} />
                 {order.discount_amount > 0 && <SummaryRow label="Discount" value={-order.discount_amount} />}
@@ -211,7 +213,11 @@ export default function OrderConfirmationPage() {
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-charcoal-light">Method</span>
                   <span className="font-medium text-charcoal capitalize">
-                    {order.payment_method === 'stripe_card' ? 'Credit / debit card' : order.payment_method || 'invoice'}
+                    {order.payment_method === 'stripe_card'
+                      ? 'Credit / debit card'
+                      : order.payment_method === 'staging_test_card'
+                        ? 'Staging Test Card'
+                        : order.payment_method || 'invoice'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">

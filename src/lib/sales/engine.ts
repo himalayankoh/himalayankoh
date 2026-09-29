@@ -25,6 +25,7 @@ import {
   orderFromWoo,
   wooRefundedAmount,
 } from '@/lib/woo/orders';
+import { formatPaymentMethod } from '@/lib/orders/display';
 import type {
   RevenueSummary,
   DailySalesPoint,
@@ -417,7 +418,10 @@ export function orderToSalesRow(
     customerEmail: order.email,
     status: order.status,
     paymentStatus: isOrderPaid(woo) ? (order.payment_status === 'partially_refunded' ? 'partially_refunded' : 'paid') : order.payment_status,
-    paymentMethod: order.payment_method,
+    // The human label, not the stored code: an operator reading the Sales table should
+    // see "Credit / debit card" and "Staging Test Card", not `stripe_card` and
+    // `staging_test_card` — and a staging QA order must be recognisable at a glance.
+    paymentMethod: order.payment_method ? formatPaymentMethod(order.payment_method) : null,
     subtotal: order.subtotal,
     shipping: order.shipping_cost,
     tax: order.tax_amount,
@@ -487,7 +491,7 @@ function orderToPaymentRecord(woo: WooOrderLike): PaymentRecord | null {
     gatewayFee: fee,
     netReceived,
     status,
-    paymentMethod: order.payment_method ?? 'Unknown',
+    paymentMethod: order.payment_method ? formatPaymentMethod(order.payment_method) : 'Unknown',
     transactionId: woo.transaction_id || null,
     currency: order.currency,
   };

@@ -318,8 +318,83 @@ export default function ServiceKeysPanel() {
               </div>
             )}
 
+            {/*
+              Switches render above the credential fields and full width. A toggle is
+              a decision, not a credential, and burying it in a two-column grid of
+              key inputs made it read as one more value to paste.
+            */}
+            {category.fields.some((field) => field.type === 'toggle') && (
+              <div className="mt-4 space-y-3">
+                {category.fields
+                  .filter((field) => field.type === 'toggle')
+                  .map((field) => {
+                    const compound = fieldKey(category.id, field.key);
+                    const stored = values[field.key] ?? '';
+                    const source = sources[field.key] ?? 'unset';
+                    const on = (compound in edits ? edits[compound] : stored) === 'true';
+                    const edited = compound in edits;
+
+                    return (
+                      <div
+                        key={field.key}
+                        className={`rounded-lg border p-3 ${
+                          on ? 'border-amber-300 bg-amber-50/70' : 'border-gray-200 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3 flex-wrap">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-bold text-gray-800">{field.label}</span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                                  on ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-600'
+                                }`}
+                              >
+                                {on ? 'ON' : 'OFF'}
+                              </span>
+                              {on && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-rose-100 text-rose-700">
+                                  STAGING ONLY
+                                </span>
+                              )}
+                            </div>
+                            {field.hint && (
+                              <p className="text-[11px] text-gray-500 mt-1 max-w-2xl">{field.hint}</p>
+                            )}
+                            <p className="text-[11px] text-gray-400 mt-1">
+                              {source === 'db'
+                                ? 'Stored in WordPress settings'
+                                : source === 'env'
+                                  ? 'Set by the deployment (Cloudflare Worker variable)'
+                                  : 'Not set — staging defaults it on, every other origin refuses it'}
+                              {edited ? ' · edited, press Save to apply' : ''}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={on}
+                            aria-label={field.label}
+                            onClick={() => setEdit(category.id, field.key, on ? 'false' : 'true')}
+                            className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                              on ? 'bg-amber-500' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                on ? 'translate-x-6' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {category.fields.map((field) => {
+              {category.fields.filter((field) => field.type !== 'toggle').map((field) => {
                 const compound = fieldKey(category.id, field.key);
                 const stored = values[field.key] ?? '';
                 const source = sources[field.key] ?? 'unset';

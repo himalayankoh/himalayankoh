@@ -37,6 +37,33 @@ export interface StripePublicConfig {
    * see stored settings at all, so every stored key looks unset.
    */
   settingsRead?: { ok: boolean; status: number | null };
+  /**
+   * The staging-only payment simulator, as this deployment judges it.
+   *
+   * Reported here rather than fetched separately because the answer comes from the
+   * *same* settings row as the keys, so the payment priority below costs no extra
+   * round trip. `available` is already the full decision — switch and origin — and is
+   * what the checkout mounts a Test Payment form on. On production it is always
+   * `false`, whatever the switch says.
+   */
+  stagingSimulator?: StagingSimulatorPublicStatus;
+  /**
+   * Which payment path the checkout should use. The server decides it, in one place,
+   * so the screen and the routes cannot disagree: a real card form first, the
+   * simulator second, an honest refusal last. An invoice is never an option.
+   */
+  checkoutPaymentOption?: 'stripe' | 'staging_simulator' | 'unavailable';
+}
+
+export interface StagingSimulatorPublicStatus {
+  available: boolean;
+  /** The switch alone, before the origin gate — for the console to explain itself. */
+  enabled: boolean;
+  source: 'setting' | 'env' | 'default';
+  /** Why it is unavailable. Safe to display: never a key, never a value. */
+  reason: string | null;
+  /** The two simulator cards, so the panel can offer them as quick fills. */
+  testCards: { success: string; decline: string };
 }
 
 export async function loadStripeConfig(): Promise<StripePublicConfig> {

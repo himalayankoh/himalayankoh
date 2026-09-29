@@ -8,6 +8,11 @@ import {
 import { evaluateStripeReadiness } from '@/lib/stripe/server/readiness';
 import { describeStripeConfigStatus } from '@/lib/stripe/server/configStatus';
 import { SITE_ORIGIN } from '@/lib/site/origin';
+import {
+  STAGING_TEST_CARDS,
+  resolveCheckoutPaymentOption,
+} from '@/lib/payments/stagingSimulator';
+import { readStagingSimulatorStatus } from '@/lib/payments/server/stagingSimulatorGate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,8 +36,14 @@ export const dynamic = 'force-dynamic';
  *     every stored setting look unset. That is the difference between "the owner
  *     has not saved a key yet" and "the keys are saved and this deployment cannot
  *     see them", and the two need very different fixes.
+ *
+ * It also answers "how can this checkout be paid?" once, as
+ * `checkoutPaymentOption`, and reports the staging-only simulator alongside it. The
+ * two belong together: the priority is *real card first, simulator second, refusal
+ * last*, and putting it here means the checkout asks one question and gets the
+ * server's answer rather than assembling its own guess from two endpoints.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const read = await getSettingsForCategoryWithStatus('stripe');
   const settings = read.values;
 
@@ -66,13 +77,36 @@ export async function GET() {
       ? await evaluateCurrentStripeReadiness()
       : evaluateStripeReadiness({ secretKey, publishableKey, webhookSecret, origin: SITE_ORIGIN });
 
+  const stripeConfigured = status.configured && readiness.chargingEnabled;
+
+  // The simulator is judged from the same settings row, so the payment priority below
+  // costs no extra WordPress round trip. `available` already includes the origin gate,
+  // which is why a production deployment reports it false however the switch is set.
+  const simulator = await readStagingSimulatorStatus({
+    settings,
+    requestHost: request.headers.get('host'),
+  });
+
   return NextResponse.json({
     publishableKey,
     publishableKeySource: settings.publishable_key ? 'db' : envPublishable ? 'env' : 'unset',
     ...status,
-    configured: status.configured && readiness.chargingEnabled,
+    configured: stripeConfigured,
     /** The first reason this deployment may not charge, or null when it may. */
     chargingBlockedReason: readiness.chargingEnabled ? null : readiness.blockers[0] ?? null,
     settingsRead: { ok: read.ok, status: read.status },
+    stagingSimulator: {
+      available: simulator.available,
+      enabled: simulator.enabled,
+      source: simulator.source,
+      reason: simulator.reason,
+      testCards: { ...STAGING_TEST_CARDS },
+    },
+    // One server-decided answer for "how can this checkout be paid?", so the screen
+    // cannot mount a form the routes would refuse.
+    checkoutPaymentOption: resolveCheckoutPaymentOption({
+      stripeConfigured,
+      simulatorAvailable: simulator.available,
+    }),
   });
 }
