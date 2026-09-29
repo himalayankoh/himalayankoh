@@ -37,6 +37,35 @@ import {
 import { normalizeProductSlug } from '../products/slug';
 
 /**
+ * How long a public storefront read of the catalogue may be reused.
+ *
+ * Every storefront route read WooCommerce on every render, and one read costs the
+ * origin roughly 900 ms (measured 2026-09-29: a bare `/wp-json/` request is 805 ms
+ * and a single `/wc/v3/products` read 861–1032 ms, with repeats just as slow). So
+ * the catalogue, a product page and the blog all answered in about a second, and
+ * the same request was paid again for every visitor, every navigation and every
+ * `<Link>` prefetch. This window lets that read be reused by the data cache
+ * (Cloudflare KV through `kvDataAdapter`, see vite.config.ts) instead.
+ *
+ * Sixty seconds is a boundary, not a guess:
+ *
+ *  - Browsing may be up to a minute stale; buying is not. Add-to-cart, cart
+ *    recalculation and checkout read WooCommerce directly and uncached, and
+ *    WooCommerce refuses a quantity it cannot stock, so a stale catalogue cannot
+ *    oversell. The failure mode here is a price or stock figure that is at most a
+ *    minute old on a listing — never a wrong order.
+ *  - The admin console does not use this window. It reads the raw adapters in
+ *    `./products`, which stay uncached, because the owner has to see the row they
+ *    just saved.
+ *  - Anything private — cart, checkout, account, orders, wholesale — goes through
+ *    other modules entirely and keeps its own `no-store`.
+ *
+ * Raising it is a trade, not a free win: the longer the window, the longer a price
+ * correction takes to reach a listing.
+ */
+export const STOREFRONT_READ_TTL_SECONDS = 60;
+
+/**
  * Scope a catalog read to what the storefront may serve, and say what was
  * withheld.
  *
@@ -89,7 +118,10 @@ function catalogQueryKey(query: CatalogQuery): string {
  * always re-reads: stock stays fresh, and nothing is cached across visitors.
  */
 const readCatalogForRequest = cache(async (key: string): Promise<CatalogResult> =>
-  readCatalogProducts(JSON.parse(key) as CatalogQuery)
+  readCatalogProducts({
+    ...(JSON.parse(key) as CatalogQuery),
+    revalidate: STOREFRONT_READ_TTL_SECONDS,
+  })
 );
 
 /** The storefront's catalog: the source's catalog, scoped to the store's niche. */
@@ -109,7 +141,7 @@ export async function getCatalogProducts(query: CatalogQuery = {}): Promise<Cata
  * during the same server request instead of issuing duplicate network calls.
  */
 const lookupProductForRequest = cache(async (slug: string): Promise<CatalogLookup> => {
-  const lookup = await readCatalogProductBySlug(slug);
+  const lookup = await readCatalogProductBySlug(slug, undefined, STOREFRONT_READ_TTL_SECONDS);
 
   if (
     lookup.product &&
@@ -143,7 +175,11 @@ export async function lookupCatalogProduct(
  * guard instead of being a second, differently-shaped query that can drift.
  */
 const readFeaturedForRequest = cache(async (limit: number): Promise<Product[]> => {
-  const { products } = await readCatalogProducts({ perPage: limit, isFeatured: true });
+  const { products } = await readCatalogProducts({
+    perPage: limit,
+    isFeatured: true,
+    revalidate: STOREFRONT_READ_TTL_SECONDS,
+  });
   return filterNicheProducts(products).slice(0, limit);
 });
 

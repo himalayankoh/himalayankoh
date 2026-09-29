@@ -91,6 +91,65 @@ export async function getSettingsForCategory(
   return (await getSettingsForCategoryWithStatus(category)).values;
 }
 
+/**
+ * Reads the given fields up front — one store read per category, all at once —
+ * and fills the same cache `getSetting` reads.
+ *
+ * Why this exists: a caller needing a dozen fields across several categories used
+ * to `await getSetting` once per field, which put a store round trip behind each
+ * and serialised them (measured on staging: ~18s cold for the admin settings
+ * screen). The categories are independent, so their reads belong in one wave; and
+ * by filling the cache, the per-field lookups that follow cost nothing at all —
+ * this warms the existing cache rather than replacing it, so a warm process still
+ * answers a field without touching the store.
+ *
+ * A category the store cannot answer for caches `null` for its requested keys,
+ * which is exactly what `getSetting` reports for it — a settings endpoint that is
+ * down still means "not configured".
+ */
+export async function prefetchSettings(
+  fields: ReadonlyArray<{ category: string; key: string }>,
+): Promise<void> {
+  const byCategory = new Map<string, string[]>();
+  for (const { category, key } of fields) {
+    const keys = byCategory.get(category);
+    if (keys) keys.push(key);
+    else byCategory.set(category, [key]);
+  }
+
+  // Only categories with at least one unexpired-cache miss are read. A process
+  // that already answered these fields (the settings screen writes the same
+  // cache on its own read) pays nothing here — without this check the warm path
+  // would do the store reads anyway and be slower than the per-field lookups it
+  // replaced.
+  const now = Date.now();
+  const categories = [...byCategory.keys()].filter((category) =>
+    (byCategory.get(category) ?? []).some((key) => {
+      const hit = cache.get(cacheKey(category, key));
+      return !hit || hit.expiresAt <= now;
+    }),
+  );
+  if (categories.length === 0) return;
+
+  const reads = await Promise.all(
+    categories.map(async (category) => {
+      try {
+        return await siteSettingsApi.read(category);
+      } catch {
+        return {} as Record<string, string | null>;
+      }
+    }),
+  );
+
+  categories.forEach((category, index) => {
+    const values = reads[index] ?? {};
+    for (const key of byCategory.get(category) ?? []) {
+      const value = key in values ? values[key] ?? null : null;
+      cache.set(cacheKey(category, key), { value, expiresAt: now + TTL_MS });
+    }
+  });
+}
+
 export async function upsertSettings(
   category: string,
   settings: Record<string, string | null>,

@@ -3,7 +3,7 @@
 // lazy-loaded chunk. It is only fetched when the user visits /admin/*,
 // which keeps the storefront bundle small and fast.
 // ============================================================================
-import { useState, useEffect, useCallback, ReactNode, Component, Fragment } from 'react';
+import { useState, useEffect, useCallback, ReactNode, Component, Fragment, lazy, Suspense } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, useParams, Navigate } from 'react-router-dom';
 import { useApp, Modal, CAT_LIST, loadAIProviders, saveAIProviders, callAIProvider, fetchPageContent, serverTestProvider, serverOpenRouterCredits, serverProviderStatus } from '../App';
 import { SOCIAL_PROFILES } from '../content/socialProfiles';
@@ -14,23 +14,39 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { listCategories, createCategory, updateCategory, deleteCategory, listProducts, setDbToken } from '../features/catalog/repository';
 import type { CatalogProduct } from '../features/catalog/types';
 import { fetchInventory, type InventoryReport } from '../lib/admin/consoleApi';
-import { AIImportPanel } from './AIImportPanel';
+// ============================================================================
+// Heavy console sections load on demand, not with this module.
+//
+// Every admin page imports something from this file, so these sections used to be
+// downloaded and parsed by *every* admin screen — the Dashboard included, which
+// renders none of them. Measured on staging: 917 KB of initial client JS on
+// /admin, a large part of it the catalog editor, LeadOS and the media manager.
+// `React.lazy` puts each behind its own chunk, so a screen pays only for the
+// section it actually shows.
+//
+// They are referenced only from the `AdminSection()` router below. No route in the
+// app mounts that export (each admin route renders its section directly), so they
+// stay lazy until that router is used again.
+// ============================================================================
+const AIImportPanel = lazy(() => import('./AIImportPanel').then((m) => ({ default: m.AIImportPanel })));
 import { loadProviderSettings, saveProviderSettings } from '../features/ai/providers';
 import { loadPricingRules, savePricingRules, computePricing, DEFAULT_PRICING_RULES } from '../features/ai/pricing';
-import ProductScout from './ProductScout';
-import ProductResearch from './ProductResearch';
-import CJSetup from './CJSetup';
-import PaymentsSetup from './PaymentsSetup';
-import GiftDropAdmin from './GiftDropAdmin';
-import ShippingSetup from './ShippingSetup';
-import CampaignManager from './CampaignManager';
-import AiControlCenter from './AiControlCenter';
-import { CatalogProductsPage, CatalogProductEditor, CatalogPromotionsPage } from './CatalogAdmin';
-import HermesIntel from './HermesIntel';
-import BlogManager from './BlogManager';
-import MediaManager from './MediaManager';
-import { YouTubeMediaPage } from './YouTubeMedia';
-import LeadOSAdmin from './LeadOSAdmin';
+const ProductScout = lazy(() => import('./ProductScout'));
+const ProductResearch = lazy(() => import('./ProductResearch'));
+const CJSetup = lazy(() => import('./CJSetup'));
+const PaymentsSetup = lazy(() => import('./PaymentsSetup'));
+const GiftDropAdmin = lazy(() => import('./GiftDropAdmin'));
+const ShippingSetup = lazy(() => import('./ShippingSetup'));
+const CampaignManager = lazy(() => import('./CampaignManager'));
+const AiControlCenter = lazy(() => import('./AiControlCenter'));
+const CatalogProductsPage = lazy(() => import('./CatalogAdmin').then((m) => ({ default: m.CatalogProductsPage })));
+const CatalogProductEditor = lazy(() => import('./CatalogAdmin').then((m) => ({ default: m.CatalogProductEditor })));
+const CatalogPromotionsPage = lazy(() => import('./CatalogAdmin').then((m) => ({ default: m.CatalogPromotionsPage })));
+const HermesIntel = lazy(() => import('./HermesIntel'));
+const BlogManager = lazy(() => import('./BlogManager'));
+const MediaManager = lazy(() => import('./MediaManager'));
+const YouTubeMediaPage = lazy(() => import('./YouTubeMedia').then((m) => ({ default: m.YouTubeMediaPage })));
+const LeadOSAdmin = lazy(() => import('./LeadOSAdmin'));
 import type {
   Product, ProductVariant, AdminCategory, AppUser,
   AIProvider, EnterpriseVariant, VariantAttribute,
@@ -43,11 +59,11 @@ import {
   getCachedPreview, hasPreviewConfig, PLACEMENT_KEYS, PLACEMENT_LABELS,
   savePreviewConfig, validateConfig, MarketingConfig, PlacementKey, DEFAULT_CONFIG,
 } from '../lib/marketing';
-import TrafficDashboard from './TrafficDashboard';
-import AdSenseEarnings from './AdSenseEarnings';
-import { ListingPlaybookAdmin } from './ListingPlaybookAdmin';
-import { ListingTaskAdmin } from './ListingTaskAdmin';
-import ServiceKeysPanel from './ServiceKeysPanel';
+const TrafficDashboard = lazy(() => import('./TrafficDashboard'));
+const AdSenseEarnings = lazy(() => import('./AdSenseEarnings'));
+const ListingPlaybookAdmin = lazy(() => import('./ListingPlaybookAdmin').then((m) => ({ default: m.ListingPlaybookAdmin })));
+const ListingTaskAdmin = lazy(() => import('./ListingTaskAdmin').then((m) => ({ default: m.ListingTaskAdmin })));
+const ServiceKeysPanel = lazy(() => import('./ServiceKeysPanel'));
 import {
   Warning, ArrowLeft, Robot, CheckCircle, CaretDown, CaretRight, CaretUp,
   Clipboard, Code, Cpu, CurrencyDollar, Download, Info, Key, PencilSimple, Eye, FileText, TreeStructure, Globe,
@@ -2459,7 +2475,7 @@ const [open, setOpen] = useState<Record<string, boolean>>({
 
       {/* Service & API keys — the credentials the server reads (Stripe, freight, email…) */}
       <Accordion id="serviceKeys" title="Service &amp; API Keys" icon={<Key size={18} className="text-[#3F6550]" />} open={open} toggle={toggle}>
-        <ServiceKeysPanel />
+        <Suspense fallback={null}><ServiceKeysPanel /></Suspense>
       </Accordion>
     </div>
   );
@@ -5622,7 +5638,7 @@ const providerIcons: Record<string, string> = {
 }
 
 export function AAIImport() {
-  return <AIImportPanel />;
+  return <Suspense fallback={null}><AIImportPanel /></Suspense>;
 }
 // ============================================================================
 interface CRMLead {
@@ -6278,9 +6294,9 @@ export function AMarketingTraffic() {
 
       {/* Traffic Overview */}
       <Card title="Traffic Overview" icon={<TrendUp size={18} className="text-blue-600" />}>
-        <TrafficDashboard />
+        <Suspense fallback={null}><TrafficDashboard /></Suspense>
         <div className="border-t border-gray-100 pt-4">
-          <AdSenseEarnings />
+          <Suspense fallback={null}><AdSenseEarnings /></Suspense>
         </div>
         <div className="border-t border-gray-100 pt-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
@@ -6533,7 +6549,8 @@ export default function AdminSection() {
   return (
     <AdminErrorBoundary>
     {/* Nested Routes match RELATIVE to the parent /admin/* route (v6). */}
-    <Routes>
+    {/* Every section above is a lazy chunk, so a boundary is required. */}
+    <Suspense fallback={null}><Routes>
       <Route path="" element={<AdminLayout><ADashboard /></AdminLayout>} />
       <Route path="products" element={<AdminLayout><CatalogProductsPage /></AdminLayout>} />
       <Route path="products/new" element={<AdminLayout><CatalogProductEditor /></AdminLayout>} />
@@ -6569,7 +6586,7 @@ export default function AdminSection() {
       <Route path="email-marketing" element={<AdminLayout><AEmailMarketing /></AdminLayout>} />
       <Route path="crm" element={<AdminLayout><ACRM /></AdminLayout>} />
       <Route path="*" element={<Navigate to="/admin" replace />} />
-    </Routes>
+    </Routes></Suspense>
     </AdminErrorBoundary>
   );
 }

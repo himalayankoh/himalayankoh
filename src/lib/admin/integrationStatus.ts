@@ -25,7 +25,8 @@
 import { backendConfig } from '../backend/config';
 import { credentialsForRequest } from '../backend/credentials';
 import { wordpressRequestSafe } from '../backend/wordpress';
-import { getSetting } from '../settings/serverSettings';
+import { getSetting, prefetchSettings } from '../settings/serverSettings';
+import { SETTINGS_REGISTRY } from '../settings/registry';
 import { wordpressCredentials } from '../backend/wordpressCredentials';
 
 export type IntegrationState = 'CONNECTED' | 'NOT CONFIGURED' | 'INVALID' | 'OWNER ACTION REQUIRED';
@@ -44,6 +45,15 @@ export interface IntegrationStatus {
   overridden: boolean;
 }
 
+/**
+ * One integration field's effective value: the console's stored value when there
+ * is one, otherwise the environment's.
+ *
+ * The store's values are already in the settings cache by the time this runs —
+ * `readIntegrationStatuses` prefetches every requested field in one wave of store
+ * reads first (see `prefetchSettings`). Reading here directly is what used to put
+ * a store round trip behind each field and serialise a dozen of them.
+ */
 async function effective(
   category: string,
   key: string,
@@ -77,6 +87,16 @@ export async function readIntegrationStatuses(options: { probe?: boolean } = {})
   checkedAt: string;
 }> {
   const integrations: IntegrationStatus[] = [];
+
+  // Every settings field this screen reads, in one store read per category and all
+  // at once, filling the cache each `effective()` below then reads. The fields are
+  // independent and shared across categories (`woocommerce` answers two,
+  // `salman_os` three), so a read per category is the whole of the work.
+  await prefetchSettings(
+    SETTINGS_REGISTRY.flatMap((category) =>
+      category.fields.map((field) => ({ category: category.id, key: field.key }))
+    )
+  );
 
   /* --- WooCommerce: the commerce source of truth --------------------------- */
   const wooKey = await effective('woocommerce', 'consumer_key', 'WOOCOMMERCE_CONSUMER_KEY');

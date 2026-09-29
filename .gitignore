@@ -46,6 +46,9 @@ scratch/
 deploy/
 
 # QA, browser profiles and data backups
+# `backups/` holds read-only store exports and one-off incident reports: orders
+# and customers are in there, so it must never be committed.
+backups/
 .chrome-qa-profile/
 qa-visual-artifacts/
 public/qa-screenshots/

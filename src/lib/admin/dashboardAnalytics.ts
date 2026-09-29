@@ -28,6 +28,7 @@ import {
   type AppOrderStatus,
   type Order,
   type OrderItem,
+  type WooOrderLike,
 } from '@/lib/woo/orders';
 import { listWooCustomers } from '@/lib/woo/customers';
 import { readInventoryReport } from '@/lib/woo/inventory';
@@ -86,19 +87,31 @@ const STATUS_KEYS: AppOrderStatus[] = [
 /** An order with its lines — what the figures are counted from. */
 type OrderWithItems = Order & { order_items: OrderItem[] };
 
-/** Every order the window holds, up to `PAGES` requests. */
+/**
+ * Every order the window holds, up to `PAGES` requests.
+ *
+ * The first page is read on its own because it is the request that reports how
+ * many orders the store holds, and therefore how many more pages are needed.
+ * Every page after that is known to be wanted the moment the first answers, so
+ * they run together rather than one after the next — measured on staging, a store
+ * with more than one page of orders paid a serial round trip for each.
+ */
 async function readOrders(): Promise<{ orders: OrderWithItems[]; total: number }> {
-  const collected: OrderWithItems[] = [];
-  let total = 0;
+  const first = await listWooOrders({ perPage: PER_PAGE, page: 1 });
+  const total = first.total;
+  const collected: WooOrderLike[] = [...first.orders];
 
-  for (let page = 1; page <= PAGES; page += 1) {
-    const response = await listWooOrders({ perPage: PER_PAGE, page });
-    total = response.total;
-    collected.push(...response.orders.map((order) => orderWithItemsFromWoo(order)));
-    if (response.orders.length < PER_PAGE || page * PER_PAGE >= response.total) break;
+  const pagesToRead = Math.min(PAGES, Math.max(1, Math.ceil(total / PER_PAGE)));
+  if (pagesToRead > 1) {
+    const rest = await Promise.all(
+      Array.from({ length: pagesToRead - 1 }, (_, index) =>
+        listWooOrders({ perPage: PER_PAGE, page: index + 2 })
+      )
+    );
+    for (const response of rest) collected.push(...response.orders);
   }
 
-  return { orders: collected, total };
+  return { orders: collected.map((order) => orderWithItemsFromWoo(order)), total };
 }
 
 /** The dashboard's figures. */

@@ -53,6 +53,13 @@ export interface CatalogQuery {
   search?: string;
   categorySlug?: string;
   isFeatured?: boolean;
+  /**
+   * Next.js data-cache window, in seconds, for this read.
+   *
+   * Absent means uncached, which is what the admin console wants. The storefront
+   * read in `./serverCatalog` is the only caller that sets it.
+   */
+  revalidate?: number;
   signal?: AbortSignal;
 }
 
@@ -83,6 +90,7 @@ function toProductQuery(query: CatalogQuery): ProductQuery {
     search: query.search,
     category: query.categorySlug,
     featured: query.isFeatured,
+    revalidate: query.revalidate,
     signal: query.signal,
   };
 }
@@ -115,7 +123,11 @@ async function wooList(query: CatalogQuery): Promise<CatalogResult> {
   return { products: core.products, count: core.products.length, degraded: true, warnings };
 }
 
-async function wooLookup(slug: string, signal?: AbortSignal): Promise<CatalogLookup> {
+async function wooLookup(
+  slug: string,
+  signal?: AbortSignal,
+  revalidate?: number
+): Promise<CatalogLookup> {
   let normalized = normalizeProductSlug(slug);
   if (!normalized) return { product: null, related: [], provenance: null, error: null };
 
@@ -124,7 +136,7 @@ async function wooLookup(slug: string, signal?: AbortSignal): Promise<CatalogLoo
   }
 
   try {
-    const admin = await fetchAdminProductBySlug(normalized, signal);
+    const admin = await fetchAdminProductBySlug(normalized, signal, revalidate);
     if (admin) return { product: admin, related: [], provenance: 'direct', error: null };
   } catch {
     /* fall through to the public routes */
@@ -132,7 +144,7 @@ async function wooLookup(slug: string, signal?: AbortSignal): Promise<CatalogLoo
 
   // Store API /wc/store/v1/products ignores the ?slug= parameter.
   // We match by slug or by numeric ID so that numeric ID or slug lookups resolve accurately.
-  const store = await fetchStoreProductsSafe({ slug: normalized, perPage: 50, signal });
+  const store = await fetchStoreProductsSafe({ slug: normalized, perPage: 50, signal, revalidate });
   const isNumeric = /^\d+$/.test(normalized);
   const matchedStore = store.products.find(
     (p) => slugsMatch(p.slug, normalized) || (isNumeric && String(p.id) === normalized)
@@ -142,7 +154,7 @@ async function wooLookup(slug: string, signal?: AbortSignal): Promise<CatalogLoo
   }
 
   // Same strict slug verification for WordPress core fallback products.
-  const core = await fetchWpCoreProducts({ slug: normalized, perPage: 50, signal });
+  const core = await fetchWpCoreProducts({ slug: normalized, perPage: 50, signal, revalidate });
   const matchedCore = core.products.find(
     (p) => slugsMatch(p.slug, normalized) || (isNumeric && String(p.id) === normalized)
   );
@@ -173,7 +185,8 @@ export async function readCatalogProducts(query: CatalogQuery = {}): Promise<Cat
 /** The catalog's answer for one slug, straight from the source. */
 export async function readCatalogProductBySlug(
   slug: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  revalidate?: number
 ): Promise<CatalogLookup> {
-  return wooLookup(slug, signal);
+  return wooLookup(slug, signal, revalidate);
 }

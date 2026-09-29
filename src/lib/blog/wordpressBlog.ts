@@ -152,9 +152,22 @@ export function blogPostFromWp(post: WpPost): BlogPostWithAuthor {
   };
 }
 
+/**
+ * How long a public blog read may be reused.
+ *
+ * The blog is WordPress content, not commerce: an article or a typo fix landing
+ * within five minutes is acceptable, and these reads cost the origin the same
+ * ~900 ms as a product read (measured 2026-09-29). The route that renders them
+ * (`/blog`) already declares `revalidate = 3600`, but a route-level window cannot
+ * help a render that is dynamic — the data cache keys on the request, so the
+ * window has to be on the read itself, which is what this is.
+ */
+const BLOG_READ_TTL_SECONDS = 300;
+
 /** One page of published posts, newest first. */
 async function readPosts(params: Record<string, string | number | undefined>): Promise<BlogPostWithAuthor[]> {
   const posts = await wordpressRequest<WpPost[]>('/wp/v2/posts', {
+    revalidate: BLOG_READ_TTL_SECONDS,
     params: { status: 'publish', _embed: '1', orderby: 'date', order: 'desc', ...params },
     timeoutMs: READ_TIMEOUT,
   });
@@ -227,6 +240,7 @@ export const wordpressBlog = {
 
   async getCategories(): Promise<string[]> {
     const terms = await wordpressRequest<Array<{ name?: string; count?: number }>>('/wp/v2/categories', {
+      revalidate: BLOG_READ_TTL_SECONDS,
       params: { per_page: 100 },
       timeoutMs: READ_TIMEOUT,
     });
@@ -235,6 +249,7 @@ export const wordpressBlog = {
 
   async getTags(): Promise<string[]> {
     const terms = await wordpressRequest<Array<{ name?: string }>>('/wp/v2/tags', {
+      revalidate: BLOG_READ_TTL_SECONDS,
       params: { per_page: 100 },
       timeoutMs: READ_TIMEOUT,
     });
@@ -252,6 +267,7 @@ async function findCategoryId(name: string): Promise<number | null> {
 
   try {
     const terms = await wordpressRequest<Array<{ id?: number; name?: string; slug?: string }>>('/wp/v2/categories', {
+      revalidate: BLOG_READ_TTL_SECONDS,
       params: { search: name, per_page: 20 },
       timeoutMs: READ_TIMEOUT,
     });

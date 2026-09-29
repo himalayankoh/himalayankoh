@@ -487,6 +487,15 @@ export interface ProductQuery {
   featured?: boolean;
   orderby?: 'date' | 'price' | 'popularity' | 'rating' | 'title';
   order?: 'asc' | 'desc';
+  /**
+   * Next.js data-cache window, in seconds, for this read.
+   *
+   * Omitted by default, and omitted means uncached: the admin console reads these
+   * adapters directly and the owner has to see the row they just saved, not a copy
+   * from a minute ago. Only the storefront's sealed reads pass a window — see
+   * `lib/backend/serverCatalog.ts` for that policy and why a short one is safe.
+   */
+  revalidate?: number;
   signal?: AbortSignal;
 }
 
@@ -509,6 +518,7 @@ export async function fetchStoreProductsSafe(
   query: ProductQuery = {}
 ): Promise<{ products: Product[]; error: string | null }> {
   const { data, error } = await wordpressRequestSafe<StoreApiProduct[]>(`${STORE_API}/products`, {
+    revalidate: query.revalidate,
     params: productParams(query),
     signal: query.signal,
   });
@@ -530,6 +540,7 @@ export async function fetchAdminProducts(query: ProductQuery = {}): Promise<Prod
   if (!hasWooCommerceCredentials()) return null;
 
   const raw = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
+    revalidate: query.revalidate,
     params: { ...productParams(query), status: 'publish' },
     useCredentials: true,
     signal: query.signal,
@@ -541,13 +552,15 @@ export async function fetchAdminProducts(query: ProductQuery = {}): Promise<Prod
 /** Authenticated REST v3 single-product lookup by slug. */
 export async function fetchAdminProductBySlug(
   slug: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  revalidate?: number
 ): Promise<Product | null> {
   if (!hasWooCommerceCredentials()) return null;
 
   // Direct single-product REST v3 lookup by ID if numeric
   if (/^\d+$/.test(slug)) {
     const single = await wordpressRequest<RestV3Product>(`${REST_V3}/products/${slug}`, {
+      revalidate,
       useCredentials: true,
       signal,
     }).catch(() => null);
@@ -558,6 +571,7 @@ export async function fetchAdminProductBySlug(
   }
 
   const exact = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
+    revalidate,
     params: { slug, status: 'publish', per_page: 1 },
     useCredentials: true,
     signal,
@@ -569,6 +583,7 @@ export async function fetchAdminProductBySlug(
   const successor = RETIRED_PRODUCT_SLUGS[slug];
   if (rows.length === 0 && successor) {
     const resolved = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
+      revalidate,
       params: { slug: successor, status: 'publish', per_page: 1 },
       useCredentials: true,
       signal,
@@ -581,6 +596,7 @@ export async function fetchAdminProductBySlug(
   // every admin View link land on a false 404.
   if (rows.length === 0) {
     const candidates = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
+      revalidate,
       params: { search: slug, status: 'publish', per_page: 100 },
       useCredentials: true,
       signal,
@@ -693,6 +709,7 @@ export async function fetchWpCoreProducts(query: ProductQuery = {}): Promise<{
   if (query.category !== undefined) params.product_cat = query.category;
 
   const { data, error } = await wordpressRequestSafe<WpCoreProduct[]>('/wp/v2/product', {
+    revalidate: query.revalidate,
     params,
     signal: query.signal,
   });
