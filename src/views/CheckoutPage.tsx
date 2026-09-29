@@ -102,7 +102,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [addressValidating, setAddressValidating] = useState(false);
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() =>
-    // Retail is card-or-nothing, so it must never *hold* `invoice` as its
+    // Retail is online-payment-only, so it must never *hold* `invoice` as its
     // selection even before the Stripe config has loaded. The legacy checkout
     // keeps the old default.
     retailOnly || publicEnv.stripePublishableKey ? 'stripe' : 'invoice'
@@ -167,7 +167,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const stripeEnabled = stripeConfig?.configured === true;
   const stripePublishableKey = stripeConfig?.publishableKey ?? '';
   const stripeMode = stripeConfig?.mode ?? 'test';
-  // The payment priority, decided by the server in `/api/stripe/config`: a real card
+  // The payment priority, decided by the server in `/api/stripe/config`: real Stripe
   // form when Stripe may charge, the staging-only simulator when it may not, and an
   // honest refusal otherwise. Reading one field rather than combining `configured`
   // with a simulator flag is deliberate — the order is the server's answer, so this
@@ -253,7 +253,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   }, []);
 
   useEffect(() => {
-    // Retail is card-or-nothing. An invoice is never a retail payment method, so the
+    // Retail is online-payment-only. An invoice is never a retail payment method, so the
     // retail page must not hold `invoice` as its selection even while Stripe is
     // unconfigured — otherwise the submit path would still be an invoice path that
     // only the render layer hides, which is exactly the fallback this replaced.
@@ -506,7 +506,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     // path here, so blocking submit would contradict the form the page just mounted.
     if (paymentMethod === 'stripe' && !stripeEnabled && !stagingSimulatorEnabled) {
       nextErrors.coupon =
-        'Card payments are not available yet. An administrator can add the Stripe keys under Admin → Settings → Service & API Keys.';
+        'Online payments are not available yet. An administrator can add the Stripe keys under Admin → Settings → Service & API Keys.';
     }
 
     setFieldErrors(nextErrors);
@@ -669,17 +669,13 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         verification = await verifyStripeOrderPayment({ paymentIntentId: stripeSession.paymentIntentId });
       }
       if (!verification.orderId) {
-        throw new Error('Payment succeeded. Your order is being finalized; your cart and checkout details are preserved. Refresh shortly to see confirmation.');
+        navigate(`/checkout/success?payment_intent=${encodeURIComponent(stripeSession.paymentIntentId)}`);
+        return;
       }
-      const paidOrder = {
-        ...stripeSession.order,
-        id: verification.orderId,
-        payment_status: verification.paymentStatus === 'paid' ? 'paid' : 'pending',
-        payment_method: 'stripe_card',
-      } as OrderWithItems;
-
       clearPendingStripeCheckout();
-      navigate(orderConfirmationUrl(paidOrder.id), { state: { order: paidOrder } });
+      // Load the completed Woo order on the confirmation page. The checkout only
+      // holds a reservation summary, not its line items or final payment method.
+      navigate(orderConfirmationUrl(verification.orderId));
       await clearCart();
     } catch (err) {
       setPaymentCompleting(false);
@@ -1078,7 +1074,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                           Online payment is temporarily unavailable
                         </p>
                         <p className="text-xs text-charcoal-light">
-                          Card and digital wallet payments are being configured. Please contact us to complete your purchase.
+                          Secure payment methods are being configured. Please contact us to complete your purchase.
                         </p>
                       </div>
                     ) : (
@@ -1090,8 +1086,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 <>
                 <p className="text-sm text-charcoal-light mb-5">
                 {stripeEnabled
-                  ? 'Pay securely with your card at checkout.'
-                  : 'Card payments are not configured on this site.'}
+                  ? 'Choose an available secure payment method at checkout.'
+                  : 'Online payments are not configured on this site.'}
               </p>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -1116,24 +1112,24 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                     </span>
                   )}
                   <CreditCard size={20} className="text-himalayan mb-2" />
-                  <p className="font-semibold text-charcoal">Pay with Card</p>
+                  <p className="font-semibold text-charcoal">Secure online payment</p>
                   <p className="text-sm text-charcoal-light mt-1">
                     {stripeEnabled
                       ? stripeMode === 'test'
                         ? 'Continue to enter your payment details securely.'
-                        : 'Secure card payment via Stripe. Enter card number, expiry, and CVC on the next step.'
-                      : 'Card payment is currently unavailable.'}
+                        : 'Stripe will show the methods available for your order and location.'
+                      : 'Online payment is currently unavailable.'}
                   </p>
                 </button>
               </div>
 
               {paymentMethod === 'stripe' && stripeEnabled && !stripeSession && (
                 <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-charcoal-light">
-                  <p className="font-semibold text-charcoal mb-1">How card checkout works</p>
+                  <p className="font-semibold text-charcoal mb-1">How secure checkout works</p>
                   <ol className="list-decimal pl-5 space-y-1">
                     <li>Click <strong>Continue to payment</strong> to save your order.</li>
-                    <li>Enter your card number, expiry date, and security code in the secure form below.</li>
-                    <li>Click <strong>Pay ${totals.total.toFixed(2)}</strong> — your order is confirmed when payment succeeds.</li>
+                    <li>Choose one of the payment methods Stripe makes available for this order.</li>
+                    <li>Continue securely — your order is confirmed after the payment succeeds.</li>
                   </ol>
                 </div>
               )}
@@ -1248,7 +1244,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       : !stripeEnabled
                         ? 'Online payment unavailable'
                         : stripeSession
-                          ? 'Enter card details above'
+                          ? 'Choose a payment method above'
                           : `Pay $${totals.total.toFixed(2)}`
                     : paymentMethod === 'stripe'
                       ? stripeSession ? 'Enter card details above' : 'Continue to payment'

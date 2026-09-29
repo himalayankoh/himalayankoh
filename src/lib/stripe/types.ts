@@ -22,6 +22,7 @@ export interface StripePaymentIntentResult {
 export interface StripeVerifyPaymentResult {
   ok: boolean;
   orderId?: string;
+  reservedOrderId?: string;
   paymentIntentId: string;
   // 'paid' for cards/synchronous methods; 'pending' for async BNPL (Klarna,
   // Afterpay/Clearpay, Affirm) where the webhook finalizes the order shortly after.

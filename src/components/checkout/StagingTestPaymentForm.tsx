@@ -76,7 +76,7 @@ export default function StagingTestPaymentForm({
   };
 
   return (
-    <div className="mt-5 rounded-2xl border-2 border-dashed border-amber-400 bg-amber-50/50 p-4 sm:p-5">
+    <div className="mt-5 rounded-2xl border border-amber-300 bg-[#fffaf0] p-4 shadow-sm sm:p-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <h3 className="font-serif text-lg font-bold text-charcoal">Test Payment</h3>
@@ -85,7 +85,7 @@ export default function StagingTestPaymentForm({
             account, no card network, and no real payment is involved.
           </p>
         </div>
-        <span className="shrink-0 rounded-full bg-amber-500 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+        <span className="shrink-0 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-900">
           {STAGING_ONLY_BADGE}
         </span>
       </div>
@@ -117,7 +117,7 @@ export default function StagingTestPaymentForm({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className={LABEL} htmlFor="stagingTestCardExpiry">
               Expiry (MM/YY)
@@ -181,7 +181,7 @@ export default function StagingTestPaymentForm({
           )}
         </div>
 
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
 
         <p className="text-[11px] text-charcoal-light">
           The card number, expiry and security code never leave this page — they are not sent to
@@ -192,7 +192,7 @@ export default function StagingTestPaymentForm({
           type="button"
           onClick={() => void handlePay()}
           disabled={disabled}
-          className="w-full flex items-center justify-center gap-2 py-4 bg-charcoal hover:bg-charcoal-light disabled:bg-gray-300 text-white font-semibold rounded-xl transition-colors"
+          className="w-full flex items-center justify-center gap-2 rounded-xl bg-himalayan px-4 py-4 font-semibold text-white transition-colors hover:bg-himalayan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-himalayan disabled:cursor-not-allowed disabled:bg-gray-300"
         >
           {disabled && <Loader2 size={18} className="animate-spin" />}
           {disabled ? 'Processing test payment…' : `Test pay ${amountLabel}`}

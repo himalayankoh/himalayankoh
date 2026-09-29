@@ -134,7 +134,7 @@ export default function OrderConfirmationPage() {
         {order.payment_status === 'paid' && (
           <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4 text-sm text-green-950">
             <p className="font-semibold">Payment received — thank you!</p>
-            <p className="mt-1">Your card payment was successful. We will process and ship your order soon.</p>
+            <p className="mt-1">Your payment was successful. We will process and ship your order soon.</p>
           </div>
         )}
         <div className="grid lg:grid-cols-3 gap-8">

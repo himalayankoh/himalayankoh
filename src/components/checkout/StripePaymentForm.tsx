@@ -6,7 +6,7 @@ import {
   useStripe,
 } from '@stripe/react-stripe-js';
 import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
-import { Loader2 } from 'lucide-react';
+import { LockKeyhole, Loader2 } from 'lucide-react';
 import { getStripeSuccessUrl } from '../../lib/payments/checkoutUrls';
 
 interface StripePaymentFormProps {
@@ -44,18 +44,23 @@ function PaymentFormInner({
       });
 
       if (error) {
-        onError(error.message || 'Card payment failed. Please try again.');
+        onError(error.message || 'Payment could not be completed. Please try again.');
+        return;
+      }
+
+      if (paymentIntent?.status === 'processing') {
+        window.location.assign(`${getStripeSuccessUrl()}?payment_intent=${encodeURIComponent(paymentIntent.id)}`);
         return;
       }
 
       if (paymentIntent && paymentIntent.status !== 'succeeded') {
-        onError('Payment is still processing. Please wait a moment and try again.');
+        onError('Payment was not completed. Please check the selected payment method before continuing.');
         return;
       }
 
       await onSuccess();
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Card payment failed.');
+      onError(err instanceof Error ? err.message : 'Payment could not be completed.');
     } finally {
       setPaying(false);
     }
@@ -63,13 +68,22 @@ function PaymentFormInner({
 
   return (
     <div className="space-y-4">
+      <div className="flex items-start gap-3 rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3">
+        <LockKeyhole size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-himalayan" />
+        <div>
+          <p className="text-sm font-semibold text-charcoal">Choose a secure payment method</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-charcoal-light">
+            Stripe shows the card and pay-over-time options available for this order and location.
+          </p>
+        </div>
+      </div>
       {!elementReady && !elementError && (
-        <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-charcoal-light">
-          Loading secure card, Klarna and Afterpay payment fields…
+        <div role="status" aria-live="polite" className="rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3 text-sm text-charcoal-light">
+          Loading available payment methods…
         </div>
       )}
       {elementError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           Payment fields could not load. {elementError} Please refresh this page and try again.
         </div>
       )}
@@ -83,8 +97,8 @@ function PaymentFormInner({
           setElementError(event.error?.message || 'Stripe was unable to load the available payment methods.');
         }}
         options={{
-          layout: 'tabs',
-          paymentMethodOrder: ['card', 'klarna', 'afterpay_clearpay'],
+          layout: 'accordion',
+          paymentMethodOrder: ['card', 'klarna', 'afterpay_clearpay', 'affirm'],
           fields: {
             billingDetails: {
               name: 'auto',
@@ -96,10 +110,10 @@ function PaymentFormInner({
         type="button"
         onClick={handlePayment}
         disabled={!stripe || !elements || !elementReady || paying || disabled}
-        className="w-full flex items-center justify-center gap-2 py-4 bg-charcoal hover:bg-charcoal-light disabled:bg-gray-300 text-white font-semibold rounded-xl transition-colors"
+        className="w-full flex items-center justify-center gap-2 rounded-xl bg-himalayan px-4 py-4 font-semibold text-white shadow-sm transition-colors hover:bg-himalayan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-himalayan disabled:cursor-not-allowed disabled:bg-gray-300"
       >
         {paying && <Loader2 size={18} className="animate-spin" />}
-        {paying ? 'Processing...' : `Pay ${amountLabel}`}
+        {paying ? 'Confirming payment…' : `Continue securely · ${amountLabel}`}
       </button>
     </div>
   );
@@ -121,7 +135,7 @@ export default function StripePaymentForm({
   if (!stripePromise) {
     return (
       <p className="text-sm text-red-600">
-        Card payments are not configured yet. An administrator can add the Stripe
+        Secure payments are not configured yet. An administrator can add the Stripe
         publishable key under Admin → Settings → Service &amp; API Keys, or set
         NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_… for local development.
       </p>

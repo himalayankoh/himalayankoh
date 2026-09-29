@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       });
     }
     if (paymentIntent.status !== 'succeeded') {
-      return NextResponse.json({ error: 'Payment has not completed yet. Please try again or use a different card.', status: paymentIntent.status }, { status: 402 });
+      return NextResponse.json({ error: 'Payment has not completed. Please review the selected payment method before trying again.', status: paymentIntent.status }, { status: 402 });
     }
 
     // Stripe says the card succeeded; the store is the authority on whether the
