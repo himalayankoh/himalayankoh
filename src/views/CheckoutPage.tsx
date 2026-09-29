@@ -5,6 +5,7 @@ import { ArrowLeft, CheckCircle, CreditCard, Loader2, MapPin, PackageCheck, Shie
 import { useAuthContext } from '../context/AuthContext';
 import StripePaymentForm from '../components/checkout/StripePaymentForm';
 import StagingTestPaymentForm from '../components/checkout/StagingTestPaymentForm';
+import PayOverTimeOptions from '../components/checkout/PayOverTimeOptions';
 import { submitStagingSimulatorPayment } from '../lib/payments/stagingSimulatorClient';
 import {
   STAGING_SIMULATOR_UNAVAILABLE_MESSAGE,
@@ -1134,6 +1135,17 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 </div>
               )}
                 </>
+              )}
+
+              {/* Named here rather than promised here: Stripe decides which of
+                  these an order may use, so the strip says which of the three
+                  situations this checkout is in instead of listing them as if
+                  they were all selectable. */}
+              {paymentMethod === 'stripe' && (
+                <PayOverTimeOptions
+                  stripeEnabled={stripeEnabled}
+                  simulatorEnabled={stagingSimulatorEnabled}
+                />
               )}
             </section>
 
