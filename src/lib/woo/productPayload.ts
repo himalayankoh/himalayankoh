@@ -36,7 +36,7 @@ export type WooStockStatus = 'instock' | 'outofstock' | 'onbackorder';
 export type WooProductStatus = 'publish' | 'draft' | 'pending' | 'private';
 
 /** A product patch, coming from the admin editor or an inline row action. */
-export interface AdminProductPatch {
+export interface AdminProductPatch extends ConsoleProductFields {
   /** Product title. */
   name?: string;
   slug?: string;
@@ -84,6 +84,75 @@ export interface AdminVariationPatch {
   manageStock?: boolean;
   stockQuantity?: number | null;
   stockStatus?: WooStockStatus;
+  /** Supplier cost, stored as `meta_data` on the variation. */
+  costPrice?: number | null;
+  /** The store's own low-stock warning level for this variation. */
+  lowStockAmount?: number | null;
+}
+
+/**
+ * The fields a variation write may carry.
+ *
+ * Short on purpose: a variation's *attributes* are not here. Its option set has
+ * to be one the parent product declares as a variation attribute, and this
+ * console cannot create those — so an attribute it invented would be dropped by
+ * the store, which is the silence this list exists to end. A caller that sends
+ * one is told (see `unsupportedVariationWriteFields`) rather than left believing
+ * a customer can now choose that option.
+ */
+export const VARIATION_WRITE_FIELDS: readonly string[] = [
+  'regularPrice',
+  'salePrice',
+  'sku',
+  'manageStock',
+  'stockQuantity',
+  'stockStatus',
+  'costPrice',
+  'lowStockAmount',
+  // `id` addresses the variation and is read before the patch is applied.
+  'id',
+];
+
+/** Variation keys a write cannot carry, in the caller's own words. */
+export function unsupportedVariationWriteFields(
+  patch: Record<string, unknown>,
+): Array<{ field: string; reason: string }> {
+  return Object.keys(patch)
+    .filter((key) => !VARIATION_WRITE_FIELDS.includes(key))
+    .map((field) => ({
+      field,
+      reason: 'This console has no variation field for it on the store, so it was not saved.',
+    }));
+}
+
+/**
+ * The regular/sale pair a variation's console fields describe.
+ *
+ * The same rule as a product's own price (`priceFields`), applied to a variation
+ * instead of the parent: the console's `price` is what the customer pays and its
+ * `compareAtPrice` is the struck-through "was", while WooCommerce stores a list
+ * price and a discounted price. A compare-at decides the pair on its own, and a
+ * price edit clears any sale the variation was still carrying — otherwise the
+ * store goes on charging the old discounted number while the console shows the
+ * new one.
+ */
+export function variationPriceFields(patch: {
+  price?: number | null;
+  compareAtPrice?: number | null;
+}): { regularPrice?: number | null; salePrice?: number | null } {
+  const price = toPriceNumber(patch.price);
+  const compareAt = toPriceNumber(patch.compareAtPrice);
+
+  if (patch.compareAtPrice !== undefined) {
+    if (compareAt === null || compareAt === undefined || compareAt <= 0 || price === null || price === undefined) {
+      return { regularPrice: price ?? null, salePrice: null };
+    }
+    return { regularPrice: compareAt, salePrice: price };
+  }
+  if (patch.price !== undefined) {
+    return { regularPrice: price ?? null, salePrice: null };
+  }
+  return {};
 }
 
 /** The `meta_data` keys the store's SEO plugin reads (Yoast is the installed one). */
@@ -96,6 +165,197 @@ export const SEO_META_KEYS = {
   landedCost: '_himalayan_koh_landed_cost',
   packagePreset: '_himalayan_koh_package_preset',
 } as const;
+
+/* ------------------------------------------------------------------ */
+/* The console's own product fields                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The product fields the console owns that WooCommerce has no column for.
+ *
+ * Why this table exists: the editor writes about fifty fields, and only a
+ * handful of them are WooCommerce columns. Everything else — the supplier trail,
+ * the shipping policy, the merchandising flags, the copy the console's own
+ * screens show — used to travel to `/api/admin/products` and be dropped there
+ * without a word, so the owner edited a field, saw "Saved", and found the old
+ * value on the next read. A field with no home is now either stored here or
+ * reported; `CONSOLE_META_FIELDS` is that home.
+ *
+ * They are written as `meta_data` on the store's own product, next to the
+ * economics this app already stores that way (`SEO_META_KEYS`), because that is
+ * the only place a WooCommerce product can keep them and it is where the store's
+ * own admin screens can see them. Key names are stable: an owner who has a value
+ * under `_himalayan_koh_supplier_source` keeps it.
+ */
+export type ConsoleFieldKind = 'string' | 'number' | 'boolean' | 'stringList' | 'json';
+
+export interface ConsoleMetaField {
+  /** The console's name for the field — the API body's key, unchanged. */
+  field: string;
+  /** The `meta_data` key the value is stored under. */
+  key: string;
+  kind: ConsoleFieldKind;
+}
+
+export const CONSOLE_META_FIELDS: readonly ConsoleMetaField[] = [
+  { field: 'shortTitle', key: '_himalayan_koh_short_title', kind: 'string' },
+  { field: 'subtitle', key: '_himalayan_koh_subtitle', kind: 'string' },
+  { field: 'brand', key: '_himalayan_koh_brand', kind: 'string' },
+  { field: 'currency', key: '_himalayan_koh_currency', kind: 'string' },
+  { field: 'features', key: '_himalayan_koh_features', kind: 'stringList' },
+  { field: 'specifications', key: '_himalayan_koh_specifications', kind: 'json' },
+  { field: 'shippingCost', key: '_himalayan_koh_shipping_cost', kind: 'number' },
+  { field: 'freeShipping', key: '_himalayan_koh_free_shipping', kind: 'boolean' },
+  { field: 'deliveryMinDays', key: '_himalayan_koh_delivery_min_days', kind: 'number' },
+  { field: 'deliveryMaxDays', key: '_himalayan_koh_delivery_max_days', kind: 'number' },
+  { field: 'shippingNote', key: '_himalayan_koh_shipping_note', kind: 'string' },
+  { field: 'usInventory', key: '_himalayan_koh_us_inventory', kind: 'boolean' },
+  { field: 'supplierSource', key: '_himalayan_koh_supplier_source', kind: 'string' },
+  { field: 'supplierProductRef', key: '_himalayan_koh_supplier_ref', kind: 'string' },
+  { field: 'supplierUrl', key: '_himalayan_koh_supplier_url', kind: 'string' },
+  { field: 'supplierStockStatus', key: '_himalayan_koh_supplier_stock_status', kind: 'string' },
+  { field: 'commerceReadiness', key: '_himalayan_koh_commerce_readiness', kind: 'string' },
+  { field: 'sourceType', key: '_himalayan_koh_source_type', kind: 'string' },
+  { field: 'inventorySource', key: '_himalayan_koh_inventory_source', kind: 'string' },
+  { field: 'fulfillmentMethod', key: '_himalayan_koh_fulfillment_method', kind: 'string' },
+  { field: 'intendedSpecies', key: '_himalayan_koh_intended_species', kind: 'string' },
+  { field: 'safetyClass', key: '_himalayan_koh_safety_class', kind: 'string' },
+  { field: 'safetyReviewStatus', key: '_himalayan_koh_safety_review_status', kind: 'string' },
+  { field: 'riskFlags', key: '_himalayan_koh_risk_flags', kind: 'stringList' },
+  { field: 'newArrival', key: '_himalayan_koh_new_arrival', kind: 'boolean' },
+  { field: 'trending', key: '_himalayan_koh_trending', kind: 'boolean' },
+  { field: 'bestRated', key: '_himalayan_koh_best_rated', kind: 'boolean' },
+  { field: 'bestSeller', key: '_himalayan_koh_best_seller', kind: 'boolean' },
+  { field: 'promoted', key: '_himalayan_koh_promoted', kind: 'boolean' },
+  { field: 'saleEnabled', key: '_himalayan_koh_sale_enabled', kind: 'boolean' },
+  { field: 'discountType', key: '_himalayan_koh_discount_type', kind: 'string' },
+  { field: 'discountValue', key: '_himalayan_koh_discount_value', kind: 'number' },
+  { field: 'sortOrder', key: '_himalayan_koh_sort_order', kind: 'number' },
+  { field: 'listingEndsAt', key: '_himalayan_koh_listing_ends_at', kind: 'string' },
+  { field: 'ogImage', key: '_himalayan_koh_og_image', kind: 'string' },
+  { field: 'ownerNotes', key: '_himalayan_koh_owner_notes', kind: 'string' },
+  { field: 'evidenceNotes', key: '_himalayan_koh_evidence_notes', kind: 'string' },
+];
+
+/**
+ * The fields a product write may carry.
+ *
+ * One list, used by both admin routes as their allowlist, by the client before
+ * it sends anything, and by the report that names a key nobody can store. It
+ * used to be two hand-written arrays inside two route files while the mapper in
+ * `features/catalog/repository.ts` had a third opinion — which is exactly how a
+ * field ended up being sent, accepted, mapped by nobody and dropped in silence.
+ */
+export const PRODUCT_PATCH_FIELDS = [
+  'name',
+  'slug',
+  'status',
+  'description',
+  'shortDescription',
+  'sku',
+  'price',
+  'compareAtPrice',
+  'categoryIds',
+  'tags',
+  'images',
+  'type',
+  'manageStock',
+  'stockQuantity',
+  'stockStatus',
+  'backorders',
+  'lowStockAmount',
+  'weight',
+  'dimensions',
+  'costPrice',
+  'landedCost',
+  'packagePreset',
+  'seoKeywords',
+  'canonicalSlug',
+  'featured',
+  'seo',
+] as const;
+
+/** WooCommerce columns plus the console's own meta fields. See the table above. */
+export const PRODUCT_WRITE_FIELDS: readonly string[] = [
+  ...PRODUCT_PATCH_FIELDS,
+  ...CONSOLE_META_FIELDS.map((entry) => entry.field),
+];
+
+/**
+ * Body keys a product write cannot carry, in the caller's own words.
+ *
+ * Used to answer with `ignored` instead of a bare 200, so a caller — the
+ * console today, an integration tomorrow — is told which of its fields the
+ * store was never given, rather than reading success into a save that dropped
+ * half of them.
+ */
+export function unsupportedProductWriteFields(
+  body: Record<string, unknown>,
+  alsoAllowed: readonly string[] = [],
+): Array<{ field: string; reason: string }> {
+  const allowed = new Set<string>([...PRODUCT_WRITE_FIELDS, ...alsoAllowed]);
+  return Object.keys(body)
+    .filter((key) => !allowed.has(key))
+    .map((field) => ({
+      field,
+      reason: 'This console has no field for it on the store, so it was not saved.',
+    }));
+}
+
+/** Serialises one console field for `meta_data`. Empty/null clears the meta. */
+export function toConsoleMetaValue(kind: ConsoleFieldKind, value: unknown): string {
+  switch (kind) {
+    case 'boolean':
+      return value === true ? 'yes' : 'no';
+    case 'number': {
+      const parsed = typeof value === 'number' ? value : Number(value);
+      return value === null || value === undefined || !Number.isFinite(parsed) ? '' : String(parsed);
+    }
+    case 'stringList':
+      return JSON.stringify(Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []);
+    case 'json':
+      try {
+        return JSON.stringify(value ?? {});
+      } catch {
+        return '';
+      }
+    default:
+      return value === null || value === undefined ? '' : String(value).trim();
+  }
+}
+
+/** Reads one console field back. `null` means "the store holds no value". */
+export function fromConsoleMetaValue(kind: ConsoleFieldKind, raw: string | null): unknown {
+  if (raw === null) return null;
+  switch (kind) {
+    case 'boolean':
+      return raw === 'yes' || raw === 'true' || raw === '1';
+    case 'number': {
+      const trimmed = raw.trim();
+      if (!trimmed) return null;
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    case 'stringList': {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+      } catch {
+        return [];
+      }
+    }
+    case 'json': {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+    default:
+      return raw.trim() || null;
+  }
+}
 
 function metaValue(row: WooProductLike, key: string): string | null {
   const entry = row.meta_data?.find((item) => item.key === key);
@@ -321,6 +581,14 @@ export function toWooProductBody(
   }
 
   const meta: Array<{ key: string; value: string }> = [];
+  // The console's own fields travel in the same `meta_data` write as the
+  // economics below: one table says where each of them lives, so a field cannot
+  // be sent by the editor and forgotten by the mapper.
+  const consolePatch = patch as unknown as Record<string, unknown>;
+  for (const entry of CONSOLE_META_FIELDS) {
+    if (consolePatch[entry.field] === undefined) continue;
+    meta.push({ key: entry.key, value: toConsoleMetaValue(entry.kind, consolePatch[entry.field]) });
+  }
   if (patch.costPrice !== undefined) meta.push({ key: SEO_META_KEYS.costPrice, value: patch.costPrice == null ? '' : String(patch.costPrice) });
   if (patch.landedCost !== undefined) meta.push({ key: SEO_META_KEYS.landedCost, value: patch.landedCost == null ? '' : String(patch.landedCost) });
   if (patch.packagePreset !== undefined) meta.push({ key: SEO_META_KEYS.packagePreset, value: patch.packagePreset ?? '' });
@@ -351,6 +619,14 @@ export function toWooVariationBody(patch: AdminVariationPatch): Record<string, u
   if (patch.manageStock !== undefined) body.manage_stock = patch.manageStock;
   if (patch.stockQuantity !== undefined) body.stock_quantity = patch.stockQuantity;
   if (patch.stockStatus !== undefined) body.stock_status = patch.stockStatus;
+  if (patch.lowStockAmount !== undefined) body.low_stock_amount = patch.lowStockAmount;
+  // A variation carries meta too, and the console's cost figure has a home
+  // there — the same key its parent product's cost uses.
+  if (patch.costPrice !== undefined) {
+    body.meta_data = [
+      { key: SEO_META_KEYS.costPrice, value: patch.costPrice == null ? '' : String(patch.costPrice) },
+    ];
+  }
   return body;
 }
 
@@ -400,6 +676,54 @@ export interface WooVariationLike {
 }
 
 /** A product as the admin editor consumes it. Absence is `null`, never zero. */
+/**
+ * The console-owned half of a product patch.
+ *
+ * Every field here is stored as `meta_data` — see `CONSOLE_META_FIELDS`. They
+ * are grouped in their own interface because they share a fate: they are not
+ * WooCommerce's, they are this console's record of the product, and they are
+ * what the editor kept losing.
+ */
+export interface ConsoleProductFields {
+  shortTitle?: string | null;
+  subtitle?: string | null;
+  brand?: string | null;
+  currency?: string | null;
+  features?: string[] | null;
+  specifications?: Record<string, unknown> | null;
+  shippingCost?: number | null;
+  freeShipping?: boolean | null;
+  deliveryMinDays?: number | null;
+  deliveryMaxDays?: number | null;
+  shippingNote?: string | null;
+  usInventory?: boolean | null;
+  supplierSource?: string | null;
+  supplierProductRef?: string | null;
+  supplierUrl?: string | null;
+  supplierStockStatus?: string | null;
+  commerceReadiness?: string | null;
+  sourceType?: string | null;
+  inventorySource?: string | null;
+  fulfillmentMethod?: string | null;
+  intendedSpecies?: string | null;
+  safetyClass?: string | null;
+  safetyReviewStatus?: string | null;
+  riskFlags?: string[] | null;
+  newArrival?: boolean | null;
+  trending?: boolean | null;
+  bestRated?: boolean | null;
+  bestSeller?: boolean | null;
+  promoted?: boolean | null;
+  saleEnabled?: boolean | null;
+  discountType?: string | null;
+  discountValue?: number | null;
+  sortOrder?: number | null;
+  listingEndsAt?: string | null;
+  ogImage?: string | null;
+  ownerNotes?: string | null;
+  evidenceNotes?: string | null;
+}
+
 export interface AdminProductRecord {
   id: number;
   name: string;
@@ -449,6 +773,27 @@ export interface AdminProductRecord {
   canonicalSlug: string | null;
   permalink: string | null;
   dateModified: string | null;
+  /**
+   * The console's own fields, read back out of the store's meta.
+   *
+   * A field the store holds no value for is **absent** from this record rather
+   * than zeroed: the console can then keep its own default for a product nobody
+   * has configured, and still show the stored value for one that has. Reading
+   * them back matters as much as writing them — a save the owner cannot see
+   * after a reload is indistinguishable from a save that failed.
+   */
+  consoleFields: Record<string, unknown>;
+}
+
+/** Every console field the store has a value for, parsed back to its kind. */
+export function consoleFieldsFromMeta(row: WooProductLike): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  for (const entry of CONSOLE_META_FIELDS) {
+    const raw = metaValue(row, entry.key);
+    if (raw === null) continue;
+    fields[entry.field] = fromConsoleMetaValue(entry.kind, raw);
+  }
+  return fields;
 }
 
 function normaliseStatus(value: unknown): WooProductStatus {
@@ -527,6 +872,7 @@ export function fromWooProduct(row: WooProductLike): AdminProductRecord {
     canonicalSlug: metaValue(row, SEO_META_KEYS.canonicalSlug),
     permalink: row.permalink ? String(row.permalink) : null,
     dateModified: row.date_modified_gmt ? String(row.date_modified_gmt) : null,
+    consoleFields: consoleFieldsFromMeta(row),
   };
 }
 

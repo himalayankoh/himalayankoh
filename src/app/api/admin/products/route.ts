@@ -11,44 +11,35 @@ import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { hasWooCommerceCredentials } from '@/lib/backend/credentials';
 import { createWooProduct, listWooProducts, WooWriteError } from '@/lib/woo/productWrite';
-import { fromWooProduct, isUnusablePrice } from '@/lib/woo/productPayload';
+import {
+  PRODUCT_WRITE_FIELDS,
+  fromWooProduct,
+  isUnusablePrice,
+  unsupportedProductWriteFields,
+} from '@/lib/woo/productPayload';
 import { readProductStatusField } from '@/lib/woo/productStatus';
 
-/** Maps the request body onto a patch, dropping keys the caller did not send. */
+/**
+ * Maps the request body onto a patch, dropping keys the caller did not send.
+ *
+ * The allowlist is the mapper's own (`PRODUCT_WRITE_FIELDS`), so this route and
+ * the PUT route accept exactly what can be stored and nothing else.
+ */
 function readPatch(body: Record<string, unknown>): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
-  const passThrough = [
-    'name',
-    'slug',
-    'status',
-    'description',
-    'shortDescription',
-    'sku',
-    'price',
-    'compareAtPrice',
-    'categoryIds',
-    'tags',
-    'images',
-    'type',
-    'manageStock',
-    'stockQuantity',
-    'stockStatus',
-    'backorders',
-    'lowStockAmount',
-    'weight',
-    'dimensions',
-    'costPrice',
-    'landedCost',
-    'packagePreset',
-    'seoKeywords',
-    'canonicalSlug',
-    'featured',
-    'seo',
-  ];
-  for (const key of passThrough) {
+  for (const key of PRODUCT_WRITE_FIELDS) {
     if (key in body) patch[key] = body[key];
   }
   return patch;
+}
+
+/**
+ * Keys the caller sent that no layer can store. Reported through the same
+ * `ignored` channel a store-refused field uses, so a create that dropped a
+ * field cannot answer 201 as though it had kept it.
+ */
+function unappliedFields(body: Record<string, unknown>): Array<{ field: string; reason: string }> {
+  return unsupportedProductWriteFields(body);
 }
 
 export async function GET(request: Request) {
@@ -110,7 +101,10 @@ export async function POST(request: Request) {
 
   try {
     const result = await createWooProduct(readPatch(writeBody) as never);
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json(
+      { ...result, ignored: [...result.ignored, ...unappliedFields(writeBody)] },
+      { status: 201 },
+    );
   } catch (error) {
     if (error instanceof WooWriteError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

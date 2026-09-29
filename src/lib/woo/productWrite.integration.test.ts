@@ -7,16 +7,23 @@
  * the staging install, so a misconfigured environment cannot turn a unit test
  * into a production write.
  *
- * What it proves, in order: create a draft product with a price and a stock
- * quantity, read those back from the store itself, change price/stock/SKU/title,
- * read the changes back, then trash it and confirm it is gone from every catalog
- * read. Nothing is left behind either way.
+ * What it proves, in order: create a draft product with a price, a stock quantity
+ * and the console's own fields, read those back from the store itself, change
+ * price/stock/SKU/title and a console field, read the changes back, then trash it
+ * and confirm it is gone from every catalog read. Nothing is left behind either
+ * way.
+ *
+ * The console fields are here for a reason: they are stored as `meta_data`, and
+ * whether a WooCommerce product keeps an arbitrary meta key is a fact about the
+ * live store that no unit test can settle. This repository has been caught by
+ * that difference before.
  */
 
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { hasWooCommerceCredentials } from '../backend/credentials';
 import { backendConfig } from '../backend/config';
+import { fromWooProduct } from './productPayload';
 import {
   createWooProduct,
   getWooProduct,
@@ -54,6 +61,15 @@ describe.skipIf(!canRun)('WooCommerce product write path (live staging)', () => 
       manageStock: true,
       stockQuantity: 1,
       stockStatus: 'instock',
+      supplierSource: 'Zeedrop',
+      supplierUrl: 'https://example.invalid/item/1',
+      promoted: true,
+      saleEnabled: false,
+      shippingCost: 8.5,
+      freeShipping: false,
+      features: ['Fine grain', 'Food grade'],
+      specifications: { weightOz: 720, packagePreset: 'BOX_BAG_45' },
+      ownerNotes: 'Throwaway product — safe to delete',
     });
 
     createdId = created.product.id;
@@ -71,7 +87,26 @@ describe.skipIf(!canRun)('WooCommerce product write path (live staging)', () => 
     expect(stored.manage_stock).toBe(true);
     expect(stored.stock_quantity).toBe(1);
 
+    // The console's own fields, read back out of the store's meta — the round
+    // trip thirty-one editor fields never made.
+    const storedFields = fromWooProduct(stored).consoleFields;
+    expect(storedFields).toMatchObject({
+      supplierSource: 'Zeedrop',
+      supplierUrl: 'https://example.invalid/item/1',
+      promoted: true,
+      saleEnabled: false,
+      shippingCost: 8.5,
+      freeShipping: false,
+      features: ['Fine grain', 'Food grade'],
+      specifications: { weightOz: 720, packagePreset: 'BOX_BAG_45' },
+      ownerNotes: 'Throwaway product — safe to delete',
+    });
+
     const updated = await updateWooProduct(createdId, {
+      ownerNotes: 'edited note',
+      promoted: false,
+      deliveryMinDays: 3,
+      riskFlags: ['price_unverified'],
       name: `${TEST_TITLE} (edited)`,
       price: 2.5,
       sku: `${TEST_SKU}-2`,
@@ -86,6 +121,18 @@ describe.skipIf(!canRun)('WooCommerce product write path (live staging)', () => 
     expect(storedAgain.regular_price).toBe('2.50');
     expect(storedAgain.stock_quantity).toBe(5);
     expect(storedAgain.sku).toBe(`${TEST_SKU}-2`);
+
+    const fieldsAgain = fromWooProduct(storedAgain).consoleFields;
+    expect(fieldsAgain).toMatchObject({
+      ownerNotes: 'edited note',
+      promoted: false,
+      deliveryMinDays: 3,
+      riskFlags: ['price_unverified'],
+    });
+    // Untouched console fields survive an unrelated edit rather than being
+    // cleared by it, which is what "partial update" has to mean here.
+    expect(fieldsAgain.supplierSource).toBe('Zeedrop');
+    expect(fieldsAgain.features).toEqual(['Fine grain', 'Food grade']);
 
     await trashWooProduct(createdId);
     const trashed = await getWooProduct(createdId);

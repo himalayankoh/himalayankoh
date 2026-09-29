@@ -130,6 +130,12 @@ export interface CatalogProduct {
   seoKeywords: string[];
   canonicalSlug?: string;
   ogImage?: string;
+  /**
+   * The owner's ordering for this product. Stored on the product (a `_himalayan_koh_*`
+   * meta key) rather than derived, because the console sells it as an ordering
+   * the owner sets — and a value nothing can store is not an ordering at all.
+   */
+  sortOrder?: number;
   images: CatalogImage[];
   /**
    * The images the storefront shows that WooCommerce does not hold.

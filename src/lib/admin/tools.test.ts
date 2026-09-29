@@ -155,6 +155,7 @@ function row(overrides: Partial<AdminCatalogRow> = {}): AdminCatalogRow {
     image: '/images/salt.png',
     images: [],
     storefrontDefaultImages: [],
+    consoleFields: {},
     categoryName: 'Bulk Order',
     categoryId: 'bulk-order',
     price: '$19.95',

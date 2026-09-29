@@ -53,6 +53,17 @@ export interface AdminCatalogRow {
    * Read-only; see `AdminProductRecord.storefrontDefaultImages`.
    */
   storefrontDefaultImages: string[];
+  /**
+   * The console's own product fields, as the store holds them (see
+   * `CONSOLE_META_FIELDS`).
+   *
+   * Carried on the row because the product list reads this way, and a field the
+   * console can write but cannot read back is a field the owner watches revert.
+   * Empty for a row that came from the storefront read, which holds no
+   * `meta_data` — the editor's own read (`/api/admin/products/:id`) is where
+   * those values come from.
+   */
+  consoleFields: Record<string, unknown>;
   categoryName: string | null;
   /** The source's own facet id for the category — see `AdminCatalogFacet`. */
   categoryId: string | null;
@@ -178,6 +189,9 @@ export function rowFromCatalogProduct(product: CatalogProduct): AdminCatalogRow 
     // back, and an empty list is the truth rather than a shrug. (`Product` here
     // is `data/products`, not the console's own model.)
     storefrontDefaultImages: [],
+    // The storefront read this row came from reports no product meta, so there is
+    // nothing to report rather than a default to invent.
+    consoleFields: {},
     categoryName,
     categoryId: categoryName,
     // This row came from the public read, which returns published products only,
@@ -237,6 +251,7 @@ export function rowFromWooAdminProduct(record: AdminProductRecord): AdminCatalog
     image: record.images[0] ?? '',
     images: record.images,
     storefrontDefaultImages: record.storefrontDefaultImages ?? [],
+    consoleFields: record.consoleFields ?? {},
     categoryName,
     categoryId: categoryName,
     price: record.price === null ? '' : `$${record.price.toFixed(2)}`,

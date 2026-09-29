@@ -20,6 +20,7 @@ import { useApp } from '../App';
 import { getFreshAccessToken, getSession } from '../services/wordpressAdminAuth';
 import {
   setDbToken, listProducts, getProduct, createProduct, updateProduct, setProductStatus,
+  unsavableVariants,
   archiveProduct, hardDeleteProduct, duplicateProduct, saveProductImages, saveProductVariants,
   createCategory,
   listCategories, listCoupons, createCoupon, updateCoupon, deleteCoupon,
@@ -2205,9 +2206,13 @@ export function CatalogProductEditor() {
         sortOrder: i,
         variantId: img.variantId || null,
       }));
+      // The option labels are deliberately not sent: a variation's attributes
+      // have to be ones the parent declares as variation attributes, and this
+      // console cannot create those, so the store would drop an invented option
+      // in silence. They are not editable for a variation the store already has,
+      // which is why nothing is lost by leaving them out here.
       const variantPayload = currentProduct.variants.map((v) => ({
         id: v.id || undefined,
-        attributes: v.attributes,
         sku: v.sku,
         price: v.price,
         compareAtPrice: v.compareAtPrice,
@@ -2216,6 +2221,9 @@ export function CatalogProductEditor() {
         status: v.status,
         lowStockThreshold: v.lowStockThreshold,
       }));
+      // Variants the store does not have yet: reported below rather than skipped
+      // in silence, which is what made an added variant look saved.
+      const unsavable = isWoo ? unsavableVariants(currentProduct.variants) : [];
 
       // Parallelize image and variant DB writes (for local products; Woo images are updated atomically above)
       if (!isWoo) {
@@ -2240,8 +2248,14 @@ export function CatalogProductEditor() {
       const draftNotice = publishBlocked
         ? `Saved as a draft, not live yet — ${publishBlocked.replace(/\.$/, '')}. Everything else in this save went through.`
         : null;
-      setSaveNotice(draftNotice);
-      notify(draftNotice ?? (isNew ? 'Product created' : 'Product saved'));
+      const variantNotice = unsavable.length
+        ? `${unsavable.length} new variant${unsavable.length === 1 ? '' : 's'} were not saved: this console can only edit variants the store already has (${unsavable
+            .map((v) => Object.values(v.attributes ?? {}).filter(Boolean).join(' / ') || v.sku || 'unnamed option')
+            .slice(0, 3)
+            .join('; ')}).`
+        : null;
+      setSaveNotice([draftNotice, variantNotice].filter(Boolean).join(' ') || null);
+      notify(draftNotice ?? variantNotice ?? (isNew ? 'Product created' : 'Product saved'));
       setSaveError(null);
       // The product row response predates the image/variant writes above. Do
       // not replace local state with that stale row or a newly imported image

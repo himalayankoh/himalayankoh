@@ -6,8 +6,13 @@ import {
   priceFields,
   sellingPrice,
   toPriceNumber,
+  CONSOLE_META_FIELDS,
+  PRODUCT_WRITE_FIELDS,
   toWooProductBody,
   toWooVariationBody,
+  unsupportedProductWriteFields,
+  unsupportedVariationWriteFields,
+  variationPriceFields,
   wooImageSources,
   variationLabel,
   variationPriceRange,
@@ -353,6 +358,132 @@ describe('variationLabel', () => {
   });
 });
 
+/**
+ * The console's own product fields — everything WooCommerce has no column for.
+ *
+ * These pin the two halves of "a field either saves or is reported": the table
+ * that gives each field a `meta_data` home, and the report that names a key no
+ * layer can store.
+ */
+describe('the console\u2019s own product fields', () => {
+  const metaOf = (body: Record<string, unknown>): Record<string, unknown> =>
+    Object.fromEntries(
+      (body.meta_data as Array<{ key: string; value: string }>).map((entry) => [entry.key, entry.value])
+    );
+
+  it('stores every console field under its documented meta key', () => {
+    const body = toWooProductBody({
+      supplierSource: 'Zeedrop',
+      supplierUrl: 'https://supplier.example/item/1',
+      promoted: true,
+      saleEnabled: false,
+      shippingCost: 8.5,
+      freeShipping: false,
+      features: ['Fine grain', 'Food grade'],
+      specifications: { weightOz: 720, packagePreset: 'BOX_BAG_45' },
+      listingEndsAt: '2026-10-31T00:00:00.000Z',
+    });
+
+    const meta = metaOf(body);
+    expect(meta['_himalayan_koh_supplier_source']).toBe('Zeedrop');
+    expect(meta['_himalayan_koh_supplier_url']).toBe('https://supplier.example/item/1');
+    expect(meta['_himalayan_koh_promoted']).toBe('yes');
+    expect(meta['_himalayan_koh_sale_enabled']).toBe('no');
+    expect(meta['_himalayan_koh_shipping_cost']).toBe('8.5');
+    expect(meta['_himalayan_koh_free_shipping']).toBe('no');
+    expect(meta['_himalayan_koh_features']).toBe('["Fine grain","Food grade"]');
+    expect(meta['_himalayan_koh_specifications']).toBe('{"weightOz":720,"packagePreset":"BOX_BAG_45"}');
+    expect(meta['_himalayan_koh_listing_ends_at']).toBe('2026-10-31T00:00:00.000Z');
+    // One `meta_data` write, shared with the economics that already lived there.
+    expect(body.meta_data).toHaveLength(Object.keys(meta).length);
+  });
+
+  it('sends nothing for a console field the caller did not touch', () => {
+    const body = toWooProductBody({ supplierSource: 'Zeedrop' });
+    expect(body.meta_data).toEqual([{ key: '_himalayan_koh_supplier_source', value: 'Zeedrop' }]);
+  });
+
+  it('reads them back with their types, and omits what the store does not hold', () => {
+    const record = fromWooProduct({
+      id: 2497,
+      meta_data: [
+        { key: '_himalayan_koh_promoted', value: 'yes' },
+        { key: '_himalayan_koh_sale_enabled', value: 'no' },
+        { key: '_himalayan_koh_shipping_cost', value: '8.5' },
+        { key: '_himalayan_koh_features', value: '["Fine grain"]' },
+        { key: '_himalayan_koh_risk_flags', value: '["price_unverified"]' },
+        { key: '_himalayan_koh_specifications', value: '{"weightOz":720}' },
+        { key: '_himalayan_koh_owner_notes', value: 'Repack in 45 lb bags' },
+      ],
+    });
+
+    expect(record.consoleFields).toEqual({
+      promoted: true,
+      saleEnabled: false,
+      shippingCost: 8.5,
+      features: ['Fine grain'],
+      riskFlags: ['price_unverified'],
+      specifications: { weightOz: 720 },
+      ownerNotes: 'Repack in 45 lb bags',
+    });
+    // Absent is not `false`: a field nobody ever stored must stay absent, so the
+    // console keeps its own default instead of reading a fabricated no.
+    expect('trending' in record.consoleFields).toBe(false);
+    expect('freeShipping' in record.consoleFields).toBe(false);
+  });
+
+  it('round-trips every field in the table, in both directions', () => {
+    const sample = (kind: string): unknown =>
+      kind === 'boolean'
+        ? true
+        : kind === 'number'
+          ? 12.5
+          : kind === 'stringList'
+            ? ['alpha', 'beta']
+            : kind === 'json'
+              ? { weightOz: 720 }
+              : 'value';
+
+    const patch: Record<string, unknown> = {};
+    for (const entry of CONSOLE_META_FIELDS) patch[entry.field] = sample(entry.kind);
+
+    const body = toWooProductBody(patch);
+    const record = fromWooProduct({
+      id: 1,
+      meta_data: body.meta_data as Array<{ key: string; value: unknown }>,
+    });
+
+    for (const entry of CONSOLE_META_FIELDS) {
+      expect(record.consoleFields[entry.field], `${entry.field} did not survive the store`).toEqual(
+        sample(entry.kind)
+      );
+    }
+  });
+
+  it('names the fields nobody can store instead of dropping them in silence', () => {
+    expect(unsupportedProductWriteFields({ name: 'Salt', ownerNotes: 'note' })).toEqual([]);
+    expect(unsupportedProductWriteFields({ name: 'Salt', futureField: 1 })).toEqual([
+      { field: 'futureField', reason: expect.stringContaining('no field') },
+    ]);
+    // `variations` rides on the product PUT and is accepted only there.
+    expect(unsupportedProductWriteFields({ variations: [] })).toHaveLength(1);
+    expect(unsupportedProductWriteFields({ variations: [] }, ['variations'])).toEqual([]);
+  });
+
+  it('keeps the accepted list, the console table and the meta keys in step', () => {
+    for (const entry of CONSOLE_META_FIELDS) {
+      // Every console field must be accepted by the routes, or it is refused on
+      // arrival — the drift that let the editor send thirty-one fields no layer
+      // could store.
+      expect(PRODUCT_WRITE_FIELDS).toContain(entry.field);
+    }
+    expect(new Set(PRODUCT_WRITE_FIELDS).size).toBe(PRODUCT_WRITE_FIELDS.length);
+    expect(new Set(CONSOLE_META_FIELDS.map((entry) => entry.key)).size).toBe(CONSOLE_META_FIELDS.length);
+    // …and nothing outside the table may claim to be one of its keys.
+    for (const entry of CONSOLE_META_FIELDS) expect(entry.key.startsWith('_himalayan_koh_')).toBe(true);
+  });
+});
+
 describe('toWooVariationBody', () => {
   it('only sends the fields a variation edit touched', () => {
     expect(toWooVariationBody({ regularPrice: 12.5 })).toEqual({ regular_price: '12.50' });
@@ -360,5 +491,64 @@ describe('toWooVariationBody', () => {
 
   it('clears a variation price on null, which is how a sale ends', () => {
     expect(toWooVariationBody({ salePrice: null })).toEqual({ sale_price: '' });
+  });
+
+  it('stores the rest of the Variants tab: low-stock level and supplier cost', () => {
+    expect(toWooVariationBody({ lowStockAmount: 3, costPrice: 12 })).toEqual({
+      low_stock_amount: 3,
+      meta_data: [{ key: '_himalayan_koh_cost_price', value: '12' }],
+    });
+  });
+});
+
+/**
+ * The Variants tab's price columns.
+ *
+ * The table has a Price and a Compare column; only the price reached the store,
+ * so a sale set on a variation was a number the console showed and nobody was
+ * charged.
+ */
+describe('variationPriceFields', () => {
+  it('reads a compare-at as the list price and the price as what is charged', () => {
+    expect(variationPriceFields({ price: 20, compareAtPrice: 25 })).toEqual({
+      regularPrice: 25,
+      salePrice: 20,
+    });
+  });
+
+  it('clears a sale when the price is edited without one', () => {
+    expect(variationPriceFields({ price: 20 })).toEqual({ regularPrice: 20, salePrice: null });
+    expect(variationPriceFields({ price: 20, compareAtPrice: null })).toEqual({
+      regularPrice: 20,
+      salePrice: null,
+    });
+  });
+
+  it('sends nothing when neither column was touched', () => {
+    expect(variationPriceFields({})).toEqual({});
+  });
+});
+
+describe('unsupportedVariationWriteFields', () => {
+  it('accepts every field the Variants tab owns', () => {
+    expect(
+      unsupportedVariationWriteFields({
+        id: 2450,
+        regularPrice: 20,
+        salePrice: null,
+        sku: 'HK-V-1',
+        manageStock: true,
+        stockQuantity: 4,
+        stockStatus: 'instock',
+        costPrice: 9,
+        lowStockAmount: 2,
+      }),
+    ).toEqual([]);
+  });
+
+  it('names an option set the store cannot be given', () => {
+    expect(unsupportedVariationWriteFields({ id: 2450, attributes: [{ name: 'Size', option: 'L' }] })).toEqual([
+      { field: 'attributes', reason: expect.stringContaining('no variation field') },
+    ]);
   });
 });

@@ -22,46 +22,32 @@ import {
   updateWooVariation,
   WooWriteError,
 } from '@/lib/woo/productWrite';
-import { fromWooProduct, isUnusablePrice, variationPriceRange, type AdminVariationPatch } from '@/lib/woo/productPayload';
+import {
+  PRODUCT_WRITE_FIELDS,
+  VARIATION_WRITE_FIELDS,
+  fromWooProduct,
+  isUnusablePrice,
+  unsupportedProductWriteFields,
+  unsupportedVariationWriteFields,
+  variationPriceRange,
+  type AdminVariationPatch,
+} from '@/lib/woo/productPayload';
 import { readProductStatusField } from '@/lib/woo/productStatus';
 
-const PATCH_FIELDS = [
-  'name',
-  'slug',
-  'status',
-  'description',
-  'shortDescription',
-  'sku',
-  'price',
-  'compareAtPrice',
-  'categoryIds',
-  'tags',
-  'images',
-  'type',
-  'manageStock',
-  'stockQuantity',
-  'stockStatus',
-  'backorders',
-  'lowStockAmount',
-  'weight',
-  'dimensions',
-  'costPrice',
-  'landedCost',
-  'packagePreset',
-  'seoKeywords',
-  'canonicalSlug',
-  'featured',
-  'seo',
-] as const;
+/**
+ * Keys this route hands to the mapper.
+ *
+ * The list itself lives with the mapper (`PRODUCT_WRITE_FIELDS`) so the route
+ * cannot accept a field that nothing writes, or refuse one it does write — the
+ * drift that let the editor send fifty fields while the mapper kept twenty.
+ */
+const PATCH_FIELDS = PRODUCT_WRITE_FIELDS;
 
-const VARIATION_FIELDS = [
-  'regularPrice',
-  'salePrice',
-  'sku',
-  'manageStock',
-  'stockQuantity',
-  'stockStatus',
-] as const;
+/** Accepted on this route in addition to the product fields themselves. */
+const ROUTE_FIELDS = ['variations'] as const;
+
+/** Variation keys this route hands to the mapper — the mapper's own list. */
+const VARIATION_FIELDS = VARIATION_WRITE_FIELDS;
 
 function readPatch(body: Record<string, unknown>): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
@@ -71,21 +57,45 @@ function readPatch(body: Record<string, unknown>): Record<string, unknown> {
   return patch;
 }
 
-function readVariationPatches(body: Record<string, unknown>): Array<{ id: number } & AdminVariationPatch> {
-  if (!Array.isArray(body.variations)) return [];
+/**
+ * Keys the caller sent that no layer can store, as the store's own `ignored`
+ * report — so the answer is "this did not apply", not a 200 over a dropped
+ * field. The client turns a non-empty `ignored` into a failed save.
+ */
+function unappliedFields(body: Record<string, unknown>): Array<{ field: string; reason: string }> {
+  return unsupportedProductWriteFields(body, ROUTE_FIELDS);
+}
+
+function readVariationPatches(body: Record<string, unknown>): {
+  patches: Array<{ id: number } & AdminVariationPatch>;
+  ignored: Array<{ field: string; reason: string }>;
+} {
   const out: Array<{ id: number } & AdminVariationPatch> = [];
+  const ignored: Array<{ field: string; reason: string }> = [];
+  if (!Array.isArray(body.variations)) return { patches: out, ignored };
   for (const entry of body.variations) {
     if (!entry || typeof entry !== 'object') continue;
     const record = entry as Record<string, unknown>;
     const id = Number(record.id);
-    if (!Number.isFinite(id) || id <= 0) continue;
+    if (!Number.isFinite(id) || id <= 0) {
+      // A variation the store does not have cannot be addressed at all. Saying so
+      // beats a 200 over a variation nobody created.
+      ignored.push({
+        field: 'variations[].id',
+        reason: 'A variation the store does not know cannot be saved from here, so it was not created.',
+      });
+      continue;
+    }
+    for (const missing of unsupportedVariationWriteFields(record)) {
+      ignored.push({ field: `variation ${id}.${missing.field}`, reason: missing.reason });
+    }
     const patch: Record<string, unknown> = { id };
     for (const field of VARIATION_FIELDS) {
       if (field in record) patch[field] = record[field];
     }
     out.push(patch as unknown as { id: number } & AdminVariationPatch);
   }
-  return out;
+  return { patches: out, ignored };
 }
 
 function productId(raw: string): number | null {
@@ -175,7 +185,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
 
   try {
     const patch = readPatch(writeBody);
-    const variationPatches = readVariationPatches(writeBody);
+    const { patches: variationPatches, ignored: unappliedVariations } = readVariationPatches(writeBody);
 
     // Variations first: if one of them is rejected, the parent edit has not
     // happened yet, so a failed save cannot leave a half-edited product behind.
@@ -189,7 +199,13 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       ? await updateWooProduct(id, patch as never)
       : { product: fromWooProduct(await getWooProduct(id)), applied: [], ignored: [] };
 
-    return NextResponse.json({ ...result, variations: updatedVariations });
+    // A field nobody can store is reported, never shrugged off: the console shows
+    // a refused save rather than a success over a value that went nowhere.
+    return NextResponse.json({
+      ...result,
+      ignored: [...result.ignored, ...unappliedFields(writeBody), ...unappliedVariations],
+      variations: updatedVariations,
+    });
   } catch (error) {
     return fail(error, 'The product could not be updated.');
   }

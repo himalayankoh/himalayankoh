@@ -49,7 +49,7 @@ import {
 } from './types';
 import { parseTagList } from './tags';
 import { consoleStatusFromWoo, wooListingStatusOrDraft } from '../../lib/woo/productStatus';
-import { wooImageSources } from '../../lib/woo/productPayload';
+import { CONSOLE_META_FIELDS, variationPriceFields, wooImageSources } from '../../lib/woo/productPayload';
 
 export function uid(): string {
   try {
@@ -125,6 +125,25 @@ export function parsePublicCatalogRows(payload: unknown): Record<string, unknown
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+}
+
+function asText(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+function asNum(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v !== 'string' || !v.trim()) return null;
+  const parsed = Number(v);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function asBool(v: unknown): boolean | null {
+  return typeof v === 'boolean' ? v : null;
+}
+
+function asTextList(v: unknown): string[] | null {
+  return Array.isArray(v) ? v.filter((item): item is string => typeof item === 'string') : null;
 }
 
 /**
@@ -221,54 +240,76 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
 
   const desc = (r.description as string) || (name ? `${name} — authentic pure Himalayan pink salt from the Himalayan Koh collection.` : '');
   const shortDesc = (r.shortDescription as string) || desc;
+  // The console's own fields, as the store holds them. Absent means the store has
+  // no value — and then the console's own default stands, exactly as it did
+  // before these fields had anywhere to be saved. What must never happen again is
+  // the other case: a value that *is* stored being replaced on screen by a
+  // fabricated default, which is how a saved field read as a field that failed.
+  const cf = asRecord(r.consoleFields);
+  const storedFeatures = asTextList(cf.features);
+  const storedSpecs = asRecord(cf.specifications);
 
   return {
     id,
     slug,
     name,
-    shortTitle: name,
-    subtitle: catName,
+    shortTitle: asText(cf.shortTitle) ?? name,
+    subtitle: asText(cf.subtitle) ?? catName,
     shortDescription: shortDesc,
     description: desc,
-    features: [],
-    specifications,
+    features: storedFeatures ?? [],
+    // The store's own columns (weight, dimensions) are authoritative where they
+    // exist; the stored object is what carries the rest of what the Shipping tab
+    // keeps (weight in ounces, the package preset it read).
+    specifications: { ...storedSpecs, ...specifications },
     categoryId: catId,
     categoryName: catName,
-    brand: 'Himalayan Koh',
+    brand: asText(cf.brand) ?? 'Himalayan Koh',
     status: consoleStatus,
     price: priceNum,
     compareAtPrice: compareAt,
     costPrice: typeof r.costPrice === 'number' ? r.costPrice : 0,
     landedCost: typeof r.landedCost === 'number' ? r.landedCost : 0,
     marginPercent: 55,
-    currency: 'USD',
+    currency: asText(cf.currency) ?? 'USD',
     sku: (r.sku as string) || '',
     inventoryQty: stockQty,
     trackInventory,
     stockStatus: stockStat as CatalogProduct['stockStatus'],
     lowStockThreshold: typeof r.lowStockThreshold === 'number' ? r.lowStockThreshold : 5,
-    shippingCost: 0,
-    freeShipping: true,
-    deliveryMinDays: 2,
-    deliveryMaxDays: 5,
-    usInventory: true,
-    supplierSource: 'WooCommerce',
-    intendedSpecies: 'Himalayan Pink Salt',
-    commerceReadiness: 'COMMERCE_READY',
-    sourceType: 'MANUFACTURER_DIRECT',
-    inventorySource: 'INTERNAL_STOCK',
-    fulfillmentMethod: 'US_WAREHOUSE',
-    supplierUrl: null,
-    supplierStockStatus: 'in_stock',
-    riskFlags: [],
+    shippingCost: asNum(cf.shippingCost) ?? 0,
+    freeShipping: asBool(cf.freeShipping) ?? true,
+    deliveryMinDays: asNum(cf.deliveryMinDays) ?? 2,
+    deliveryMaxDays: asNum(cf.deliveryMaxDays) ?? 5,
+    shippingNote: asText(cf.shippingNote) ?? undefined,
+    usInventory: asBool(cf.usInventory) ?? true,
+    supplierSource: asText(cf.supplierSource) ?? 'WooCommerce',
+    supplierProductRef: asText(cf.supplierProductRef) ?? undefined,
+    safetyClass: asText(cf.safetyClass) as CatalogProduct['safetyClass'],
+    safetyReviewStatus: asText(cf.safetyReviewStatus) as CatalogProduct['safetyReviewStatus'],
+    intendedSpecies: asText(cf.intendedSpecies) ?? 'Himalayan Pink Salt',
+    commerceReadiness: (asText(cf.commerceReadiness) ?? 'COMMERCE_READY') as CatalogProduct['commerceReadiness'],
+    sourceType: (asText(cf.sourceType) ?? 'MANUFACTURER_DIRECT') as CatalogProduct['sourceType'],
+    inventorySource: (asText(cf.inventorySource) ?? 'INTERNAL_STOCK') as CatalogProduct['inventorySource'],
+    fulfillmentMethod: asText(cf.fulfillmentMethod) ?? 'US_WAREHOUSE',
+    supplierUrl: asText(cf.supplierUrl),
+    supplierStockStatus: asText(cf.supplierStockStatus) ?? 'in_stock',
+    riskFlags: asTextList(cf.riskFlags) ?? [],
     tags: parseTagList(r.tags),
     featured: !!r.featured,
-    newArrival: false,
-    trending: false,
-    bestRated: false,
-    bestSeller: false,
-    promoted: false,
-    saleEnabled: compareAt > priceNum,
+    newArrival: asBool(cf.newArrival) ?? false,
+    trending: asBool(cf.trending) ?? false,
+    bestRated: asBool(cf.bestRated) ?? false,
+    bestSeller: asBool(cf.bestSeller) ?? false,
+    promoted: asBool(cf.promoted) ?? false,
+    saleEnabled: asBool(cf.saleEnabled) ?? compareAt > priceNum,
+    discountType: (asText(cf.discountType) ?? undefined) as CatalogProduct['discountType'],
+    discountValue: asNum(cf.discountValue) ?? undefined,
+    sortOrder: asNum(cf.sortOrder) ?? undefined,
+    listingEndsAt: asText(cf.listingEndsAt),
+    ogImage: asText(cf.ogImage) ?? undefined,
+    ownerNotes: asText(cf.ownerNotes) ?? undefined,
+    evidenceNotes: asText(cf.evidenceNotes) ?? undefined,
     seoTitle: typeof r.seoTitle === 'string' && r.seoTitle ? r.seoTitle : `${name} | Himalayan Koh`,
     seoDescription: typeof r.seoDescription === 'string' && r.seoDescription ? r.seoDescription : `${name} - Himalayan Koh product details.`,
     seoTitleStored: typeof r.seoTitle === 'string' && r.seoTitle ? r.seoTitle : null,
@@ -517,12 +558,31 @@ function wooStockStatus(status: string): string {
  * blank a field the form never showed. `specifications` is where the console
  * keeps weight and dimensions, so it unpacks into the store's own weight/
  * dimensions fields rather than being stored as a private blob.
+ *
+ * Two things keep this honest, because a silent drop here is invisible to the
+ * route (the key never leaves the browser):
+ *
+ * 1. **Every console field is carried.** `CONSOLE_META_FIELDS` is walked, so a
+ *    field the editor sends and this function does not map is a field nobody
+ *    ever sees again — which is exactly what had happened to thirty-one of them.
+ * 2. **Nothing else is accepted.** A key with no home throws before the request
+ *    instead of leaving with a 200.
  */
 function toWooPatch(input: Partial<ProductInput>): Record<string, unknown> {
   const body: Record<string, unknown> = {};
+  const mapped = new Set<string>();
   const set = (key: string, value: unknown) => {
     if (value !== undefined) body[key] = value;
   };
+
+  // The console's own fields keep their names end to end: the editor sends
+  // `supplierSource`, the API accepts `supplierSource`, the store keeps it under
+  // `_himalayan_koh_supplier_source`. One table, no translation layer to forget.
+  const consoleInput = input as Record<string, unknown>;
+  for (const entry of CONSOLE_META_FIELDS) {
+    mapped.add(entry.field);
+    set(entry.field, consoleInput[entry.field]);
+  }
 
   set('name', input.name);
   set('slug', input.canonicalSlug);
@@ -581,6 +641,22 @@ function toWooPatch(input: Partial<ProductInput>): Record<string, unknown> {
     };
   }
   for (const key of Object.keys(body)) if (body[key] === undefined) delete body[key];
+
+  // Console names that unpack into store fields rather than travelling as-is.
+  for (const name of ['categoryId', 'inventoryQty', 'lowStockThreshold', 'seoTitle', 'seoDescription', 'canonicalSlug']) {
+    mapped.add(name);
+  }
+  // A field with no home would vanish between here and the store, where the
+  // route can no longer see it. Refuse the whole write instead: the caller's
+  // error is loud, and nothing is reported as saved that was not.
+  const unmapped = Object.entries(input)
+    .filter(([key, value]) => value !== undefined && !mapped.has(key) && !(key in body))
+    .map(([key]) => key);
+  if (unmapped.length) {
+    throw new Error(
+      `${unmapped.join(', ')} cannot be stored on this product — nothing was saved.`,
+    );
+  }
   return body;
 }
 
@@ -734,11 +810,24 @@ export interface CatalogVariantInput {
 }
 
 /**
+ * The variants this console cannot ask the store to save: the ones it does not
+ * have.
+ *
+ * Creating a variation means creating its attribute set on the parent too, and a
+ * console that invents an option produces a variation no customer can select.
+ * So they are skipped — but they are *reported* (see the editor's save notice),
+ * because a skip nobody mentions is how a variant the owner typed looked saved.
+ */
+export function unsavableVariants(variants: CatalogVariantInput[]): CatalogVariantInput[] {
+  return variants.filter((v) => !v.id || !isWooId(v.id));
+}
+
+/**
  * Apply variation edits to an existing variable product.
  *
- * Only variations the store already knows (numeric ids) are sent: creating a
- * variation means creating its attribute set too, and inventing one here would
- * produce variations no customer could select.
+ * Every field the Variants tab shows is mapped, including the compare-at price
+ * (the "Sale" column, which used to be dropped here without a word) and the
+ * supplier cost, which the store keeps as variation meta.
  */
 export async function saveProductVariants(
   productId: string,
@@ -750,11 +839,13 @@ export async function saveProductVariants(
     .filter((v) => v.id && isWooId(v.id))
     .map((v) => ({
       id: Number(v.id),
-      regularPrice: v.price != null ? String(v.price) : undefined,
+      ...variationPriceFields({ price: v.price ?? null, compareAtPrice: v.compareAtPrice ?? null }),
       sku: v.sku || undefined,
       manageStock: v.inventoryQty !== undefined,
       stockQuantity: v.inventoryQty,
       stockStatus: v.status === 'inactive' ? 'outofstock' : 'instock',
+      costPrice: v.costPrice ?? undefined,
+      lowStockAmount: v.lowStockThreshold ?? undefined,
     }));
   if (wooVariations.length > 0) {
     await saveToWoo(productId, { variations: wooVariations });
