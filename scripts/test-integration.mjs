@@ -34,6 +34,13 @@ const WANTED = [
   'WORDPRESS_REQUEST_TIMEOUT_MS',
   'WOOCOMMERCE_CONSUMER_KEY',
   'WOOCOMMERCE_CONSUMER_SECRET',
+  // The write path resolves a gallery image against the WordPress media library
+  // (see `lib/woo/productImageAttachments.ts`), which authenticates as a
+  // WordPress administrator rather than with the consumer pair. Without these two
+  // the suites can only exercise the fallback that offers the store a URL to
+  // download — the behaviour the attachment rule exists to avoid.
+  'WORDPRESS_ADMIN_USER',
+  'WORDPRESS_ADMIN_APP_PASSWORD',
 ];
 
 function readEnvFile(file) {

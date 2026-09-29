@@ -19,6 +19,7 @@
 
 import { wordpressRequest } from '../backend/wordpress';
 import { requireWooCredentials } from '../backend/credentials';
+import { attachExistingMedia } from './productImageAttachments';
 import {
   fromWooProduct,
   toWooProductBody,
@@ -146,6 +147,13 @@ export async function createWooProduct(patch: AdminProductPatch): Promise<WooWri
     }
   }
 
+  // A product created with images that are already media items in this install
+  // attaches them by id rather than asking WooCommerce to download the store's
+  // own uploads. See `productImageAttachments`.
+  if (cleanPatch.images) {
+    cleanPatch.images = (await attachExistingMedia(cleanPatch.images, [])) ?? cleanPatch.images;
+  }
+
   const body = toWooProductBody({
     status: 'draft',
     type,
@@ -208,6 +216,17 @@ export async function updateWooProduct(
         delete parentPatch.sku;
       }
     }
+  }
+
+  // Attach, do not re-download. The store refuses the *whole* update when it
+  // cannot fetch one image URL (`woocommerce_product_image_upload_error`), so an
+  // image this install already holds — the common case, because this console
+  // uploaded it — travels as its attachment id. The product's own gallery is the
+  // free source of ids; a same-origin uploads URL that is not on the product yet
+  // is resolved against the media library.
+  if (parentPatch.images) {
+    parentPatch.images =
+      (await attachExistingMedia(parentPatch.images, existing.images)) ?? parentPatch.images;
   }
 
   const body = toWooProductBody(parentPatch);
@@ -383,7 +402,16 @@ export async function duplicateWooProduct(id: number): Promise<WooWriteResult> {
     description: source.description,
     shortDescription: source.short_description,
     slug: undefined,
-    images: (source.images ?? []).map((image) => image.src).filter(Boolean) as string[],
+    // The copy points at the *same* media items, so duplicating a product does
+    // not download every one of its images again (nor create a second copy of
+    // each in the library).
+    images: (source.images ?? [])
+      .filter((image) => Boolean(image.src))
+      .map((image) => ({
+        ...(Number(image.id) > 0 ? { id: Number(image.id) } : {}),
+        src: String(image.src),
+        ...(image.alt ? { alt: String(image.alt) } : {}),
+      })),
     categoryIds: (source.categories ?? []).map((category) => Number(category.id)).filter(Number.isFinite),
     tags: (source.tags ?? []).map((tag) => String(tag.name ?? '')).filter(Boolean),
     featured: false,

@@ -9,7 +9,7 @@
  * an unknown message is passed through unchanged rather than replaced.
  */
 
-const TRANSLATIONS: Array<{ match: RegExp; message: string }> = [
+const TRANSLATIONS: Array<{ match: RegExp; message: string | ((raw: string) => string) }> = [
   {
     match: /product_invalid_sku|invalid or duplicated sku|duplicate(d)? sku/i,
     message:
@@ -36,6 +36,18 @@ const TRANSLATIONS: Array<{ match: RegExp; message: string }> = [
     match: /fetch failed|econnrefused|enotfound|socket hang up/i,
     message: 'The store could not be reached. Nothing was saved.',
   },
+  {
+    // The one message whose useful part is its URL, and the one the owner saw on
+    // product 2683. WooCommerce answers with
+    // "Error getting remote image <url>. Error:" — the store could not download
+    // an image, so it refused the whole update, and the trailing "Error:" is
+    // empty, which reads like a crash rather than an instruction.
+    match: /woocommerce_product_image_upload_error|error getting remote image/i,
+    message: (raw) => {
+      const url = raw.match(/Error getting remote image\s+(\S+)/i)?.[1]?.replace(/[.,;'"]+$/, '');
+      return `WooCommerce could not download${url ? ` ${url}` : ' an image on this product'} from the store, so it refused the whole save — nothing was changed. Re-upload that image with this console’s uploader, then save again.`;
+    },
+  },
 ];
 
 /**
@@ -48,7 +60,8 @@ export function humanSaveError(message: unknown, fallback = 'The save failed. No
   const raw = typeof message === 'string' ? message.trim() : '';
   if (!raw) return fallback;
   for (const { match, message: translated } of TRANSLATIONS) {
-    if (match.test(raw)) return translated;
+    if (!match.test(raw)) continue;
+    return typeof translated === 'function' ? translated(raw) : translated;
   }
   // Unrecognised: the store's own words are more useful than a generic sentence.
   return raw;
