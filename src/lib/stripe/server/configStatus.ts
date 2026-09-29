@@ -40,6 +40,15 @@ export interface StripeConfigStatus {
    */
   webhookConfigured: boolean;
   keyStatus: StripeKeyStatus;
+  /**
+   * The same facts as plain booleans, for a settings screen to render without
+   * having to know that `unknown` is not `present`.
+   */
+  availability: {
+    publishableKeyAvailable: boolean;
+    secretKeyAvailable: boolean;
+    webhookSecretAvailable: boolean;
+  };
 }
 
 export function describeStripeConfigStatus(input: {
@@ -67,6 +76,13 @@ export function describeStripeConfigStatus(input: {
       publishable,
       secret,
       webhook: webhookConfigured ? 'present' : 'missing',
+    },
+    availability: {
+      // "Stored" is not "usable": a value that is neither pk_test_/pk_live_ nor
+      // sk_test_/sk_live_ is present in the settings row and still cannot charge.
+      publishableKeyAvailable: publishableUsable,
+      secretKeyAvailable: secretUsable,
+      webhookSecretAvailable: webhookConfigured,
     },
   };
 }

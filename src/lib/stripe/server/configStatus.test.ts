@@ -109,6 +109,30 @@ describe('describeStripeConfigStatus', () => {
     expect(status.modeMismatch).toBe(false);
   });
 
+  it('reports availability as booleans, and counts a present-but-unusable key as unavailable', () => {
+    const usable = describeStripeConfigStatus({
+      secretKey: TEST_SECRET,
+      publishableKey: TEST_PUBLISHABLE,
+      webhookSecret: WEBHOOK,
+    });
+    expect(usable.availability).toEqual({
+      publishableKeyAvailable: true,
+      secretKeyAvailable: true,
+      webhookSecretAvailable: true,
+    });
+
+    // Stored, and still nothing can charge: neither value matches a Stripe mode.
+    const unusable = describeStripeConfigStatus({
+      secretKey: 'sk_something_else',
+      publishableKey: 'pk_something_else',
+    });
+    expect(unusable.availability).toEqual({
+      publishableKeyAvailable: false,
+      secretKeyAvailable: false,
+      webhookSecretAvailable: false,
+    });
+  });
+
   it('only counts a plausible signing secret as the webhook being configured', () => {
     expect(describeStripeConfigStatus({ webhookSecret: 'whsec_' }).webhookConfigured).toBe(false);
     expect(describeStripeConfigStatus({ webhookSecret: 'not-a-secret' }).webhookConfigured).toBe(false);

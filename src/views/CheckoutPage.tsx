@@ -1000,7 +1000,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 <>
                 <p className="text-sm text-charcoal-light mb-5">
                 {stripeEnabled
-                  ? 'Pay securely with your card at checkout. Invoice billing is available on request.'
+                  ? 'Pay securely with your card at checkout.'
                   : 'Card payments are not configured on this site.'}
               </p>
 
@@ -1033,21 +1033,6 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                         ? 'Continue to enter your payment details securely.'
                         : 'Secure card payment via Stripe. Enter card number, expiry, and CVC on the next step.'
                       : 'Card payment is currently unavailable.'}
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPaymentMethod('invoice');
-                    setStripeSession(null);
-                  }}
-                  aria-pressed={paymentMethod === 'invoice'}
-                  className={`text-left rounded-xl border p-4 transition-colors ${paymentMethod === 'invoice' ? 'border-charcoal/30 bg-gray-50' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <PackageCheck size={20} className="text-charcoal-light mb-2" />
-                  <p className="font-semibold text-charcoal">Pay by Invoice</p>
-                  <p className="text-sm text-charcoal-light mt-1">
-                    No card required now. We will email you to arrange payment before shipping.
                   </p>
                 </button>
               </div>

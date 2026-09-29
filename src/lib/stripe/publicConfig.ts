@@ -25,6 +25,12 @@ export interface StripePublicConfig {
    * non-production origin. Null when it may charge. Shown to staff, never a value.
    */
   chargingBlockedReason?: string | null;
+  /** Which keys are usable, as plain booleans — never the values. */
+  availability?: {
+    publishableKeyAvailable: boolean;
+    secretKeyAvailable: boolean;
+    webhookSecretAvailable: boolean;
+  };
   /**
    * Whether the WordPress settings category behind the keys could be read, and
    * with what HTTP status. `ok:false` with 401/403 means this deployment cannot
