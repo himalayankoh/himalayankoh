@@ -28,6 +28,25 @@ import {
  * established" — which blocks live charging rather than assuming it passed.
  */
 
+/**
+ * The secret key from an already-read `stripe` settings row, environment second.
+ *
+ * `resolveStripeSecretKey` reads the store itself, which is right for a caller that
+ * has no settings row yet. A caller that has *just* read one would pay a second
+ * round trip for an answer it is already holding — and `/api/stripe/config` is on
+ * the checkout's critical path, where that showed up as the payment section sitting
+ * on "Checking payment options…" for seconds. So the precedence lives here, once,
+ * and both callers share it.
+ */
+export function stripeSecretKeyFrom(settings: Record<string, string | null>): string {
+  return settings.secret_key?.trim() || process.env.STRIPE_SECRET_KEY || '';
+}
+
+/** The webhook signing secret from an already-read `stripe` settings row, env second. */
+export function stripeWebhookSecretFrom(settings: Record<string, string | null>): string {
+  return settings.webhook_secret?.trim() || process.env.STRIPE_WEBHOOK_SECRET || '';
+}
+
 /** The secret key the server would use: stored setting first, environment second. */
 export async function resolveStripeSecretKey(): Promise<string> {
   const dbKey = await getSetting('stripe', 'secret_key');

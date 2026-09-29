@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getSettingsForCategoryWithStatus } from '@/lib/settings/serverSettings';
-import { evaluateCurrentStripeReadiness, resolveStripeSecretKey } from '@/lib/stripe/server/stripe';
+import {
+  evaluateCurrentStripeReadiness,
+  stripeSecretKeyFrom,
+  stripeWebhookSecretFrom,
+} from '@/lib/stripe/server/stripe';
+import { evaluateStripeReadiness } from '@/lib/stripe/server/readiness';
 import { describeStripeConfigStatus } from '@/lib/stripe/server/configStatus';
+import { SITE_ORIGIN } from '@/lib/site/origin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,9 +41,11 @@ export async function GET() {
     process.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim() ||
     '';
   const publishableKey = settings.publishable_key?.trim() || envPublishable;
-  const secretKey = await resolveStripeSecretKey();
-  const webhookSecret =
-    settings.webhook_secret?.trim() || process.env.STRIPE_WEBHOOK_SECRET || '';
+  // Resolved from the row already in hand rather than through the self-reading
+  // resolvers: those would fetch the same category again, and on staging that extra
+  // round trip measured four to fifteen seconds.
+  const secretKey = stripeSecretKeyFrom(settings);
+  const webhookSecret = stripeWebhookSecretFrom(settings);
 
   const status = describeStripeConfigStatus({ publishableKey, secretKey, webhookSecret });
 
@@ -48,7 +56,15 @@ export async function GET() {
   // configured would mount a live Stripe.js card form on staging that can never
   // complete — a checkout that looks real and cannot work. Asking the gate the same
   // question the payment route asks keeps the screen and the refusal in agreement.
-  const readiness = await evaluateCurrentStripeReadiness();
+  // Test charging is gated on nothing but the keys agreeing on a mode, so a test
+  // deployment is decided from the keys already read above. Live charging also
+  // consults the recorded webhook and health probes, which live in a *different*
+  // settings category; that read happens only when the key is genuinely live, so the
+  // common path stays a single WordPress round trip.
+  const readiness =
+    status.keyStatus.secret === 'live'
+      ? await evaluateCurrentStripeReadiness()
+      : evaluateStripeReadiness({ secretKey, publishableKey, webhookSecret, origin: SITE_ORIGIN });
 
   return NextResponse.json({
     publishableKey,
