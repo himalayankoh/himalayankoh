@@ -8,6 +8,7 @@ import {
   toPriceNumber,
   toWooProductBody,
   toWooVariationBody,
+  wooImageSources,
   variationLabel,
   variationPriceRange,
 } from './productPayload';
@@ -116,6 +117,26 @@ describe('toWooProductBody', () => {
 
   it('omits the SKU entirely when it was not part of the patch', () => {
     expect('sku' in toWooProductBody({ name: 'Salt' })).toBe(false);
+  });
+
+  it('drops image sources WooCommerce cannot hold', () => {
+    // The storefront's curated defaults are relative paths in this app, and
+    // WooCommerce rejects the whole product write over one bad image — so they
+    // are filtered before the request rather than sent and refused.
+    expect(wooImageSources([
+      '/images/products/himalayan-salt-lick-rope-hero.webp',
+      'https://example.com/real.webp',
+      'https://example.com/badge-icon.png',
+      'https://example.com/logo.svg',
+      '  https://example.com/padded.jpg  ',
+      '',
+      null,
+    ])).toEqual(['https://example.com/real.webp', 'https://example.com/padded.jpg']);
+
+    const body = toWooProductBody({
+      images: ['/images/products/curated.webp', 'https://example.com/real.webp'],
+    });
+    expect(body.images).toEqual([{ src: 'https://example.com/real.webp' }]);
   });
 
   it('maps taxonomy and images to WooCommerce shapes', () => {

@@ -17,7 +17,7 @@ import { loadProviderSettings } from '../features/ai/providers';
 import { createProduct, updateProduct, saveProductImages, saveProductVariants, listCategories, setDbToken, checkProductDuplicate } from '../features/catalog/repository';
 import {
   getListingPlaybook, getImportHistory, appendImportHistory,
-  supplierBrandForUrl, rulesForCategory, effectiveStatusForImport,
+  supplierBrandForUrl, rulesForCategory, effectiveStatusForImport, DEFAULT_MIN_IMAGES,
   type ListingPlaybook, type PlaybookImportHistoryEntry,
 } from '../features/catalog/listingPlaybook';
 import { getFreshAccessToken } from '../services/wordpressAdminAuth';
@@ -436,7 +436,7 @@ export function AIImportPanel() {
       if (playbook) {
         const verified = imageRows.length;
         const wanted = effectiveStatusForImport(playbook, catName, verified, rules?.defaultStatus || 'draft');
-        if (wanted === 'active' && verified >= (rules?.minImages ?? playbook.global.minImages ?? 3)) {
+        if (wanted === 'active' && verified >= (rules?.minImages ?? playbook.global.minImages ?? DEFAULT_MIN_IMAGES)) {
           const updated = await updateProduct(created.id, { status: 'active' });
           if (updated) finalStatus = 'active';
         }

@@ -17,7 +17,7 @@ import {
 } from '../features/catalog/listingTask';
 import {
   getListingPlaybook, rulesForCategory, supplierBrandForUrl, effectiveStatusForImport,
-  appendImportHistory,
+  appendImportHistory, DEFAULT_MIN_IMAGES,
 } from '../features/catalog/listingPlaybook';
 import {
   createProduct, updateProduct, getProduct, saveProductImages, saveProductVariants,
@@ -167,7 +167,7 @@ export function ListingTaskAdmin() {
             const verifiedCount = imageRows.length;
             let finalStatus = 'draft';
             const wanted = effectiveStatusForImport(pb, t.category, verifiedCount, t.status);
-            if (wanted === 'active' && verifiedCount >= (rules.minImages ?? 3)) {
+            if (wanted === 'active' && verifiedCount >= (rules.minImages ?? DEFAULT_MIN_IMAGES)) {
               const updated = await updateProduct(created.id, { status: 'active' });
               const check = updated ? await getProduct(created.id) : null;
               if (check && check.status === 'active') finalStatus = 'active';

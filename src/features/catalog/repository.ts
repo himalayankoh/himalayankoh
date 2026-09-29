@@ -49,6 +49,7 @@ import {
 } from './types';
 import { parseTagList } from './tags';
 import { consoleStatusFromWoo, wooListingStatusOrDraft } from '../../lib/woo/productStatus';
+import { wooImageSources } from '../../lib/woo/productPayload';
 
 export function uid(): string {
   try {
@@ -138,10 +139,24 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     ? r.priceMin
     : parseFloat(String(r.price || '').replace(/[^0-9.]/g, '')) || 0;
   const compareAt = typeof r.compareAtPrice === 'number' ? r.compareAtPrice : 0;
+  // Two shapes reach this reader: the admin DTO reports image URLs as strings,
+  // while a raw WooCommerce row reports objects (`{ id, src }`). Reading the
+  // object with `String(...)` produced the literal "[object Object]" as an image
+  // URL, which the editor then showed as a broken card and a save sent back to
+  // the store — so both shapes are read here, and anything with no src is
+  // dropped rather than stringified.
+  const imageSource = (entry: unknown): string => {
+    if (typeof entry === 'string') return entry.trim();
+    if (entry && typeof entry === 'object') {
+      const src = (entry as { src?: unknown }).src;
+      return typeof src === 'string' ? src.trim() : '';
+    }
+    return '';
+  };
   const rawImgs = (Array.isArray(r.images) && r.images.length > 0
-    ? (r.images as string[])
-    : (r.image ? [String(r.image)] : [])
-  ).map((s) => String(s || '').trim()).filter(Boolean);
+    ? (r.images as unknown[]).map(imageSource)
+    : (r.image ? [imageSource(r.image) || String(r.image).trim()] : [])
+  ).filter(Boolean);
   const name = String(r.name || 'Untitled Product');
   const id = String(r.id);
   const slug = String(r.slug || id);
@@ -461,6 +476,17 @@ export interface ProductInput {
   seoKeywords?: string[];
   canonicalSlug?: string;
   ogImage?: string;
+  /**
+   * The product's whole image set, as public URLs.
+   *
+   * A full replacement, not a merge: the editor owns the gallery and sends what
+   * it shows. Without this field on the console's write model the set never
+   * reached the store at all — `toWooPatch` had no `images` mapping — so every
+   * image add, removal, reorder and main-thumbnail change was a silent no-op on
+   * the storefront, and a product created here had an empty gallery no matter
+   * what the editor displayed.
+   */
+  images?: string[];
   ownerNotes?: string;
   evidenceNotes?: string;
   sortOrder?: number;
@@ -507,6 +533,18 @@ function toWooPatch(input: Partial<ProductInput>): Record<string, unknown> {
   set('compareAtPrice', input.compareAtPrice);
   set('costPrice', input.costPrice);
   set('landedCost', input.landedCost);
+  if (input.images !== undefined) {
+    const acceptable = wooImageSources(input.images);
+    // Something was supplied and none of it is usable: say so rather than
+    // write an empty gallery. `images: []` is a real instruction ("clear the
+    // gallery"), and it must not be confused with "nothing I sent was usable".
+    if (input.images.length > 0 && acceptable.length === 0) {
+      throw new Error(
+        'None of the attached image URLs are valid for WooCommerce. Add at least one valid image URL (JPEG, PNG, or WebP).',
+      );
+    }
+    set('images', acceptable);
+  }
   set('featured', input.featured);
   set('tags', input.tags);
   set('seoKeywords', input.seoKeywords);
@@ -671,14 +709,7 @@ export async function saveProductImages(
   opts: SaveRefsOptions = {},
 ): Promise<CatalogProduct | null> {
   if (!isWooId(productId)) return null;
-  const validImages = images
-    .map((i) => i.url)
-    .filter((url) => {
-      if (!url || !/^https?:\/\//i.test(url)) return false;
-      if (/\.svg(\?|$)/i.test(url)) return false;
-      if (/(placeholder|favicon|icon|badge|sprite|loader|spinner|pixel)/i.test(url)) return false;
-      return true;
-    });
+  const validImages = wooImageSources(images.map((i) => i.url));
   if (validImages.length === 0 && images.length > 0) {
     throw new Error('None of the attached image URLs are valid for WooCommerce. Add at least one valid image URL (JPEG, PNG, or WebP).');
   }

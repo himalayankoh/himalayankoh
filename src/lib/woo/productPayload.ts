@@ -237,6 +237,29 @@ export function sellingPrice(row: {
  *
  * Only keys the caller supplied appear in the result.
  */
+/**
+ * What WooCommerce will actually accept as a product image source.
+ *
+ * WooCommerce rejects the *whole* product write when one entry is unusable, so
+ * the sources the store cannot sideload are removed before the request:
+ * relative paths (the storefront's app-shipped defaults in
+ * `lib/products/curatedImages.ts` are `/images/products/…`), SVGs, and the
+ * placeholder/icon/badge assets this app renders for missing imagery. Kept in
+ * one exported place because three write paths produce image sets — create,
+ * update and the image replace in `repository.saveProductImages` — and the
+ * store rejects the request when they disagree about what is allowed.
+ */
+export function wooImageSources(images: Array<string | null | undefined>): string[] {
+  return images
+    .map((image) => (typeof image === 'string' ? image.trim() : ''))
+    .filter((url) => {
+      if (!url || !/^https?:\/\//i.test(url)) return false;
+      if (/\.svg(\?|$)/i.test(url)) return false;
+      if (/(placeholder|favicon|icon|badge|sprite|loader|spinner|pixel)/i.test(url)) return false;
+      return true;
+    });
+}
+
 export function toWooProductBody(
   patch: AdminProductPatch
 ): Record<string, unknown> {
@@ -263,7 +286,7 @@ export function toWooProductBody(
     body.images = patch.images
       .map((entry) => {
         if (typeof entry === 'string') {
-          const trimmed = entry.trim();
+          const trimmed = wooImageSources([entry])[0];
           return trimmed ? { src: trimmed } : null;
         }
         if (entry && typeof entry === 'object') {

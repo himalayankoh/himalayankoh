@@ -19,7 +19,18 @@ import { getDb } from '../../services/db';
 
 export type PlaybookStatus = 'draft' | 'active';
 
-export const PLAYBOOK_VERSION = 1;
+export const PLAYBOOK_VERSION = 2;
+/**
+ * The shipped minimum image count.
+ *
+ * It was 3 (v1) and the owner, whose catalog is largely photographed in pairs,
+ * asked for 2 — a listing that cannot publish is worse than one that publishes
+ * with two honest photographs. See `migrateMinImages` for what happens to a
+ * playbook that was stored while the old default stood.
+ */
+export const DEFAULT_MIN_IMAGES = 2;
+/** The minimum v1 shipped with. A stored playbook still on it follows the new default. */
+const PREVIOUS_DEFAULT_MIN_IMAGES = 3;
 export const PLAYBOOK_SETTINGS_KEY = 'listing_playbook';
 export const IMPORT_HISTORY_KEY = 'import_history';
 export const DEFAULT_CATEGORY_KEYS = ['Dog', 'Cat', 'Horse', 'Cattle', 'Feeding & Water', 'Other'] as const;
@@ -77,7 +88,7 @@ export interface ListingPlaybook {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_GLOBAL: ListingPlaybook['global'] = {
-  minImages: 3,
+  minImages: DEFAULT_MIN_IMAGES,
   maxImages: 5,
   requiredSupplierData: false,
   defaultStatus: 'draft',
@@ -88,7 +99,7 @@ const DEFAULT_GLOBAL: ListingPlaybook['global'] = {
 function defaultCategoryRules(): CategoryListingRules {
   return {
     brand: '',
-    minImages: 3,
+    minImages: DEFAULT_MIN_IMAGES,
     maxImages: 5,
     defaultTags: [],
     defaultStatus: 'draft',
@@ -117,7 +128,7 @@ export function defaultListingPlaybook(): ListingPlaybook {
       markupPct: 35,
       fixedPrice: 0,
       minMarginPct: 25,
-      minImages: 3,
+      minImages: DEFAULT_MIN_IMAGES,
       defaultStatus: 'draft',
       freeShipping: false,
       shippingCost: 0,
@@ -139,11 +150,36 @@ function asString(v: unknown, fallback = ''): string {
   return typeof v === 'string' ? v.trim() : fallback;
 }
 
+/**
+ * One-time move of a stored v1 playbook onto the current minimum.
+ *
+ * v1 shipped with `minImages: 3`, and a playbook saved back then carries that
+ * number in `store_settings` — so lowering the code default alone would leave
+ * every existing install still demanding three photographs. A stored row that
+ * is on a version older than the current one and still holds the *old shipped
+ * default* is moved to the new one; anything else (a minimum the owner chose:
+ * 4, 5, 0) is left exactly as it is. The move happens once: this same pass
+ * stamps the current version, so a later deliberate 3 sticks.
+ */
+function migrateMinImages(raw: Record<string, unknown>): Record<string, unknown> {
+  if (clampInt(raw.version, PLAYBOOK_VERSION, 1, 99) >= PLAYBOOK_VERSION) return raw;
+  const rules = (value: unknown): unknown =>
+    value && typeof value === 'object' && (value as Record<string, unknown>).minImages === PREVIOUS_DEFAULT_MIN_IMAGES
+      ? { ...(value as Record<string, unknown>), minImages: DEFAULT_MIN_IMAGES }
+      : value;
+  const categories = raw.categories && typeof raw.categories === 'object'
+    ? Object.fromEntries(
+        Object.entries(raw.categories as Record<string, unknown>).map(([key, value]) => [key, rules(value)]),
+      )
+    : raw.categories;
+  return { ...raw, version: PLAYBOOK_VERSION, global: rules(raw.global), categories, automation: rules(raw.automation) };
+}
+
 function normalizeRules(raw: unknown): CategoryListingRules {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return {
     brand: asString(r.brand),
-    minImages: clampInt(r.minImages, 3, 0, 10),
+    minImages: clampInt(r.minImages, DEFAULT_MIN_IMAGES, 0, 10),
     maxImages: clampInt(r.maxImages, 5, 0, 10),
     defaultTags: Array.isArray(r.defaultTags) ? r.defaultTags.filter((t): t is string => typeof t === 'string').slice(0, 20) : [],
     defaultStatus: r.defaultStatus === 'active' ? 'active' : 'draft',
@@ -157,7 +193,7 @@ function normalizeRules(raw: unknown): CategoryListingRules {
 
 /** Sanitize arbitrary input (DB row / imported JSON) into a valid playbook. */
 export function normalizeListingPlaybook(raw: unknown): ListingPlaybook {
-  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const r = migrateMinImages((raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>);
   const categories: Record<string, CategoryListingRules> = {};
   for (const key of DEFAULT_CATEGORY_KEYS) categories[key] = defaultCategoryRules();
   if (r.categories && typeof r.categories === 'object') {
@@ -180,7 +216,7 @@ export function normalizeListingPlaybook(raw: unknown): ListingPlaybook {
       markupPct: clampInt(auto.markupPct, 35, 0, 1000),
       fixedPrice: typeof auto.fixedPrice === 'number' && Number.isFinite(auto.fixedPrice) ? auto.fixedPrice : 0,
       minMarginPct: clampInt(auto.minMarginPct, 25, 0, 100),
-      minImages: clampInt(auto.minImages, 3, 0, 10),
+      minImages: clampInt(auto.minImages, DEFAULT_MIN_IMAGES, 0, 10),
       defaultStatus: auto.defaultStatus === 'active' ? 'active' : 'draft',
       freeShipping: auto.freeShipping === true,
       shippingCost: typeof auto.shippingCost === 'number' && Number.isFinite(auto.shippingCost) ? auto.shippingCost : 0,
@@ -200,7 +236,7 @@ export function rulesForCategory(pb: ListingPlaybook, categoryName?: string | nu
   const global = pb.global;
   return {
     brand: rules.brand || global.brand || '',
-    minImages: rules.minImages ?? global.minImages ?? 3,
+    minImages: rules.minImages ?? global.minImages ?? DEFAULT_MIN_IMAGES,
     maxImages: rules.maxImages ?? global.maxImages ?? 5,
     defaultTags: rules.defaultTags || [],
     defaultStatus: rules.defaultStatus || global.defaultStatus || 'draft',
@@ -303,7 +339,7 @@ export function effectiveStatusForImport(
   requestedStatus: PlaybookStatus,
 ): PlaybookStatus {
   const rules = rulesForCategory(pb, categoryName);
-  const minImages = rules.minImages ?? pb.global.minImages ?? 3;
+  const minImages = rules.minImages ?? pb.global.minImages ?? DEFAULT_MIN_IMAGES;
   if (requestedStatus === 'active' && verifiedImageCount >= minImages) return 'active';
   return 'draft';
 }

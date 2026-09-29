@@ -1909,6 +1909,11 @@ export function CatalogProductEditor() {
   // A save that did not happen stays on screen. The toast it also raises is gone
   // after four seconds, which is how a refused save came to look like a save.
   const [saveError, setSaveError] = useState<string | null>(null);
+  // A save that landed but could not publish: the store took the work and kept
+  // the listing a draft because the playbook refused the Live transition. Shown
+  // next to the error banner, and never as a plain "Saved" — the owner has to
+  // know the product is not live yet and why.
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [tab, setTab] = useState<EditorTab>('general');
   const [newCatOpen, setNewCatOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -1979,6 +1984,20 @@ export function CatalogProductEditor() {
     setP((prev) => (prev ? { ...prev, [k]: v } : prev));
   };
 
+  /**
+   * The image set, straight from the Images tab.
+   *
+   * The tab writes product state directly, and it used to write it *without*
+   * marking the field dirty — so "images" was never in `dirtyFields`, and a save
+   * skipped the image write on every path (the Woo patch, the create body and
+   * the `saveProductImages` follow-up). Adding, removing, reordering or
+   * re-maining an image therefore changed nothing but this screen.
+   */
+  const onImagesChange = (next: CatalogProduct) => {
+    setDirtyFields((prev) => new Set(prev).add('images'));
+    setP(next);
+  };
+
   const handleSave = async (productOverride?: CatalogProduct) => {
     if (!hydrated || loading || saving) return;
     const productToSave = productOverride ?? p;
@@ -1988,20 +2007,29 @@ export function CatalogProductEditor() {
       notify('No changes to save');
       return;
     }
-    if (isNew && !(productToSave.price > 0)) { setSaveError('Price must be greater than 0.'); notify('Price must be greater than 0', 'error'); return; }
-    if (dirtyFields.has('price') && !(productToSave.price > 0)) { setSaveError('Price must be greater than 0.'); notify('Price must be greater than 0', 'error'); return; }
     const currentProduct = productToSave;
+    // Clearing the price of something the store is already selling is refused
+    // outright — a blank price is 0 to WooCommerce, and a live listing that
+    // starts charging nothing is not a save, it is an incident. A *draft* with
+    // no price is fine and saves below.
+    const editingLivePrice = originStatus === 'active' && dirtyFields.has('price');
+    if (editingLivePrice && !(currentProduct.price > 0)) {
+      setSaveError('Price must be greater than 0.');
+      notify('Price must be greater than 0', 'error');
+      return;
+    }
     // Already-live listing: edits (price, inventory, status, copy…) must save.
     // Playbook gaps become loud warnings instead of hard blockers.
     const wasLive = originStatus === 'active';
-    if (currentProduct.images.length === 0 && !wasLive && (isNew || dirtyFields.has('images'))) {
-      const msg = 'At least one image is required before activating a premium listing.';
-      setSaveError(msg); notify(msg, 'error'); setTab('images'); return;
-    }
-    // Listing Playbook gate — publishing a listing as Live needs verified
-    // images (no placeholders / inline base64) and supplier data. Draft
-    // saves and edits of already-live products get non-blocking warnings;
-    // only the transition into Live is blocked, with the exact reason.
+    // Listing Playbook gate — plus the image rule that belongs to it.
+    //
+    // This decides whether a save may go **Live**, never whether the owner's
+    // work is saved. It used to refuse the whole save — name, SKU, price and
+    // images along with it — while a listing with too few images was about to
+    // publish, so a new product (added as Live) could not be saved at all until
+    // it carried three photographs. A publish the playbook refuses is now
+    // written as a draft in the store and said out loud, which is also what the
+    // import paths do (`effectiveStatusForImport`).
     const pb = await getListingPlaybook();
     const verdict = validateListingAgainstPlaybook(pb, {
       name: currentProduct.name,
@@ -2012,20 +2040,29 @@ export function CatalogProductEditor() {
       supplierName: currentProduct.supplierSource,
       supplierSku: currentProduct.supplierProductRef,
     });
-    if (currentProduct.status === 'active' && !verdict.ok && !wasLive) {
-      const msg = `Cannot save as Live: ${verdict.errors.join(' ')}`;
-      setSaveError(msg);
-      notify(msg, 'error');
-      setTab('images');
-      return;
+    // Everything that only a *live* listing has to satisfy, named all at once so
+    // the owner fixes the whole list rather than discovering it one save at a
+    // time. None of it stops the save: each reason lands the product in the
+    // store as a draft.
+    const publishProblems: string[] = [];
+    if (currentProduct.status === 'active' && !wasLive) {
+      if (currentProduct.images.length === 0) publishProblems.push('at least one image is required');
+      if (!(currentProduct.price > 0)) publishProblems.push('a live listing needs a price above 0');
+      // The verdict's own image errors repeat the rule above, so they are only
+      // added once there are images for them to be about.
+      if (currentProduct.images.length > 0 && !verdict.ok) publishProblems.push(verdict.errors.join(' '));
     }
+    const publishBlocked: string | null = publishProblems.length ? publishProblems.join('; ') : null;
     if (currentProduct.status === 'active' && !verdict.ok && wasLive) {
       console.warn(`Playbook gaps on live product: ${verdict.errors.join(' ')}`);
     }
     if (verdict.warnings.length) {
       console.warn(`Listing warnings: ${verdict.warnings.join(' ')}`);
     }
+    // The status this save really writes: a refused publish lands as a draft.
+    const targetStatus: CatalogProduct['status'] = publishBlocked ? 'draft' : currentProduct.status;
     setSaveError(null);
+    setSaveNotice(null);
     setSaving(true);
     try {
       // Refresh the session token before writing — a form left open past the
@@ -2045,7 +2082,7 @@ export function CatalogProductEditor() {
           specifications: currentProduct.specifications,
           categoryId: currentProduct.categoryId,
           brand: currentProduct.brand,
-          status: currentProduct.status,
+          status: targetStatus,
           price: currentProduct.price,
           compareAtPrice: currentProduct.compareAtPrice,
           costPrice: currentProduct.costPrice,
@@ -2087,6 +2124,9 @@ export function CatalogProductEditor() {
           ogImage: currentProduct.ogImage,
           ownerNotes: currentProduct.ownerNotes,
           evidenceNotes: currentProduct.evidenceNotes,
+          // The gallery travels with the create: the store got an empty one
+          // before, because a new product's images lived only in this form.
+          images: currentProduct.images.map((img) => img.url),
         };
         saved = await createProduct(input);
       } else {
@@ -2101,7 +2141,7 @@ export function CatalogProductEditor() {
         if (dirtyFields.has('specifications')) patch.specifications = currentProduct.specifications;
         if (dirtyFields.has('categoryId')) patch.categoryId = currentProduct.categoryId;
         if (dirtyFields.has('brand')) patch.brand = currentProduct.brand;
-        if (dirtyFields.has('status')) patch.status = currentProduct.status;
+        if (dirtyFields.has('status')) patch.status = targetStatus;
         if (dirtyFields.has('price')) patch.price = currentProduct.price;
         if (dirtyFields.has('compareAtPrice')) patch.compareAtPrice = currentProduct.compareAtPrice;
         if (dirtyFields.has('costPrice')) patch.costPrice = currentProduct.costPrice;
@@ -2145,7 +2185,12 @@ export function CatalogProductEditor() {
         if (dirtyFields.has('evidenceNotes')) patch.evidenceNotes = currentProduct.evidenceNotes;
 
         if (isWoo && dirtyFields.has('images')) {
-          (patch as Record<string, unknown>).images = currentProduct.images;
+          // The whole set, in the same write as the product: the store's gallery
+          // is authoritative, and a separate image call afterwards would leave a
+          // half-saved listing if it failed. This used to be dropped on the way
+          // to the store (`toWooPatch` had no `images` mapping), so removals,
+          // reorderings and main-thumbnail changes never arrived.
+          patch.images = currentProduct.images.map((img) => img.url);
         }
 
         saved = await updateProduct(currentProduct.id, patch);
@@ -2190,7 +2235,13 @@ export function CatalogProductEditor() {
       }
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2500);
-      notify(isNew ? 'Product created' : 'Product saved');
+      // Saved, but not live: the store kept it a draft and the owner is told
+      // which rule held it back, in the same place a refused save appears.
+      const draftNotice = publishBlocked
+        ? `Saved as a draft, not live yet — ${publishBlocked.replace(/\.$/, '')}. Everything else in this save went through.`
+        : null;
+      setSaveNotice(draftNotice);
+      notify(draftNotice ?? (isNew ? 'Product created' : 'Product saved'));
       setSaveError(null);
       // The product row response predates the image/variant writes above. Do
       // not replace local state with that stale row or a newly imported image
@@ -2206,6 +2257,7 @@ export function CatalogProductEditor() {
       }
     } catch (e) {
       setSaveStatus('idle');
+      setSaveNotice(null);
       // The store's own words, translated — and kept on screen, because a toast
       // that vanishes leaves the owner believing the save went through.
       const message = humanSaveError((e as Error).message);
@@ -2323,9 +2375,21 @@ export function CatalogProductEditor() {
             </button>
           </div>
         )}
+        {/* Saved, but not live. Distinct from the red banner above on purpose:
+            the work is in the store, the listing is a draft, and the rule that
+            held it back is named. */}
+        {saveNotice && (
+          <div role="status" className="w-full flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+            <Warning size={14} weight="bold" className="mt-0.5 shrink-0" />
+            <span className="flex-1">{saveNotice}</span>
+            <button type="button" onClick={() => setSaveNotice(null)} aria-label="Dismiss save notice" className="shrink-0 text-amber-800 hover:text-amber-950">
+              <X size={13} weight="bold" />
+            </button>
+          </div>
+        )}
       </div>
 
-      {isNew && mode === 'quick' && <QuickAddForm product={p} cats={cats} onChange={setP} onAddCategory={addCategory} />}
+      {isNew && mode === 'quick' && <QuickAddForm product={p} cats={cats} onChange={setP} onImagesChange={onImagesChange} onAddCategory={addCategory} />}
 
       {isNew && mode === 'ai' && <AIImportPanel />}
 
@@ -2493,7 +2557,7 @@ export function CatalogProductEditor() {
         {tab === 'shipping' && <ShippingTab product={p} set={set} />}
 
         {/* ── IMAGES ── */}
-        {tab === 'images' && <ImageManager product={p} onProduct={(next) => setP(next)} />}
+        {tab === 'images' && <ImageManager product={p} onProduct={onImagesChange} />}
 
         {/* ── VARIANTS ── */}
         {tab === 'variants' && <VariantManager product={p} onProduct={(next) => setP(next)} />}
@@ -3211,7 +3275,7 @@ function SupplierSourceSelect({ value, onChange }: { value: string; onChange: (v
   );
 }
 
-function QuickAddForm({ product, cats, onChange, onAddCategory }: { product: CatalogProduct; cats: CatalogCategory[]; onChange: (p: CatalogProduct) => void; onAddCategory?: (name: string) => Promise<CatalogCategory | null> }) {
+function QuickAddForm({ product, cats, onChange, onImagesChange, onAddCategory }: { product: CatalogProduct; cats: CatalogCategory[]; onChange: (p: CatalogProduct) => void; onImagesChange: (p: CatalogProduct) => void; onAddCategory?: (name: string) => Promise<CatalogCategory | null> }) {
   const set = <K extends keyof CatalogProduct>(k: K, v: CatalogProduct[K]) => onChange({ ...product, [k]: v });
   const [newCatOpen, setNewCatOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -3332,7 +3396,7 @@ function QuickAddForm({ product, cats, onChange, onAddCategory }: { product: Cat
       {/* Images — full editor (upload to storage, URL, fetch-all, main picker, bg removal, alt) */}
       <div>
         <label className={L}>Images (up to 5) — click an image to make it the main thumbnail <span className="text-red-500">*</span></label>
-        <ImageManager product={product} onProduct={onChange} />
+        <ImageManager product={product} onProduct={onImagesChange} />
       </div>
     </div>
   );

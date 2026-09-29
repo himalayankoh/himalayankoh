@@ -13,7 +13,7 @@ import { useApp } from '../App';
 import {
   defaultListingPlaybook, getListingPlaybook, saveListingPlaybook,
   listingPlaybookToJson, parseListingPlaybookJson,
-  DEFAULT_CATEGORY_KEYS,
+  DEFAULT_CATEGORY_KEYS, DEFAULT_MIN_IMAGES,
   type ListingPlaybook, type CategoryListingRules,
 } from '../features/catalog/listingPlaybook';
 
@@ -188,7 +188,7 @@ export function ListingPlaybookAdmin() {
         <Card title="Global listing rules" accent="#3b82f6">
           <div className="space-y-4">
             <div className="flex flex-wrap gap-4">
-              <NumField label="Min images" value={pb.global.minImages ?? 3} onChange={(n) => updateRules('global', { minImages: n })} min={0} max={10} />
+              <NumField label="Min images" value={pb.global.minImages ?? DEFAULT_MIN_IMAGES} onChange={(n) => updateRules('global', { minImages: n })} min={0} max={10} />
               <NumField label="Max images" value={pb.global.maxImages ?? 5} onChange={(n) => updateRules('global', { maxImages: n })} min={0} max={10} />
             </div>
             <div className="flex flex-wrap gap-4">
@@ -272,7 +272,7 @@ export function ListingPlaybookAdmin() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    <NumField label="Min images" value={r.minImages ?? 3} onChange={(n) => updateCategory(key, { minImages: n })} />
+                    <NumField label="Min images" value={r.minImages ?? DEFAULT_MIN_IMAGES} onChange={(n) => updateCategory(key, { minImages: n })} />
                     <NumField label="Max images" value={r.maxImages ?? 5} onChange={(n) => updateCategory(key, { maxImages: n })} />
                     <div className="min-w-[120px]"><label className={L}>Markup %</label><input type="number" value={r.markupPct ?? ''} onChange={(e) => updateCategory(key, { markupPct: e.target.value === '' ? null : parseFloat(e.target.value) })} className={I} placeholder="inherit" /></div>
                     <div className="min-w-[120px]"><label className={L}>Min margin %</label><input type="number" value={r.minMarginPct ?? ''} onChange={(e) => updateCategory(key, { minMarginPct: e.target.value === '' ? null : parseFloat(e.target.value) })} className={I} placeholder="inherit" /></div>
