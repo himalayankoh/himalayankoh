@@ -390,6 +390,14 @@ img {
 .hk-admin .admin-content > * { min-width: 0; max-width: 100%; }
 .hk-admin :where(td, th) { overflow-wrap: anywhere; }
 .hk-admin table { font-variant-numeric: tabular-nums; }
+/* Products table with resizable columns.
+   `table-layout: fixed` is what makes a dragged width stick — with the default
+   auto layout the browser re-measures every column from its cell content and
+   throws the dragged width away. The hairline on the right edge of each cell is
+   the "line" the admin grabs in a column header to resize it. */
+.hk-catalog-table { table-layout: fixed; }
+.hk-catalog-table :where(th, td) { border-right: 1px solid rgba(224, 214, 200, 0.55); }
+.hk-catalog-table :where(th, td):last-child { border-right: 0; }
 .hk-admin :where(h1, h2, h3) { text-wrap: balance; }
 @media (max-width: 639px) {
   .hk-admin .admin-content > .grid { grid-template-columns: minmax(0, 1fr); }

@@ -45,7 +45,9 @@ import { generateSeoJson } from '../features/ai/seo';
 import { useSeoJobStore } from '../features/catalog/seoJobStore';
 import {
   CATALOG_COLUMN_LABELS, loadCatalogColumns, saveCatalogColumns, loadServerColumns, saveServerColumns, moveColumn,
-  type CatalogColumnKey,
+  CATALOG_DEFAULT_WIDTHS, CATALOG_SELECTION_WIDTH, catalogTableWidth, clampColumnWidth, defaultCatalogWidths,
+  isDefaultCatalogWidths, loadCatalogWidths, saveCatalogWidths,
+  type CatalogColumnKey, type CatalogColumnWidths,
 } from '../features/catalog/tableColumns';
 import { parseHtmlPage } from '../features/ai/importer';
 import { prepareImageForUpload } from '../lib/image-upload';
@@ -260,6 +262,49 @@ export function CatalogProductsPage() {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }, [rowHeight]);
+
+  // Column width resize: the "line" between two columns in the header is the
+  // drag target. Widths are a per-device layout preference (localStorage, same
+  // as the column order) — the drag repaints from state and writes once on
+  // mouse-up, so a 60fps drag never touches storage.
+  const [colWidths, setColWidths] = useState<CatalogColumnWidths>(() => loadCatalogWidths(null));
+  const colWidthsRef = useRef<CatalogColumnWidths>(colWidths);
+  const colResizeRef = useRef<{ key: CatalogColumnKey; startX: number; startW: number } | null>(null);
+
+  const applyColWidths = useCallback((next: CatalogColumnWidths, persist: boolean) => {
+    colWidthsRef.current = next;
+    setColWidths(next);
+    if (persist) saveCatalogWidths(next, typeof localStorage !== 'undefined' ? localStorage : null);
+  }, []);
+
+  const onColResizeStart = useCallback((e: React.MouseEvent, key: CatalogColumnKey) => {
+    // preventDefault also stops the header's HTML5 drag-to-reorder from starting.
+    e.preventDefault();
+    e.stopPropagation();
+    colResizeRef.current = { key, startX: e.clientX, startW: colWidthsRef.current[key] };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev: MouseEvent) => {
+      const active = colResizeRef.current;
+      if (!active) return;
+      const width = clampColumnWidth(active.startW + (ev.clientX - active.startX));
+      applyColWidths({ ...colWidthsRef.current, [active.key]: width }, false);
+    };
+    const onUp = () => {
+      colResizeRef.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      applyColWidths(colWidthsRef.current, true);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [applyColWidths]);
+
+  const resetColumnWidth = (key: CatalogColumnKey) =>
+    applyColWidths({ ...colWidthsRef.current, [key]: CATALOG_DEFAULT_WIDTHS[key] }, true);
+  const resetAllColumnWidths = () => applyColWidths(defaultCatalogWidths(), true);
   useEffect(() => {
     let cancelled = false;
     void getAutoPublishEnabled().then((v) => { if (!cancelled) setAutoPublish(v); });
@@ -268,11 +313,12 @@ export function CatalogProductsPage() {
 
   useEffect(() => {
     setColOrder(loadCatalogColumns(window.localStorage));
+    applyColWidths(loadCatalogWidths(window.localStorage), false);
     useSeoJobStore.getState().hydrate();
     // Client-only state is applied only after the SSR/client first render agrees.
     setRenderNowMs(Date.now());
     setHydrated(true);
-  }, []);
+  }, [applyColWidths]);
   // Guard for the store's onFinished callback: skip the reload if we've unmounted.
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
@@ -1039,15 +1085,41 @@ export function CatalogProductsPage() {
       )}
 
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        {/* Column layout bar: how to resize/reorder, plus the escape hatch back
+            to the default widths once a column has been dragged. */}
+        <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-gray-100">
+          <p className="text-[11px] text-gray-400 truncate">
+            Drag the line between column headers to resize · drag a header to reorder · double-click a line to reset that column
+          </p>
+          {hydrated && !isDefaultCatalogWidths(colWidths) && (
+            <button
+              type="button"
+              onClick={resetAllColumnWidths}
+              className="shrink-0 px-2 py-1 text-[11px] font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50"
+            >
+              Reset column widths
+            </button>
+          )}
+        </div>
         {/* Dynamic height: fills remaining viewport space. Table scrolls when
             content overflows; otherwise uses all available vertical space. */}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1240px]">
+          <table className="hk-catalog-table w-full" style={{ minWidth: catalogTableWidth(colWidths) }}>
+            {/* The widths the admin dragged. `table-layout: fixed` (globals.css)
+                is what makes them stick instead of being re-measured from cell
+                content; the table's min-width keeps the horizontal scrollbar
+                appearing rather than squeezing columns past their chosen size. */}
+            <colgroup>
+              <col style={{ width: CATALOG_SELECTION_WIDTH }} />
+              {colOrder.map((k) => <col key={k} style={{ width: colWidths[k] }} />)}
+            </colgroup>
             <thead className="bg-gray-50 text-left text-[11px] text-gray-500 uppercase tracking-wider shadow-xs">
               <tr>
                 {/* sticky on each th (not thead): pins the column-name bar to the
                     top of the scroll area while side-scrolling the wide table */}
-                <th className="sticky top-0 z-10 bg-gray-50 px-3 py-2 w-8">
+                {/* Width comes from its <col> (CATALOG_SELECTION_WIDTH) — this
+                    table is laid out fixed so the dragged widths stick. */}
+                <th className="sticky top-0 z-10 bg-gray-50 px-3 py-2">
                   <input
                     type="checkbox"
                     checked={allVisibleSelected}
@@ -1070,15 +1142,27 @@ export function CatalogProductsPage() {
                       onDrop={(e) => { e.preventDefault(); if (dragCol) reorderColumns(dragCol, k); setDragCol(null); }}
                       onDragEnd={() => setDragCol(null)}
                       onClick={s ? () => headerSort(k) : undefined}
-                      className={`sticky top-0 z-10 bg-gray-50 px-3 py-2 whitespace-nowrap select-none ${dragCol === k ? 'opacity-40' : ''} ${s ? 'cursor-pointer hover:text-gray-800' : ''}`}
+                      className={`group/col relative sticky top-0 z-10 bg-gray-50 px-3 py-2 whitespace-nowrap select-none ${dragCol === k ? 'opacity-40' : ''} ${s ? 'cursor-pointer hover:text-gray-800' : ''}`}
                       title={s ? `Click to sort by ${label} — drag to reorder columns` : (COLUMN_TIPS[k] ? `${COLUMN_TIPS[k]} — drag to reorder` : 'Drag to reorder columns')}
                     >
-                      <span className="inline-flex items-center gap-1">
-                        {s && active === 'asc' && <CaretUp size={10} weight="bold" />}
-                        {s && active === 'desc' && <CaretDown size={10} weight="bold" />}
-                        <span>{label}</span>
-                        <DotsSixVertical size={12} className="text-gray-300" />
+                      <span className="flex items-center gap-1 min-w-0">
+                        {s && active === 'asc' && <CaretUp size={10} weight="bold" className="shrink-0" />}
+                        {s && active === 'desc' && <CaretDown size={10} weight="bold" className="shrink-0" />}
+                        <span className="truncate">{label}</span>
+                        <DotsSixVertical size={12} className="ml-auto shrink-0 text-gray-300" />
                       </span>
+                      {/* The resize line: drag to give this column more/less room,
+                          double-click to put it back to its default width. */}
+                      <span
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label={`Resize the ${label} column`}
+                        title="Drag to resize this column · double-click to reset it"
+                        onMouseDown={(e) => onColResizeStart(e, k)}
+                        onDoubleClick={(e) => { e.stopPropagation(); resetColumnWidth(k); }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute right-0 top-0 h-full w-2 cursor-col-resize border-r border-transparent group-hover/col:border-blue-400/60 group-hover/col:bg-blue-400/20"
+                      />
                     </th>
                   );
                 })}
@@ -1094,7 +1178,7 @@ export function CatalogProductsPage() {
                 const justSeoed = seo.running && seo.doneIds.includes(p.id);
                 const cells: Record<CatalogColumnKey, ReactNode> = {
                   product: (
-                    <td className="px-3 py-1.5 max-w-[400px]">
+                    <td className="px-3 py-1.5 overflow-hidden">
                       <div className="flex items-center gap-2.5">
                         <div className="relative group w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-300 shrink-0 overflow-hidden">
                           <Package size={16} className="shrink-0" />
@@ -1130,10 +1214,14 @@ export function CatalogProductsPage() {
                           type="button"
                           onClick={() => nav(`/admin/products/edit/${p.id}`)}
                           title={`Edit ${p.name}`}
-                          className="min-w-0 text-left cursor-pointer group"
+                          className="min-w-0 flex-1 text-left cursor-pointer group"
                         >
-                          <p className="font-medium text-xs group-hover:text-blue-600 group-hover:underline break-words leading-tight" style={{ minWidth: 0 }}>{p.name}</p>
-                          <p className="text-[10px] text-gray-400 break-words leading-tight">{p.brand}{p.sku ? ` · ${p.sku}` : ''}</p>
+                          {/* One clean line each, ellipsised at whatever width the
+                              admin gave the column — a long name no longer wraps
+                              into a ragged four-line block that pushes the row
+                              height around. The full name stays on the title. */}
+                          <p className="font-medium text-xs group-hover:text-blue-600 group-hover:underline truncate leading-tight" style={{ minWidth: 0 }}>{p.name}</p>
+                          <p className="text-[10px] text-gray-400 truncate leading-tight">{p.brand}{p.sku ? ` · ${p.sku}` : ''}</p>
                         </button>
                       </div>
                     </td>
@@ -1413,7 +1501,7 @@ export function CatalogProductsPage() {
                 );
               })}
               {sorted.length === 0 && (
-                <tr><td colSpan={13} className="px-3 py-10 text-center text-gray-400 text-xs">No products match your filters.</td></tr>
+                <tr><td colSpan={colOrder.length + 1} className="px-3 py-10 text-center text-gray-400 text-xs">No products match your filters.</td></tr>
               )}
             </tbody>
           </table>

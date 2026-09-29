@@ -35,6 +35,7 @@ import {
   Plus,
   X,
   CaretDown,
+  SidebarSimple,
 } from '@phosphor-icons/react';
 import { useAuthContext } from '../../context/AuthContext';
 import { signOutOfBrowser } from '../../lib/auth/browserSignOut';
@@ -44,6 +45,14 @@ import { useDialogFocus } from '../../hooks/useDialogFocus';
 export interface AdminLayoutProps {
   children: ReactNode;
 }
+
+/** Per-device memory of the rail's collapsed state. The storefront is the same
+ *  on every device, but how much of the screen the menu may take is a screen
+ *  property, so this one stays in localStorage rather than in site_settings. */
+const RAIL_STORAGE_KEY = 'hk_admin_rail_v1';
+/** Full rail (labels) and mini rail (icons only) widths, in rem. */
+const RAIL_FULL = '15rem';
+const RAIL_MINI = '4.5rem';
 
 type NavIcon = React.ComponentType<Record<string, unknown>>;
 type NavItem = { to: string; icon: NavIcon; label: string; g: string; dot: string };
@@ -154,6 +163,28 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobSide, setMobSide] = useState(false);
+  // Default to the full rail (the server render has no storage to consult) and
+  // apply the remembered choice right after mount, so the first paint is
+  // deterministic and nothing hydration-relevant depends on the browser.
+  const [railMini, setRailMini] = useState(false);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(RAIL_STORAGE_KEY) === 'mini') setRailMini(true);
+    } catch {
+      // Private mode / blocked storage: keep the expanded rail.
+    }
+  }, []);
+  const toggleRail = () => {
+    setRailMini((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(RAIL_STORAGE_KEY, next ? 'mini' : 'full');
+      } catch {
+        // A preference that cannot be stored still applies for this session.
+      }
+      return next;
+    });
+  };
   const [searchVal, setSearchVal] = useState('');
   const [railQuery, setRailQuery] = useState('');
   useEffect(() => {
@@ -230,10 +261,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const adminEmail = user?.email || appUser?.email || 'admin@himalayankoh.com';
   const adminInitial = String(adminName).charAt(0).toUpperCase() || 'S';
 
-  const renderSidebar = ({ mobile }: { mobile?: boolean }) => (
+  const renderSidebar = ({ mobile, mini }: { mobile?: boolean; mini?: boolean }) => (
     <aside
       className={`flex flex-col shrink-0 ${
-        mobile ? 'w-full h-full' : 'w-60 fixed inset-y-0 left-0 z-40 hidden lg:flex'
+        mobile ? 'w-full h-full' : 'fixed inset-y-0 left-0 z-40 hidden lg:flex w-[var(--hk-rail)] transition-[width] duration-200'
       }`}
       style={{
         background: '#26211C',
@@ -241,7 +272,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       }}
     >
       {/* Brand */}
-      <div className="px-3.5 py-4 border-b border-[#E0D6C8]/10 flex items-center gap-2.5">
+      <div className={`py-4 border-b border-[#E0D6C8]/10 flex items-center gap-2.5 ${mini ? 'justify-center px-2' : 'px-3.5'}`}>
         <div className="w-9 h-9 rounded-lg overflow-hidden border border-[#E0D6C8]/20 shadow-md bg-[#1f1a16] flex items-center justify-center shrink-0">
           <img
             src="/images/hk_salt_crystal.webp"
@@ -249,7 +280,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             className="w-full h-full object-cover"
           />
         </div>
-        <div className="leading-tight min-w-0">
+        <div className={`leading-tight min-w-0 ${mini ? 'sr-only' : ''}`}>
           <span className="font-bold text-sm text-[#FAF7F1] tracking-tight block truncate">Himalayan Koh</span>
           <span className="text-[9px] uppercase tracking-[0.2em] text-[#C98745] font-semibold">Admin Console</span>
         </div>
@@ -265,11 +296,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       </div>
 
       {/* Nav List */}
-      <div className="px-3 py-3"><input aria-label="Find an admin workspace" placeholder="Find a workspace…" value={railQuery} onChange={e => setRailQuery(e.target.value)} className="w-full min-w-0 min-h-10 rounded-lg border border-white/20 bg-white/5 px-3 text-sm text-white placeholder:text-white/60" /></div>
+      {/* The workspace filter needs its label to make sense, so the mini rail
+          drops it instead of showing a mystery input. */}
+      {!mini && <div className="px-3 py-3"><input aria-label="Find an admin workspace" placeholder="Find a workspace…" value={railQuery} onChange={e => setRailQuery(e.target.value)} className="w-full min-w-0 min-h-10 rounded-lg border border-white/20 bg-white/5 px-3 text-sm text-white placeholder:text-white/60" /></div>}
       <nav aria-label="Admin workspaces" className="flex-1 p-2 space-y-4 overflow-y-auto">
         {SECTIONS.map(sec => ({ ...sec, items: sec.items.filter(item => `${sec.title} ${item.label}`.toLowerCase().includes(railQuery.toLowerCase())) })).filter(sec => sec.items.length > 0).map((sec) => (
           <div key={sec.title}>
-            <p className="px-2.5 mb-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#8e8276]">
+            <p className={`px-2.5 mb-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#8e8276] ${mini ? 'sr-only' : ''}`}>
               {sec.title}
             </p>
             <div className="space-y-0.5">
@@ -283,7 +316,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     key={l.to}
                     to={l.to}
                     aria-current={isActive ? 'page' : undefined}
+                    title={l.label}
                     className={`group relative flex items-center gap-2.5 px-2.5 py-2 min-h-10 rounded-lg text-[13px] font-medium transition-all duration-200 ${
+                      mini ? 'justify-center px-1.5' : ''
+                    } ${
                       isActive ? 'text-[#FAF7F1]' : 'text-[#b6aba0] hover:text-[#FAF7F1] hover:bg-white/[0.05]'
                     }`}
                     style={
@@ -311,7 +347,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     >
                       <Icon size={13} weight="bold" />
                     </span>
-                    <span className="truncate">{l.label}</span>
+                    {/* Kept in the tree (sr-only) in the mini rail so the link
+                        keeps a readable name for screen readers and tooltips. */}
+                    <span className={mini ? 'sr-only' : 'truncate'}>{l.label}</span>
                   </Link>
                 );
               })}
@@ -324,42 +362,49 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <div className="p-2 border-t border-[#E0D6C8]/10 space-y-0.5">
         <Link prefetch={false}
           to="/"
-          className="flex items-center gap-2 text-[11px] text-[#b6aba0] hover:text-[#FAF7F1] px-2.5 py-1.5 rounded-lg hover:bg-white/[0.05] transition-colors"
+          title="Storefront"
+          className={`flex items-center gap-2 text-[11px] text-[#b6aba0] hover:text-[#FAF7F1] px-2.5 py-1.5 rounded-lg hover:bg-white/[0.05] transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
         >
           <span className="w-[26px] h-[26px] rounded-md bg-white/[0.05] flex items-center justify-center text-[#C98745]">
             <ArrowLeft size={12} />
           </span>
-          Storefront
+          <span className={mini ? 'sr-only' : ''}>Storefront</span>
         </Link>
         <button
           onClick={handleSignOut}
-          className="flex items-center gap-2 text-[11px] text-red-400 hover:text-red-300 px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 w-full transition-colors"
+          title="Logout"
+          className={`flex items-center gap-2 text-[11px] text-red-400 hover:text-red-300 px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 w-full transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
         >
           <span className="w-[26px] h-[26px] rounded-md bg-red-500/10 flex items-center justify-center">
             <SignOut size={12} />
           </span>
-          Logout
+          <span className={mini ? 'sr-only' : ''}>Logout</span>
         </button>
       </div>
     </aside>
   );
 
+  // The rail's two widths live on the layout root as a CSS variable, so the
+  // fixed rail and the content's left padding can never disagree about how much
+  // room the menu is taking.
+  const railVars = { '--hk-rail': railMini ? RAIL_MINI : RAIL_FULL } as unknown as React.CSSProperties;
+
   return (
-    <div className="hk-admin h-dvh w-full bg-[#FAF7F1] flex overflow-hidden font-sans">
+    <div className="hk-admin h-dvh w-full bg-[#FAF7F1] flex overflow-hidden font-sans" style={railVars}>
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip bg-white p-3 rounded-lg">Skip to workspace</a>
-      {renderSidebar({})}
+      {renderSidebar({ mini: railMini })}
 
       {/* Mobile Drawer */}
       {mobSide && (
         <div className="fixed inset-0 z-modal lg:hidden">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setMobSide(false)} />
           <div ref={mobileDialog} role="dialog" aria-modal="true" aria-label="Admin navigation" tabIndex={-1} className="absolute left-0 top-0 h-full w-72 max-w-[90vw] shadow-2xl">
-            {renderSidebar({ mobile: true })}
+            {renderSidebar({ mobile: true, mini: false })}
           </div>
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-60 h-dvh overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-[var(--hk-rail)] h-dvh overflow-hidden">
         {/* Header */}
         <header className="h-14 shrink-0 bg-[#FFFDF8]/95 backdrop-blur-md border-b border-[#E0D6C8] flex items-center justify-between gap-3 px-4 lg:px-6 z-30">
           <div className="flex items-center gap-3 min-w-0">
@@ -369,6 +414,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               aria-label="Open sidebar"
             >
               <List size={18} />
+            </button>
+            {/* One toggle, next to the rail it controls: collapse the menu to
+                icons so the workspace gets the full width. */}
+            <button
+              type="button"
+              onClick={toggleRail}
+              aria-pressed={railMini}
+              title={railMini ? 'Expand the menu' : 'Collapse the menu to icons'}
+              className="hidden lg:flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[#6D6258] hover:text-[#26211C] hover:bg-[#FAF7F1] transition-colors"
+            >
+              <SidebarSimple size={16} weight="bold" />
+              <span className="sr-only">Toggle the admin menu</span>
             </button>
             <form
               onSubmit={handleSearch}
@@ -410,15 +467,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 aria-haspopup="true"
                 aria-label="Admin account menu"
               >
-                <div className="hidden sm:block text-right leading-tight">
-                  <span className="text-xs font-semibold text-[#26211C] block">{adminName}</span>
-                  <span className="text-[10px] text-[#8e8276] font-medium">Super Admin</span>
-                </div>
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shadow-md ring-2 ring-[#E0D6C8] shrink-0"
                   style={{ background: 'linear-gradient(135deg, #B86452, #E25726)' }}
                 >
                   {adminInitial}
+                </div>
+                {/* Avatar first, then the name stack: both lines start on the
+                    same left edge and sit on one baseline, and a long name
+                    truncates instead of shoving the caret off the edge. */}
+                <div className="hidden sm:flex flex-col items-start leading-tight min-w-0">
+                  <span className="text-xs font-semibold text-[#26211C] truncate max-w-[11rem]">{adminName}</span>
+                  <span className="text-[10px] text-[#8e8276] font-medium">Super Admin</span>
                 </div>
                 <CaretDown
                   size={12}

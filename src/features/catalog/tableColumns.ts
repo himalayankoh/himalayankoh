@@ -47,6 +47,102 @@ export const CATALOG_COLUMN_STORAGE_KEY = 'luxedge_catalog_columns_v1';
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 
+// ============================================================================
+// CATALOG TABLE COLUMN WIDTHS
+//
+// The same table lets the seller resize a column by dragging the separator in
+// its header. Widths are a per-device display preference kept in localStorage
+// (the server render always starts from the defaults, exactly like the column
+// order), and they are clamped so a column can never be dragged into a sliver
+// its own header cannot be read from.
+// ============================================================================
+
+export type CatalogColumnWidths = Record<CatalogColumnKey, number>;
+
+/** Starting widths: wide enough for the product title and the analytics
+ *  columns that carry a value plus a unit, narrow for the icon-only ones. */
+export const CATALOG_DEFAULT_WIDTHS: CatalogColumnWidths = {
+  product: 300,
+  category: 150,
+  status: 120,
+  price: 110,
+  margin: 100,
+  stock: 100,
+  views: 80,
+  interest: 90,
+  age: 130,
+  promotion: 120,
+  readiness: 130,
+  actions: 64,
+};
+
+/** Narrowest a column can be dragged — below this its header label is unreadable. */
+export const CATALOG_MIN_COLUMN_WIDTH = 56;
+/** Widest a column can be dragged — past this the table is one column of scroll. */
+export const CATALOG_MAX_COLUMN_WIDTH = 720;
+/** Width reserved for the row-selection checkbox column, which is not resizable. */
+export const CATALOG_SELECTION_WIDTH = 40;
+
+export const CATALOG_WIDTH_STORAGE_KEY = 'luxedge_catalog_widths_v1';
+
+/** Rounds and clamps a dragged width into the allowed band. */
+export function clampColumnWidth(width: number): number {
+  if (!Number.isFinite(width)) return CATALOG_MIN_COLUMN_WIDTH;
+  return Math.max(CATALOG_MIN_COLUMN_WIDTH, Math.min(CATALOG_MAX_COLUMN_WIDTH, Math.round(width)));
+}
+
+export function defaultCatalogWidths(): CatalogColumnWidths {
+  return { ...CATALOG_DEFAULT_WIDTHS };
+}
+
+/** Load the persisted widths; anything unknown, non-numeric or out of band falls
+ *  back to that column's default so a corrupted/older row can never break the table. */
+export function loadCatalogWidths(storage?: StorageLike | null): CatalogColumnWidths {
+  const widths = defaultCatalogWidths();
+  if (!storage) return widths;
+  let parsed: unknown;
+  try {
+    const raw = storage.getItem(CATALOG_WIDTH_STORAGE_KEY);
+    if (!raw) return widths;
+    parsed = JSON.parse(raw);
+  } catch {
+    return widths;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return widths;
+  const stored = parsed as Record<string, unknown>;
+  for (const key of CATALOG_COLUMN_KEYS) {
+    const value = stored[key];
+    if (typeof value === 'number' && Number.isFinite(value)) widths[key] = clampColumnWidth(value);
+  }
+  return widths;
+}
+
+/** Persist the widths (best-effort — storage failures are non-fatal). */
+export function saveCatalogWidths(widths: CatalogColumnWidths, storage?: StorageLike | null): void {
+  if (!storage) return;
+  try {
+    storage.setItem(CATALOG_WIDTH_STORAGE_KEY, JSON.stringify(widths));
+  } catch {
+    // Quota/private-mode storage failures must never break the table.
+  }
+}
+
+/** True when every column still sits at its default width (so the "Reset"
+ *  control can stay out of the way until it is useful). */
+export function isDefaultCatalogWidths(widths: CatalogColumnWidths): boolean {
+  return CATALOG_COLUMN_KEYS.every((key) => widths[key] === CATALOG_DEFAULT_WIDTHS[key]);
+}
+
+/** The table's own width: every column plus the checkbox column. Applied as the
+ *  table's `min-width`, so narrowing a column narrows the scroll area instead of
+ *  squashing the columns below the widths the admin chose. */
+export function catalogTableWidth(widths: CatalogColumnWidths): number {
+  return CATALOG_COLUMN_KEYS.reduce(
+    (total, key) => total + (widths[key] ?? CATALOG_DEFAULT_WIDTHS[key]),
+    CATALOG_SELECTION_WIDTH,
+  );
+}
+
 /** Load the persisted column order; corrupted/unknown entries are dropped
  *  and any missing columns are appended in their default position. */
 export function loadCatalogColumns(storage?: StorageLike | null): CatalogColumnKey[] {
