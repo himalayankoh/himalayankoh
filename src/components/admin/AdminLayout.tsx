@@ -41,18 +41,20 @@ import { useAuthContext } from '../../context/AuthContext';
 import { signOutOfBrowser } from '../../lib/auth/browserSignOut';
 import { useApp } from '@/App';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
+import {
+  RAIL_DEFAULT_WIDTH,
+  RAIL_MAX_WIDTH,
+  RAIL_MIN_WIDTH,
+  RAIL_WIDTH_STEP,
+  clampRailWidth,
+  isMiniRail,
+  loadRailWidth,
+  saveRailWidth,
+} from './railWidth';
 
 export interface AdminLayoutProps {
   children: ReactNode;
 }
-
-/** Per-device memory of the rail's collapsed state. The storefront is the same
- *  on every device, but how much of the screen the menu may take is a screen
- *  property, so this one stays in localStorage rather than in site_settings. */
-const RAIL_STORAGE_KEY = 'hk_admin_rail_v1';
-/** Full rail (labels) and mini rail (icons only) widths, in rem. */
-const RAIL_FULL = '15rem';
-const RAIL_MINI = '4.5rem';
 
 type NavIcon = React.ComponentType<Record<string, unknown>>;
 type NavItem = { to: string; icon: NavIcon; label: string; g: string; dot: string };
@@ -163,28 +165,100 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobSide, setMobSide] = useState(false);
-  // Default to the full rail (the server render has no storage to consult) and
-  // apply the remembered choice right after mount, so the first paint is
+  // Default to the full rail on the server (there is no storage to consult)
+  // and apply the remembered width right after mount, so the first paint is
   // deterministic and nothing hydration-relevant depends on the browser.
-  const [railMini, setRailMini] = useState(false);
+  const [railWidth, setRailWidth] = useState<number>(() => loadRailWidth(null));
+  const railWidthRef = useRef(railWidth);
+  const [railDragging, setRailDragging] = useState(false);
+  const railDragRef = useRef<{ x: number; width: number } | null>(null);
+  /** Where the header toggle re-expands to — the last width that showed labels. */
+  const lastExpandedRef = useRef(RAIL_DEFAULT_WIDTH);
   useEffect(() => {
+    let stored = RAIL_DEFAULT_WIDTH;
     try {
-      if (window.localStorage.getItem(RAIL_STORAGE_KEY) === 'mini') setRailMini(true);
+      stored = loadRailWidth(window.localStorage);
     } catch {
-      // Private mode / blocked storage: keep the expanded rail.
+      // Private mode / blocked storage: keep the default rail.
     }
+    railWidthRef.current = stored;
+    lastExpandedRef.current = isMiniRail(stored) ? RAIL_DEFAULT_WIDTH : stored;
+    setRailWidth(stored);
   }, []);
-  const toggleRail = () => {
-    setRailMini((prev) => {
-      const next = !prev;
-      try {
-        window.localStorage.setItem(RAIL_STORAGE_KEY, next ? 'mini' : 'full');
-      } catch {
-        // A preference that cannot be stored still applies for this session.
-      }
-      return next;
-    });
+  // Icons-only is a property of the width, so there is no second setting to
+  // keep in step with it.
+  const railMini = isMiniRail(railWidth);
+
+  const applyRailWidth = (next: number, persist: boolean) => {
+    const clamped = clampRailWidth(next);
+    railWidthRef.current = clamped;
+    setRailWidth(clamped);
+    if (!persist) return;
+    try {
+      saveRailWidth(clamped, window.localStorage);
+    } catch {
+      // A preference that cannot be stored still applies for this session.
+    }
   };
+
+  /** One button, two states: hide the labels, or bring them back. */
+  const toggleRail = () => {
+    const width = railWidthRef.current;
+    if (isMiniRail(width)) {
+      applyRailWidth(lastExpandedRef.current, true);
+    } else {
+      lastExpandedRef.current = width;
+      applyRailWidth(RAIL_MIN_WIDTH, true);
+    }
+  };
+
+  const resetRailWidth = () => {
+    railDragRef.current = null;
+    setRailDragging(false);
+    applyRailWidth(RAIL_DEFAULT_WIDTH, true);
+  };
+
+  /** Drag the right edge of the rail; the pointer's travel *is* the new width. */
+  const onRailResizeStart = (event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    railDragRef.current = { x: event.clientX, width: railWidthRef.current };
+    setRailDragging(true);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (move: MouseEvent) => {
+      const start = railDragRef.current;
+      if (!start) return;
+      // Written on every move but persisted only on release, so a drag is one
+      // choice rather than eighty localStorage writes.
+      applyRailWidth(start.width + (move.clientX - start.x), false);
+    };
+    const onEnd = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onEnd);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      railDragRef.current = null;
+      setRailDragging(false);
+      applyRailWidth(railWidthRef.current, true);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd);
+  };
+
+  const onRailResizeKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    const step = event.shiftKey ? RAIL_WIDTH_STEP * 4 : RAIL_WIDTH_STEP;
+    const width = railWidthRef.current;
+    if (event.key === 'ArrowLeft') applyRailWidth(width - step, true);
+    else if (event.key === 'ArrowRight') applyRailWidth(width + step, true);
+    else if (event.key === 'Home') applyRailWidth(RAIL_MIN_WIDTH, true);
+    else if (event.key === 'End') applyRailWidth(RAIL_MAX_WIDTH, true);
+    else if (event.key === 'Enter' || event.key === ' ') toggleRail();
+    else return;
+    event.preventDefault();
+  };
+
   const [searchVal, setSearchVal] = useState('');
   const [railQuery, setRailQuery] = useState('');
   useEffect(() => {
@@ -264,7 +338,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const renderSidebar = ({ mobile, mini }: { mobile?: boolean; mini?: boolean }) => (
     <aside
       className={`flex flex-col shrink-0 ${
-        mobile ? 'w-full h-full' : 'fixed inset-y-0 left-0 z-40 hidden lg:flex w-[var(--hk-rail)] transition-[width] duration-200'
+        mobile
+          ? 'w-full h-full'
+          : `fixed inset-y-0 left-0 z-40 hidden lg:flex w-[var(--hk-rail)] ${
+              railDragging ? '' : 'transition-[width] duration-200'
+            }`
       }`}
       style={{
         background: '#26211C',
@@ -381,13 +459,37 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <span className={mini ? 'sr-only' : ''}>Logout</span>
         </button>
       </div>
+
+      {/* Drag handle on the rail's right edge. Keyboard-reachable on purpose:
+          a divider that only responds to a mouse is not a control. */}
+      {!mobile && (
+        <span
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize the admin menu. Drag, or use the left and right arrow keys."
+          aria-valuenow={railWidth}
+          aria-valuemin={RAIL_MIN_WIDTH}
+          aria-valuemax={RAIL_MAX_WIDTH}
+          tabIndex={0}
+          title="Drag to resize the menu · double-click to reset"
+          onMouseDown={onRailResizeStart}
+          onDoubleClick={resetRailWidth}
+          onKeyDown={onRailResizeKeyDown}
+          className="group/resize absolute inset-y-0 right-0 z-10 w-2 cursor-col-resize focus-visible:outline-none"
+        >
+          {/* Hairline at rest so the edge looks grabbable, solid while hovered
+              or focused so the target is obvious under the pointer. */}
+          <span className="pointer-events-none absolute inset-y-0 right-0 w-px bg-[#E0D6C8]/20 transition-colors group-hover/resize:bg-[#C98745] group-focus-visible/resize:bg-[#C98745]" />
+          <span className="pointer-events-none absolute right-0 top-1/2 h-10 w-[3px] -translate-y-1/2 rounded-l-full bg-[#C98745] opacity-0 transition-opacity group-hover/resize:opacity-90 group-focus-visible/resize:opacity-90" />
+        </span>
+      )}
     </aside>
   );
 
-  // The rail's two widths live on the layout root as a CSS variable, so the
-  // fixed rail and the content's left padding can never disagree about how much
-  // room the menu is taking.
-  const railVars = { '--hk-rail': railMini ? RAIL_MINI : RAIL_FULL } as unknown as React.CSSProperties;
+  // The rail's width lives on the layout root as a CSS variable, so the fixed
+  // rail and the content's left padding can never disagree about how much room
+  // the menu is taking.
+  const railVars = { '--hk-rail': `${railWidth}px` } as unknown as React.CSSProperties;
 
   return (
     <div className="hk-admin h-dvh w-full bg-[#FAF7F1] flex overflow-hidden font-sans" style={railVars}>
@@ -404,7 +506,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-[var(--hk-rail)] h-dvh overflow-hidden">
+      <div
+        className={`flex-1 flex flex-col min-w-0 lg:pl-[var(--hk-rail)] h-dvh overflow-hidden ${
+          railDragging ? '' : 'lg:transition-[padding-left] lg:duration-200'
+        }`}
+      >
         {/* Header */}
         <header className="h-14 shrink-0 bg-[#FFFDF8]/95 backdrop-blur-md border-b border-[#E0D6C8] flex items-center justify-between gap-3 px-4 lg:px-6 z-30">
           <div className="flex items-center gap-3 min-w-0">
@@ -415,8 +521,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             >
               <List size={18} />
             </button>
-            {/* One toggle, next to the rail it controls: collapse the menu to
-                icons so the workspace gets the full width. */}
+            {/* One toggle, next to the rail it controls: hide the menu down to
+                its icons so the workspace gets the width, and bring it back
+                with a second press. The rail's own edge drags to any width in
+                between. */}
             <button
               type="button"
               onClick={toggleRail}

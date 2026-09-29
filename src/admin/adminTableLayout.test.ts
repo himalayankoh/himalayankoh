@@ -47,21 +47,47 @@ describe('products table column resizing', () => {
   });
 });
 
-describe('collapsible admin rail', () => {
+describe('resizable admin rail', () => {
   it('keeps one width for the rail and the content, published as a CSS variable', () => {
-    expect(layoutSource).toContain("const railVars = { '--hk-rail': railMini ? RAIL_MINI : RAIL_FULL }");
-    expect(layoutSource).toContain("className=\"hk-admin h-dvh w-full bg-[#FAF7F1] flex overflow-hidden font-sans\" style={railVars}");
-    expect(layoutSource).toContain("lg:pl-[var(--hk-rail)]");
-    expect(layoutSource).toContain("w-[var(--hk-rail)]");
+    expect(layoutSource).toContain("const railVars = { '--hk-rail': `${railWidth}px` }");
+    expect(layoutSource).toContain('style={railVars}');
+    expect(layoutSource).toContain('lg:pl-[var(--hk-rail)]');
+    expect(layoutSource).toContain('w-[var(--hk-rail)]');
   });
 
-  it('remembers the choice per device and always renders a labelled drawer', () => {
-    expect(layoutSource).toContain("const RAIL_STORAGE_KEY = 'hk_admin_rail_v1';");
-    expect(layoutSource).toContain("if (window.localStorage.getItem(RAIL_STORAGE_KEY) === 'mini') setRailMini(true);");
-    expect(layoutSource).toContain("window.localStorage.setItem(RAIL_STORAGE_KEY, next ? 'mini' : 'full');");
+  it('derives icons-only from the width instead of tracking a second setting', () => {
+    expect(layoutSource).toContain('const railMini = isMiniRail(railWidth);');
+    // Two settings that mean the same thing drift apart; there is only one.
+    expect(layoutSource).not.toContain('setRailMini');
+  });
+
+  it('drags the rail from its right edge and persists the released width', () => {
+    expect(layoutSource).toContain('const onRailResizeStart');
+    expect(layoutSource).toContain("document.addEventListener('mousemove', onMove)");
+    expect(layoutSource).toContain("document.addEventListener('mouseup', onEnd)");
+    // Persist on release, not on every mousemove.
+    expect(layoutSource).toContain('applyRailWidth(start.width + (move.clientX - start.x), false);');
+    expect(layoutSource).toContain('saveRailWidth(clamped, window.localStorage);');
+    // A width that only a mouse can change is not reachable.
+    expect(layoutSource).toContain('role="separator"');
+    expect(layoutSource).toContain('onKeyDown={onRailResizeKeyDown}');
+    expect(layoutSource).toContain('onDoubleClick={resetRailWidth}');
+    // The handle belongs to the fixed desktop rail, never the mobile drawer.
+    expect(layoutSource).toContain('{!mobile && (');
+  });
+
+  it('remembers the width per device and always renders a labelled drawer', () => {
+    expect(layoutSource).toContain('loadRailWidth(window.localStorage)');
+    expect(layoutSource).toContain("from './railWidth'");
     // The mobile drawer cannot be icons-only — it is the only navigation there.
     expect(layoutSource).toContain('{renderSidebar({ mobile: true, mini: false })}');
     // Icons-only still needs an accessible name per item.
     expect(layoutSource).toContain("<span className={mini ? 'sr-only' : 'truncate'}>{l.label}</span>");
+  });
+
+  it('keeps the header toggle as the one-press hide and expand', () => {
+    expect(layoutSource).toContain('const toggleRail = () => {');
+    expect(layoutSource).toContain('aria-pressed={railMini}');
+    expect(layoutSource).toContain('>Toggle the admin menu</span>');
   });
 });
