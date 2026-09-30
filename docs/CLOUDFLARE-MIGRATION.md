@@ -33,7 +33,7 @@ Config:     redirects ✓  headers ✓
 | `notFound()` | PASS | crafted product slugs 404 |
 | `next/image` | PARTIAL | no on-the-fly optimizer without Cloudflare Images; images pass through |
 | `reactStrictMode` | PARTIAL | App Router is not wrapped by vinext (Next defaults it on) |
-| ISR (`/blog`, `revalidate = 3600`) | PASS with KV | needs the cache binding below |
+| ISR (`/blog`, `revalidate = 3600`) | PASS | served from the edge cache; no KV binding |
 | Node APIs used here (`crypto`, `Buffer`, `fetch`) | PASS | `nodejs_compat` enabled |
 | Filesystem access | NONE | no `fs` use at request time |
 | Server actions | NONE used | all mutations are route handlers |
@@ -57,19 +57,48 @@ Another side effect to watch: `next` uses a caret range, so a plain
 `npm install` can drift it. Keep the lockfile authoritative and re-run
 `npm run typecheck && npm run build` after any dependency change.
 
-## ISR cache binding
+## Page cache — Workers Cache, and no KV binding
 
-`/blog` is ISR, and a Worker has no persistent filesystem, so
-`vinext-cloudflare deploy` refuses to deploy without a cache adapter. KV holds
-**only** the WordPress blog read cache:
+A Worker has no persistent filesystem, so `vinext-cloudflare deploy` refuses to
+deploy without a cache adapter. The adapter is Cloudflare's own edge cache
+(`cache: { cdn: cdnAdapter() }` in `vite.config.ts`), and `wrangler.jsonc`
+carries **no `kv_namespaces` entry at all** — deliberately, with the reasoning
+in that file.
 
-```jsonc
-"kv_namespaces": [{ "binding": "VINEXT_KV_CACHE", "id": "1cab497b..." }]
-```
+The KV adapter was tried first and could not do the job: a Workers KV namespace
+on this account allows a thousand writes a day while a storefront cache writes
+one entry per render, so every write answered `KV put() limit exceeded for the
+day`. `/products` and `/blog` served a fresh render to every visitor (≈900 ms
+each), the ISR cache never hit, and saving a product failed with a 502 when the
+purge tried to write its tag marker. The edge cache has no per-day write budget,
+is purged by `revalidatePath` when the console saves something, and stores
+nothing in the Worker.
+
+Measured 2026-09-30 on the preview: `/products` and `/blog` answer from the edge
+in ~0.10-0.12 s, and a purged route re-renders once before it is cached again.
 
 Commerce data is never cached there. Products, prices, stock, cart, orders and
 customer responses are read from WooCommerce per request or via the
 authenticated admin API.
+
+### The old `VINEXT_KV_CACHE` namespace was emptied
+
+The namespace left behind by the KV adapter (`7e62970fbe5049dfb678409d6f28d064`)
+held **12,977 keys** — the page cache of 82 past deployments, every one a
+`cache:app:<deploy-uuid>:<route>:html|rsc` (or `cache:<sha256>`) envelope. It was
+emptied on 2026-09-30 after all of the following were established:
+
+- no Worker in the account binds it (all six checked; the deployed
+  `himalayan-koh-ecommerce` has no `kv_namespace` binding of any kind);
+- the built bundle contains no `cache:app:` string and no `VINEXT_KV*` binding
+  name, so the deployed code cannot read or write it;
+- `dist/server/wrangler.json` carries `"kv_namespaces": []`.
+
+**14,584 keys removed, 0 remaining** (the first listing showed 12,977; Workers KV
+listing is eventually consistent, and re-listing after the bulk delete exposed
+1,521 then 86 more, each re-deleted). `PC_BRIDGE_KV` and `PC_BRIDGE_KV2` belong to
+a different project and were not touched. The empty namespace itself is left in
+place: deleting it is a separate, irreversible step that nothing requires.
 
 ## Secrets
 
@@ -127,7 +156,7 @@ locks the build output — stop it (kill `workerd.exe`) before rebuilding.
 | Auth | Supabase (intentional, for now) | admin bearer tokens verified server-side |
 | Cart, checkout, payments, shipping | Supabase + Stripe + Shippo | **migration gap** — see below |
 | CRM, settings | Supabase | app state, not commerce |
-| ISR blog cache | Cloudflare KV | cache only |
+| Page/ISR cache | Cloudflare edge (Workers Cache) | cache only; no KV namespace is bound |
 
 Supabase is deliberately **not** removed blindly. Where it holds commerce that
 WooCommerce should own (cart, orders, Stripe payment records, Shippo label
