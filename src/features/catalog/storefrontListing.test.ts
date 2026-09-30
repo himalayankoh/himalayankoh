@@ -3,6 +3,32 @@ import { storefrontListingReason, isStorefrontListable } from './storefrontListi
 import { deriveCommerceReadiness, reconcileCommerceReadiness } from './commerceReadiness';
 
 /**
+ * The retail cost basis is the verified supplier cost only.
+ *
+ * Landed cost (supplier cost + freight + duty) used to count as well, but the
+ * shop ships with Shippo/USPS at checkout, so a per-product freight figure is not
+ * a retail prerequisite — demanding one left honest imports stuck at
+ * ECONOMICS_PENDING for a number the owner could not supply.
+ */
+describe('readiness — retail cost basis', () => {
+  const facts = {
+    status: 'published',
+    supplierSource: 'AliExpress',
+    sourceType: 'OTHER_VERIFIED',
+    stockStatus: 'in_stock',
+    inventoryQty: 10,
+  };
+
+  it('is ECONOMICS_PENDING with no supplier cost, whatever the landed figure says', () => {
+    expect(deriveCommerceReadiness({ ...facts, costPrice: 0 })).toBe('ECONOMICS_PENDING');
+  });
+
+  it('is COMMERCE_READY on a verified supplier cost alone', () => {
+    expect(deriveCommerceReadiness({ ...facts, costPrice: 4 })).toBe('COMMERCE_READY');
+  });
+});
+
+/**
  * The storefront's listing policy.
  *
  * These pin the seam that was missing: the public contract

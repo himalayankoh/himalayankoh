@@ -317,6 +317,7 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
       : typeof r.offNiche === 'boolean'
         ? r.offNiche
         : undefined,
+    nicheApproved: asBool(cf.nicheApproved) ?? false,
     tags: parseTagList(r.tags),
     featured: !!r.featured,
     newArrival: asBool(cf.newArrival) ?? false,
@@ -518,6 +519,8 @@ export interface ProductInput {
   supplierProductRef?: string;
   safetyClass?: CatalogProduct['safetyClass'];
   safetyReviewStatus?: CatalogProduct['safetyReviewStatus'];
+  /** The owner's explicit storefront-niche approval, recorded on the product. */
+  nicheApproved?: boolean;
   intendedSpecies?: string | null;
   commerceReadiness?: CatalogProduct['commerceReadiness'];
   sourceType?: CatalogProduct['sourceType'];

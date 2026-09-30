@@ -37,7 +37,6 @@ export interface ReadinessChecklistInput {
   supplierSource?: string | null;
   sourceType?: string | null;
   costPrice?: number | null;
-  landedCost?: number | null;
   usInventory?: boolean | null;
   stockStatus?: string | null;
   inventoryQty?: number | null;
@@ -164,17 +163,16 @@ export function commerceReadinessChecklist(input: ReadinessChecklistInput): {
   });
 
   const cost = Number(input.costPrice ?? 0);
-  const landed = Number(input.landedCost ?? 0);
-  const hasCost = cost > 0 || landed > 0;
+  const hasCost = cost > 0;
   push({
     key: 'cost',
-    label: 'Cost basis (economics)',
+    label: 'Supplier cost (economics)',
     state: hasCost || declaredReady ? 'ok' : 'missing',
     detail: declaredReady
       ? heldDetail
       : hasCost
-        ? `Supplier cost $${cost.toFixed(2)}${landed > 0 ? `, landed $${landed.toFixed(2)}` : ''}.`
-        : 'Enter the verified supplier cost (and landed cost) — Pricing tab. The supplier list price is not an acquisition cost until you verify it.',
+        ? `Verified supplier cost $${cost.toFixed(2)}.`
+        : 'Enter the verified supplier cost — Pricing tab. The supplier list price is not an acquisition cost until you verify it. Shipping is calculated at checkout (Shippo/USPS), so no per-product freight figure is required.',
     blocking: !hasCost && !declaredReady,
   });
 

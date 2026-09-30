@@ -222,6 +222,7 @@ export const CONSOLE_META_FIELDS: readonly ConsoleMetaField[] = [
   { field: 'safetyClass', key: '_himalayan_koh_safety_class', kind: 'string' },
   { field: 'safetyReviewStatus', key: '_himalayan_koh_safety_review_status', kind: 'string' },
   { field: 'riskFlags', key: '_himalayan_koh_risk_flags', kind: 'stringList' },
+  { field: 'nicheApproved', key: '_himalayan_koh_niche_approved', kind: 'boolean' },
   { field: 'newArrival', key: '_himalayan_koh_new_arrival', kind: 'boolean' },
   { field: 'trending', key: '_himalayan_koh_trending', kind: 'boolean' },
   { field: 'bestRated', key: '_himalayan_koh_best_rated', kind: 'boolean' },
@@ -711,6 +712,8 @@ export interface ConsoleProductFields {
   safetyClass?: string | null;
   safetyReviewStatus?: string | null;
   riskFlags?: string[] | null;
+  /** The owner's explicit storefront-niche approval for this product. */
+  nicheApproved?: boolean | null;
   newArrival?: boolean | null;
   trending?: boolean | null;
   bestRated?: boolean | null;

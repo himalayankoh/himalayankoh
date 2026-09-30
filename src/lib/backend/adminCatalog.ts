@@ -313,6 +313,8 @@ export function rowFromWooAdminProduct(record: AdminProductRecord): AdminCatalog
       name: record.name,
       category: categoryName ?? '',
       description: record.description ?? '',
+      // The owner's recorded approval outranks the text guard.
+      ownerApproved: (record.consoleFields as { nicheApproved?: unknown }).nicheApproved === true,
     }),
     missing: [],
   };

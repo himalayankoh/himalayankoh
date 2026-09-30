@@ -153,6 +153,14 @@ export interface Product {
   riskFlags?: string[] | null;
   /** The recorded safety-review outcome that clears a risk hold. */
   safetyReviewStatus?: string | null;
+  /**
+   * The owner's explicit storefront-niche approval for this product.
+   *
+   * Named to match `NicheCheckInput.ownerApproved` so the storefront's niche guard
+   * reads it without a mapping step. Stored on the product as
+   * `_himalayan_koh_niche_approved` (the console field is `nicheApproved`).
+   */
+  ownerApproved?: boolean | null;
 }
 
 export interface GalleryImage {

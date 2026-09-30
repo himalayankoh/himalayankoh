@@ -117,6 +117,14 @@ export interface CatalogProduct {
    * reason a product is not public.
    */
   isOffNiche?: boolean;
+  /**
+   * The owner's explicit storefront-niche approval, as the store holds it.
+   *
+   * Recorded on the product (`_himalayan_koh_niche_approved`), it outranks the
+   * text guard — the shop's own livestock-shaped lines fail the guard even though
+   * the owner sells them. A refusal still outranks an approval.
+   */
+  nicheApproved?: boolean;
   tags: string[];
   featured: boolean;
   newArrival: boolean;

@@ -334,6 +334,7 @@ function buildProduct(input: {
   usInventory?: boolean | null;
   riskFlags?: string[] | null;
   safetyReviewStatus?: string | null;
+  ownerApproved?: boolean | null;
 }): Product {
   const price = priceDisplayFromRange(input.priceMin, input.priceMax);
   const images = resolveCuratedProductImages(input.slug, input.sku, input.images);
@@ -364,6 +365,7 @@ function buildProduct(input: {
     usInventory: input.usInventory ?? null,
     riskFlags: input.riskFlags ?? [],
     safetyReviewStatus: input.safetyReviewStatus ?? null,
+    ownerApproved: input.ownerApproved ?? null,
     missing: collectMissingCatalogFields({
       priceMin: input.priceMin,
       sku: input.sku,
@@ -398,6 +400,7 @@ const CONSOLE_META_KEYS = {
   usInventory: '_himalayan_koh_us_inventory',
   riskFlags: '_himalayan_koh_risk_flags',
   safetyReviewStatus: '_himalayan_koh_safety_review_status',
+  nicheApproved: '_himalayan_koh_niche_approved',
 } as const;
 
 /** A JSON-string list console meta field (see `fromConsoleMetaValue`), or []. */
@@ -538,6 +541,7 @@ export function mapRestV3Product(raw: RestV3Product): Product {
     usInventory: parseYesNoMeta(extractMetaString(raw.meta_data, CONSOLE_META_KEYS.usInventory)),
     riskFlags: parseStringListMeta(extractMetaString(raw.meta_data, CONSOLE_META_KEYS.riskFlags)),
     safetyReviewStatus: extractMetaString(raw.meta_data, CONSOLE_META_KEYS.safetyReviewStatus),
+    ownerApproved: parseYesNoMeta(extractMetaString(raw.meta_data, CONSOLE_META_KEYS.nicheApproved)),
   });
 }
 

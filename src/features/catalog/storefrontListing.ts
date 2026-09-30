@@ -21,9 +21,9 @@ import {
 
 /** The storefront-facing subset of `data/products.Product` this policy reads. */
 export interface StorefrontListingFacts {
-  id?: number | string;
+  id?: number | string | null;
   slug?: string;
-  name?: string;
+  name?: string | null;
   /** Display price; `priceMin` is the numeric one the contract checks. */
   priceMin?: number | null;
   price?: string;

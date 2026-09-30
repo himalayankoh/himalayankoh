@@ -162,6 +162,37 @@ function ReadinessBadge({ readiness }: { readiness?: CommerceReadiness | null })
 }
 
 /**
+ * A product's readiness checklist, from the console's own model.
+ *
+ * Shared by the editor panel and the bulk "clear blocks" action so both answer
+ * with the same verdict: an item one of them calls satisfied can never be called
+ * blocking by the other.
+ */
+function readinessChecklistFor(product: CatalogProduct) {
+  return commerceReadinessChecklist({
+    status: product.status,
+    slug: product.slug,
+    name: product.name,
+    description: product.description,
+    shortDescription: product.shortDescription,
+    price: product.price,
+    images: product.images.map((img) => img.url),
+    supplierSource: product.supplierSource,
+    sourceType: product.sourceType,
+    costPrice: product.costPrice,
+    usInventory: product.usInventory,
+    stockStatus: product.stockStatus,
+    inventoryQty: product.inventoryQty,
+    riskFlags: product.riskFlags,
+    safetyReviewStatus: product.safetyReviewStatus,
+    commerceReadiness: product.commerceReadiness,
+    // The owner's recorded approval outranks the text guard, so the verdict
+    // follows the toggle immediately rather than waiting for a reload.
+    offNiche: (product.isOffNiche ?? false) && product.nicheApproved !== true,
+  });
+}
+
+/**
  * The per-field readiness checklist.
  *
  * Replaces the old single-word verdict ("Economics Pending") with every
@@ -177,26 +208,7 @@ function ReadinessChecklistPanel({
   product: CatalogProduct;
   onSet: <K extends keyof CatalogProduct>(k: K, v: CatalogProduct[K]) => void;
 }) {
-  const { items, blockers, ready } = commerceReadinessChecklist({
-    status: product.status,
-    slug: product.slug,
-    name: product.name,
-    description: product.description,
-    shortDescription: product.shortDescription,
-    price: product.price,
-    images: product.images.map((img) => img.url),
-    supplierSource: product.supplierSource,
-    sourceType: product.sourceType,
-    costPrice: product.costPrice,
-    landedCost: product.landedCost,
-    usInventory: product.usInventory,
-    stockStatus: product.stockStatus,
-    inventoryQty: product.inventoryQty,
-    riskFlags: product.riskFlags,
-    safetyReviewStatus: product.safetyReviewStatus,
-    commerceReadiness: product.commerceReadiness,
-    offNiche: product.isOffNiche,
-  });
+  const { items, blockers, ready } = readinessChecklistFor(product);
   const flagged = (product.riskFlags || []).filter(Boolean);
 
   return (
@@ -228,6 +240,27 @@ function ReadinessChecklistPanel({
           </li>
         ))}
       </ul>
+
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+        <p className="text-xs font-semibold text-gray-700">Storefront niche — owner approval</p>
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            className="w-4 h-4 mt-0.5"
+            checked={product.nicheApproved === true}
+            onChange={(e) => {
+              onSet('nicheApproved', e.target.checked);
+              if (e.target.checked) onSet('isOffNiche', false);
+            }}
+          />
+          <span>
+            Approve this product for the storefront niche
+            <span className="block text-[11px] text-gray-500">
+              The niche guard judges the name and copy; the shop's own livestock-shaped lines fail it even though you sell them. Approving records your decision on the product, exactly like the safety review above — a refusal still outranks it. Save to apply.
+            </span>
+          </span>
+        </label>
+      </div>
 
       {flagged.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
@@ -526,12 +559,14 @@ export function CatalogProductsPage() {
     const category = cats.find((c) => c.id === p.categoryId)?.name || p.categoryName || '';
     const parsed = await generateSeoJson(buildProductSeoPrompt(p, category));
     const kw = Array.isArray(parsed.seoKeywords) ? parsed.seoKeywords.map(String).slice(0, 8) : [];
-    const slug = String(parsed.slug || p.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 90);
+    // SEO writes meta only. It must never carry a slug: `canonicalSlug` maps to
+    // WooCommerce's own `slug`, so sending the AI's suggested slug rewrote the
+    // product's live URL — a new page, a dead old link, and an unasked-for
+    // redirect problem. The URL is the owner's; this fills titles and meta.
     const upd = await updateProduct(p.id, {
       seoTitle: String(parsed.seoTitle || '').trim(),
       seoDescription: String(parsed.metaDescription || '').trim(),
       seoKeywords: kw,
-      ...(slug ? { canonicalSlug: slug } : {}),
     });
     patchLocal(upd);
   };
@@ -652,7 +687,7 @@ export function CatalogProductsPage() {
       if (fSource === 'cj' && !(/cj/.test(src) || st === 'CJ_DROPSHIPPING')) return false;
       if (fSource === 'other' && (/kong/.test(src) || /cj/.test(src))) return false;
       if (fSource === 'unknown' && (src || st)) return false;
-      if (fSource === 'cost-unknown' && (p.costPrice > 0 || p.landedCost > 0)) return false;
+      if (fSource === 'cost-unknown' && p.costPrice > 0) return false;
       if (fSource === 'shipping-unknown' && !(p.shippingCost > 0 || p.freeShipping)) return false;
       if (fSource === 'low-margin' && !(p.costPrice > 0 && p.marginPercent != null && p.marginPercent < 40)) return false;
       if (fSource === 'stock-unknown' && !(p.stockStatus === 'unknown' || p.stockStatus == null)) return false;
@@ -837,6 +872,68 @@ export function CatalogProductsPage() {
   };
   const onBulkPromote = (on: boolean) => {
     void runBulk(on ? 'Promoted' : 'Promotion removed', (p) => updateProduct(p.id, on ? { promoted: true } : { promoted: false, saleEnabled: false }).then((u) => { if (u) patchLocal(u); }));
+  };
+
+  /**
+   * The one-click "clear the listing blocks" action.
+   *
+   * It does exactly three things, and every one of them is a recorded decision or
+   * a mechanical fill:
+   *   • approves the niche guard for products the owner selected (their decision,
+   *     recorded on the product — the guard judges copy, which their own
+   *     livestock-shaped lines fail);
+   *   • fills missing SEO titles/meta (never the URL);
+   *   • recomputes readiness on save (the server does that from the facts).
+   *
+   * It deliberately does **not** invent a supplier cost and does **not** clear a
+   * food-safety risk hold: those are the two things only the owner can decide, so
+   * they are reported back as the remaining blockers instead of being waved away.
+   */
+  const onBulkClearBlocks = async () => {
+    const targets = products.filter((p) => selectedIds.has(p.id));
+    if (!targets.length) { notify('Select products first.', 'error'); return; }
+    if (!window.confirm(
+      `Clear the non-safety listing blocks on ${targets.length} product(s)?\n\n` +
+      '• Approve them for the storefront niche (your recorded owner decision)\n' +
+      '• Fill missing SEO titles/meta (never changes the URL)\n' +
+      '• Recompute commerce readiness from the facts\n\n' +
+      'It will NOT invent a supplier cost and will NOT clear a food-safety hold — ' +
+      'those are reported back for your review.'
+    )) return;
+    setBulkBusy(true);
+    const remaining: string[] = [];
+    let changed = 0;
+    try {
+      for (const p of targets) {
+        let current = p;
+        if ((p.isOffNiche ?? false) && p.nicheApproved !== true) {
+          const u = await updateProduct(p.id, { nicheApproved: true });
+          if (u) { current = u; patchLocal(u); changed += 1; }
+        }
+        if (seoStatus(current) !== 'complete') {
+          try {
+            await generateAndSaveSeo(current);
+            const u = await getProduct(current.id, true);
+            if (u) { current = u; patchLocal(u); changed += 1; }
+          } catch { /* left as a remaining blocker below */ }
+        }
+        const { blockers } = readinessChecklistFor(current);
+        if (blockers.length) {
+          remaining.push(`${current.name.slice(0, 48)} → ${blockers.map((b) => b.label).join(', ')}`);
+        }
+      }
+      notify(
+        remaining.length
+          ? `Cleared ${changed} field(s). Still blocked (needs your input): ${remaining.join(' | ')}`
+          : `Blocks cleared — every selected product now passes the storefront checklist.`,
+        remaining.length ? 'error' : undefined
+      );
+    } catch (e) {
+      notify(`Clear blocks stopped: ${(e as Error).message}`, 'error');
+    } finally {
+      setBulkBusy(false);
+      setSelectedIds(new Set());
+    }
   };
 
   const applyBulkPrice = async () => {
@@ -1155,6 +1252,9 @@ export function CatalogProductsPage() {
           <span className="w-px h-6 bg-indigo-200" />
           <button onClick={() => void runAutoSeo(products.filter((p) => selectedIds.has(p.id)))} disabled={bulkBusy || seo.running} className="px-2.5 py-1.5 bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white text-xs rounded-lg flex items-center gap-1.5">
             <Sparkle size={13} />Auto SEO
+          </button>
+          <button onClick={() => void onBulkClearBlocks()} disabled={bulkBusy || seo.running} title="Approve the storefront niche + fill missing SEO for the selected products, then report the blocks only you can clear (supplier cost, food-safety review). Never invents a cost or clears a safety hold." className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs rounded-lg flex items-center gap-1.5">
+            <CheckCircle size={13} />Clear listing blocks
           </button>
           <select
             value=""
@@ -1540,7 +1640,7 @@ export function CatalogProductsPage() {
                           <span className="pointer-events-none absolute right-0 top-full mt-1 z-30 hidden whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-[11px] text-gray-600 shadow-lg group-hover:block">
                             {p.commerceReadiness === 'COMMERCE_READY' && <span>Storefront-eligible. Source, cost & fulfillment verified.</span>}
                             {p.commerceReadiness === 'SOURCE_PENDING' && <span>No verified purchasing path (retail-ref only or unknown source).</span>}
-                            {p.commerceReadiness === 'ECONOMICS_PENDING' && <span>Supplier exists but cost/landed unknown.</span>}
+                            {p.commerceReadiness === 'ECONOMICS_PENDING' && <span>Supplier exists but the verified supplier cost is unknown.</span>}
                             {p.commerceReadiness === 'FULFILLMENT_PENDING' && <span>Cost known but stock/shipping not verified.</span>}
                             {p.commerceReadiness === 'RISK_REVIEW' && <span>Unresolved critical risk (battery/IP/regulatory).</span>}
                             {!p.commerceReadiness && <span>Not classified yet.</span>}
@@ -2364,6 +2464,7 @@ export function CatalogProductEditor() {
         // belongs to. Without these, the approval button changed nothing on the
         // store, so a flagged product could never actually be cleared.
         if (dirtyFields.has('safetyReviewStatus')) patch.safetyReviewStatus = currentProduct.safetyReviewStatus;
+        if (dirtyFields.has('nicheApproved')) patch.nicheApproved = currentProduct.nicheApproved === true;
         if (dirtyFields.has('safetyClass')) patch.safetyClass = currentProduct.safetyClass;
         if (dirtyFields.has('intendedSpecies')) patch.intendedSpecies = currentProduct.intendedSpecies;
         if (dirtyFields.has('tags')) patch.tags = currentProduct.tags;
@@ -2664,13 +2765,12 @@ export function CatalogProductEditor() {
         {tab === 'pricing' && (
           <div className="grid sm:grid-cols-2 gap-4">
             <div><label className={L}>Supplier cost (USD)</label><input type="number" min="0" step="0.01" value={p.costPrice || ''} onChange={(e) => set('costPrice', +e.target.value)} className={I} /></div>
-            <div><label className={L}>Landed cost (USD) — freight verified</label><input type="number" min="0" step="0.01" value={p.landedCost || ''} onChange={(e) => set('landedCost', +e.target.value)} className={I} /></div>
             <div><label className={L}>Retail price (USD) <span className="text-red-500">*</span> <span className="normal-case font-normal text-gray-400">required</span></label><input type="number" min="0" step="0.01" value={p.price || ''} onChange={(e) => set('price', +e.target.value)} className={I} /></div>
             <div><label className={L}>Compare-at price (USD) — genuine promo value only</label><input type="number" min="0" step="0.01" value={p.compareAtPrice || ''} onChange={(e) => set('compareAtPrice', +e.target.value)} className={I} /></div>
             <div className="sm:col-span-2 bg-gray-50 rounded-lg p-4 text-sm">
               <p className="font-semibold mb-1">Margin check</p>
               {p.costPrice > 0 && p.price > 0
-                ? <p className="text-gray-600">Est. margin {(100 - (p.costPrice / p.price) * 100).toFixed(1)}% (landed cost {p.landedCost > 0 ? `$${p.landedCost.toFixed(2)}` : 'unknown'}). {p.landedCost <= 0 ? <span className="text-amber-600">Flag: landed cost unknown — verify freight before final publishing.</span> : null}</p>
+                ? <p className="text-gray-600">Est. margin {(100 - (p.costPrice / p.price) * 100).toFixed(1)}%. Shipping is calculated at checkout by Shippo/USPS, so no per-product freight figure is required for a retail listing.</p>
                 : <p className="text-gray-400">Enter a cost and price to see estimated margin.</p>}
             </div>
           </div>
@@ -2921,7 +3021,6 @@ export function CatalogProductEditor() {
                     <div><span className="text-gray-500">Source Type:</span> <span className="font-mono">{p.sourceType || 'UNKNOWN'}</span></div>
                     <div><span className="text-gray-500">Inventory Source:</span> <span className="font-mono">{p.inventorySource || 'UNKNOWN'}</span></div>
                     <div><span className="text-gray-500">Fulfillment Method:</span> <span className="font-mono">{p.fulfillmentMethod || 'Internal Warehouse'}</span></div>
-                    <div><span className="text-gray-500">Landed Cost:</span> <span className="font-mono">${p.landedCost || 0}</span></div>
                   </div>
                   {p.evidenceNotes && (
                     <div className="p-2 bg-white rounded border">

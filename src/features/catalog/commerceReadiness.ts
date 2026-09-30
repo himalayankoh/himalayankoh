@@ -50,7 +50,6 @@ export interface ReadinessFacts {
   /** A stored, already-validated source type; preferred over re-deriving it. */
   sourceType?: string | null;
   costPrice?: number;
-  landedCost?: number;
   shippingCost?: number;
   freeShipping?: boolean;
   deliveryMinDays?: number | null;
@@ -140,7 +139,12 @@ export function deriveCommerceReadiness(f: ReadinessFacts): CommerceReadiness {
   const sourceType = deriveSourceType(f);
   if (sourceType === 'RETAIL_REFERENCE_ONLY' || sourceType === 'UNKNOWN') return 'SOURCE_PENDING';
 
-  const hasCost = (f.costPrice ?? 0) > 0 || (f.landedCost ?? 0) > 0;
+  // The retail cost basis is the verified **supplier cost**, and nothing else.
+  // Landed cost (supplier cost + freight + duty) was the other half of this
+  // check, but Himalayan Koh ships with Shippo/USPS at checkout, so a per-product
+  // freight figure is not a retail prerequisite — and demanding one left honest
+  // imports stuck at ECONOMICS_PENDING for a number the owner could not supply.
+  const hasCost = (f.costPrice ?? 0) > 0;
   if (!hasCost) return 'ECONOMICS_PENDING';
 
   // USA fulfillment/stock evidence: real list-level US inventory (or a real
@@ -164,7 +168,6 @@ export function deriveCommerceReadiness(f: ReadinessFacts): CommerceReadiness {
 export const READINESS_RELEVANT_FIELDS: readonly string[] = [
   'status',
   'costPrice',
-  'landedCost',
   'supplierSource',
   'supplierProductRef',
   'supplierUrl',

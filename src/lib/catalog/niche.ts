@@ -294,6 +294,11 @@ export function isNicheProduct(input: NicheCheckInput): boolean {
   // record the owner has explicitly rejected.
   if (isOwnerRejectedProduct(input.id) || isOwnerReviewProduct(input.id)) return false;
 
+  // The owner's own approval, recorded on the product from the console. Same
+  // standing as an authorised SKU — it is a human decision about a named record,
+  // which is exactly what the text guard cannot express.
+  if (input.ownerApproved === true) return true;
+
   // The positive half of the policy: the owner's own price list decides what this
   // shop sells, so an authorised SKU is in the catalog whatever its name says.
   if (isOwnerApprovedSku(input.sku)) return true;

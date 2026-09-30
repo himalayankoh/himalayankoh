@@ -169,6 +169,7 @@ const lookupProductForRequest = cache(async (slug: string): Promise<CatalogLooku
     name: lookup.product.name,
     category: lookup.product.category,
     description: lookup.product.description,
+    ownerApproved: lookup.product.ownerApproved === true,
   });
   // The PDP answers to both policies, exactly as the list read does: an off-niche
   // product, or one whose commerce facts are not verified, resolves to nothing

@@ -26,6 +26,18 @@ export interface NicheCheckInput {
    */
   id?: number | string | null;
   /**
+   * The owner's explicit storefront approval for this record.
+   *
+   * The other half of the owner's decision, recorded on the product itself (see
+   * `_himalayan_koh_niche_approved` in `lib/woo/productPayload.ts`). The term
+   * guard judges *text* — and the shop's own livestock-shaped lines fail it even
+   * though the owner sells them. A SKU approval covers the lines on the owner's
+   * price list; this covers the ones the owner approves individually from the
+   * console, without a rename and without editing a code list. A refusal (id) is
+   * still checked first, so an approval can never re-admit a rejected record.
+   */
+  ownerApproved?: boolean | null;
+  /**
    * The record's SKU, when the source reports one.
    *
    * This is the key the *owner* uses: `Himalayan Salt Products Price List.xlsx`

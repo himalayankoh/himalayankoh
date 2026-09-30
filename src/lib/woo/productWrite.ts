@@ -117,7 +117,6 @@ function readinessFactsFor(
     supplierSource: (over(patch.supplierSource, cf.supplierSource as string | null) ?? null) as string | null,
     sourceType: (over(patch.sourceType, cf.sourceType as string | null) ?? null) as string | null,
     costPrice: over(patch.costPrice, record.costPrice) ?? 0,
-    landedCost: over(patch.landedCost, record.landedCost) ?? 0,
     usInventory: (patch.usInventory !== undefined ? patch.usInventory : (cf.usInventory as boolean | null)) ?? undefined,
     stockStatus: readinessStock(over(patch.stockStatus, record.stockStatus as string | null)),
     inventoryQty: over(patch.stockQuantity, record.stockQuantity) ?? 0,

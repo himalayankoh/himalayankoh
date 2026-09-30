@@ -153,6 +153,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       name: record.name,
       category: record.categoryNames[0] ?? '',
       description: record.description,
+      ownerApproved: (record.consoleFields as { nicheApproved?: unknown }).nicheApproved === true,
     });
     return NextResponse.json({
       product: record,
