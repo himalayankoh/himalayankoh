@@ -33,6 +33,7 @@ import {
   type AdminVariationPatch,
 } from '@/lib/woo/productPayload';
 import { readProductStatusField } from '@/lib/woo/productStatus';
+import { isNicheProduct } from '@/lib/catalog/niche';
 
 /**
  * Keys this route hands to the mapper.
@@ -142,8 +143,20 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         record.sku = firstSku;
       }
     }
+    // The storefront niche verdict for this product, so the editor can say
+    // whether the shop withholds it for its copy — a blocker independent of
+    // readiness. Computed here (server-only) so the denylist never ships to a
+    // browser bundle.
+    const offNiche = !isNicheProduct({
+      id: record.id,
+      sku: record.sku,
+      name: record.name,
+      category: record.categoryNames[0] ?? '',
+      description: record.description,
+    });
     return NextResponse.json({
       product: record,
+      offNiche,
       variations,
     });
   } catch (error) {

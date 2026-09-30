@@ -327,6 +327,13 @@ function buildProduct(input: {
   updatedAt: string | null;
   metaTitle?: string | null;
   metaDescription?: string | null;
+  /** Commerce-readiness facts the public contract reads — see `data/products`. */
+  commerceReadiness?: string | null;
+  supplierSource?: string | null;
+  costPrice?: number | null;
+  usInventory?: boolean | null;
+  riskFlags?: string[] | null;
+  safetyReviewStatus?: string | null;
 }): Product {
   const price = priceDisplayFromRange(input.priceMin, input.priceMax);
   const images = resolveCuratedProductImages(input.slug, input.sku, input.images);
@@ -351,6 +358,12 @@ function buildProduct(input: {
     updatedAt: input.updatedAt,
     metaTitle: input.metaTitle ?? undefined,
     metaDescription: input.metaDescription ?? undefined,
+    commerceReadiness: input.commerceReadiness ?? null,
+    supplierSource: input.supplierSource ?? null,
+    costPrice: input.costPrice ?? null,
+    usInventory: input.usInventory ?? null,
+    riskFlags: input.riskFlags ?? [],
+    safetyReviewStatus: input.safetyReviewStatus ?? null,
     missing: collectMissingCatalogFields({
       priceMin: input.priceMin,
       sku: input.sku,
@@ -368,6 +381,43 @@ function extractMetaString(
   if (!entry || entry.value === undefined || entry.value === null) return null;
   const str = String(entry.value).trim();
   return str || null;
+}
+
+/**
+ * The console meta keys the storefront's public policy reads.
+ *
+ * Mirrors the relevant rows of `CONSOLE_META_FIELDS` (`lib/woo/productPayload.ts`),
+ * which is the one table that says where each console field lives on the store.
+ * Kept as a local map because this module reads meta on the hot catalog path and
+ * must not pull the whole console field table into the storefront read.
+ */
+const CONSOLE_META_KEYS = {
+  commerceReadiness: '_himalayan_koh_commerce_readiness',
+  supplierSource: '_himalayan_koh_supplier_source',
+  costPrice: '_himalayan_koh_cost_price',
+  usInventory: '_himalayan_koh_us_inventory',
+  riskFlags: '_himalayan_koh_risk_flags',
+  safetyReviewStatus: '_himalayan_koh_safety_review_status',
+} as const;
+
+/** A JSON-string list console meta field (see `fromConsoleMetaValue`), or []. */
+function parseStringListMeta(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return value.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+}
+
+/** A boolean console meta field, read the way `fromConsoleMetaValue` reads it. */
+function parseYesNoMeta(value: string | null): boolean | null {
+  if (value === null) return null;
+  const v = value.trim().toLowerCase();
+  if (v === 'yes' || v === 'true' || v === '1') return true;
+  if (v === 'no' || v === 'false' || v === '0') return false;
+  return null;
 }
 
 /**
@@ -478,6 +528,16 @@ export function mapRestV3Product(raw: RestV3Product): Product {
     updatedAt: raw.date_modified_gmt ?? null,
     metaTitle: yoastTitle,
     metaDescription: yoastDesc,
+    // The console's own readiness facts, read back from the same `meta_data` the
+    // admin editor writes (`CONSOLE_META_FIELDS`). Store API and WP-core reads
+    // carry no meta, so those answers stay null — which the storefront policy
+    // reads as "never classified", the same as the console does.
+    commerceReadiness: extractMetaString(raw.meta_data, CONSOLE_META_KEYS.commerceReadiness),
+    supplierSource: extractMetaString(raw.meta_data, CONSOLE_META_KEYS.supplierSource),
+    costPrice: parseMajorUnitPrice(extractMetaString(raw.meta_data, CONSOLE_META_KEYS.costPrice) ?? undefined),
+    usInventory: parseYesNoMeta(extractMetaString(raw.meta_data, CONSOLE_META_KEYS.usInventory)),
+    riskFlags: parseStringListMeta(extractMetaString(raw.meta_data, CONSOLE_META_KEYS.riskFlags)),
+    safetyReviewStatus: extractMetaString(raw.meta_data, CONSOLE_META_KEYS.safetyReviewStatus),
   });
 }
 

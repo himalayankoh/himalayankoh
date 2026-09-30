@@ -134,6 +134,25 @@ export interface Product {
   updatedAt?: string | null;
   /** Catalog fields the source could not supply. Empty/absent means complete. */
   missing?: string[];
+  /**
+   * The store's commerce-readiness stamp for this product, when it holds one.
+   *
+   * Carried onto the storefront model so the public read can enforce the same
+   * contract the admin console shows (`content/productEligibility.ts`). Absent
+   * means the store never classified the row — the console treats that as ready
+   * (own-stock/legacy lines), and so does the storefront (`storefrontListing`).
+   */
+  commerceReadiness?: string | null;
+  /** supplier_source meta, used by the contract's manufacturer-page guard. */
+  supplierSource?: string | null;
+  /** Verified supplier cost. Absent/null when the store holds no cost basis. */
+  costPrice?: number | null;
+  /** Real US inventory evidence for the product's list. */
+  usInventory?: boolean | null;
+  /** Risk flags the importer recorded (ingestible, battery, IP, …). */
+  riskFlags?: string[] | null;
+  /** The recorded safety-review outcome that clears a risk hold. */
+  safetyReviewStatus?: string | null;
 }
 
 export interface GalleryImage {

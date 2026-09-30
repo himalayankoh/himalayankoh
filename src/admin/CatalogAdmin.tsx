@@ -39,6 +39,7 @@ import {
   COMMERCE_READINESS_LABELS, SOURCE_TYPE_LABELS, INVENTORY_SOURCE_LABELS,
   type CommerceReadiness,
 } from '../features/catalog/commerceReadiness';
+import { commerceReadinessChecklist } from '../features/catalog/readinessChecklist';
 import { SUPPLIER_SOURCE_PRESETS, supplierSearchUrl } from '../features/catalog/supplierSource';
 import { getAutoPublishEnabled, setAutoPublishEnabled } from '../features/catalog/autoPublish';
 import { generateSeoJson } from '../features/ai/seo';
@@ -158,6 +159,110 @@ function VisibilityBadge({ product }: { product: CatalogProduct }) {
 function ReadinessBadge({ readiness }: { readiness?: CommerceReadiness | null }) {
   if (!readiness) return <span className="text-xs text-gray-300">—</span>;
   return <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${READINESS_BADGE[readiness] || BADGE.draft}`}>{COMMERCE_READINESS_LABELS[readiness] || readiness}</span>;
+}
+
+/**
+ * The per-field readiness checklist.
+ *
+ * Replaces the old single-word verdict ("Economics Pending") with every
+ * prerequisite the storefront asks, each marked satisfied or not, and names the
+ * exact field that blocks the listing. It also carries the explicit risk-review
+ * approval, because a flagged product's public-listing decision must be a
+ * recorded human act — never a side effect of entering economics.
+ */
+function ReadinessChecklistPanel({
+  product,
+  onSet,
+}: {
+  product: CatalogProduct;
+  onSet: <K extends keyof CatalogProduct>(k: K, v: CatalogProduct[K]) => void;
+}) {
+  const { items, blockers, ready } = commerceReadinessChecklist({
+    status: product.status,
+    slug: product.slug,
+    name: product.name,
+    description: product.description,
+    shortDescription: product.shortDescription,
+    price: product.price,
+    images: product.images.map((img) => img.url),
+    supplierSource: product.supplierSource,
+    sourceType: product.sourceType,
+    costPrice: product.costPrice,
+    landedCost: product.landedCost,
+    usInventory: product.usInventory,
+    stockStatus: product.stockStatus,
+    inventoryQty: product.inventoryQty,
+    riskFlags: product.riskFlags,
+    safetyReviewStatus: product.safetyReviewStatus,
+    commerceReadiness: product.commerceReadiness,
+    offNiche: product.isOffNiche,
+  });
+  const flagged = (product.riskFlags || []).filter(Boolean);
+
+  return (
+    <div className="bg-white border rounded-xl p-5 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-gray-800">Storefront readiness checklist</h3>
+          <p className="text-xs text-gray-500">Every prerequisite the storefront checks. Nothing is listed until all of them are satisfied.</p>
+        </div>
+        <span className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold ${ready ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+          {ready ? 'Ready to list' : `${blockers.length} blocking`}
+        </span>
+      </div>
+
+      <ul className="divide-y divide-gray-100">
+        {items.map((item) => (
+          <li key={item.key} className="flex items-start gap-2.5 py-2">
+            {item.state === 'ok' ? (
+              <CheckCircle size={16} weight="bold" className="mt-0.5 shrink-0 text-emerald-600" />
+            ) : item.state === 'blocked' ? (
+              <X size={16} weight="bold" className="mt-0.5 shrink-0 text-red-500" />
+            ) : (
+              <Warning size={16} weight="bold" className="mt-0.5 shrink-0 text-amber-500" />
+            )}
+            <div className="min-w-0">
+              <p className={`text-sm font-medium ${item.blocking ? 'text-gray-900' : 'text-gray-600'}`}>{item.label}</p>
+              <p className="text-xs text-gray-500">{item.detail}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {flagged.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+          <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5"><Warning size={14} />Risk review — explicit admin approval required</p>
+          <p className="text-xs text-amber-700">
+            {flagged.join('; ')} — a flagged product stays off the storefront until an admin records an approval here. Approving records the decision; it never removes the flag.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onSet('safetyReviewStatus', 'APPROVED_FOR_SALE')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${product.safetyReviewStatus === 'APPROVED_FOR_SALE' ? 'bg-emerald-600 text-white' : 'bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-50'}`}
+            >
+              Approve for sale
+            </button>
+            <button
+              type="button"
+              onClick={() => onSet('safetyReviewStatus', 'HOLD')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${product.safetyReviewStatus === 'HOLD' ? 'bg-amber-500 text-white' : 'bg-white border border-amber-300 text-amber-700 hover:bg-amber-50'}`}
+            >
+              Hold
+            </button>
+            <button
+              type="button"
+              onClick={() => onSet('safetyReviewStatus', 'BLOCKED')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${product.safetyReviewStatus === 'BLOCKED' ? 'bg-red-600 text-white' : 'bg-white border border-red-300 text-red-700 hover:bg-red-50'}`}
+            >
+              Block
+            </button>
+            <span className="text-[11px] text-amber-700">Current: {product.safetyReviewStatus || 'PENDING_REVIEW'} — save to apply.</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // eBay-style listing age from the genuine first-live date (published_at),
@@ -2255,6 +2360,12 @@ export function CatalogProductEditor() {
         if (dirtyFields.has('supplierUrl')) patch.supplierUrl = currentProduct.supplierUrl;
         if (dirtyFields.has('supplierStockStatus')) patch.supplierStockStatus = currentProduct.supplierStockStatus;
         if (dirtyFields.has('riskFlags')) patch.riskFlags = currentProduct.riskFlags;
+        // The explicit risk-review decision and the safety classification it
+        // belongs to. Without these, the approval button changed nothing on the
+        // store, so a flagged product could never actually be cleared.
+        if (dirtyFields.has('safetyReviewStatus')) patch.safetyReviewStatus = currentProduct.safetyReviewStatus;
+        if (dirtyFields.has('safetyClass')) patch.safetyClass = currentProduct.safetyClass;
+        if (dirtyFields.has('intendedSpecies')) patch.intendedSpecies = currentProduct.intendedSpecies;
         if (dirtyFields.has('tags')) patch.tags = currentProduct.tags;
         if (dirtyFields.has('featured')) patch.featured = currentProduct.featured;
         if (dirtyFields.has('newArrival')) patch.newArrival = currentProduct.newArrival;
@@ -2822,6 +2933,8 @@ export function CatalogProductEditor() {
                 </div>
               </details>
             </div>
+
+            <ReadinessChecklistPanel product={p} onSet={set} />
           </div>
         )}
 

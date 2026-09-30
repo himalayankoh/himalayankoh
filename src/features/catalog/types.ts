@@ -110,6 +110,13 @@ export interface CatalogProduct {
   supplierUrl?: string | null;
   supplierStockStatus?: string | null;
   riskFlags?: string[];
+  /**
+   * The storefront niche guard's verdict for this product, computed server-side
+   * on the admin read. True means the name or copy names the animal-feed trade
+   * and the shop withholds it whatever its readiness — the other, independent
+   * reason a product is not public.
+   */
+  isOffNiche?: boolean;
   tags: string[];
   featured: boolean;
   newArrival: boolean;

@@ -26,6 +26,7 @@
 
 import { cache } from 'react';
 import type { Product } from '../../data/products';
+import { storefrontListingReason } from '../../features/catalog/storefrontListing';
 import { countOffNicheProducts, filterNicheProducts, isNicheProduct } from '../catalog/niche';
 import {
   readCatalogProductBySlug,
@@ -73,19 +74,36 @@ export const STOREFRONT_READ_TTL_SECONDS = 60;
  * the owner learns from the storefront's own log that a product needs fixing
  * instead of wondering why a listing disappeared.
  */
-function scopeToNiche(result: CatalogResult): CatalogResult {
-  const excluded = countOffNicheProducts(result.products);
-  if (excluded === 0) return result;
+function scopeToStorefront(result: CatalogResult): CatalogResult {
+  // Two policies, both enforced here and nowhere else the public can reach:
+  //   1. the niche guard — *what the shop sells*;
+  //   2. the shared public contract — *whether the commerce facts are verified*.
+  // The second was documented as the PDP's fail-closed gate but was never wired
+  // into this read, so a product stamped RISK_REVIEW was served to customers
+  // while the console counted it as not listable. Now one read decides both.
+  const nicheExcluded = countOffNicheProducts(result.products);
+  const nicheKept = filterNicheProducts(result.products);
+  const readinessWithheld = nicheKept.filter((p) => storefrontListingReason(p) !== null);
+  if (nicheExcluded === 0 && readinessWithheld.length === 0) return result;
 
-  const products = filterNicheProducts(result.products);
+  const products = nicheKept.filter((p) => storefrontListingReason(p) === null);
+  const withheld = nicheExcluded + readinessWithheld.length;
+  const warnings = [...result.warnings];
+  if (nicheExcluded > 0) {
+    warnings.push(
+      `${nicheExcluded} product${nicheExcluded === 1 ? '' : 's'} outside the Himalayan pink salt niche ${nicheExcluded === 1 ? 'was' : 'were'} withheld from the storefront. Archive them in WooCommerce to remove this notice — see docs/HIMALAYAN-PINK-SALT-NICHE-AUDIT.md.`,
+    );
+  }
+  if (readinessWithheld.length > 0) {
+    warnings.push(
+      `${readinessWithheld.length} product${readinessWithheld.length === 1 ? '' : 's'} ${readinessWithheld.length === 1 ? 'was' : 'were'} withheld because commerce readiness is incomplete (source, cost, fulfillment or risk review). Finish the readiness checklist in the admin console to list them.`,
+    );
+  }
   return {
     products,
-    count: Math.max(0, result.count - excluded),
+    count: Math.max(0, result.count - withheld),
     degraded: result.degraded,
-    warnings: [
-      ...result.warnings,
-      `${excluded} product${excluded === 1 ? '' : 's'} outside the Himalayan pink salt niche ${excluded === 1 ? 'was' : 'were'} withheld from the storefront. Archive them in WooCommerce to remove this notice — see docs/HIMALAYAN-PINK-SALT-NICHE-AUDIT.md.`,
-    ],
+    warnings,
   };
 }
 
@@ -124,9 +142,9 @@ const readCatalogForRequest = cache(async (key: string): Promise<CatalogResult> 
   })
 );
 
-/** The storefront's catalog: the source's catalog, scoped to the store's niche. */
+/** The storefront's catalog: the source's catalog, scoped to the shop's policies. */
 export async function getCatalogProducts(query: CatalogQuery = {}): Promise<CatalogResult> {
-  return scopeToNiche(await readCatalogForRequest(catalogQueryKey(query)));
+  return scopeToStorefront(await readCatalogForRequest(catalogQueryKey(query)));
 }
 
 /**
@@ -143,16 +161,19 @@ export async function getCatalogProducts(query: CatalogQuery = {}): Promise<Cata
 const lookupProductForRequest = cache(async (slug: string): Promise<CatalogLookup> => {
   const lookup = await readCatalogProductBySlug(slug, undefined, STOREFRONT_READ_TTL_SECONDS);
 
-  if (
-    lookup.product &&
-    !isNicheProduct({
-      id: lookup.product.id,
-      sku: lookup.product.sku,
-      name: lookup.product.name,
-      category: lookup.product.category,
-      description: lookup.product.description,
-    })
-  ) {
+  if (!lookup.product) return lookup;
+
+  const offNiche = !isNicheProduct({
+    id: lookup.product.id,
+    sku: lookup.product.sku,
+    name: lookup.product.name,
+    category: lookup.product.category,
+    description: lookup.product.description,
+  });
+  // The PDP answers to both policies, exactly as the list read does: an off-niche
+  // product, or one whose commerce facts are not verified, resolves to nothing
+  // rather than to itself.
+  if (offNiche || storefrontListingReason(lookup.product) !== null) {
     return { product: null, related: [], provenance: null, error: lookup.error };
   }
 
@@ -180,7 +201,9 @@ const readFeaturedForRequest = cache(async (limit: number): Promise<Product[]> =
     isFeatured: true,
     revalidate: STOREFRONT_READ_TTL_SECONDS,
   });
-  return filterNicheProducts(products).slice(0, limit);
+  return filterNicheProducts(products)
+    .filter((p) => storefrontListingReason(p) === null)
+    .slice(0, limit);
 });
 
 export async function getFeaturedCatalogProducts(limit = 4): Promise<Product[]> {

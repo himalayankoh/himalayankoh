@@ -309,6 +309,14 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     supplierUrl: asText(cf.supplierUrl),
     supplierStockStatus: asText(cf.supplierStockStatus) ?? 'in_stock',
     riskFlags: asTextList(cf.riskFlags) ?? [],
+    // Server-computed niche verdict, when the read that produced this row
+    // carried one (the admin list/row reads do). Absent on the single-product
+    // DTO, where the editor's checklist simply omits the niche line.
+    isOffNiche: typeof r.isOffNiche === 'boolean'
+      ? r.isOffNiche
+      : typeof r.offNiche === 'boolean'
+        ? r.offNiche
+        : undefined,
     tags: parseTagList(r.tags),
     featured: !!r.featured,
     newArrival: asBool(cf.newArrival) ?? false,
@@ -432,8 +440,10 @@ export async function getProduct(id: string, forceFresh = false): Promise<Catalo
 
   if (isWooId(id)) {
     try {
-      const json = await adminJson<{ product?: Record<string, unknown> }>(`/api/admin/products/${id}`);
-      return json.product ? catalogRowToProduct(json.product) : null;
+      const json = await adminJson<{ product?: Record<string, unknown>; offNiche?: boolean }>(`/api/admin/products/${id}`);
+      // `offNiche` rides beside the record on this route; fold it in so the
+      // editor's readiness checklist can name the niche blocker.
+      return json.product ? catalogRowToProduct({ ...json.product, offNiche: json.offNiche }) : null;
     } catch {
       return null;
     }

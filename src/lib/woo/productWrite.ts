@@ -20,6 +20,11 @@
 import { wordpressRequest } from '../backend/wordpress';
 import { requireWooCredentials } from '../backend/credentials';
 import { purgePublicProduct, slugOf } from '../backend/publicCache';
+import {
+  READINESS_RELEVANT_FIELDS,
+  reconcileCommerceReadiness,
+  type ReadinessFacts,
+} from '../../features/catalog/commerceReadiness';
 import { attachExistingMedia } from './productImageAttachments';
 import {
   fromWooProduct,
@@ -80,6 +85,62 @@ export function ignoredOnVariable(patch: AdminProductPatch): Array<{ field: stri
 
 function asRecord(row: WooProductLike): AdminProductRecord {
   return fromWooProduct(row);
+}
+
+/** The console's listing word → the readiness engine's. */
+function readinessStatus(status: string | undefined | null): string {
+  return status === 'publish' || status === 'published' || status === 'active' ? 'published' : 'draft';
+}
+
+/** Woo's stock word → the readiness engine's. */
+function readinessStock(status: string | undefined | null): string {
+  return status === 'instock' || status === 'in_stock' ? 'in_stock' : String(status ?? 'unknown');
+}
+
+/**
+ * The readiness facts for a product about to be written: the store's own record
+ * with the incoming patch laid over it.
+ *
+ * Where a patch field is absent the record's value stands, so reconciling after
+ * an unrelated edit sees the product as it really is and cannot invent a
+ * downgrade.
+ */
+function readinessFactsFor(
+  record: AdminProductRecord,
+  patch: AdminProductPatch,
+): ReadinessFacts {
+  const cf = record.consoleFields as Record<string, unknown>;
+  const over = <T,>(patched: T | undefined, stored: T | null | undefined): T | null =>
+    patched !== undefined ? patched : (stored ?? null);
+  return {
+    status: readinessStatus(over(patch.status, record.status as string | null)),
+    supplierSource: (over(patch.supplierSource, cf.supplierSource as string | null) ?? null) as string | null,
+    sourceType: (over(patch.sourceType, cf.sourceType as string | null) ?? null) as string | null,
+    costPrice: over(patch.costPrice, record.costPrice) ?? 0,
+    landedCost: over(patch.landedCost, record.landedCost) ?? 0,
+    usInventory: (patch.usInventory !== undefined ? patch.usInventory : (cf.usInventory as boolean | null)) ?? undefined,
+    stockStatus: readinessStock(over(patch.stockStatus, record.stockStatus as string | null)),
+    inventoryQty: over(patch.stockQuantity, record.stockQuantity) ?? 0,
+    riskFlags: (patch.riskFlags !== undefined ? patch.riskFlags : (cf.riskFlags as string[] | null)) ?? [],
+    safetyReviewStatus: (over(patch.safetyReviewStatus, cf.safetyReviewStatus as string | null) ?? null) as string | null,
+  };
+}
+
+/**
+ * The readiness value this write should persist, or `undefined` for no change.
+ *
+ * Called on every update so the stored stamp can actually follow the facts — the
+ * half of the workflow that was missing (see `reconcileCommerceReadiness`).
+ */
+export function readinessPatchFor(
+  record: AdminProductRecord,
+  patch: AdminProductPatch,
+): string | undefined {
+  const relevant = READINESS_RELEVANT_FIELDS.some(
+    (field) => (patch as Record<string, unknown>)[field] !== undefined,
+  );
+  const stored = (record.consoleFields as Record<string, unknown>).commerceReadiness as string | null | undefined;
+  return reconcileCommerceReadiness(readinessFactsFor(record, patch), stored, relevant) ?? undefined;
 }
 
 /** Reads one product (any status) with credentials. Throws on 404 as a write error. */
@@ -193,6 +254,12 @@ export async function updateWooProduct(
 
   // Build clean patch for parent product
   const parentPatch: AdminProductPatch = { ...(isVariable ? stripVariableParentFields(patch) : patch) };
+
+  // Recompute the readiness stamp from the merged facts, in the same write, so a
+  // genuinely-economics-complete product stops reading ECONOMICS_PENDING without
+  // a second hidden step — and an unresolved risk hold is never auto-cleared.
+  const reconciledReadiness = readinessPatchFor(fromWooProduct(existing), patch);
+  if (reconciledReadiness) parentPatch.commerceReadiness = reconciledReadiness;
 
   // Handle SKU ownership and uniqueness:
   //

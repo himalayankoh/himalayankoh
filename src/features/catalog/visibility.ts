@@ -43,6 +43,8 @@ export function publicFactsFor(p: CatalogProduct): PublicProductFacts {
     us_inventory: p.usInventory,
     stock_status: p.stockStatus,
     inventory_qty: p.inventoryQty,
+    risk_flags: p.riskFlags ?? [],
+    safety_review_status: p.safetyReviewStatus ?? null,
   };
 }
 
