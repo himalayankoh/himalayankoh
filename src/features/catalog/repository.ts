@@ -96,7 +96,14 @@ async function adminJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, headers: { ...(await adminHeaders()), ...(init?.headers || {}) } });
   const body = (await response.json().catch(() => ({}))) as { error?: string };
   if (!response.ok) {
-    throw new Error(body.error || `${path} answered HTTP ${response.status}.`);
+    if (body.error) throw new Error(body.error);
+    // A gateway or runtime failure answers with an HTML error page rather than
+    // JSON, so there is no message to pass on. Say what is safe and useful — the
+    // save did not happen — instead of leaving the owner with a bare status.
+    const gateway = response.status >= 500
+      ? ' The store gateway failed, so the change was not saved — try again in a moment.'
+      : '';
+    throw new Error(`${path} answered HTTP ${response.status}.${gateway}`);
   }
   return body as T;
 }
@@ -202,10 +209,17 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
   const categoryIds = Array.isArray(r.categoryIds)
     ? (r.categoryIds as unknown[]).map(String).filter(Boolean)
     : [];
-  const catId = categoryIds[0]
-    ?? (typeof r.categoryId === 'number' || typeof r.categoryId === 'string'
-      ? String(r.categoryId)
-      : `cat-${catName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`);
+  // Only a numeric value is a term id. The list read reports the category *name*
+  // in `categoryId` (its facet id), and treating that as an id put a value in the
+  // selector that no option matched — so the row's category rendered blank and an
+  // edit looked like it had started from no category at all. A name is kept for
+  // display (`categoryName`) and never offered as the id.
+  const numericCategoryId = typeof r.categoryId === 'number'
+    ? String(r.categoryId)
+    : typeof r.categoryId === 'string' && /^\d+$/.test(r.categoryId.trim())
+      ? r.categoryId.trim()
+      : null;
+  const catId = categoryIds[0] ?? numericCategoryId ?? '';
   const trackInventory = typeof r.trackInventory === 'boolean'
     ? r.trackInventory
     : (typeof r.manageStock === 'boolean' ? r.manageStock : false);
@@ -609,9 +623,28 @@ function toWooPatch(input: Partial<ProductInput>): Record<string, unknown> {
   set('tags', input.tags);
   set('seoKeywords', input.seoKeywords);
   if (input.status !== undefined) set('status', wooStatus(input.status));
-  if (input.categoryId) {
-    const numeric = Number(input.categoryId);
-    if (Number.isFinite(numeric) && numeric > 0) set('categoryIds', [numeric]);
+  // A category edit always names the whole category set (this catalogue keeps
+  // one shelf per product), and `undefined` is the only value that means "leave
+  // it alone". An explicit blank is the owner clearing the category — silently
+  // dropping it reported "Category cleared" while the store still held the old
+  // term — and a value that is not a term id is refused here rather than sent as
+  // something WooCommerce cannot resolve (which is what a category *name* being
+  // passed where an id belongs used to do, invisibly).
+  if (input.categoryId !== undefined) {
+    const raw: unknown = input.categoryId;
+    const text = typeof raw === 'string' ? raw.trim() : raw;
+    if (text === null || text === '') {
+      set('categoryIds', []);
+    } else {
+      const numeric = Number(text);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        set('categoryIds', [numeric]);
+      } else {
+        throw new Error(
+          `"${String(raw)}" is not a category the store holds. Pick a category from the list — nothing was saved.`,
+        );
+      }
+    }
   }
   if (input.specifications !== undefined) {
     const specs = asRecord(input.specifications);

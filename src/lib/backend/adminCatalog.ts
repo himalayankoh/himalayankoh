@@ -65,8 +65,27 @@ export interface AdminCatalogRow {
    */
   consoleFields: Record<string, unknown>;
   categoryName: string | null;
+  /**
+   * The source's own numeric category term id(s) — what a write must carry.
+   *
+   * `categoryId` below is the *facet* id (a name on this source) and exists for
+   * the filter dropdown; a write needs the store's term id. They are different
+   * values and were conflated: the console read only had the name, so every
+   * row's category selector rendered blank and a category edit had no id to
+   * send. Empty when the read that produced the row cannot report term ids.
+   */
+  categoryIds: string[];
   /** The source's own facet id for the category — see `AdminCatalogFacet`. */
   categoryId: string | null;
+  /**
+   * The store's SEO fields, as it holds them. Null/empty means the store has no
+   * value — never a fabricated default, which is what made every imported
+   * product read as "SEO: None" while the store actually held Yoast meta.
+   */
+  seoTitle: string | null;
+  seoDescription: string | null;
+  seoKeywords: string[];
+  canonicalSlug: string | null;
   /** Display string, e.g. "$9.95". Empty when the source reported no price. */
   price: string;
   priceMin: number | null;
@@ -193,7 +212,15 @@ export function rowFromCatalogProduct(product: CatalogProduct): AdminCatalogRow 
     // nothing to report rather than a default to invent.
     consoleFields: {},
     categoryName,
+    categoryIds: [],
     categoryId: categoryName,
+    // The public read this row came from reports no product meta, so the store's
+    // SEO values are genuinely absent here rather than defaulted; the admin read
+    // overlays them (`applyStoreRecord`) whenever it has the product.
+    seoTitle: null,
+    seoDescription: null,
+    seoKeywords: [],
+    canonicalSlug: null,
     // This row came from the public read, which returns published products only,
     // so it is live — that is a fact about the read, not an assumption.
     status: 'publish',
@@ -253,7 +280,12 @@ export function rowFromWooAdminProduct(record: AdminProductRecord): AdminCatalog
     storefrontDefaultImages: record.storefrontDefaultImages ?? [],
     consoleFields: record.consoleFields ?? {},
     categoryName,
+    categoryIds: record.categoryIds.map(String),
     categoryId: categoryName,
+    seoTitle: record.seoTitle,
+    seoDescription: record.seoDescription,
+    seoKeywords: record.seoKeywords,
+    canonicalSlug: record.canonicalSlug,
     price: record.price === null ? '' : `$${record.price.toFixed(2)}`,
     priceMin: record.price,
     priceMax: null,
@@ -347,23 +379,60 @@ function facetsFromRows(rows: AdminCatalogRow[]): AdminCatalogFacet[] {
  * A failure here degrades the page with a stated reason rather than hiding it:
  * the published catalog is still listed, and the warning says what is missing.
  */
-async function readUnlistedProducts(): Promise<{ rows: AdminCatalogRow[]; error: string | null }> {
+async function readUnlistedProducts(): Promise<{
+  rows: AdminCatalogRow[];
+  /** Every product the authenticated read returned, by id — see `applyStoreRecord`. */
+  byId: Map<number, AdminProductRecord>;
+  error: string | null;
+}> {
   try {
     const products = await listWooProducts({ status: 'any', perPage: WORDPRESS_MAX_PER_PAGE });
+    const records = products.filter((row) => row.status !== 'trash').map(fromWooProduct);
+    // The same records serve two purposes: the drafts/archived rows this list
+    // adds, and the taxonomy term ids + SEO the published rows are missing from
+    // the public read. Reading them once keeps the two in step by construction.
+    const byId = new Map(records.map((record) => [record.id, record]));
     return {
-      rows: products
-        .filter((row) => row.status !== 'trash')
-        .map(fromWooProduct)
+      rows: records
         .filter((record) => !isPublicWooStatus(record.status))
         .map(rowFromWooAdminProduct),
+      byId,
       error: null,
     };
   } catch (error) {
     return {
       rows: [],
+      byId: new Map(),
       error: error instanceof Error ? error.message : 'the store did not answer',
     };
   }
+}
+
+/**
+ * One row, with the store's own record laid over the read that produced it.
+ *
+ * The public read is what the storefront uses: it carries price, stock, imagery
+ * and the niche flags, but no taxonomy term ids and no product meta. The admin
+ * console edits the same products, so where the authenticated read has the
+ * record it fills in exactly what the public read cannot report — the numeric
+ * category ids a write needs, the SEO fields, the console-owned meta — and
+ * leaves everything else as the storefront read reported it.
+ *
+ * Exported so the overlay can be pinned in a test without standing up two live
+ * reads.
+ */
+export function applyStoreRecord(row: AdminCatalogRow, record: AdminProductRecord): AdminCatalogRow {
+  return {
+    ...row,
+    categoryIds: record.categoryIds.length ? record.categoryIds.map(String) : row.categoryIds,
+    consoleFields: Object.keys(record.consoleFields).length ? record.consoleFields : row.consoleFields,
+    seoTitle: record.seoTitle,
+    seoDescription: record.seoDescription,
+    seoKeywords: record.seoKeywords,
+    canonicalSlug: record.canonicalSlug,
+    status: record.status,
+    isListed: record.isListed,
+  };
 }
 
 async function wooPage(query: AdminCatalogQuery, shared?: CatalogRead): Promise<AdminCatalogPage> {
@@ -392,7 +461,13 @@ async function wooPage(query: AdminCatalogQuery, shared?: CatalogRead): Promise<
     );
   }
 
-  const allRows = [...read.products.map(rowFromCatalogProduct), ...unlisted.rows];
+  const allRows = [
+    ...read.products.map(rowFromCatalogProduct).map((row) => {
+      const record = unlisted.byId.get(Number(row.id));
+      return record ? applyStoreRecord(row, record) : row;
+    }),
+    ...unlisted.rows,
+  ];
   if (allRows.length >= WORDPRESS_MAX_PER_PAGE) {
     warnings.push(
       `Only the first ${WORDPRESS_MAX_PER_PAGE} products were read: WordPress returns no more than that in one request, so this list may be incomplete.`

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Product as CatalogProduct } from '../../data/products';
 import { fromWooProduct } from '../woo/productPayload';
 import {
+  applyStoreRecord,
   rowFromCatalogProduct,
   rowFromWooAdminProduct,
   sortAdminCatalogRows,
@@ -80,6 +81,81 @@ describe('rowFromCatalogProduct', () => {
     const row = rowFromCatalogProduct(catalogProduct());
 
     expect(row.source).toBe('woocommerce');
+  });
+
+  it('reports no term ids and no SEO, because the public read carries neither', () => {
+    const row = rowFromCatalogProduct(catalogProduct());
+
+    expect(row.categoryIds).toEqual([]);
+    expect(row.seoTitle).toBeNull();
+    expect(row.seoDescription).toBeNull();
+    expect(row.seoKeywords).toEqual([]);
+    expect(row.canonicalSlug).toBeNull();
+  });
+});
+
+/**
+ * The bug these pin, measured on staging: every imported product's row showed
+ * `SEO: None` and a blank category, while the store held Yoast meta and real
+ * term ids. The console read published products through the storefront's public
+ * read, which reports neither, and its `categoryId` was the facet *name* — a
+ * value no category option (all numeric) could match.
+ */
+describe('applyStoreRecord', () => {
+  it('fills the numeric term ids and SEO the public read cannot report', () => {
+    const row = rowFromCatalogProduct(catalogProduct({ id: 2704, category: 'Edible Pink Salt' }));
+    expect(row.categoryId).toBe('Edible Pink Salt');
+
+    const record = fromWooProduct({
+      id: 2704,
+      name: 'Edible Pink Salt',
+      slug: 'edible-pink-salt',
+      status: 'publish',
+      categories: [{ id: 121, name: 'Edible Pink Salt' }],
+      meta_data: [
+        { key: '_yoast_wpseo_title', value: 'Edible Pink Salt | Himalayan Koh' },
+        { key: '_yoast_wpseo_metadesc', value: 'Fine grain edible pink salt.' },
+        { key: '_himalayan_koh_seo_keywords', value: '["pink salt","edible"]' },
+      ],
+    });
+
+    const enriched = applyStoreRecord(row, record);
+
+    expect(enriched.categoryIds).toEqual(['121']);
+    expect(enriched.seoTitle).toBe('Edible Pink Salt | Himalayan Koh');
+    expect(enriched.seoDescription).toBe('Fine grain edible pink salt.');
+    expect(enriched.seoKeywords).toEqual(['pink salt', 'edible']);
+    // The facet id keeps the storefront read's value: the console's category
+    // *filter* is built from those names and must not change shape here.
+    expect(enriched.categoryId).toBe('Edible Pink Salt');
+    expect(enriched.categoryName).toBe('Edible Pink Salt');
+  });
+
+  it('leaves the row alone when the store record has no term ids of its own', () => {
+    const row = rowFromCatalogProduct(catalogProduct({ id: 1, category: 'Salt Licks' }));
+    const record = fromWooProduct({ id: 1, name: 'Lick', slug: 'lick', status: 'publish' });
+
+    expect(applyStoreRecord(row, record).categoryIds).toEqual([]);
+  });
+});
+
+describe('rowFromWooAdminProduct — the data an edit needs', () => {
+  it('carries the store term ids and SEO, so a row it reports can be edited', () => {
+    const row = rowFromWooAdminProduct(
+      fromWooProduct({
+        id: 2716,
+        name: 'Bag of Himalayan Pink Salt',
+        slug: 'bag-of-himalayan-pink-salt',
+        status: 'draft',
+        categories: [{ id: 75, name: 'Uncategorized' }],
+        meta_data: [{ key: '_yoast_wpseo_title', value: 'Bag of Pink Salt' }],
+      })
+    );
+
+    expect(row.categoryIds).toEqual(['75']);
+    expect(row.seoTitle).toBe('Bag of Pink Salt');
+    expect(row.seoDescription).toBeNull();
+    expect(row.seoKeywords).toEqual([]);
   });
 });
 

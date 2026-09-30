@@ -407,6 +407,78 @@ describe('WooCommerce numeric ID routing', () => {
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
+    it('sends a category-only edit as the store term id and nothing else', async () => {
+      let capturedBody: Record<string, unknown> | null = null;
+      const mockFetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('/api/admin/products/2704') && init?.method === 'PUT') {
+          capturedBody = JSON.parse(init.body as string);
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ product: { id: 2704, name: 'Salt', slug: 'salt', status: 'publish' } }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({ ok: false, status: 404 } as unknown as Response);
+      });
+
+      vi.stubGlobal('fetch', mockFetch);
+
+      // An imported product with no SKU, no economics and a blank description:
+      // a category edit must not need any of them to be complete.
+      await updateProduct('2704', { categoryId: '121' });
+
+      expect(capturedBody).toEqual({ categoryIds: [121] });
+    });
+
+    it('sends an explicit clear when the category is removed', async () => {
+      let capturedBody: Record<string, unknown> | null = null;
+      const mockFetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (typeof url === 'string' && url.includes('/api/admin/products/2704') && init?.method === 'PUT') {
+          capturedBody = JSON.parse(init.body as string);
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ product: { id: 2704, name: 'Salt', slug: 'salt', status: 'publish' } }),
+          } as unknown as Response);
+        }
+        return Promise.resolve({ ok: false, status: 404 } as unknown as Response);
+      });
+
+      vi.stubGlobal('fetch', mockFetch);
+
+      await updateProduct('2704', { categoryId: null });
+
+      // Not dropped: a dropped clear reported "Category cleared" while the store
+      // still held the old term.
+      expect(capturedBody).toEqual({ categoryIds: [] });
+    });
+
+    it('refuses a category that is not a store term id, before any request', async () => {
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+
+      await expect(updateProduct('2704', { categoryId: 'Edible Pink Salt' })).rejects.toThrow(
+        /is not a category the store holds/,
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('explains a gateway failure instead of leaving a bare status code', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => {
+          throw new SyntaxError("Unexpected token '<'");
+        },
+      } as unknown as Response);
+
+      vi.stubGlobal('fetch', mockFetch);
+
+      await expect(updateProduct('2704', { categoryId: '121' })).rejects.toThrow(
+        /store gateway failed, so the change was not saved/,
+      );
+    });
+
     it('surfaces a field WooCommerce ignored as a failed save', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
