@@ -77,7 +77,9 @@ export const STOREFRONT_READ_TTL_SECONDS = 60;
 function scopeToStorefront(result: CatalogResult): CatalogResult {
   // Two policies, both enforced here and nowhere else the public can reach:
   //   1. the niche guard — *what the shop sells*;
-  //   2. the shared public contract — *whether the commerce facts are verified*.
+  //   2. the shared public contract — the manufacturer-reference rule and an
+  //      unapproved risk hold. (Supplier cost and a pending readiness word are
+  //      the owner's bookkeeping and withhold nothing; see the contract.)
   // The second was documented as the PDP's fail-closed gate but was never wired
   // into this read, so a product stamped RISK_REVIEW was served to customers
   // while the console counted it as not listable. Now one read decides both.
@@ -96,7 +98,7 @@ function scopeToStorefront(result: CatalogResult): CatalogResult {
   }
   if (readinessWithheld.length > 0) {
     warnings.push(
-      `${readinessWithheld.length} product${readinessWithheld.length === 1 ? '' : 's'} ${readinessWithheld.length === 1 ? 'was' : 'were'} withheld because commerce readiness is incomplete (source, cost, fulfillment or risk review). Finish the readiness checklist in the admin console to list them.`,
+      `${readinessWithheld.length} product${readinessWithheld.length === 1 ? '' : 's'} ${readinessWithheld.length === 1 ? 'was' : 'were'} withheld: a manufacturer/official reference page cannot be sold, and a product with an unapproved risk hold stays off the storefront until an admin records the decision in the admin console.`,
     );
   }
   return {
@@ -173,9 +175,11 @@ const lookupProductForRequest = cache(async (slug: string): Promise<CatalogLooku
   });
   // The PDP answers to both policies, exactly as the list read does: an off-niche
   // product, or one whose commerce facts are not verified, resolves to nothing
-  // rather than to itself.
+  // rather than to itself. `withheld` distinguishes a real record the shop is
+  // declining to show from a slug that was never a product, so the page can
+  // redirect the first and 404 the second.
   if (offNiche || storefrontListingReason(lookup.product) !== null) {
-    return { product: null, related: [], provenance: null, error: lookup.error };
+    return { product: null, related: [], provenance: null, error: lookup.error, withheld: true };
   }
 
   return lookup;

@@ -130,50 +130,48 @@ export function commerceReadinessChecklist(input: ReadinessChecklistInput): {
     blocking: !hasContent,
   });
 
-  // ---- Commerce readiness facts (the ECONOMICS_PENDING family) ----
+  // ---- Supplier trail + economics: the owner's own bookkeeping ----
   //
-  // The public contract short-circuits on a *declared* readiness: a product the
-  // store already holds as COMMERCE_READY is served without re-checking source,
-  // cost or fulfillment (that is how an own-stock line that never went through
-  // the workflow stays public). The checklist mirrors that exactly — otherwise
-  // it would show an own-stock product as blocked while the storefront serves it,
-  // which is the console/storefront disagreement this whole change removes.
-  const declaredReady = input.commerceReadiness === 'COMMERCE_READY';
-  const heldDetail = 'Not required — the store holds this product as commerce-ready.';
-
+  // These three rows are *informational*. Himalayan Koh sells its own stock: the
+  // owner sets the retail price, the shop's inventory is the supply, and shipping
+  // is priced at checkout by Shippo/USPS. So a missing supplier cost or a pending
+  // readiness stamp is never what keeps a product off the storefront — the
+  // contract withholds on exactly two things, the manufacturer/official reference
+  // rule and an unapproved risk hold, and this checklist mirrors it so the console
+  // and the storefront can never disagree. The rows stay because the owner still
+  // wants to see what they have recorded.
   const source = text(input.supplierSource);
   const sourceType = text(input.sourceType);
-  const referenceOnly = sourceType === 'RETAIL_REFERENCE_ONLY' || sourceType === 'UNKNOWN';
   const officialSource = /\bofficial\b|\bmanufacturer\b/i.test(source);
-  const sourceOk = !!source && !referenceOnly && !officialSource;
+  const ownStock = sourceType === 'OWNER_STOCK' || /^\s*own\s*stock\s*$/i.test(source);
   push({
     key: 'source',
     label: 'Purchasing path (supplier)',
-    state: sourceOk || declaredReady ? 'ok' : referenceOnly || officialSource ? 'blocked' : 'missing',
-    detail: declaredReady
-      ? heldDetail
-      : sourceOk
-        ? `Sourced from ${source}.`
-        : officialSource
-          ? 'A manufacturer/official page is reference material, not a verified supply — record the actual supplier.'
-          : referenceOnly
-            ? 'No verified purchasing path — set the supplier and source type.'
-            : 'Record the supplier this product is actually bought from — Commerce tab.',
-    blocking: !sourceOk && !declaredReady,
+    state: officialSource ? 'blocked' : 'ok',
+    detail: officialSource
+      ? 'A manufacturer/official page is reference material, not stock to sell — record the supplier this product is actually bought from.'
+      : ownStock
+        ? 'Own-stock product — supplied from your own warehouse.'
+        : source
+          ? `Sourced from ${source}.`
+          : 'Not recorded. Optional: the storefront lists this product either way.',
+    blocking: officialSource,
   });
 
+  // Own stock has no supplier to buy from, so no supplier cost to verify — and
+  // neither has an imported product, which carries a supplier stamp but no cost.
   const cost = Number(input.costPrice ?? 0);
   const hasCost = cost > 0;
   push({
     key: 'cost',
     label: 'Supplier cost (economics)',
-    state: hasCost || declaredReady ? 'ok' : 'missing',
-    detail: declaredReady
-      ? heldDetail
+    state: hasCost || ownStock ? 'ok' : 'missing',
+    detail: ownStock
+      ? 'Own-stock product — there is no supplier cost to verify. Your physical inventory is the supply.'
       : hasCost
-        ? `Verified supplier cost $${cost.toFixed(2)}.`
-        : 'Enter the verified supplier cost — Pricing tab. The supplier list price is not an acquisition cost until you verify it. Shipping is calculated at checkout (Shippo/USPS), so no per-product freight figure is required.',
-    blocking: !hasCost && !declaredReady,
+        ? `Recorded supplier cost $${cost.toFixed(2)}.`
+        : 'Not recorded — optional. Keep it here for your margin maths if you buy this product in; the storefront does not wait for it. Shipping is calculated at checkout (Shippo/USPS).',
+    blocking: false,
   });
 
   const inventory = Number(input.inventoryQty ?? 0);
@@ -181,32 +179,38 @@ export function commerceReadinessChecklist(input: ReadinessChecklistInput): {
   push({
     key: 'fulfillment',
     label: 'US stock / fulfillment',
-    state: hasFulfillment || declaredReady ? 'ok' : 'missing',
-    detail: declaredReady
-      ? heldDetail
-      : hasFulfillment
-        ? input.usInventory === true
-          ? 'US inventory confirmed.'
-          : `In stock (${inventory} units).`
-        : 'Confirm US inventory, or set stock status In stock with a real quantity — Inventory tab.',
-    blocking: !hasFulfillment && !declaredReady,
+    state: hasFulfillment ? 'ok' : 'missing',
+    detail: hasFulfillment
+      ? input.usInventory === true
+        ? 'US inventory confirmed.'
+        : `In stock (${inventory} units).`
+      : 'Not confirmed. WooCommerce already hides an out-of-stock product from the shop, so this does not block the listing — set the real quantity in the Inventory tab.',
+    blocking: false,
   });
 
   const flags = (input.riskFlags || []).filter(Boolean);
   const risky = flags.some((f) => RISK.test(String(f)));
   const approved = text(input.safetyReviewStatus) === 'APPROVED_FOR_SALE';
+  // A stored RISK_REVIEW holds even when this record carries no flags for it — the
+  // contract reads the same stamp, so the two must agree.
+  const heldStamp = input.commerceReadiness === 'RISK_REVIEW';
+  const riskHeld = (risky || heldStamp) && !approved;
   push({
     key: 'risk',
     label: 'Risk review',
-    state: risky && !approved ? 'blocked' : 'ok',
+    state: riskHeld ? 'blocked' : 'ok',
     detail: flags.length === 0
-      ? 'No risk flags.'
+      ? heldStamp
+        ? approved
+          ? 'Approved for sale after review — the storefront will list it.'
+          : 'Held for review — an admin must explicitly approve this before it can be listed.'
+        : 'No risk flags.'
       : risky
         ? approved
           ? `Approved for sale after review: ${flags.join('; ')}`
           : `Held for review: ${flags.join('; ')}. An admin must explicitly approve this before it can be listed.`
         : `Flagged: ${flags.join('; ')} (no mandatory review).`,
-    blocking: risky && !approved,
+    blocking: riskHeld,
   });
 
   // ---- The second storefront policy: the niche guard ----

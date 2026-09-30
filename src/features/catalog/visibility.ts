@@ -39,6 +39,7 @@ export function publicFactsFor(p: CatalogProduct): PublicProductFacts {
     images: (p.images || []).map((img) => img?.url).filter((u): u is string => !!u),
     commerce_readiness: p.commerceReadiness,
     supplier_source: p.supplierSource,
+    source_type: p.sourceType,
     cost_price: p.costPrice,
     us_inventory: p.usInventory,
     stock_status: p.stockStatus,

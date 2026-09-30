@@ -139,13 +139,19 @@ export function deriveCommerceReadiness(f: ReadinessFacts): CommerceReadiness {
   const sourceType = deriveSourceType(f);
   if (sourceType === 'RETAIL_REFERENCE_ONLY' || sourceType === 'UNKNOWN') return 'SOURCE_PENDING';
 
-  // The retail cost basis is the verified **supplier cost**, and nothing else.
-  // Landed cost (supplier cost + freight + duty) was the other half of this
-  // check, but Himalayan Koh ships with Shippo/USPS at checkout, so a per-product
-  // freight figure is not a retail prerequisite — and demanding one left honest
-  // imports stuck at ECONOMICS_PENDING for a number the owner could not supply.
+  // Own stock is not bought from a supplier, so it has no supplier cost to
+  // verify — the shop's own physical inventory *is* the supply. Demanding a cost
+  // figure here left the owner's own products stuck at ECONOMICS_PENDING for a
+  // number that does not exist, which is what made "set Own Stock" look like it
+  // had done nothing.
+  const ownStock = sourceType === 'OWNER_STOCK' || /^\s*own\s*stock\s*$/i.test(String(f.supplierSource || ''));
+
+  // Otherwise the retail cost basis is the verified **supplier cost**, and
+  // nothing else. Landed cost (supplier cost + freight + duty) was the other half
+  // of this check, but Himalayan Koh ships with Shippo/USPS at checkout, so a
+  // per-product freight figure is not a retail prerequisite.
   const hasCost = (f.costPrice ?? 0) > 0;
-  if (!hasCost) return 'ECONOMICS_PENDING';
+  if (!ownStock && !hasCost) return 'ECONOMICS_PENDING';
 
   // USA fulfillment/stock evidence: real list-level US inventory (or a real
   // supplier in_stock state). Per-product shipping cost is handled by the

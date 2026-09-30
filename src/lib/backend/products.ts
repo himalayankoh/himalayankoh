@@ -80,6 +80,14 @@ export interface CatalogLookup {
   provenance: CatalogProvenance | null;
   /** Exact backend error, when the lookup degraded. */
   error: string | null;
+  /**
+   * The record exists but the storefront must not serve it (off-niche, or under
+   * an unapproved risk hold). Distinct from an unknown slug: a withheld product
+   * is a real record the shop is declining to show, and the PDP answers 404 for
+   * both — the flag exists so the two cases can be told apart without re-reading
+   * the contract at the route.
+   */
+  withheld?: boolean;
 }
 
 function toProductQuery(query: CatalogQuery): ProductQuery {

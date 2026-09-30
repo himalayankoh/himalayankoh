@@ -25,27 +25,19 @@ function run(url: string) {
 }
 
 describe('middleware — content URLs that name something off-niche', () => {
-  it('retires a livestock product slug instead of echoing it', () => {
-    expect(run('/products/salt-licks-for-horses')).toEqual({
-      passesThrough: false,
-      status: 308,
-      location: 'https://himalayankoh.com/products',
-      rewriteTo: null,
-      rewriteSearch: null,
-    });
-    expect(run('/products/salt-block-for-deer').status).toBe(308);
-  });
-
-  it("serves the shop's own Salt Licks line rather than retiring it", () => {
-    // 'lick'/'licks' used to be denylist terms, which retired the URL of a product
-    // the owner sells. The animal-feed trade is still refused, because those
-    // records name their animal — so the word alone must not cost a real page.
-    expect(run('/products/salt-licks').status).toBe(200);
-    expect(run('/products/salt%2Dlicks').status).toBe(200);
+  it('leaves a product URL to the route that resolves the product', () => {
+    // A product slug is no longer judged by its text at the edge. The owner can
+    // approve an animal-named product from the console (a fact no URL rule can
+    // know), so the decision moved to the PDP: it withholds a record and redirects
+    // its URL (an empty-bodied 308, so the slug is still never serialised), and
+    // 404s a slug that was never a product.
+    for (const url of ['/products/salt-licks-for-horses', '/products/salt-block-for-deer', '/products/horse%2Dsalt', '/products/salt-licks']) {
+      expect(run(url).passesThrough, url).toBe(true);
+    }
   });
 
   it('decodes the segment before judging it', () => {
-    expect(run('/products/horse%2Dsalt').status).toBe(308);
+    expect(run('/blog/horse%2Dsalt').status).toBe(308);
   });
 
   it('retires a livestock article URL rather than rendering its slug', () => {

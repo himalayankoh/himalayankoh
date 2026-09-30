@@ -29,6 +29,47 @@ describe('readiness — retail cost basis', () => {
 });
 
 /**
+ * Own stock has no supplier, so it has no supplier cost to verify.
+ *
+ * The shop's own physical inventory is the supply. Demanding a cost figure here
+ * left the owner's own products stuck at ECONOMICS_PENDING for a number that does
+ * not exist — which is exactly what made "set Own Stock and save" look like the
+ * save had failed.
+ */
+describe('readiness — own stock', () => {
+  const ownStock = {
+    status: 'published',
+    supplierSource: 'Own Stock',
+    sourceType: 'OWNER_STOCK',
+    stockStatus: 'in_stock',
+    inventoryQty: 10,
+  };
+
+  it('is COMMERCE_READY with no cost, from the stock evidence alone', () => {
+    expect(deriveCommerceReadiness(ownStock)).toBe('COMMERCE_READY');
+  });
+
+  it('lets a save turn ECONOMICS_PENDING into COMMERCE_READY for own stock', () => {
+    expect(reconcileCommerceReadiness(ownStock, 'ECONOMICS_PENDING', true)).toBe('COMMERCE_READY');
+  });
+
+  it('still withholds own stock with no stock evidence', () => {
+    expect(deriveCommerceReadiness({ ...ownStock, stockStatus: 'out_of_stock', inventoryQty: 0 }))
+      .toBe('FULFILLMENT_PENDING');
+  });
+
+  it('never lets own stock clear a food-safety hold', () => {
+    const flagged = { ...ownStock, riskFlags: ['Ingestible — food safety review'] };
+    expect(deriveCommerceReadiness(flagged)).toBe('RISK_REVIEW');
+    expect(reconcileCommerceReadiness(flagged, 'RISK_REVIEW', true)).toBeNull();
+  });
+
+  it('lists an own-stock product on the storefront once it is COMMERCE_READY', () => {
+    expect(storefrontListingReason({ ...baseProduct, supplierSource: 'Own Stock', costPrice: 0, commerceReadiness: 'COMMERCE_READY' })).toBeNull();
+  });
+});
+
+/**
  * The storefront's listing policy.
  *
  * These pin the seam that was missing: the public contract
@@ -52,9 +93,27 @@ const baseProduct = {
 };
 
 describe('storefront listing — commerce readiness', () => {
-  it('hides a product the workflow stamped ECONOMICS_PENDING', () => {
+  it('lists an imported product the workflow stamped ECONOMICS_PENDING', () => {
+    // An import carries a supplier stamp from the importer and no supplier cost
+    // at all. Himalayan Koh sells its own stock, so that pending *bookkeeping*
+    // word must not 404 a product the owner priced, imaged and published — the
+    // "NOT PUBLIC — commerce readiness incomplete" the owner kept hitting.
     const p = { ...baseProduct, commerceReadiness: 'ECONOMICS_PENDING' };
-    expect(storefrontListingReason(p)).toBe('commerce readiness incomplete');
+    expect(storefrontListingReason(p)).toBeNull();
+    expect(isStorefrontListable(p)).toBe(true);
+  });
+
+  it('lists an imported product with no cost, source or fulfillment recorded', () => {
+    const p = {
+      ...baseProduct,
+      commerceReadiness: 'FULFILLMENT_PENDING',
+      supplierSource: null,
+      costPrice: null,
+      usInventory: null,
+      stockStatus: null,
+      stockQuantity: null,
+    };
+    expect(isStorefrontListable(p)).toBe(true);
   });
 
   it('lists a product the workflow stamped COMMERCE_READY', () => {
@@ -63,10 +122,9 @@ describe('storefront listing — commerce readiness', () => {
     expect(isStorefrontListable(p)).toBe(true);
   });
 
-  it('does not let a WooCommerce publish bypass readiness', () => {
-    // status is always "published" on this read (it returns published rows only);
-    // the readiness stamp is the thing that still withholds it.
-    const p = { ...baseProduct, commerceReadiness: 'ECONOMICS_PENDING' };
+  it('still withholds a manufacturer/official reference page', () => {
+    // A manufacturer page proves authenticity; it is not stock the shop may sell.
+    const p = { ...baseProduct, supplierSource: 'KONG Company (official manufacturer)' };
     expect(isStorefrontListable(p)).toBe(false);
   });
 
@@ -78,6 +136,9 @@ describe('storefront listing — commerce readiness', () => {
   it('keeps a RISK_REVIEW product off the storefront', () => {
     const p = { ...baseProduct, commerceReadiness: 'RISK_REVIEW' };
     expect(isStorefrontListable(p)).toBe(false);
+    // …until an admin records the decision.
+    const approved = { ...p, safetyReviewStatus: 'APPROVED_FOR_SALE' };
+    expect(isStorefrontListable(approved)).toBe(true);
   });
 });
 

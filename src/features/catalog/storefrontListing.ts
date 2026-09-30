@@ -2,17 +2,16 @@
 //
 // `serverCatalog` enforces two independent policies before it serves anything:
 // the niche guard (`lib/catalog/niche.ts`) and the shared public contract
-// (`content/productEligibility.ts`). The first decides *what the shop sells*;
-// the second decides *whether a product's commerce facts are verified enough to
-// sell it at all*.
+// (`content/productEligibility.ts`). The first decides *what the shop sells*; the
+// second applies the two rules that protect the shop — a manufacturer/official
+// page is reference material rather than stock, and an unapproved risk hold
+// stays off the storefront. Supplier cost and the readiness word are the owner's
+// own bookkeeping and no longer withhold anything (see the contract).
 //
-// This module is the second policy, expressed against the storefront's own
+// This module is that second policy, expressed against the storefront's own
 // `Product` model so it can be unit-tested without standing up a store read
-// (importing `serverCatalog` would drag in React's request cache). It is the
-// piece that was missing: the public contract was documented as the PDP's
-// fail-closed gate, but nothing on the public read ever consulted it, so a
-// product stamped RISK_REVIEW was served to customers anyway while the console
-// counted it as not listable. One module, one answer, both sides.
+// (importing `serverCatalog` would drag in React's request cache). One module,
+// one answer, both sides.
 
 import {
   publicProductIneligibilityReason,
@@ -65,6 +64,9 @@ export function publicFactsFromStoreProduct(p: StorefrontListingFacts): PublicPr
     image_url: images[0] ?? null,
     images,
     commerce_readiness: p.commerceReadiness ?? 'COMMERCE_READY',
+    // Carried so the contract can read the owner's own record: an
+    // official/manufacturer source is reference material, and a risk stamp is a
+    // hold. A pending readiness word is bookkeeping and no longer withholds.
     supplier_source: p.supplierSource ?? null,
     cost_price: p.costPrice ?? null,
     us_inventory: p.usInventory ?? null,

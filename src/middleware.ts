@@ -18,11 +18,10 @@ import { NICHE_SECTIONS } from '@/lib/catalog/nicheSections';
  *
  * Three rules, all of them about URL text the shop must not carry:
  *
- * 1. **A content URL whose last segment names something off-niche is retired.**
- *    The storefront guard (`lib/catalog/niche.ts`) withholds the products and
- *    articles themselves; this closes the same door on the URL space, so the
- *    retired slugs the old navigation used to link answer with a redirect instead
- *    of a page that repeats the name back.
+ * 1. **A retired blog URL whose last segment names something off-niche is
+ *    redirected.** The blog guard withholds the articles themselves; this closes
+ *    the same door on the URL space, so a retired article slug answers with a
+ *    redirect instead of a page that repeats the name back.
  * 2. **`?query=` values that name something off-niche are dropped.** A search term
  *    is serialised too, so it is judged the same way, and the rest of the request
  *    (sort, page, a valid shelf) is left alone.
@@ -32,6 +31,16 @@ import { NICHE_SECTIONS } from '@/lib/catalog/nicheSections';
  *
  * One denylist, one shelf list, both borrowed from the modules that already own
  * them — no second copy of either judgement lives here.
+ *
+ * ## Product detail URLs are *not* judged by their text here
+ *
+ * They used to be, and it was wrong. The shop's own approved lines carry
+ * animal-named slugs ("…-for-horses…"), and the owner can now approve such a
+ * product from the console — a fact no URL-text rule at the edge can know. So the
+ * product decision moved to the route that resolves the product
+ * (`app/(main)/products/[slug]/page.tsx`), which withholds the record without
+ * naming it back (a 404 today; see the note in that file for why not a redirect on
+ * this runtime). Middleware keeps the rules that are genuinely about request text.
  *
  * Scoped to the two public browse routes that take user-supplied text. Admin,
  * account, checkout, order confirmation and API routes are untouched: their query
@@ -44,7 +53,6 @@ import { NICHE_SECTIONS } from '@/lib/catalog/nicheSections';
 
 /** Routes whose trailing segment is user-supplied, and where a refused URL lands. */
 const CONTENT_ROUTES: ReadonlyArray<{ pattern: RegExp; fallback: string }> = [
-  { pattern: /^\/products\/([^/]+)\/?$/, fallback: '/products' },
   { pattern: /^\/blog\/([^/]+)\/?$/, fallback: '/blog' },
 ];
 

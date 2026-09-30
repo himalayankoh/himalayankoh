@@ -107,6 +107,16 @@ export default async function Page({ params }: { params: Promise<Params> }) {
   const product = lookup?.product ?? null;
   const related = lookup?.related ?? [];
 
+  // A withheld record (`lookup.withheld`) and a slug that was never a product both
+  // answer the shop's 404 here; the decision lives at this seam, not in middleware,
+  // because it depends on the product's own facts — including the owner's recorded
+  // niche approval — which no URL-text rule at the edge can know.
+  //
+  // A redirect would be the tidier answer for the withheld case, and there is a
+  // `redirect()` call for it in the other pages of this app — but that call throws
+  // on this deployment runtime (measured: `/return` and `/admin/api-keys` both
+  // answer 500 on the preview Worker). Until it works, the 404 is the honest
+  // response: the product is not served, and the URL is not advertised.
   if (!product) notFound();
 
   return (

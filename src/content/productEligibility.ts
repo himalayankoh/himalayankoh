@@ -1,7 +1,7 @@
 // Shared, fail-closed public PDP contract. Admin records are never affected.
 import { RISK_FLAG_PATTERN } from '../features/catalog/commerceReadiness';
 
-export interface PublicProductFacts { id?: string | null; slug?: string | null; name?: string | null; status?: string | null; description?: string | null; short_description?: string | null; shortDesc?: string | null; price?: number | null; image_url?: string | null; images?: string[] | null; product_images?: Array<{ url?: string | null; public_url?: string | null }> | null; commerce_readiness?: string | null; commerceReadiness?: string | null; supplier_source?: string | null; supplierSource?: string | null; cost_price?: number | null; us_inventory?: boolean | null; usInventory?: boolean | null; stock_status?: string | null; stockStatus?: string | null; inventory_qty?: number | null; stock?: number | null; risk_flags?: string[] | null; riskFlags?: string[] | null; safety_review_status?: string | null; safetyReviewStatus?: string | null; }
+export interface PublicProductFacts { id?: string | null; slug?: string | null; name?: string | null; status?: string | null; description?: string | null; short_description?: string | null; shortDesc?: string | null; price?: number | null; image_url?: string | null; images?: string[] | null; product_images?: Array<{ url?: string | null; public_url?: string | null }> | null; commerce_readiness?: string | null; commerceReadiness?: string | null; supplier_source?: string | null; supplierSource?: string | null; source_type?: string | null; sourceType?: string | null; cost_price?: number | null; us_inventory?: boolean | null; usInventory?: boolean | null; stock_status?: string | null; stockStatus?: string | null; inventory_qty?: number | null; stock?: number | null; risk_flags?: string[] | null; riskFlags?: string[] | null; safety_review_status?: string | null; safetyReviewStatus?: string | null; }
 const text = (v: unknown) => String(v || '').replace(/\s+/g, ' ').trim();
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const isOfficialOrManufacturerSource = (p: PublicProductFacts) => /\bofficial\b|\bmanufacturer\b/i.test(text(p.supplier_source || p.supplierSource));
@@ -23,6 +23,31 @@ export function hasUnresolvedRiskFlag(p: PublicProductFacts): boolean {
   return text(p.safety_review_status || p.safetyReviewStatus) !== 'APPROVED_FOR_SALE';
 }
 
+/**
+ * The storefront's commerce gate.
+ *
+ * Himalayan Koh sells its own stock. The owner sets the retail price, the shop's
+ * physical inventory is the supply, and shipping is priced at checkout by
+ * Shippo/USPS. So there is no supplier-provenance or supplier-cost fact for a
+ * *customer-facing* listing to prove: those figures are the owner's own
+ * bookkeeping, and the readiness engine keeps computing them so the console can
+ * still show what is missing (see `features/catalog/commerceReadiness.ts`).
+ *
+ * What is left here are the two rules that genuinely protect the shop:
+ *
+ *  - a manufacturer/official page is reference material, never stock to sell;
+ *  - an unapproved risk hold stays off the storefront until an admin records the
+ *    decision.
+ *
+ * The earlier version also withheld any product whose stored stamp was
+ * SOURCE_PENDING / ECONOMICS_PENDING / FULFILLMENT_PENDING. That promoted an
+ * internal bookkeeping column into a 404 on products the owner had already
+ * priced, imaged, stocked and published, and it is what produced the
+ * "NOT PUBLIC — commerce readiness incomplete" on every imported product: an
+ * import carries a supplier stamp from the importer and no supplier cost at all,
+ * so it sat withheld for a number that does not exist. The ready/pending word is
+ * still recorded and still shown in the console; it no longer hides the listing.
+ */
 export function isCommerceReadyForPublicListing(p: PublicProductFacts): boolean {
   // Manufacturer pages are reference material, not an independently verified
   // commerce supply. Evaluate this before stored readiness so an accidental
@@ -30,11 +55,13 @@ export function isCommerceReadyForPublicListing(p: PublicProductFacts): boolean 
   if (isOfficialOrManufacturerSource(p)) return false;
   // An unapproved risk hold is likewise evaluated first: no stamp clears it.
   if (hasUnresolvedRiskFlag(p)) return false;
-  const declared = text(p.commerce_readiness || p.commerceReadiness);
-  if (declared) return declared === 'COMMERCE_READY';
-  const source = text(p.supplier_source || p.supplierSource).toLowerCase();
-  return !!source && num(p.cost_price) > 0 &&
-    (p.us_inventory === true || p.usInventory === true || (text(p.stock_status || p.stockStatus) === 'in_stock' && num(p.inventory_qty ?? p.stock) > 0));
+  // A stored risk hold is a hold even when this read carries no flags for it:
+  // the console shows the row as "Risk Review", so the storefront must not serve
+  // it. An approval clears it here too, and the readiness reconciliation rewrites
+  // the stamp to COMMERCE_READY on the next save.
+  if (text(p.commerce_readiness || p.commerceReadiness) === 'RISK_REVIEW'
+    && text(p.safety_review_status || p.safetyReviewStatus) !== 'APPROVED_FOR_SALE') return false;
+  return true;
 }
 export function hasKnownProductContradiction(p: PublicProductFacts): boolean {
   const h = text([p.slug, p.name, p.description, p.short_description, p.shortDesc].join(' ')).toLowerCase();
