@@ -114,8 +114,17 @@ export default function AdminCustomers() {
       </AdminNotice>
 
       <AdminPanel bodyClassName="px-0 py-0">
-        <div className="flex items-center gap-3 border-b border-admin-line px-5 py-4">
-          <div className="relative min-w-[320px] flex-1">
+        <div className="flex flex-wrap items-center gap-3 border-b border-admin-line px-5 py-4">
+          {/*
+            The search field keeps its 320px floor only from `sm` up, and only takes
+            `flex-1` there too. Below that the floor was wider than the phone: with
+            three items on one nowrap row the panel could not fit, so the whole
+            console pane scrolled sideways to reach the customer count. Wrapping the
+            row and giving the field the full line (`w-full`, no grow) keeps every
+            control on screen without shrinking the field to its icon; `sm:` restores
+            the exact desktop layout.
+          */}
+          <div className="relative w-full min-w-0 sm:w-auto sm:min-w-[320px] sm:flex-1">
             <Search
               size={16}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-admin-muted"
