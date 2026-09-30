@@ -113,7 +113,7 @@ export default function ProductDetailPage({
   }
 
   return (
-    <div className="min-h-screen bg-warm-white py-8 md:py-12">
+    <div className="min-h-screen bg-warm-white py-5 md:py-8">
       {/* Product/FAQ/WebPage JSON-LD is server-rendered by app/(main)/products/[slug]/page.tsx
           — injecting a second copy here would duplicate the graph for crawlers. */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
@@ -122,9 +122,9 @@ export default function ProductDetailPage({
         <ProductDetailSections product={product} />
 
         {related.length > 0 && (
-          <section className="mt-14">
-            <h2 className="font-serif text-2xl font-bold text-charcoal mb-6">Related Products</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <section className="mt-8">
+            <h2 className="font-serif text-xl font-bold text-charcoal mb-4">Related Products</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 lg:gap-4">
               {related.map((item, index) => (
                 <ProductCard key={item.id} product={item} index={index} />
               ))}

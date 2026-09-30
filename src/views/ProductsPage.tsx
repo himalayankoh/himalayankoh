@@ -131,8 +131,8 @@ export default function ProductsPage({
         <div
           className={
             isCategoryHub
-              ? 'grid grid-cols-1 gap-4'
-              : 'grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5'
+              ? 'grid grid-cols-1 gap-3'
+              : 'grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4'
           }
         >
           {filteredProducts.map((product, i) => (
@@ -168,9 +168,8 @@ export default function ProductsPage({
     <div className="min-h-screen bg-warm-white">
       <div
         className={
-          isCategoryHub
-            ? 'bg-charcoal py-10 md:py-12 border-b border-white/10'
-            : 'bg-cream py-8 md:py-10 border-b border-himalayan-line'
+          isCategoryHub              ? 'bg-charcoal py-6 md:py-7 border-b border-white/10'
+              : 'bg-cream py-5 md:py-6 border-b border-himalayan-line'
         }
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
@@ -185,13 +184,13 @@ export default function ProductsPage({
             </>
           ) : (
             <>
-              <span className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-5">
+              <span className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-3">
                 Shop Now
               </span>
-              <h1 className="font-serif text-3xl sm:text-4xl font-bold text-charcoal mb-3 leading-tight">
+              <h1 className="font-serif text-2xl sm:text-3xl font-bold text-charcoal mb-2 leading-tight">
                 Premium Salt Products
               </h1>
-              <p className="text-charcoal-light text-base max-w-2xl mx-auto leading-relaxed">
+              <p className="text-charcoal-light text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
                 Handpicked from the heart of the Himalayas — pure, natural, and mineral-rich
               </p>
             </>
@@ -200,11 +199,11 @@ export default function ProductsPage({
       </div>
 
       <div
-        className={`mx-auto px-4 sm:px-6 py-10 md:py-12 ${
+        className={`mx-auto px-4 sm:px-6 py-6 md:py-8 ${
           isCategoryHub ? 'max-w-[100rem]' : 'max-w-7xl'
         }`}
       >
-        <div className="mb-8">
+        <div className="mb-5">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <CategoryFilterNav activeFilter={activeFilter} products={products} />
             <div className="relative w-full md:w-72">
@@ -215,7 +214,7 @@ export default function ProductsPage({
                 placeholder="Search products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+                className="w-full pl-11 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
               />
             </div>
           </div>

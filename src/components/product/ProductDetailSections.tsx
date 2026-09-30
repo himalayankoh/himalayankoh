@@ -14,11 +14,11 @@ export default function ProductDetailSections({ product }: Props) {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   return (
-    <div className="mt-10 space-y-8">
+    <div className="mt-6 space-y-4">
       {/* Product Video — renders only when linked videos exist */}
       <ProductVideoSection product={product} />
 
-      <section className="bg-white rounded-2xl shadow-md shadow-black/5 p-6 md:p-8">
+      <section className="rounded-xl bg-white p-4 shadow-md shadow-black/5 sm:p-5 md:p-6">
         <div className="flex items-center gap-2 mb-4">
           <Gem size={20} className="text-himalayan" />
           <h2 className="font-serif text-xl font-bold text-charcoal">Mineral highlights</h2>
@@ -35,7 +35,7 @@ export default function ProductDetailSections({ product }: Props) {
         </ul>
       </section>
 
-      <section className="bg-white rounded-2xl shadow-md shadow-black/5 p-6 md:p-8">
+      <section className="rounded-xl bg-white p-4 shadow-md shadow-black/5 sm:p-5 md:p-6">
         <div className="flex items-center gap-2 mb-4">
           <UtensilsCrossed size={20} className="text-himalayan" />
           <h2 className="font-serif text-xl font-bold text-charcoal">Use cases</h2>
@@ -51,13 +51,13 @@ export default function ProductDetailSections({ product }: Props) {
       </section>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <section className="bg-white rounded-2xl shadow-md shadow-black/5 p-6 md:p-8 flex flex-col justify-between">
+        <section className="rounded-xl bg-white p-4 shadow-md shadow-black/5 sm:p-5 md:p-6 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-4">
               <Truck size={20} className="text-himalayan" />
               <h2 className="font-serif text-xl font-bold text-charcoal">Shipping & Delivery</h2>
             </div>
-            <ul className="space-y-3 mb-6">
+            <ul className="space-y-2 mb-4">
               {content.shippingInfo.map((item) => (
                 <li key={item} className="text-sm text-charcoal-light leading-relaxed">
                   {item}
@@ -75,7 +75,7 @@ export default function ProductDetailSections({ product }: Props) {
           </div>
         </section>
 
-        <section className="bg-white rounded-2xl shadow-md shadow-black/5 p-6 md:p-8">
+        <section className="rounded-xl bg-white p-4 shadow-md shadow-black/5 sm:p-5 md:p-6">
           <div className="flex items-center gap-2 mb-4">
             <Shield size={20} className="text-himalayan" />
             <h2 className="font-serif text-xl font-bold text-charcoal">Why Himalayan Koh</h2>
@@ -92,7 +92,7 @@ export default function ProductDetailSections({ product }: Props) {
       </div>
 
       {content.faqs.length > 0 && (
-        <section className="bg-white rounded-2xl shadow-md shadow-black/5 p-6 md:p-8">
+        <section className="rounded-xl bg-white p-4 shadow-md shadow-black/5 sm:p-5 md:p-6">
           <div className="flex items-center gap-2 mb-5">
             <HelpCircle size={20} className="text-himalayan" />
             <h2 className="font-serif text-xl font-bold text-charcoal">Frequently asked questions</h2>
@@ -129,7 +129,7 @@ export default function ProductDetailSections({ product }: Props) {
       )}
 
       {/* Compliance, Disclaimer & Resource Linking Section */}
-      <section className="bg-warm-white border border-gray-200/80 rounded-2xl p-6 md:p-8 space-y-3">
+      <section className="rounded-xl border border-gray-200/80 bg-warm-white p-4 space-y-3 sm:p-5 md:p-6">
         <div className="flex items-center gap-2 text-charcoal font-serif font-bold text-lg">
           <ShieldAlert className="w-5 h-5 text-himalayan flex-shrink-0" />
           <h2>Usage Guidelines & Nutritional Notice</h2>

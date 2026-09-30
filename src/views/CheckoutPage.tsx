@@ -59,8 +59,11 @@ function pickDefaultShippoRateId(rates: ShippoRate[]): string | null {
   const usps = rates.find((rate) => /usps/i.test(rate.provider));
   return usps?.objectId ?? rates[0]?.objectId ?? null;
 }
-const inputClass = 'w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all';
-const labelClass = 'block text-sm font-semibold text-charcoal mb-1.5';
+// Compact by design: the checkout is dense so an order is reviewable without a
+// long scroll. Fields keep a comfortable 40px hit area and 14px text — the
+// savings come from padding, not from shrinking anything a finger has to hit.
+const inputClass = 'w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all';
+const labelClass = 'block text-xs font-semibold text-charcoal mb-1';
 
 const initialForm = {
   email: '',
@@ -845,7 +848,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         payment section below actually keeps (Stripe hosts the card fields).
       */}
       <header className="border-b border-himalayan-line bg-cream">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-[100rem] items-center justify-between gap-4 px-4 py-2 sm:px-6">
           <Link
             to="/products"
             className="inline-flex items-center gap-2 text-sm font-medium text-charcoal-light transition-colors hover:text-charcoal"
@@ -864,21 +867,21 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       </header>
 
       <div className="border-b border-himalayan-line/70 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
+        <div className="mx-auto flex max-w-[100rem] flex-wrap items-baseline gap-x-4 gap-y-1 px-4 py-3 sm:px-6">
           <motion.h1
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="font-serif text-2xl font-bold text-charcoal md:text-3xl"
+            className="font-serif text-xl font-bold text-charcoal md:text-2xl"
           >
             Checkout
           </motion.h1>
-          <p className="mt-1 text-sm text-charcoal-light">
+          <p className="text-xs text-charcoal-light sm:text-sm">
             Review your order, confirm where it is going, and pay securely — fulfilled by Himalayan Koh.
           </p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-10">
+      <form onSubmit={handleSubmit} className="mx-auto max-w-[100rem] px-4 py-4 sm:px-6 md:py-6">
         {/*
           Legacy checkout only. Retail has exactly one payment path, so the Payment
           section owns that message rather than two banners saying it at once.
@@ -889,12 +892,12 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
             <p className="mt-2">Please choose another available payment method or contact our team for help.</p>
           </div>
         )}
-        <div className="grid items-start gap-6 lg:grid-cols-3 lg:gap-8">
-          <div className="space-y-5 lg:col-span-2">
-            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-              <h2 className="font-serif text-xl font-bold text-charcoal mb-2">Contact Information</h2>
+        <div className="grid items-start gap-4 lg:grid-cols-3 lg:gap-6">
+          <div className="space-y-3 lg:col-span-2">
+            <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+              <h2 className="mb-1 font-serif text-base font-bold text-charcoal sm:text-lg">Contact information</h2>
               {!user && (
-                <p className="mb-5 text-sm text-charcoal-light">
+                <p className="mb-3 text-xs text-charcoal-light">
                   Checking out as a guest — no account needed. You&rsquo;ll get an email confirmation and order tracking link once you pay.
                 </p>
               )}
@@ -908,6 +911,10 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               </div>
             </section>
 
+            {/* Delivery service and the address are independent, so on a wide screen
+                they sit side by side — that is where the vertical saving comes from. */}
+            <div className="grid gap-3 xl:grid-cols-2">
+
             {/*
               1 — Delivery service. The screenshot's first card, mapped onto the
               real choice this shop has: which carrier service delivers it. Live
@@ -915,11 +922,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               the flat Standard/Expedited pair below is the honest fallback — the
               same two options, the same prices, no pickup-point fiction.
             */}
-            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
+            <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Truck size={18} className="text-himalayan" />
-                  <h2 className="font-serif text-xl font-bold text-charcoal">Delivery service</h2>
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Delivery service</h2>
                 </div>
                 {useLiveShippoRates && (
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-light">Live USPS rates</span>
@@ -1015,11 +1022,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               produced once it is complete, with `Change` to reopen them, which is
               the reviewed-address shape of the reference page.
             */}
-            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
+            <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <MapPin size={18} className="text-himalayan" />
-                  <h2 className="font-serif text-xl font-bold text-charcoal">Shipping address</h2>
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Shipping address</h2>
                 </div>
                 {addressReady && (
                   <button
@@ -1125,6 +1132,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 </div>
               )}
             </section>
+            </div>
 
             {/*
               3 — Payment methods. Each row names something this store can really
@@ -1133,11 +1141,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               greyed and unselectable rather than hidden, so the shopper can see
               what is coming without ever being offered a method that cannot run.
             */}
-            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
+            <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <CreditCard size={18} className="text-himalayan" />
-                  <h2 className="font-serif text-xl font-bold text-charcoal">Payment methods</h2>
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Payment methods</h2>
                 </div>
                 <span className="hidden items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-charcoal-light sm:inline-flex">
                   <ShieldCheck size={12} /> Encrypted
@@ -1351,16 +1359,16 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               </div>
             </section>
 
-            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-              <div className="mb-4 flex items-baseline justify-between gap-3">
-                <h2 className="font-serif text-xl font-bold text-charcoal">Delivery notes</h2>
+            <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Delivery notes</h2>
                 <span className="text-xs text-charcoal-light">Optional</span>
               </div>
               <textarea
                 value={form.notes}
                 onChange={(event) => handleChange('notes', event.target.value)}
                 aria-label="Delivery notes" name="deliveryNotes" placeholder="Gate code, delivery instructions, ranch drop-off notes, or product preferences"
-                className={`${inputClass} min-h-28 resize-none`}
+                className={`${inputClass} min-h-20 resize-none`}
               />
             </section>
 
@@ -1371,15 +1379,15 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
 
           <aside className="lg:col-span-1">
             <div className="space-y-4 lg:sticky lg:top-[var(--header-height)]">
-              <div className="rounded-2xl border border-himalayan-line/60 bg-white p-4 shadow-sm sm:p-6">
-                <div className="mb-4 flex items-baseline justify-between gap-3">
-                  <h2 className="font-serif text-xl font-bold text-charcoal">Summary</h2>
+              <div className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Summary</h2>
                   <span className="text-xs text-charcoal-light">
                     {items.length} {items.length === 1 ? 'item' : 'items'}
                   </span>
                 </div>
 
-                <div className="mb-4 max-h-64 space-y-3 overflow-y-auto pr-1">
+                <div className="mb-3 max-h-44 space-y-2 overflow-y-auto pr-1">
                   {items.map((item) => (
                     <div key={`${item.id}-${item.grainSize || ''}`} className="flex gap-3">
                       <img src={item.image} alt={item.name} className="h-14 w-14 rounded-lg bg-warm-white object-cover" />
@@ -1450,7 +1458,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   <SummaryRow label="Tax" value={totals.taxAmount} />
                   <div className="flex items-baseline justify-between border-t border-himalayan-line/60 pt-3">
                     <span className="font-bold text-charcoal">Total</span>
-                    <span className="text-xl font-bold text-himalayan">${totals.total.toFixed(2)}</span>
+                    <span className="text-lg font-bold text-himalayan">${totals.total.toFixed(2)}</span>
                   </div>
                 </div>
 
@@ -1484,7 +1492,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   <button
                     type="submit"
                     disabled={submitting || (retailOnly && !stripeEnabled && !stagingSimulatorEnabled) || (paymentMethod === 'stripe' && Boolean(stripeSession))}
-                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-himalayan py-4 font-semibold text-white shadow-lg shadow-himalayan/25 transition-colors hover:bg-himalayan-dark disabled:bg-gray-300"
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-himalayan py-3 font-semibold text-white shadow-lg shadow-himalayan/25 transition-colors hover:bg-himalayan-dark disabled:bg-gray-300"
                   >
                     {submitting && <Loader2 size={18} className="animate-spin" />}
                     {submitting
@@ -1517,8 +1525,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 shop's own checkout — who fulfils it, how it ships, who processes the
                 card — rather than a marketplace's boilerplate.
               */}
-              <div className="rounded-2xl border border-himalayan-line/60 bg-white p-4 shadow-sm sm:p-5">
-                <p className="flex items-center gap-2 font-serif text-base font-bold text-charcoal">
+              <div className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+                <p className="flex items-center gap-2 font-serif text-sm font-bold text-charcoal">
                   <BadgeCheck size={18} className="text-himalayan" />
                   Sold and shipped by Himalayan Koh
                 </p>
@@ -1528,7 +1536,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 </p>
               </div>
 
-              <div className="space-y-3 rounded-2xl border border-himalayan-line/60 bg-white p-4 shadow-sm sm:p-5">
+              <div className="space-y-2 rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
                 <div>
                   <p className="flex items-center gap-2 text-sm font-bold text-charcoal">
                     <Truck size={16} className="text-himalayan" />

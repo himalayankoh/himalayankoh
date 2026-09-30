@@ -122,7 +122,9 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
       }`}
     >
       {/* Image */}
-      <div className="relative aspect-square overflow-hidden bg-gray-50">
+      {/* 5:4 rather than square: the card is 20% shorter, so a grid row of products
+          fits without scrolling and the listing reads denser on every breakpoint. */}
+      <div className="relative aspect-[5/4] overflow-hidden bg-gray-50">
         <Link to={`/products/${product.slug}`} className="block w-full h-full">
           <img
             src={cardImage.src}
@@ -181,8 +183,8 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
       </div>
 
       {/* Content */}
-      <div className="p-3 md:p-4 flex flex-col flex-1 min-w-0">
-        <h3 className="font-semibold text-charcoal text-sm leading-snug mb-1.5 min-h-10 break-words">
+      <div className="p-2.5 md:p-3 flex flex-col flex-1 min-w-0">
+        <h3 className="font-semibold text-charcoal text-sm leading-snug mb-1 min-h-9 break-words">
           <Link
             to={`/products/${product.slug}`}
             className="group-hover:text-himalayan transition-colors"
@@ -191,7 +193,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
           </Link>
         </h3>
 
-        <p className="text-himalayan font-bold text-base mb-2.5">
+        <p className="text-himalayan font-bold text-base mb-2">
           {formatPriceDisplay(product)}
         </p>
 
@@ -201,7 +203,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
             aria-label={`Choose grain size for ${product.name}`}
             value={selectedGrain}
             onChange={(e) => setSelectedGrain(e.target.value)}
-            className="w-full mb-2.5 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+            className="w-full mb-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
           >
             {grainChoices.map((g) => (
               <option key={g} value={g}>{g}</option>

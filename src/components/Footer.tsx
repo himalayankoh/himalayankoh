@@ -79,13 +79,13 @@ export default function Footer() {
     <footer id="contact" className="bg-charcoal text-cream">
       {/* Newsletter Strip */}
       <div className="border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-10">
-          <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 md:py-6">
+          <div className="grid md:grid-cols-2 gap-4 md:gap-10 items-center">
             <div>
-              <h3 className="font-serif text-2xl md:text-3xl font-bold mb-4 text-white">
+              <h3 className="font-serif text-xl md:text-2xl font-bold mb-2 text-white">
                 Stay Updated
               </h3>
-              <p className="text-white/90 text-base md:text-lg leading-relaxed">
+              <p className="text-white/90 text-sm md:text-base leading-relaxed">
                 Subscribe for product updates, salt handling guides, and seasonal offers.
               </p>
             </div>
@@ -143,8 +143,8 @@ export default function Footer() {
       </div>
 
       {/* Main Footer */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-10">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 md:gap-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-7">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
           {/* Brand */}
           <div className="sm:col-span-2 lg:col-span-1">
             <img
@@ -152,9 +152,9 @@ export default function Footer() {
               alt="Himalayan Koh"
               loading="lazy"
               decoding="async"
-              className="h-12 mb-5 brightness-0 invert"
+              className="h-9 mb-3 brightness-0 invert"
             />
-            <p className="text-white/75 text-sm leading-relaxed mb-6 max-w-xs">
+            <p className="text-white/75 text-sm leading-relaxed mb-4 max-w-xs">
               Pure, mineral-dense Himalayan pink rock salt for livestock, equine management, wildlife, and gourmet culinary cooking. Sourced from Khewra, Pakistan and distributed from Houston, Texas.
             </p>
 
@@ -162,8 +162,8 @@ export default function Footer() {
 
           {/* Quick Links */}
           <div>
-            <h4 className="font-serif font-bold text-lg mb-6 text-white">Quick Links</h4>
-            <ul className="space-y-3">
+            <h4 className="font-serif font-bold text-base mb-3 text-white">Quick Links</h4>
+            <ul className="space-y-2">
               {aboutLinks.map((link) => (
                 <li key={link.label}>
                   <Link prefetch={false} to={link.to} state={'state' in link ? link.state : undefined} className="text-white/75 text-sm hover:text-himalayan transition-colors flex items-center gap-1 group">
@@ -177,8 +177,8 @@ export default function Footer() {
 
           {/* Products */}
           <div>
-            <h4 className="font-serif font-bold text-lg mb-6 text-white">Products</h4>
-            <ul className="space-y-3">
+            <h4 className="font-serif font-bold text-base mb-3 text-white">Products</h4>
+            <ul className="space-y-2">
               {productLinks.map((link) => (
                 <li key={link.label}>
                   <Link prefetch={false} to={link.to} className="text-white/75 text-sm hover:text-himalayan transition-colors flex items-center gap-1 group">
@@ -192,8 +192,8 @@ export default function Footer() {
 
           {/* Contact */}
           <div>
-            <h4 className="font-serif font-bold text-lg mb-6 text-white">Contact Us</h4>
-            <div className="space-y-4">
+            <h4 className="font-serif font-bold text-base mb-3 text-white">Contact Us</h4>
+            <div className="space-y-3">
               <a href="mailto:sales@himalayankoh.com" className="flex items-center gap-3 text-white/75 text-sm hover:text-himalayan transition-colors">
                 <Mail size={18} className="text-himalayan flex-shrink-0" />
                 sales@himalayankoh.com
@@ -205,7 +205,7 @@ export default function Footer() {
             </div>
 
             {/* Trust badges */}
-            <div className="mt-6 flex items-center gap-3">
+            <div className="mt-4 flex items-center gap-3">
               <div className="px-3 py-1.5 bg-white/10 rounded-lg text-xs text-white/75">
                 🔒 Secure Checkout
               </div>
@@ -216,7 +216,7 @@ export default function Footer() {
 
       {/* Bottom Bar */}
       <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-white/70">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-white/70">
           <p>Copyright © 2026 Himalayan Koh. All rights reserved.</p>
           <div className="flex flex-wrap items-center gap-4">
             <Link prefetch={false} to="/disclaimer" className="hover:text-white/75 transition-colors">Disclaimer</Link>

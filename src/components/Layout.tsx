@@ -102,7 +102,7 @@ export default function Layout({ children }: LayoutProps) {
       <div ref={headerRef} className="sticky top-0 z-nav">
       {/* Announcement Bar */}
       <div className="bg-warm-white border-b border-himalayan-line text-sm text-charcoal">
-        <motion.div className="max-w-7xl mx-auto px-4 py-2 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+        <motion.div className="max-w-7xl mx-auto px-4 py-1.5 flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4">
           <p className="text-center sm:text-left text-xs sm:text-sm tracking-wide flex-1">
             <strong className="font-semibold text-himalayan">All Natural</strong>{' '}
             Himalayan salt for horses, cattle and deer
@@ -122,13 +122,13 @@ export default function Layout({ children }: LayoutProps) {
       {/* Navbar */}
       <header className="bg-cream border-b border-himalayan-line shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-16 md:h-20">
+          <div className="flex items-center justify-between h-14 md:h-16">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-3 shrink-0">
               <img
                 src="/logo.svg"
                 alt="Himalayan Koh — Salt that Heals"
-                className="h-11 md:h-[3.75rem] w-auto"
+                className="h-8 md:h-11 w-auto"
               />
             </Link>
 

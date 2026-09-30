@@ -16,7 +16,9 @@ export function Skeleton({ className }: SkeletonProps) {
 export function SkeletonProductCard() {
   return (
     <div className="bg-white rounded-2xl overflow-hidden shadow-md" aria-hidden="true">
-      <Skeleton className="aspect-square w-full rounded-none" />
+      {/* Mirrors ProductCard's 5:4 image box, so the loading grid holds the same
+          shape as the real one and nothing shifts when products arrive. */}
+      <Skeleton className="aspect-[5/4] w-full rounded-none" />
       <div className="p-4 space-y-3">
         <Skeleton className="h-4 w-3/4" />
         <Skeleton className="h-3 w-1/2" />

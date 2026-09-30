@@ -79,19 +79,19 @@ export default function CheckoutAddOns() {
   };
 
   return (
-    <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-      <div className="mb-4 flex items-baseline justify-between gap-3">
-        <h2 className="font-serif text-xl font-bold text-charcoal">Add to your order</h2>
+    <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Add to your order</h2>
         <span className="text-xs text-charcoal-light">From the Himalayan Koh catalogue</span>
       </div>
-      <ul className="space-y-3">
+      <ul className="space-y-2">
         {candidates.map((product) => (
           <li key={String(product.id)} className="flex items-center gap-3">
             <img
               src={product.image}
               alt={product.name}
               loading="lazy"
-              className="h-14 w-14 flex-shrink-0 rounded-lg border border-himalayan-line/60 object-cover bg-warm-white"
+              className="h-12 w-12 flex-shrink-0 rounded-lg border border-himalayan-line/60 object-cover bg-warm-white"
             />
             <div className="min-w-0 flex-1">
               <p className="line-clamp-2 text-sm font-medium text-charcoal">{product.name}</p>
