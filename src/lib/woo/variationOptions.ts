@@ -10,22 +10,29 @@
  * cart line could not name a grain at all — `wc/store/v1/cart/add-item` takes
  * `{ id, quantity, variation }`, and a `simple` product has no variations to pick.
  *
- * Grain is now a real WooCommerce variation axis (`pa_grain-size`), so this module
- * reads what the store offers and states it in the two forms the application
- * needs: labels for display, and an `attribute`/`value` pair the cart can address.
+ * Grain is now a real WooCommerce variation axis, so this module reads what the
+ * store offers and states it in the two forms the application needs: labels for
+ * display, and an `attribute`/`value` pair the cart can address.
  *
- * ## The two forms are not the same string
+ * ## What the cart addresses, and what it must not be derived from
  *
- * The cart is addressed with a **term slug** (`coarse-grain`) and the shopper is
- * shown the **term name** (`Coarse Grain`). They are the store's pairing, not ours:
- * a term's slug is generated from its name and can be edited afterwards, which is
- * why a slug can never be derived from a label *reliably* — only the store's own
- * naming is authoritative. WooCommerce's REST API reports the option's name on a
- * variation and no slug, so the slug here is the standard `sanitize_title` of the
- * name, which is exactly how WooCommerce derives it. A term whose slug was edited
- * by hand would need the attribute's term list to be read instead; that is
- * deliberately not done per request, and a mismatch surfaces as the store's own
- * refusal rather than a silently wrong line.
+ * `add-item` takes the axis by **the name the store's own REST API reports**
+ * (`Grain Size`, `Size/Weight`, `Grain Type`) and the option by **the store's own
+ * option string** (`Coarse Grain`, `2 lbs.`, `1kg`). Both are passed through
+ * untouched, because both are only true of the store that reported them.
+ *
+ * Inventing either one is what broke this: an axis is *not* reliably `pa_` + the
+ * slugified name. `Size/Weight` is registered as the taxonomy `pa_block-weight`, so
+ * `pa_size-weight` is refused — and a **custom** product attribute (the kind
+ * WooCommerce reports with `id: 0`) has no taxonomy at all, so every `pa_` form is
+ * refused for it. Likewise an option is *not* reliably `sanitize_title` of the
+ * label: a custom attribute's options are not terms and have no slug, so a
+ * slugified value is refused while the option as written is accepted.
+ *
+ * A wrong pair is refused by the store with
+ * `woocommerce_rest_variation_id_from_variation_data`, never silently mispriced,
+ * so the failure is loud — but it is still a failed add-to-cart, and the probes that
+ * settled the rule are recorded in the migration notes.
  *
  * Pure and server-safe: no credentials, no network.
  */
@@ -41,29 +48,6 @@ export interface RestV3Attribute {
   /** True when this axis is what a shopper chooses between. */
   variation?: boolean;
   options?: string[];
-}
-
-/** `sanitize_title`, as WordPress spells it. */
-export function slugify(value: string): string {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-/**
- * How a global product attribute is named in a cart: `Grain Size` -> `pa_grain-size`.
- *
- * WooCommerce registers global attributes as `pa_<slug of the name>`, and that
- * prefixed form is what its cart expects for a taxonomy-backed axis. A *custom*
- * product attribute (one defined on the product itself) is addressed by its bare
- * name instead — this catalog uses the global attribute, and
- * `storeVariationPayload` is the single place that would change if that ever
- * differs.
- */
-export function globalAttributeSlug(name: string): string {
-  return `pa_${slugify(name)}`;
 }
 
 /**
@@ -116,7 +100,11 @@ export function productVariations(
   if (!axis) return undefined;
 
   const attributeLabel = String(axis.name ?? '').trim();
-  const attribute = globalAttributeSlug(attributeLabel || 'option');
+  // The axis name *is* the key the cart takes (see the module doc): it is the one
+  // form that is right for a global attribute and for a custom one, and the only
+  // form a custom attribute has.
+  const attribute = attributeLabel;
+  if (!attribute) return undefined;
 
   const options: ProductVariationOption[] = [];
   for (const option of axis.options ?? []) {
@@ -130,7 +118,9 @@ export function productVariations(
       id: row.id,
       attribute,
       label,
-      value: slugify(label),
+      // The store's own option string, not a slug derived from it: a custom
+      // attribute's options are not terms, and the cart refuses a slug for them.
+      value: label,
       price: parseWooDecimal(row.sale_price) ?? parseWooDecimal(row.regular_price),
       sku: row.sku?.trim() ? row.sku.trim() : null,
       // Absent stock means the store did not say; only a positive report counts,
@@ -148,20 +138,6 @@ export function variationOptionLabels(
 ): string[] | undefined {
   const labels = (variations?.options ?? []).map((option) => option.label).filter(Boolean);
   return labels.length ? labels : undefined;
-}
-
-/**
- * The `variation` entry the Store API's `add-item` expects.
- *
- * The browser may name an axis and a value; the store validates the pair against
- * the product and prices the line itself, so a forged option buys nothing — it is
- * refused. Price is never sent from the client.
- */
-export function storeVariationPayload(option: {
-  attribute: string;
-  value: string;
-}): { attribute: string; value: string } {
-  return { attribute: option.attribute, value: option.value };
 }
 
 /** The option a label refers to, for a caller holding only the label. */

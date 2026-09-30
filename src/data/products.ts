@@ -57,7 +57,7 @@ export type StockStatus = 'in_stock' | 'out_of_stock' | 'on_backorder' | 'unknow
 export interface ProductVariationOption {
   /** The store's variation id. */
   id: number;
-  /** The axis, as the store's cart names it: a global attribute's slug. */
+  /** The axis, as the store's own REST API names it (`Grain Size`, `Size/Weight`). */
   attribute: string;
   /** The option as the store names it, for display. */
   label: string;

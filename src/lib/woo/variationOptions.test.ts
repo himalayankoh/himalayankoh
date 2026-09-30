@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   findVariationOption,
-  globalAttributeSlug,
   productVariations,
-  slugify,
-  storeVariationPayload,
   variationOptionLabels,
   type RestV3Attribute,
 } from './variationOptions';
@@ -50,17 +47,55 @@ function bothGrains(): WooVariationLike[] {
 }
 
 describe('WooCommerce option naming', () => {
-  it('names a global attribute the way the cart expects it', () => {
-    expect(globalAttributeSlug('Grain Size')).toBe('pa_grain-size');
-    expect(slugify('Fine Grain')).toBe('fine-grain');
-    expect(slugify('  Rock / chunk  ')).toBe('rock-chunk');
+  it('addresses the axis by its name and the option by the store\u2019s own string', () => {
+    const variations = productVariations([GRAIN], bothGrains());
+
+    // `pa_` + slugify is accepted for this axis only by luck: `Size/Weight` is the
+    // registered `pa_block-weight`, and a custom attribute has no taxonomy at all.
+    // The name and the option as written are the forms the store accepts for both.
+    expect(variations?.options[0]).toMatchObject({
+      attribute: 'Grain Size',
+      label: 'Fine Grain',
+      value: 'Fine Grain',
+    });
   });
 
-  it('sends the axis and the option as the store states them', () => {
-    expect(storeVariationPayload({ attribute: 'pa_grain-size', value: 'coarse-grain' })).toEqual({
-      attribute: 'pa_grain-size',
-      value: 'coarse-grain',
+  it('addresses a global axis whose slug diverges from its name by that name', () => {
+    const axis: RestV3Attribute = {
+      id: 4,
+      name: 'Size/Weight',
+      variation: true,
+      options: ['2 lbs.'],
+    };
+    const variations = productVariations([axis], [
+      variation({ id: 7100, attributes: [{ name: 'Size/Weight', option: '2 lbs.' }] }),
+    ]);
+
+    // Deriving `pa_size-weight` here is refused by the store; the name is not.
+    expect(variations?.options[0]).toMatchObject({ attribute: 'Size/Weight', value: '2 lbs.' });
+  });
+
+  it('addresses a custom attribute (id 0) by its name and raw option', () => {
+    const axis: RestV3Attribute = {
+      id: 0,
+      name: 'Grain Type',
+      variation: true,
+      options: ['Fine Grain'],
+    };
+    const variations = productVariations([axis], [
+      variation({ id: 7200, attributes: [{ name: 'Grain Type', option: 'Fine Grain' }] }),
+    ]);
+
+    // A custom attribute's options are not terms, so `fine-grain` would be refused.
+    expect(variations?.options[0]).toMatchObject({
+      attribute: 'Grain Type',
+      value: 'Fine Grain',
     });
+  });
+
+  it('offers nothing for an axis the cart could not be told about', () => {
+    const unnamed: RestV3Attribute = { id: 0, name: '', variation: true, options: ['1kg'] };
+    expect(productVariations([unnamed], [variation()])).toBeUndefined();
   });
 });
 
@@ -84,9 +119,9 @@ describe('productVariations', () => {
     expect(variations?.attributeLabel).toBe('Grain Size');
     expect(variations?.options[0]).toEqual({
       id: 7001,
-      attribute: 'pa_grain-size',
+      attribute: 'Grain Size',
       label: 'Fine Grain',
-      value: 'fine-grain',
+      value: 'Fine Grain',
       price: 19.95,
       sku: 'HK-SFL-F-6lbs',
       inStock: true,
@@ -154,7 +189,7 @@ describe('productVariations', () => {
   it('finds the option a label refers to, and refuses an unknown one', () => {
     const variations = productVariations([GRAIN], bothGrains());
 
-    expect(findVariationOption(variations, 'Coarse Grain')?.value).toBe('coarse-grain');
+    expect(findVariationOption(variations, 'Coarse Grain')?.value).toBe('Coarse Grain');
     // A label the store does not offer must produce nothing to send, not a guess.
     expect(findVariationOption(variations, 'Medium Grain')).toBeUndefined();
     expect(findVariationOption(variations, undefined)).toBeUndefined();

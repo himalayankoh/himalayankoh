@@ -94,18 +94,18 @@ describe('the catalog read of a variable product', () => {
     expect(product.variations?.options).toEqual([
       {
         id: 7001,
-        attribute: 'pa_grain-size',
+        attribute: 'Grain Size',
         label: 'Fine Grain',
-        value: 'fine-grain',
+        value: 'Fine Grain',
         price: 19.95,
         sku: 'HK-SFL-F-6lbs',
         inStock: true,
       },
       {
         id: 7002,
-        attribute: 'pa_grain-size',
+        attribute: 'Grain Size',
         label: 'Coarse Grain',
-        value: 'coarse-grain',
+        value: 'Coarse Grain',
         price: 17.95,
         sku: 'HK-SFL-C-6lbs',
         inStock: false,
