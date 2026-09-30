@@ -55,9 +55,18 @@ function purgePath(path: string, reason: string): boolean {
  * The listing is one of these paths; the sitemap is the other, because it is a
  * public page built from the same products and a product that has just been
  * archived must not stay in it for the next hour.
+ *
+ * `/api/catalog` is here for the same reason the listing is. It serves the same
+ * products, prices and stock to the browser's own catalogue client, off the same
+ * one-minute window the pages own — so if a saved product purged the page and not
+ * the endpoint, a client-rendered shelf would keep offering the old price while
+ * the server-rendered one had already changed, which is the exact disagreement
+ * this module exists to prevent. The endpoint's own response is never stored (a
+ * route handler that reads the request cannot be edge-cached), but the catalogue
+ * read behind it is tagged with the route, and this purge is what clears it.
  */
 export function purgePublicCatalog(reason: string): string[] {
-  return ['/products', '/sitemap'].filter((path) => purgePath(path, reason));
+  return ['/products', '/sitemap', '/api/catalog'].filter((path) => purgePath(path, reason));
 }
 
 /**
