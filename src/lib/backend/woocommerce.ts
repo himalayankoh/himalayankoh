@@ -706,20 +706,32 @@ async function withVariations(
         if (firstSku) product.sku = firstSku;
       }
 
-      // A parent that prices itself needs no range derived from its variations.
-      if (product.priceMin !== null && product.priceMin > 0) return;
-
+      // The range across the variations, which is what a variable product has to
+      // show. Its parent price is WooCommerce's own one-line summary of the
+      // variation set — the cheapest — so presenting that alone asserts that every
+      // option costs the same, which is exactly the claim a shopper is misled by.
+      //
+      // Both ends come from the variation rows already read, so WooCommerce stays
+      // the source; the parent's figure is kept as the floor when it is lower,
+      // because this must never raise a price the store reported.
       const range = variationPriceRange(data);
       if (!range) return;
+
+      const min =
+        product.priceMin !== null && product.priceMin > 0
+          ? Math.min(product.priceMin, range.min)
+          : range.min;
+      const max = Math.max(range.max, min);
 
       // `priceMax` is the top of a variant range and stays absent when every
       // variation costs the same, so a single-price product does not render as
       // "$34.57 - $34.57". The display string is derived from the same
       // normalised max, or the label and the range would disagree.
-      const max = range.max > range.min ? range.max : null;
-      product.priceMin = range.min;
-      product.priceMax = max ?? undefined;
-      product.price = priceDisplayFromRange(range.min, max);
+      const hasRange = max > min;
+      product.priceMin = min;
+      product.priceMax = hasRange ? max : undefined;
+      product.priceRange = hasRange;
+      product.price = priceDisplayFromRange(min, hasRange ? max : null);
     })
   );
 

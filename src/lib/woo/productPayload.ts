@@ -673,6 +673,8 @@ export interface WooVariationLike {
   stock_quantity?: number | null;
   manage_stock?: boolean;
   attributes?: Array<{ name?: string; option?: string }>;
+  /** The variation's own shot, when the store gave it one. */
+  image?: { src?: string } | null;
 }
 
 /** A product as the admin editor consumes it. Absence is `null`, never zero. */

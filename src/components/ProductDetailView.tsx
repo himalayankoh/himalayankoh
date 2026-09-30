@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingCart, Heart, Check, Minus, Plus, ChevronRight, Loader2 } from 'lucide-react';
 import type { Product } from '../data/products';
 import { findVariationOption } from '../lib/woo/variationOptions';
-import { formatPriceDisplay, isPriceKnown } from '../lib/products/price';
+import { isPriceKnown, variationPriceDisplay } from '../lib/products/price';
 import { getProductDisplayName } from '../lib/products/productSeo';
 import { useCart } from '../store/cartStore';
 import { useAuthContext } from '../context/AuthContext';
@@ -34,8 +34,16 @@ export default function ProductDetailView({
   // The store's real variations when the product is variable, `grainSizes`
   // otherwise — one list either way, so the selector cannot show an option the
   // cart cannot name.
-  const grainChoices = product.variations?.options.map((option) => option.label) ?? product.grainSizes ?? [];
-  const [selectedGrain, setSelectedGrain] = useState(grainChoices[0] || '');
+  // A variable product's price depends on which option is chosen, so nothing is
+  // preselected and the product-level range is what shows until the shopper picks.
+  // Defaulting to the first option would present the cheapest price as *the*
+  // price, and a shopper on "2kg" would read the "1kg" figure.
+  const variationOptions = product.variations?.options ?? [];
+  const hasVariations = variationOptions.length > 0;
+  const grainChoices = hasVariations
+    ? variationOptions.map((option) => option.label)
+    : product.grainSizes ?? [];
+  const [selectedGrain, setSelectedGrain] = useState('');
   const [addedToCart, setAddedToCart] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
@@ -52,13 +60,44 @@ export default function ProductDetailView({
 
   useEffect(() => {
     setQty(1);
-    setSelectedGrain(product.variations?.options[0]?.label ?? product.grainSizes?.[0] ?? '');
+    // Nothing preselected for a variable product (see above); a simple product's
+    // grain list is a description, not a choice, so its first entry stands.
+    setSelectedGrain(product.variations?.options?.length ? '' : product.grainSizes?.[0] ?? '');
     setAddedToCart(false);
   }, [product.id, product.grainSizes, product.variations]);
 
   // No reported price means the product cannot be sold yet — the cart line
   // needs a real unit price and 0 would allow a free checkout.
   const priceKnown = isPriceKnown(product);
+
+  const selectedOption = findVariationOption(product.variations, selectedGrain);
+  const selectedOutOfStock = selectedOption !== undefined && selectedOption.inStock === false;
+  /** A variable product cannot be added until the shopper names the option. */
+  const needsOption = hasVariations && selectedOption === undefined;
+
+  // The chosen option's own price once there is one, the product's range before
+  // that (see `variationPriceDisplay`).
+  const displayPrice = variationPriceDisplay(product, selectedOption);
+
+  // The option's own shot, when the store has one, ahead of the product's gallery.
+  const variationImage = selectedOption?.image?.trim() || null;
+  const galleryImages = Array.from(
+    new Set(
+      [...(variationImage ? [variationImage] : []), ...(product.images || []), product.image].filter(
+        (img): img is string => typeof img === 'string' && img.trim().length > 0
+      )
+    )
+  );
+
+  const addToCartLabel = isAdding
+    ? 'Adding…'
+    : addedToCart
+      ? 'Added to Cart!'
+      : needsOption
+        ? 'Choose an option'
+        : selectedOutOfStock
+          ? 'Out of stock'
+          : 'Add to Cart';
 
   // Tracked units are a ceiling, not a suggestion: a customer cannot order past
   // what the warehouse reports. No count means no ceiling, because inventing one
@@ -80,14 +119,21 @@ export default function ProductDetailView({
       toast.error(`${product.name} has no price available yet.`);
       return;
     }
+    if (needsOption) {
+      toast.error(`Choose an option for ${product.name} first.`);
+      return;
+    }
     setIsAdding(true);
     try {
-      const option = findVariationOption(product.variations, selectedGrain);
+      const option = selectedOption;
       await addItem(
         {
           id: String(product.id),
           name: product.name,
-          price: product.priceMin as number,
+          // The option's own price when one is chosen, so the optimistic line
+          // matches what the store is about to price. WooCommerce still prices
+          // the cart line itself; this is only what is shown while it answers.
+          price: (option?.price ?? product.priceMin) as number,
           image: product.image,
           grainSize: selectedGrain || undefined,
           ...(option ? { variation: { attribute: option.attribute, value: option.value } } : {}),
@@ -168,13 +214,12 @@ export default function ProductDetailView({
           {/* The product shot is the LCP element on a PDP — fetch it eagerly and
               at high priority rather than letting it queue behind other assets. */}
           <ProductImageGallery
-            images={Array.from(
-              new Set(
-                [...(product.images || []), product.image].filter(
-                  (img): img is string => typeof img === 'string' && img.trim().length > 0
-                )
-              )
-            )}
+            // The chosen option's own shot leads, so selecting an option changes
+            // the picture the way it changes the price. `key` remounts the gallery
+            // on that change, because a gallery that stays on slide 3 would keep
+            // showing a different angle of the pack the shopper just left.
+            key={variationImage ?? 'product'}
+            images={galleryImages}
             alt={displayName}
             variant={variant}
             rounded={variant === 'modal' ? 'md:rounded-l-3xl' : ''}
@@ -212,7 +257,16 @@ export default function ProductDetailView({
             {displayName}
           </h1>
 
-          <p className="text-himalayan font-bold text-2xl mb-4">{formatPriceDisplay(product)}</p>
+          <p className={`text-himalayan font-bold text-2xl ${hasVariations ? 'mb-1' : 'mb-4'}`}>
+            {displayPrice}
+          </p>
+          {hasVariations && (
+            <p className="text-xs text-charcoal-light mb-4">
+              {selectedOption
+                ? `${selectedOption.label}${selectedOption.sku ? ` · ${selectedOption.sku}` : ''}`
+                : 'Select an option to see its exact price.'}
+            </p>
+          )}
 
           {/* Only an explicit out-of-stock report is shown. A source that
               cannot report stock at all (stockStatus 'unknown') must not be
@@ -250,24 +304,38 @@ export default function ProductDetailView({
 
           {grainChoices.length > 0 && (
             <div className="mb-5">
-              <label className="block text-sm font-semibold text-charcoal mb-2">Grain Size</label>
-              <div className="flex flex-wrap gap-2">
-                {grainChoices.map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setSelectedGrain(g)}
-                    aria-pressed={selectedGrain === g}
-                    className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                      selectedGrain === g
-                        ? 'border-himalayan bg-himalayan/10 text-himalayan'
-                        : 'border-gray-200 text-charcoal hover:border-himalayan/50'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
+              <label className="block text-sm font-semibold text-charcoal mb-2">{product.variations?.attributeLabel ?? 'Grain Size'}</label>
+              <div className="flex flex-wrap gap-2" role="group" aria-label={product.variations?.attributeLabel ?? 'Grain Size'}>
+                {grainChoices.map((g) => {
+                  // An option the store cannot sell is still shown — hiding it would
+                  // hide the shape of the choice — but it is marked, so the shopper
+                  // is not left clicking into the store's own refusal.
+                  const choice = findVariationOption(product.variations, g);
+                  const unavailable = choice !== undefined && choice.inStock === false;
+                  return (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => setSelectedGrain(g)}
+                      aria-pressed={selectedGrain === g}
+                      title={unavailable ? `${g} is out of stock` : undefined}
+                      className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
+                        selectedGrain === g
+                          ? 'border-himalayan bg-himalayan/10 text-himalayan'
+                          : 'border-gray-200 text-charcoal hover:border-himalayan/50'
+                      } ${unavailable ? 'opacity-60 line-through decoration-charcoal/40' : ''}`}
+                    >
+                      {g}
+                      {unavailable && <span className="sr-only"> (out of stock)</span>}
+                    </button>
+                  );
+                })}
               </div>
+              {selectedOutOfStock && (
+                <p className="mt-2 text-xs font-medium text-amber-700">
+                  {selectedOption?.label} is out of stock — choose another option.
+                </p>
+              )}
             </div>
           )}
 
@@ -308,7 +376,7 @@ export default function ProductDetailView({
               whileHover={!isAdding ? { scale: 1.02 } : undefined}
               whileTap={!isAdding ? { scale: 0.98 } : undefined}
               onClick={handleAddToCart}
-              disabled={!product.inStock || !priceKnown || isAdding}
+              disabled={!product.inStock || !priceKnown || isAdding || needsOption || selectedOutOfStock}
               aria-live="polite"
               aria-busy={isAdding}
               className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -318,7 +386,7 @@ export default function ProductDetailView({
               }`}
             >
               {isAdding ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
-              {isAdding ? 'Adding…' : (addedToCart ? 'Added to Cart!' : 'Add to Cart')}
+              {addToCartLabel}
             </motion.button>
             <motion.button
               type="button"

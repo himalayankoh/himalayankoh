@@ -126,6 +126,10 @@ export function productVariations(
       // Absent stock means the store did not say; only a positive report counts,
       // the same rule the catalog applies to the parent product.
       inStock: row.stock_status === 'instock' || row.stock_status === 'onbackorder',
+      // The variation's own shot, when it has one. Choosing an option is how a
+      // shopper says which pack they want, so the picture has to follow the
+      // choice — otherwise the 2kg bag is described by the 1kg photograph.
+      image: row.image?.src?.trim() ? row.image.src.trim() : null,
     });
   }
 

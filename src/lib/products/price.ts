@@ -35,6 +35,27 @@ export function priceDisplayFromRange(priceMin: number | null, priceMax?: number
   return priceMax ? `${min} - $${priceMax.toFixed(2)}` : min;
 }
 
+/**
+ * What a variable product's price should read, given the option chosen so far.
+ *
+ * WooCommerce reports a variable product's own `price` as the cheapest of its
+ * variations, so showing that number as *the* price asserts that every option
+ * costs the same — the shopper reads the 1kg figure while looking at 2kg. Until an
+ * option is chosen the product's range stands (`$12.34 - $23.45`), and once one is
+ * chosen that option's own price does.
+ *
+ * An option the store reported no price for falls back to the range rather than
+ * rendering `$0.00`: a price we did not receive is not a free product.
+ */
+export function variationPriceDisplay(
+  product: Pick<Product, 'price' | 'priceMin'>,
+  option: { price: number | null } | undefined | null
+): string {
+  return option && typeof option.price === 'number'
+    ? priceDisplayFromRange(option.price)
+    : formatPriceDisplay(product);
+}
+
 /** Catalog fields a source did not supply, so callers can render them as unknown. */
 export function collectMissingCatalogFields(input: {
   priceMin: number | null;

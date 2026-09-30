@@ -93,6 +93,22 @@ describe('WooCommerce option naming', () => {
     });
   });
 
+  it('carries the variation’s own image, so the picture can follow the choice', () => {
+    const variations = productVariations([GRAIN], [
+      variation({
+        id: 7001,
+        attributes: [{ name: 'Grain Size', option: 'Fine Grain' }],
+        image: { src: 'https://cdn.test/fine.webp' },
+      }),
+      variation({ id: 7002, image: null }),
+    ]);
+
+    expect(variations?.options[0].image).toBe('https://cdn.test/fine.webp');
+    // A variation with no shot of its own reports none — the PDP then keeps the
+    // product's gallery rather than showing another option's picture.
+    expect(variations?.options[1].image).toBeNull();
+  });
+
   it('offers nothing for an axis the cart could not be told about', () => {
     const unnamed: RestV3Attribute = { id: 0, name: '', variation: true, options: ['1kg'] };
     expect(productVariations([unnamed], [variation()])).toBeUndefined();
@@ -125,6 +141,7 @@ describe('productVariations', () => {
       price: 19.95,
       sku: 'HK-SFL-F-6lbs',
       inStock: true,
+      image: null,
     });
   });
 

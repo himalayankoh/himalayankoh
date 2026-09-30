@@ -67,6 +67,8 @@ export interface ProductVariationOption {
   price: number | null;
   sku: string | null;
   inStock: boolean;
+  /** The variation's own image, or null when the store gave it none. */
+  image?: string | null;
 }
 
 /** The variation axis a shopper picks from, e.g. Grain Size. */

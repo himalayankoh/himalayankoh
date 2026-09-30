@@ -100,6 +100,7 @@ describe('the catalog read of a variable product', () => {
         price: 19.95,
         sku: 'HK-SFL-F-6lbs',
         inStock: true,
+        image: null,
       },
       {
         id: 7002,
@@ -109,6 +110,7 @@ describe('the catalog read of a variable product', () => {
         price: 17.95,
         sku: 'HK-SFL-C-6lbs',
         inStock: false,
+        image: null,
       },
     ]);
     // The selector's own list comes from the same read, so the caption a shopper
@@ -123,6 +125,30 @@ describe('the catalog read of a variable product', () => {
 
     expect(product.priceMin).toBe(17.95);
     expect(product.priceMax).toBe(19.95);
+  });
+
+  it('derives the range even when the parent reports its own one-line price', async () => {
+    // WooCommerce fills a variable parent's `price` with the cheapest variation,
+    // so trusting it shows "$17.95" for a product that also sells at $19.95 — a
+    // single figure standing for every option. The range comes from the variation
+    // rows the read already holds, and the parent's lower figure is kept as the floor.
+    useWordPress(routes([{ ...VARIABLE_PARENT, price: '17.95', regular_price: '17.95' }]));
+
+    const [product] = (await fetchAdminProducts({})) ?? [];
+
+    expect(product.priceMin).toBe(17.95);
+    expect(product.priceMax).toBe(19.95);
+    expect(product.priceRange).toBe(true);
+    expect(product.price).toBe('$17.95 - $19.95');
+  });
+
+  it('does not raise a parent price the store reported below its variations', async () => {
+    useWordPress(routes([{ ...VARIABLE_PARENT, price: '12.00', regular_price: '12.00' }]));
+
+    const [product] = (await fetchAdminProducts({})) ?? [];
+
+    expect(product.priceMin).toBe(12);
+    expect(product.price).toBe('$12.00 - $19.95');
   });
 
   it('reads the variations once per variable product, and not at all for a simple one', async () => {
