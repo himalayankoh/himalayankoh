@@ -137,7 +137,15 @@ export function OverviewPanel({ overview }: { overview: WholesaleOverview | null
         />
       </Panel>
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      {/*
+        `[&>*]:min-w-0` is load-bearing. A grid item defaults to `min-width: auto`,
+        which is its min-content width — and each of these panels holds a
+        `DataTable` wide enough to read (7 columns), so the column blew out to
+        380px inside a 320px pane and the whole console pane scrolled sideways.
+        Letting the items shrink lets the table's own `overflow-x-auto` host do
+        the scrolling, which is what it is there for.
+      */}
+      <div className="grid lg:grid-cols-2 gap-6 [&>*]:min-w-0">
         <Panel title="Destinations" description="Countries the book has shipped to, by order count.">
           <DataTable
             columns={[

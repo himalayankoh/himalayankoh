@@ -516,7 +516,9 @@ export function ContainerQuotePanel({
           ) : null
         }
       >
-        <div className="grid lg:grid-cols-2 gap-6">
+        {/* `[&>*]:min-w-0` — see BusinessPanels: a grid item keeps `min-width:
+            auto` by default, so a wide table would push the console pane sideways. */}
+        <div className="grid lg:grid-cols-2 gap-6 [&>*]:min-w-0">
           <div className="space-y-4">
             <div className="grid sm:grid-cols-[1.4fr_repeat(2,minmax(0,1fr))_auto] gap-3 items-end">
               <Field label="Product">
@@ -708,8 +710,10 @@ export function ContainerQuotePanel({
         </div>
       </Panel>
 
+      {/* `[&>*]:min-w-0` — see BusinessPanels: a grid item keeps `min-width: auto`
+          by default, so a wide table would push the console pane sideways. */}
       {calculation ? (
-        <div className="grid lg:grid-cols-2 gap-6">
+        <div className="grid lg:grid-cols-2 gap-6 [&>*]:min-w-0">
           <Panel title="Loading plan" description={`${calculation.container.name} · ${calculation.containers} container${calculation.containers === 1 ? '' : 's'}`}>
             <DataTable
               columns={[
