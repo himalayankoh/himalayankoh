@@ -7,9 +7,10 @@
  * into an empty list. A supplier cost that failed to save must read as a failure, not
  * as a form that silently kept its old value.
  *
- * The workspace read is deliberately one call: thirteen tabs over six reference sets
+ * The console read is deliberately one call: thirteen tabs over six reference sets
  * would otherwise be thirteen chances to disagree about which container profiles
- * exist.
+ * exist, and the counts beside them would come from a second, separately-timed read of
+ * the same business. Everything the Wholesale screen draws arrives together.
  */
 
 import { getAccessToken } from '@/services/wordpressAdminAuth';
@@ -98,11 +99,6 @@ export interface WholesaleWorkspace {
   };
 }
 
-/** Everything the workspace renders, in one authenticated read. */
-export async function fetchWholesaleWorkspace(): Promise<WholesaleWorkspace> {
-  return get<WholesaleWorkspace>('/api/admin/wholesale/workspace');
-}
-
 export interface WholesaleOverview {
   applications: { pending: number; more_info: number; approved: number; rejected: number; total: number; by_status: Record<string, number> };
   accounts: { active: number; suspended: number; total: number };
@@ -130,8 +126,21 @@ export interface WholesaleOverview {
   definitions: Record<string, string>;
 }
 
-export async function fetchWholesaleOverview(): Promise<WholesaleOverview> {
-  return get<WholesaleOverview>('/api/admin/wholesale/overview');
+/**
+ * The whole Wholesale screen: the workspace's records and the overview's counts, from
+ * one authenticated read.
+ *
+ * One request rather than two, because the two halves overlap — the overview's
+ * container-utilisation averages are computed from the same order book the orders panel
+ * lists. Asking separately made WordPress send that order book twice.
+ */
+export interface WholesaleConsole {
+  workspace: WholesaleWorkspace;
+  overview: WholesaleOverview;
+}
+
+export async function fetchWholesaleConsole(): Promise<WholesaleConsole> {
+  return get<WholesaleConsole>('/api/admin/wholesale/console');
 }
 
 export interface WholesaleRecordList {

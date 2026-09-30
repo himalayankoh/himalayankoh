@@ -20,8 +20,7 @@ import {
   Anchor,
 } from 'lucide-react';
 import {
-  fetchWholesaleOverview,
-  fetchWholesaleWorkspace,
+  fetchWholesaleConsole,
   type WholesaleOverview,
   type WholesaleWorkspace,
 } from '@/lib/admin/wholesaleConsoleApi';
@@ -117,7 +116,7 @@ export default function AdminWholesaleWorkspace() {
     setLoading(true);
     setError('');
     try {
-      const [data, counts] = await Promise.all([fetchWholesaleWorkspace(), fetchWholesaleOverview()]);
+      const { workspace: data, overview: counts } = await fetchWholesaleConsole();
       setWorkspace(data);
       setOverview(counts);
     } catch (caught) {
@@ -129,7 +128,7 @@ export default function AdminWholesaleWorkspace() {
 
   const reload = useCallback(async () => {
     try {
-      const [data, counts] = await Promise.all([fetchWholesaleWorkspace(), fetchWholesaleOverview()]);
+      const { workspace: data, overview: counts } = await fetchWholesaleConsole();
       setWorkspace(data);
       setOverview(counts);
     } catch (caught) {
