@@ -23,6 +23,7 @@ import type { Product, StockStatus } from '../../data/products';
 import { collectMissingCatalogFields, priceDisplayFromRange } from '../products/price';
 import { productSlugFromName } from '../products/slug';
 import { resolveCuratedProductImages } from '../products/curatedImages';
+import { parseStoreSrcset, type ResponsiveImageSources } from '../images/responsiveImage';
 import { SEO_META_KEYS, variationPriceRange, type WooVariationLike } from '../woo/productPayload';
 import {
   productVariations,
@@ -58,6 +59,14 @@ export interface StoreApiImage {
   src?: string;
   thumbnail?: string;
   alt?: string;
+  /**
+   * WordPress's own responsive candidates for this image, `url Nw` pairs.
+   *
+   * Published by WooCommerce; the storefront keeps only the part of it that is
+   * provably a saving — see `lib/images/responsiveImage.ts`.
+   */
+  srcset?: string;
+  sizes?: string;
 }
 
 export interface StoreApiTerm {
@@ -109,7 +118,7 @@ export interface RestV3Product {
   stock_status?: string;
   stock_quantity?: number | null;
   featured?: boolean;
-  images?: Array<{ id?: number; src?: string; alt?: string }>;
+  images?: Array<{ id?: number; src?: string; alt?: string; srcset?: string; sizes?: string }>;
   categories?: Array<{ id?: number; name?: string; slug?: string }>;
   date_modified_gmt?: string;
   /** 'simple' | 'variable' | … — decides whether prices live on the variations. */
@@ -307,6 +316,8 @@ function buildProduct(input: {
   priceMin: number | null;
   priceMax?: number;
   images: string[];
+  /** Store-published responsive candidates, keyed by image URL. */
+  imageResponsive?: ResponsiveImageSources;
   category: string;
   stockStatus: StockStatus;
   /** Units the source reports, or null when it reports no count. */
@@ -329,6 +340,7 @@ function buildProduct(input: {
     priceMax: input.priceMax,
     image: images[0] ?? '',
     images,
+    imageResponsive: input.imageResponsive,
     category: input.category || UNCATEGORIZED_CATEGORY,
     description: input.description || undefined,
     inStock: isPurchasable(input.stockStatus),
@@ -373,6 +385,27 @@ function imageUrls(images: Array<{ src?: string; thumbnail?: string }> | undefin
   return (images ?? []).map((image) => image?.src || image?.thumbnail || '').filter(Boolean);
 }
 
+/**
+ * The responsive data the store publishes for its own images, keyed by URL.
+ *
+ * Built from the same array `imageUrls` reads, so a URL can only be a key if it
+ * is also an image the product renders. Anything the store did not publish a
+ * usable `srcset` for is simply absent, and the component then renders the plain
+ * `src` it always did.
+ */
+function imageResponsiveMap(
+  images: Array<{ src?: string; srcset?: string }> | undefined
+): ResponsiveImageSources | undefined {
+  const map: ResponsiveImageSources = {};
+
+  for (const image of images ?? []) {
+    const source = parseStoreSrcset(image?.srcset, image?.src);
+    if (source && image?.src) map[image.src] = source;
+  }
+
+  return Object.keys(map).length > 0 ? map : undefined;
+}
+
 /** Store API product -> Product. */
 export function mapStoreProduct(raw: StoreApiProduct): Product {
   const minorUnit = typeof raw.prices?.currency_minor_unit === 'number' ? raw.prices.currency_minor_unit : 2;
@@ -399,6 +432,7 @@ export function mapStoreProduct(raw: StoreApiProduct): Product {
     description: htmlToText(raw.short_description || raw.description),
     priceMin,
     images: imageUrls(raw.images),
+    imageResponsive: imageResponsiveMap(raw.images),
     category: htmlToText(raw.categories?.[0]?.name),
     stockStatus,
     stockQuantity: finiteCount(raw.stock_availability?.remaining),
@@ -433,6 +467,7 @@ export function mapRestV3Product(raw: RestV3Product): Product {
     description: htmlToText(raw.short_description || raw.description),
     priceMin,
     images: imageUrls(raw.images),
+    imageResponsive: imageResponsiveMap(raw.images),
     category: htmlToText(raw.categories?.[0]?.name),
     stockStatus: normalizeStockStatus(raw.stock_status),
     // REST v3 sends null for a product that does not manage stock, which stays

@@ -1,11 +1,22 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Play } from 'lucide-react';
 import type { Product } from '../../data/products';
 import { loadPublishedMedia } from '../../services/media';
 import type { MediaVideo } from '../../services/media';
 
-// Re-export the YouTube embed from MediaHub — click-to-load, youtube-nocookie.com
-import { YouTubeEmbed } from '../../media/MediaHub';
+// The same click-to-load YouTube embed MediaHub uses (youtube-nocookie.com, no
+// autoplay, responsive 16:9), imported **from MediaHub itself** — but lazily.
+//
+// It used to be a plain import, which put the whole media hub module on every
+// product page: MediaHub is a hub for a media library the visitor has not asked
+// for, and it reaches for the Phosphor icon set, which this storefront otherwise
+// does not ship at all (it uses lucide). That is how a product page ended up
+// downloading `MediaHub`, `Play.es` and `IconBase.es` — measured 2026-09-30.
+// The section renders nothing at all when the product has no videos, so the
+// deferral costs a fetch only in the case where a video is actually shown.
+const YouTubeEmbed = lazy(() =>
+  import('../../media/MediaHub').then((module) => ({ default: module.YouTubeEmbed }))
+);
 
 interface Props {
   product: Product;
@@ -73,10 +84,12 @@ export default function ProductVideoSection({ product }: Props) {
                   {video.title}
                 </h3>
               )}
-              <YouTubeEmbed
-                videoId={video.youtubeVideoId!}
-                title={video.title}
-              />
+              <Suspense fallback={<div className="aspect-video w-full rounded-xl bg-gray-100" />}>
+                <YouTubeEmbed
+                  videoId={video.youtubeVideoId!}
+                  title={video.title}
+                />
+              </Suspense>
               {video.summary && (
                 <p className="mt-2 text-sm text-charcoal-light">
                   {video.summary}

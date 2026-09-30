@@ -1,4 +1,5 @@
 import { legacyImage } from '@/lib/images/legacyAssets';
+import type { ResponsiveImageSources } from '@/lib/images/responsiveImage';
 
 /**
  * The bundled catalog: Himalayan pink salt, and nothing else.
@@ -90,6 +91,16 @@ export interface Product {
   priceMax?: number;
   image: string;
   images?: string[];
+  /**
+   * The store's own responsive candidates for its images, keyed by image URL.
+   *
+   * Absent for a repo-hosted image (the curated defaults) and for any source
+   * that does not publish a `srcset`, which is exactly when the plain `src` is
+   * already the right thing to render. See `lib/images/responsiveImage.ts` for
+   * what is kept and why. Keyed by URL rather than by index so it cannot drift
+   * out of step with `images`.
+   */
+  imageResponsive?: ResponsiveImageSources;
   category: string;
   description?: string;
   grainSizes?: string[];

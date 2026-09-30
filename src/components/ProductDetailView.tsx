@@ -178,6 +178,7 @@ export default function ProductDetailView({
             alt={displayName}
             variant={variant}
             rounded={variant === 'modal' ? 'md:rounded-l-3xl' : ''}
+            srcsets={product.imageResponsive}
           />
           {variant === 'modal' && onClose && (
             <button

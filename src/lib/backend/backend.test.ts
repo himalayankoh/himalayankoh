@@ -123,6 +123,34 @@ describe('mapStoreProduct', () => {
     expect(product.missing).not.toContain('price');
   });
 
+  it('keeps the responsive sizes the store publishes, keyed by image url', () => {
+    const product = mapStoreProduct({
+      ...base,
+      images: [
+        {
+          id: 2462,
+          src: 'https://example.test/uploads/6-lbs-pouche.webp',
+          alt: '',
+          srcset:
+            'https://example.test/uploads/6-lbs-pouche.webp 573w, ' +
+            'https://example.test/uploads/6-lbs-pouche-300x300.webp 300w, ' +
+            'https://example.test/uploads/6-lbs-pouche-500x500.webp 500w',
+        },
+      ],
+    });
+
+    expect(product.imageResponsive).toEqual({
+      'https://example.test/uploads/6-lbs-pouche.webp': {
+        width: 573,
+        tokens: ['300x300'],
+      },
+    });
+  });
+
+  it('omits responsive sizes entirely when the store publishes none', () => {
+    expect(mapStoreProduct(base).imageResponsive).toBeUndefined();
+  });
+
   it('never turns a discount into a variant price range', () => {
     // regular 19.95 / sale 14.95 is a discount, not a range.
     const product = mapStoreProduct({

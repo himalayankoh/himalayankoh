@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — Storefront Account State
  * Description:       Custom tables and REST endpoints for the state WordPress does not already own: per-account storefront state (wishlist, saved addresses, cart binding), the customer operations WooCommerce exposes no REST route for (sign-in, account creation, password reset), and the app's site-content bridge (settings, category-hub overrides, first-party events, newsletter/contact submissions, HK blog fields). This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the hk-storefront/v1 namespace below.
- * Version:           1.5.1
+ * Version:           1.5.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -3155,3 +3155,70 @@ add_action(
 		);
 	}
 );
+
+/* -------------------------------------------------------------------------
+ * Storefront reads — responsive product images, described by the API
+ *
+ * WHY THIS IS HERE: the storefront draws a product photo at whatever size the
+ * page needs, but the route it reads (`/wc/v3/products` — the only one carrying
+ * price and stock) describes each image with `id`, `src`, `name` and `alt` and
+ * nothing else. Measured against staging on 2026-09-30, that left a 573x573,
+ * 482 kB PNG being handed to the browser to draw a ~300 px card, with no smaller
+ * candidate to choose from. The public Store API publishes a `srcset`; REST v3
+ * does not, and v3 is the route that wins the read whenever credentials exist.
+ *
+ * The sizes are not invented here: they come from
+ * `wp_get_attachment_image_srcset()`, the same function WordPress uses to build
+ * the `srcset` attribute in its own markup, so the API and the markup cannot
+ * disagree about which sizes exist or how wide they are.
+ *
+ * READ-ONLY AND ADDITIVE. No image, price, stock or other product field is
+ * changed; a product whose attachments report no sizes is returned exactly as
+ * before. Removing this filter restores the previous response byte for byte.
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Adds `srcset` to each image in a REST v3 product response.
+ *
+ * The largest registered size is asked for first, because the storefront needs
+ * the ladder to run all the way up to the original: it keeps the original as the
+ * final candidate and refuses to offer any size close to it — a near-original
+ * WordPress re-encode is regularly a *larger* file than the original it came from
+ * — so a srcset that stops short of the original could not be used at all.
+ *
+ * Applied by WooCommerce to single-product and product-collection responses
+ * alike, which is what makes a catalogue page cost nothing extra: one response
+ * describes every image on it.
+ */
+function hk_storefront_add_image_srcset( $response, $object, $request ) {
+	if ( ! $response instanceof WP_REST_Response ) {
+		return $response;
+	}
+
+	$data   = $response->get_data();
+	$images = isset( $data['images'] ) && is_array( $data['images'] ) ? $data['images'] : array();
+	if ( ! $images ) {
+		return $response;
+	}
+
+	$changed = false;
+	foreach ( $images as $index => $image ) {
+		$attachment_id = isset( $image['id'] ) ? (int) $image['id'] : 0;
+		if ( $attachment_id <= 0 ) {
+			continue;
+		}
+
+		$srcset = wp_get_attachment_image_srcset( $attachment_id, 'full' );
+		if ( is_string( $srcset ) && '' !== $srcset ) {
+			$data['images'][ $index ]['srcset'] = $srcset;
+			$changed                            = true;
+		}
+	}
+
+	if ( $changed ) {
+		$response->set_data( $data );
+	}
+
+	return $response;
+}
+add_filter( 'woocommerce_rest_prepare_product_object', 'hk_storefront_add_image_srcset', 10, 3 );

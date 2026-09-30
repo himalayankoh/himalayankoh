@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { Search } from 'lucide-react';
 import { SkeletonProductGrid } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
 import type { Product } from '../data/products';
 import ProductCard from '../components/ProductCard';
-import ProductModal from '../components/ProductModal';
+// Deferred: the quick-view modal is only ever shown after a shopper presses
+// "Quick view", and it drags in the whole product page view. Loading it in the
+// route's own chunk meant every visit to a listing paid for a dialog most
+// visitors never open — measured 2026-09-30, it and its dependencies were ~10 KB
+// of the ~269 KB gzipped JavaScript a listing downloaded before it could paint.
+const ProductModal = lazy(() => import('../components/ProductModal'));
 import CategoryEducationPanel from '../components/category/CategoryEducationPanel';
 import CategoryFilterNav from '../components/category/CategoryFilterNav';
 import CategoryHubLayout from '../components/category/CategoryHubLayout';
@@ -137,6 +142,10 @@ export default function ProductsPage({
               index={i}
               onQuickView={setQuickViewProduct}
               shopHighlight={isCategoryHub}
+              // The first card is the largest contentful paint on this page, so
+              // its photo is fetched at high priority instead of waiting for
+              // layout to discover it.
+              priority={i === 0}
             />
           ))}
         </div>
@@ -233,10 +242,12 @@ export default function ProductsPage({
       </div>
 
       {quickViewProduct && (
-        <ProductModal
-          product={quickViewProduct}
-          onClose={() => setQuickViewProduct(null)}
-        />
+        <Suspense fallback={null}>
+          <ProductModal
+            product={quickViewProduct}
+            onClose={() => setQuickViewProduct(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

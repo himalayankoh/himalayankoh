@@ -1,18 +1,27 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  GALLERY_IMAGE_SIZES,
+  dropResponsiveCandidates,
+  responsiveImageProps,
+  type ResponsiveImageSources,
+} from '../lib/images/responsiveImage';
 
 interface ProductImageGalleryProps {
   images: string[];
   alt: string;
   variant?: 'page' | 'modal';
   rounded?: string;
+  /** The store's own responsive candidates, keyed by image URL. */
+  srcsets?: ResponsiveImageSources;
 }
 
 export default function ProductImageGallery({
   images,
   alt,
   rounded = 'rounded-3xl',
+  srcsets,
 }: ProductImageGalleryProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -42,15 +51,21 @@ export default function ProductImageGallery({
   };
 
   const currentImage = validImages[currentIndex] || validImages[0];
+  const heroImage = responsiveImageProps(currentImage, srcsets, GALLERY_IMAGE_SIZES);
 
   return (
     <div className={`relative w-full aspect-[4/3] sm:aspect-square bg-white overflow-hidden ${rounded}`}>
       <AnimatePresence mode="wait" initial={false}>
         <motion.img
           key={currentIndex}
-          src={currentImage}
+          src={heroImage.src}
+          srcSet={heroImage.srcSet}
+          sizes={heroImage.sizes}
           alt={`${alt} - Image ${currentIndex + 1}`}
+          // Only the first image is the LCP candidate; the rest wait until the
+          // shopper asks for them rather than competing with it for bandwidth.
           fetchPriority={currentIndex === 0 ? 'high' : 'auto'}
+          loading={currentIndex === 0 ? 'eager' : 'lazy'}
           decoding="async"
           className="w-full h-full object-contain"
           initial={false}
@@ -58,7 +73,15 @@ export default function ProductImageGallery({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.12 }}
           onError={(e) => {
-            (e.target as HTMLImageElement).src = '/images/placeholder-product.svg';
+            const image = e.currentTarget;
+            // Same self-healing rule as the card: a candidate that 404s falls
+            // back to the original, and only the original failing is a broken
+            // image.
+            if (dropResponsiveCandidates(image)) {
+              image.src = heroImage.src;
+              return;
+            }
+            image.src = '/images/placeholder-product.svg';
           }}
         />
       </AnimatePresence>

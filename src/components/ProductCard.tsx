@@ -9,6 +9,11 @@ import { useCart } from '../store/cartStore';
 import { useAuthContext } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { wishlistApi } from '../lib/wishlist/client';
+import {
+  CARD_IMAGE_SIZES,
+  dropResponsiveCandidates,
+  responsiveImageProps,
+} from '../lib/images/responsiveImage';
 
 interface Props {
   product: Product;
@@ -16,9 +21,21 @@ interface Props {
   onQuickView?: (product: Product) => void;
   /** Category hub left column — stronger shop affordance */
   shopHighlight?: boolean;
+  /**
+   * This card is the first one on screen, so its photo is the page's LCP
+   * candidate.
+   *
+   * Opt-in per grid rather than `index === 0` everywhere, because on a product
+   * page's related-products grid the first card is well below the fold: loading
+   * it eagerly there only takes bandwidth from the images the visitor *is*
+   * looking at. Measured on `/products` (2026-09-30, 1440×900): the first card's
+   * photo was requested at 378 ms — after `DOMContentLoaded` at 235 ms — and was
+   * the largest contentful paint at 382 ms.
+   */
+  priority?: boolean;
 }
 
-export default function ProductCard({ product, index, onQuickView, shopHighlight }: Props) {
+export default function ProductCard({ product, index, onQuickView, shopHighlight, priority }: Props) {
   const [qty, setQty] = useState(1);
   // The choice list comes from the store's real variations when the product is
   // variable; `grainSizes` is the same list's labels, and stays the fallback for a
@@ -39,6 +56,16 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
   const canBuy = priceKnown && product.inStock && (maxQuantity === null || maxQuantity > 0);
 
   const [isAdding, setIsAdding] = useState(false);
+
+  // The card draws a product photo a few hundred pixels wide, so it asks the
+  // browser for the store's smaller candidates when one covers the slot and
+  // falls back to the full-size image when none does. See
+  // `lib/images/responsiveImage.ts`.
+  const cardImage = responsiveImageProps(
+    product.image?.trim() || '/images/placeholder-product.svg',
+    product.imageResponsive,
+    CARD_IMAGE_SIZES
+  );
 
   const handleAddToCart = async () => {
     if (isAdding || !canBuy) return;
@@ -98,11 +125,25 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
       <div className="relative aspect-square overflow-hidden bg-gray-50">
         <Link to={`/products/${product.slug}`} className="block w-full h-full">
           <img
-            src={product.image?.trim() || '/images/placeholder-product.svg'}
+            src={cardImage.src}
+            srcSet={cardImage.srcSet}
+            sizes={cardImage.sizes}
             alt={product.name}
             className="w-full h-full object-contain motion-safe:group-hover:scale-[1.03] transition-transform duration-200"
-            loading="lazy"
-            onError={(e) => { (e.target as HTMLImageElement).src = '/images/placeholder-product.svg'; }}
+            loading={priority ? 'eager' : 'lazy'}
+            fetchPriority={priority ? 'high' : undefined}
+            decoding="async"
+            onError={(e) => {
+              const image = e.currentTarget;
+              // A candidate that 404s must not become the placeholder — drop the
+              // candidate list and load the original instead. Only a failure of
+              // the original itself is a broken image.
+              if (dropResponsiveCandidates(image)) {
+                image.src = cardImage.src;
+                return;
+              }
+              image.src = '/images/placeholder-product.svg';
+            }}
           />
         </Link>
 
