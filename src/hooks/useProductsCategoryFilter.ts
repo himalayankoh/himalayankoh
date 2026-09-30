@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   CATEGORY_QUERY_PARAM,
@@ -6,6 +6,7 @@ import {
   filterLabelFromKey,
   normalizeCategoryQueryValue,
   parseCategoryFromSearchParams,
+  resolveCategoryFilterKey,
 } from '../lib/categoryContent';
 
 const ALL_LABEL = 'All';
@@ -17,21 +18,32 @@ const ALL_LABEL = 'All';
  * is dropped, so an old link — from the livestock shelves the store used to have,
  * or a typo — lands on the whole catalogue instead of an empty grid. Browser
  * back/forward restores filters.
+ *
+ * The address bar is only read from the render *after mount*. Before that the
+ * router reports an empty query string on purpose (its `getServerSnapshot`),
+ * which is also what the server had, so the hydration render has to decide from
+ * `initialCategoryKey` alone. Reading `window.location` a render early made the
+ * hub page hydrate as the whole catalogue — React error #418 on every load of
+ * `/products?category=<shelf>`; see `resolveCategoryFilterKey` for the whole
+ * account.
  */
 export function useProductsCategoryFilter(initialCategoryKey?: string | null) {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const categoryKey = useMemo(() => {
-    if (typeof window !== 'undefined' && window.location.search) {
-      return parseCategoryFromSearchParams(searchParams);
-    }
-    const fromParams = parseCategoryFromSearchParams(searchParams);
-    if (fromParams !== null) return fromParams;
-    if (initialCategoryKey) {
-      return normalizeCategoryQueryValue(initialCategoryKey);
-    }
-    return null;
-  }, [searchParams, initialCategoryKey]);
+  /** False on the server and on the hydration render; true from the render after mount. */
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
+
+  const categoryKey = useMemo(
+    () =>
+      resolveCategoryFilterKey({
+        hydrated,
+        browserHasQuery: typeof window !== 'undefined' && Boolean(window.location.search),
+        fromSearchParams: parseCategoryFromSearchParams(searchParams),
+        initialCategoryKey,
+      }),
+    [hydrated, searchParams, initialCategoryKey]
+  );
 
   const activeFilter = useMemo(
     () => (categoryKey ? filterLabelFromKey(categoryKey) : ALL_LABEL),

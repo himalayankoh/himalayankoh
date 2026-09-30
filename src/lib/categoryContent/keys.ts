@@ -116,6 +116,56 @@ export function parseCategoryFromSearchParams(params: URLSearchParams): Category
   return normalizeCategoryQueryValue(params.get(CATEGORY_QUERY_PARAM));
 }
 
+/**
+ * Which shelf a render is showing, from the two places a shelf can be named.
+ *
+ * The shelf route (`app/(main)/products/shelf/[key]`) knows the key it was
+ * rendered for and hands it in as `initialCategoryKey`. The browser's own query
+ * string is the other source, because a query-only navigation (`?category=a` →
+ * `?category=b`) is applied to `history` in place rather than through the router
+ * (see `lib/router-compat`), so the route's prop can be one navigation behind the
+ * address bar.
+ *
+ * `hydrated` is what stops those two disagreeing at the one moment React cannot
+ * forgive: **the hydration render must produce the tree the server sent.** The
+ * router's query string is empty on the server *and* on the hydration render —
+ * deliberately, the shim's `getServerSnapshot` returns `''` there — so code that
+ * read it before mount and treated "no query string" as "no shelf" hydrated the
+ * hub as the whole catalogue. Measured on the deployed preview (2026-09-30):
+ * `/products?category=edible-pink-salt` logged React error #418 ("hydration
+ * failed") on every load, in a clean profile, while `/products`, `?search=` and an
+ * unrecognised `?category=` were clean. So before the client is rendering on its
+ * own the answer comes from `fromSearchParams` + `initialCategoryKey` only — the
+ * exact inputs the server had — and the address bar becomes an input from the
+ * render after mount.
+ */
+export interface CategoryFilterKeyInput {
+  /** True from the render after mount; false on the server and on the hydration render. */
+  hydrated: boolean;
+  /** Whether the browser's address bar carries a query string at all. */
+  browserHasQuery: boolean;
+  /** The shelf the router's query string names, already normalized. */
+  fromSearchParams: CategoryContentKey | null;
+  /** The key the route was rendered for — the shelf route's own key, or null. */
+  initialCategoryKey?: string | null;
+}
+
+export function resolveCategoryFilterKey({
+  hydrated,
+  browserHasQuery,
+  fromSearchParams,
+  initialCategoryKey,
+}: CategoryFilterKeyInput): CategoryContentKey | null {
+  // Once the client owns the render the address bar is the source of truth: a
+  // query string naming no live shelf is All, and the effect in
+  // `useProductsCategoryFilter` drops that value from the URL.
+  if (hydrated && browserHasQuery) return fromSearchParams;
+
+  if (fromSearchParams !== null) return fromSearchParams;
+  if (initialCategoryKey) return normalizeCategoryQueryValue(initialCategoryKey);
+  return null;
+}
+
 export function buildProductsCategoryPath(key: CategoryContentKey | null): string {
   if (!key) return '/products';
   return `/products?${CATEGORY_QUERY_PARAM}=${encodeURIComponent(key)}`;

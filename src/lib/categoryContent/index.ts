@@ -9,12 +9,13 @@ export {
   isCategoryContentKey,
   normalizeCategoryQueryValue,
   parseCategoryFromSearchParams,
+  resolveCategoryFilterKey,
   productMatchesCategoryFilter,
   productShelfKey,
   productsPathForCategoryTitle,
   CATEGORY_LINK_BY_TITLE,
 } from './keys';
-export type { CategoryContentKey, CategoryFilterTab } from './keys';
+export type { CategoryContentKey, CategoryFilterKeyInput, CategoryFilterTab } from './keys';
 export { CATEGORY_CONTENT_REGISTRY } from './registry';
 export { CATEGORY_BLOG_MAPPING } from './blogMapping';
 export { loadCategoryArticles, mapBlogPostToCategoryArticle } from './blogArticles';
