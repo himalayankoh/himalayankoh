@@ -1,11 +1,26 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, CheckCircle, CreditCard, Loader2, MapPin, PackageCheck, ShieldCheck, Truck } from 'lucide-react';
+import {
+  ArrowLeft,
+  BadgeCheck,
+  Banknote,
+  CheckCircle,
+  ChevronDown,
+  CreditCard,
+  Loader2,
+  Lock,
+  MapPin,
+  PackageCheck,
+  ShieldCheck,
+  Truck,
+  Wallet,
+} from 'lucide-react';
 import { useAuthContext } from '../context/AuthContext';
 import StripePaymentForm from '../components/checkout/StripePaymentForm';
 import StagingTestPaymentForm from '../components/checkout/StagingTestPaymentForm';
 import PayOverTimeOptions from '../components/checkout/PayOverTimeOptions';
+import CheckoutAddOns from '../components/checkout/CheckoutAddOns';
 import { submitStagingSimulatorPayment } from '../lib/payments/stagingSimulatorClient';
 import {
   STAGING_SIMULATOR_UNAVAILABLE_MESSAGE,
@@ -93,6 +108,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [couponInput, setCouponInput] = useState('');
   const [couponCode, setCouponCode] = useState('');
+  /** Whether the summary's promo-code box is unfolded (the reference layout's "Enter"). */
+  const [promoOpen, setPromoOpen] = useState(false);
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('standard');
   const [shippoRates, setShippoRates] = useState<ShippoRate[]>([]);
   const [selectedShippoRateId, setSelectedShippoRateId] = useState<string | null>(null);
@@ -102,6 +119,17 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [addressValidation, setAddressValidation] = useState<AddressValidationResponse | null>(null);
   const [addressValidating, setAddressValidating] = useState(false);
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
+  /**
+   * Whether the shipping-address fields are open.
+   *
+   * The card shows the address the shopper entered, with a `Change` control,
+   * rather than eight inputs they have to read past on every visit — that is the
+   * reviewed-address shape of the checkout this layout follows. It starts open
+   * (there is nothing to show yet) and closes itself the first time the address
+   * becomes complete; `Change` opens it again, and it stays open while any field
+   * is missing, because a summary of an incomplete address is a dead end.
+   */
+  const [addressEditing, setAddressEditing] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() =>
     // Retail is online-payment-only, so it must never *hold* `invoice` as its
     // selection even before the Stripe config has loaded. The legacy checkout
@@ -219,6 +247,25 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     form.postalCode.trim() &&
     form.country.trim()
   );
+  /**
+   * The street address as one readable line, for the collapsed shipping card.
+   *
+   * Deliberately without the name: that is printed above it, and `formatAddressLines`
+   * (which leads with the name, because the "did you mean" block needs it) would
+   * otherwise say it twice.
+   */
+  const shippingAddressSummary = useMemo(() => {
+    const address = buildShippingAddress(form);
+    return [
+      address.addressLine1,
+      address.addressLine2,
+      `${address.city}, ${address.state} ${address.postalCode}`,
+      address.country,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }, [form]);
+
   const canAutoPreparePayment =
     retailOnly &&
     paymentMethod === 'stripe' &&
@@ -410,6 +457,14 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     if (useLiveShippoRates) return;
     setShippingSelected(addressReady);
   }, [useLiveShippoRates, addressReady]);
+
+  // Collapse the address card the first time there is a complete address to show.
+  // Keyed on the transition, not on `addressReady` itself: opening the form with
+  // `Change` while the address is already valid must not slam it shut again on the
+  // next render.
+  useEffect(() => {
+    if (addressReady) setAddressEditing(false);
+  }, [addressReady]);
 
   const applySuggestedAddress = () => {
     if (!addressValidation?.recommendedAddress) return;
@@ -783,26 +838,47 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
 
   return (
     <div className="min-h-screen bg-warm-white">
-      <div className="bg-cream border-b border-himalayan-line py-6 md:py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <Link to="/products" className="inline-flex items-center gap-2 text-white/70 hover:text-white mb-4 text-sm">
+      {/*
+        One slim bar with the shop's own identity on it — the shape the owner
+        asked for, minus the marketplace: the wordmark is Himalayan Koh's, the
+        colour is this store's, and the "Secure checkout" claim is the one the
+        payment section below actually keeps (Stripe hosts the card fields).
+      */}
+      <header className="border-b border-himalayan-line bg-cream">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <Link
+            to="/products"
+            className="inline-flex items-center gap-2 text-sm font-medium text-charcoal-light transition-colors hover:text-charcoal"
+          >
             <ArrowLeft size={16} />
-            Continue Shopping
+            Continue shopping
           </Link>
+          <div className="flex items-center gap-2">
+            <span className="font-serif text-lg font-bold tracking-tight text-charcoal">Himalayan Koh</span>
+            <span className="hidden items-center gap-1 rounded-full border border-himalayan-line bg-white px-2.5 py-1 text-[11px] font-semibold text-charcoal-light sm:inline-flex">
+              <Lock size={11} />
+              Secure checkout
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <div className="border-b border-himalayan-line/70 bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
           <motion.h1
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="font-serif text-3xl md:text-4xl font-bold text-charcoal"
+            className="font-serif text-2xl font-bold text-charcoal md:text-3xl"
           >
             Checkout
           </motion.h1>
-          <p className="text-charcoal-light mt-2 max-w-2xl">
-            Secure order review, shipping details, and payment preparation for Himalayan Koh products.
+          <p className="mt-1 text-sm text-charcoal-light">
+            Review your order, confirm where it is going, and pay securely — fulfilled by Himalayan Koh.
           </p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
+      <form onSubmit={handleSubmit} className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-10">
         {/*
           Legacy checkout only. Retail has exactly one payment path, so the Payment
           section owns that message rather than two banners saying it at once.
@@ -813,8 +889,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
             <p className="mt-2">Please choose another available payment method or contact our team for help.</p>
           </div>
         )}
-        <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
+        <div className="grid items-start gap-6 lg:grid-cols-3 lg:gap-8">
+          <div className="space-y-5 lg:col-span-2">
             <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
               <h2 className="font-serif text-xl font-bold text-charcoal mb-2">Contact Information</h2>
               {!user && (
@@ -832,11 +908,141 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               </div>
             </section>
 
+            {/*
+              1 — Delivery service. The screenshot's first card, mapped onto the
+              real choice this shop has: which carrier service delivers it. Live
+              USPS rates come from Shippo once there is an address to price, and
+              the flat Standard/Expedited pair below is the honest fallback — the
+              same two options, the same prices, no pickup-point fiction.
+            */}
             <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-              <div className="flex items-center gap-2 mb-5">
-                <Truck size={20} className="text-himalayan" />
-                <h2 className="font-serif text-xl font-bold text-charcoal">Shipping Address</h2>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Truck size={18} className="text-himalayan" />
+                  <h2 className="font-serif text-xl font-bold text-charcoal">Delivery service</h2>
+                </div>
+                {useLiveShippoRates && (
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-light">Live USPS rates</span>
+                )}
               </div>
+
+              {!showShippoPanel && !addressReady && (
+                <p className="rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3 text-sm text-charcoal-light">
+                  Add your shipping address and we&rsquo;ll price delivery with the carriers that serve it. Standard and expedited are always available.
+                </p>
+              )}
+
+              {showShippoPanel && (
+                <div className="mb-4 rounded-xl border border-himalayan/20 bg-himalayan-lighter/60 px-4 py-3 text-sm">
+                  {shippoRatesLoading && (
+                    <p className="mt-1 flex items-center gap-2 text-charcoal-light">
+                      <Loader2 size={14} className="animate-spin" />
+                      Fetching rates for your address...
+                    </p>
+                  )}
+                  {!shippoRatesLoading && shippoRatesError && (
+                    <p className="mt-1 text-amber-800">{shippoRatesError} Using standard flat rates below.</p>
+                  )}
+                  {!shippoRatesLoading && shippoRates.length > 0 && (
+                    <div className="space-y-3">
+                      {shippoRates.map((rate) => {
+                        const selected = selectedShippoRateId === rate.objectId;
+                        return (
+                          <button
+                            key={rate.objectId}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            onClick={() => {
+                              setSelectedShippoRateId(rate.objectId);
+                              setShippingSelected(true);
+                            }}
+                            className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                              selected
+                                ? 'border-himalayan bg-white ring-1 ring-himalayan/30'
+                                : 'border-himalayan-line/70 bg-white hover:border-himalayan/40'
+                            }`}
+                          >
+                            <RadioDot selected={selected} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-semibold text-charcoal">{rate.provider} — {rate.serviceName}</span>
+                              <span className="mt-0.5 block text-xs text-charcoal-light">
+                                {rate.estimatedDays ? `Estimated ${rate.estimatedDays} business days` : 'Estimated delivery varies'}
+                              </span>
+                            </span>
+                            <span className="flex-shrink-0 font-bold text-himalayan">${rate.amount.toFixed(2)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {!shippoRatesLoading && shippoRates.length === 0 && !shippoRatesError && shippoRatesAttempted && (
+                    <p className="mt-1 text-charcoal-light">
+                      Live carrier rates are unavailable for this address — flat rates apply below.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!useLiveShippoRates && (
+                <div className="space-y-3">
+                  <ShippingOption
+                    active={shippingMethod === 'standard'}
+                    title={totals.subtotal >= 50 ? 'Standard delivery (free)' : 'Standard delivery'}
+                    detail={totals.subtotal >= 50 ? 'Free on orders over $50 · 3–7 business days' : '3–7 business days'}
+                    price={totals.subtotal >= 50 ? 'Free' : '$9.95'}
+                    onClick={() => {
+                      setShippingMethod('standard');
+                      setShippingSelected(true);
+                    }}
+                  />
+                  <ShippingOption
+                    active={shippingMethod === 'expedited'}
+                    title="Expedited delivery"
+                    detail="2–4 business days"
+                    price="$18.95"
+                    onClick={() => {
+                      setShippingMethod('expedited');
+                      setShippingSelected(true);
+                    }}
+                  />
+                </div>
+              )}
+            </section>
+
+            {/*
+              2 — Shipping address. The fields collapse to the address they
+              produced once it is complete, with `Change` to reopen them, which is
+              the reviewed-address shape of the reference page.
+            */}
+            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <MapPin size={18} className="text-himalayan" />
+                  <h2 className="font-serif text-xl font-bold text-charcoal">Shipping address</h2>
+                </div>
+                {addressReady && (
+                  <button
+                    type="button"
+                    onClick={() => setAddressEditing((open) => !open)}
+                    className="text-sm font-semibold text-himalayan transition-colors hover:text-himalayan-dark"
+                  >
+                    {addressEditing ? 'Done' : 'Change'}
+                  </button>
+                )}
+              </div>
+
+              {addressReady && !addressEditing && (
+                <div className="rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3">
+                  <p className="text-sm font-semibold text-charcoal">
+                    {form.fullName}
+                    {form.phone ? <span className="font-normal text-charcoal-light"> · {form.phone}</span> : null}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-charcoal-light">{shippingAddressSummary}</p>
+                </div>
+              )}
+
+              {(addressEditing || !addressReady) && (
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label="Full name" error={fieldErrors.fullName}>
                   <input required name="fullName" autoComplete="shipping name" value={form.fullName} onChange={(event) => handleChange('fullName', event.target.value)} placeholder="Full name" className={inputClass} />
@@ -860,6 +1066,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   <input required name="country" autoComplete="shipping country-name" value={form.country} onChange={(event) => handleChange('country', event.target.value)} placeholder="Country" className={inputClass} />
                 </Field>
               </div>
+              )}
 
               {(addressValidating || addressValidation) && (
                 <div className="mt-4">
@@ -919,221 +1126,176 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               )}
             </section>
 
+            {/*
+              3 — Payment methods. Each row names something this store can really
+              take. Card is the one that can charge today (Stripe hosts the card
+              fields, so the number never reaches this server); the rest are shown
+              greyed and unselectable rather than hidden, so the shopper can see
+              what is coming without ever being offered a method that cannot run.
+            */}
             <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-              <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Shipping Method</h2>
-
-              {showShippoPanel && (
-                <div className="mb-4 rounded-xl border border-himalayan/20 bg-himalayan/5 px-4 py-3 text-sm">
-                  {shippoRatesLoading && (
-                    <p className="text-charcoal-light mt-1 flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" />
-                      Fetching rates for your address...
-                    </p>
-                  )}
-                  {!shippoRatesLoading && shippoRatesError && (
-                    <p className="text-amber-800 mt-1">{shippoRatesError} Using standard flat rates below.</p>
-                  )}
-                  {!shippoRatesLoading && shippoRates.length > 0 && (
-                    <div className="mt-3 space-y-2">
-                      {shippoRates.map((rate) => (
-                        <button
-                          key={rate.objectId}
-                          type="button"
-                          onClick={() => {
-                            setSelectedShippoRateId(rate.objectId);
-                            setShippingSelected(true);
-                          }}
-                          className={`w-full text-left rounded-xl border p-3 transition-colors ${
-                            selectedShippoRateId === rate.objectId
-                              ? 'border-himalayan bg-white'
-                              : 'border-gray-200 hover:border-himalayan/40'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-charcoal">{rate.provider} — {rate.serviceName}</p>
-                              <p className="text-xs text-charcoal-light mt-0.5">
-                                {rate.estimatedDays ? `${rate.estimatedDays} business days` : 'Estimated delivery varies'}
-                              </p>
-                            </div>
-                            <span className="font-bold text-himalayan">${rate.amount.toFixed(2)}</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {!shippoRatesLoading && shippoRates.length === 0 && !shippoRatesError && shippoRatesAttempted && (
-                    <p className="text-charcoal-light mt-1">
-                      Live carrier rates are unavailable for this address — flat rates apply below.
-                    </p>
-                  )}
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <CreditCard size={18} className="text-himalayan" />
+                  <h2 className="font-serif text-xl font-bold text-charcoal">Payment methods</h2>
                 </div>
-              )}
-
-              {!useLiveShippoRates && (
-              <div className="grid md:grid-cols-2 gap-4">
-                <ShippingOption
-                  active={shippingMethod === 'standard'}
-                  title={totals.subtotal >= 50 ? 'Standard Shipping (Free)' : 'Standard Shipping'}
-                  detail={totals.subtotal >= 50 ? 'Free over $50' : '3-7 business days'}
-                  price={totals.subtotal >= 50 ? '$0.00' : '$9.95'}
-                  onClick={() => {
-                    setShippingMethod('standard');
-                    setShippingSelected(true);
-                  }}
-                />
-                <ShippingOption
-                  active={shippingMethod === 'expedited'}
-                  title="Expedited Shipping"
-                  detail="2-4 business days"
-                  price="$18.95"
-                  onClick={() => {
-                    setShippingMethod('expedited');
-                    setShippingSelected(true);
-                  }}
-                />
+                <span className="hidden items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-charcoal-light sm:inline-flex">
+                  <ShieldCheck size={12} /> Encrypted
+                </span>
               </div>
-              )}
-            </section>
-            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-              <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Billing Details</h2>
-              <label className="flex items-center gap-2 cursor-pointer mb-5">
-                <input
-                  type="checkbox"
-                  checked={billingSameAsShipping}
-                  onChange={(event) => setBillingSameAsShipping(event.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-himalayan focus:ring-himalayan"
-                />
-                <span className="text-sm text-charcoal">Billing address is the same as shipping</span>
-              </label>
-
-              {!billingSameAsShipping && (
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Field label="Billing full name" error={fieldErrors.billingFullName}>
-                    <input value={form.billingFullName} onChange={(event) => handleChange('billingFullName', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing address line 1" error={fieldErrors.billingAddressLine1}>
-                    <input value={form.billingAddressLine1} onChange={(event) => handleChange('billingAddressLine1', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing address line 2">
-                    <input value={form.billingAddressLine2} onChange={(event) => handleChange('billingAddressLine2', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing city" error={fieldErrors.billingCity}>
-                    <input value={form.billingCity} onChange={(event) => handleChange('billingCity', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing state" error={fieldErrors.billingState}>
-                    <input value={form.billingState} onChange={(event) => handleChange('billingState', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing postal code" error={fieldErrors.billingPostalCode}>
-                    <input value={form.billingPostalCode} onChange={(event) => handleChange('billingPostalCode', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing country" error={fieldErrors.billingCountry}>
-                    <input value={form.billingCountry} onChange={(event) => handleChange('billingCountry', event.target.value)} className={inputClass} />
-                  </Field>
-                </div>
-              )}
-            </section>
-
-            <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-              <h2 className={`font-serif text-xl font-bold text-charcoal ${retailOnly ? '' : 'mb-2'}`}>Payment</h2>
               {retailOnly ? (
-                stripeSession ? (
+                <div className="space-y-3">
+                  {/*
+                    The live row. Its inner branches are the payment paths this
+                    deployment actually has — a real Stripe form, the staging-only
+                    simulator, or the honest refusal when neither is configured.
+                  */}
                   <div
-                    ref={stripePaymentRef}
-                    className="mt-5 rounded-2xl border-2 border-himalayan/50 bg-white p-5 shadow-lg shadow-himalayan/10"
+                    className={`rounded-xl border p-3 ${
+                      stripeEnabled || stagingSimulatorEnabled
+                        ? 'border-himalayan bg-himalayan-lighter/50 ring-1 ring-himalayan/25'
+                        : 'border-himalayan-line/70 bg-warm-white'
+                    }`}
                   >
-                    <p className="text-sm text-charcoal-light mb-4">
-                      Secure payment for order {stripeSession.order.order_number} ·{' '}
-                      <strong className="text-charcoal">${totals.total.toFixed(2)}</strong>
-                    </p>
-                    <StripePaymentForm
-                      clientSecret={stripeSession.clientSecret}
-                      publishableKey={stripePublishableKey}
-                      amountLabel={`$${totals.total.toFixed(2)}`}
-                      disabled={submitting || paymentCompleting}
-                      onSuccess={handleStripePaymentSuccess}
-                      onError={(message) => toast.error(message)}
-                    />
-                  </div>
-                ) : stagingSimulatorEnabled ? (
-                  <StagingTestPaymentForm
-                    amountLabel={`$${totals.total.toFixed(2)}`}
-                    disabled={submitting || paymentCompleting}
-                    onPay={handleStagingTestPayment}
-                    onUseTestCustomer={useStagingTestCustomer}
-                  />
-                ) : (
-                  <div className="mt-5 rounded-2xl border border-himalayan/30 bg-himalayan/5 p-5 text-sm text-charcoal-light">
-                    {submitting ? (
-                      <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Preparing secure payment…</span>
-                    ) : !stripeConfigLoaded ? (
-                      <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Checking payment options…</span>
-                    ) : !stripeEnabled ? (
-                      <div className="space-y-1.5">
-                        <p className="font-semibold text-charcoal flex items-center gap-2">
-                          <CreditCard size={18} className="text-himalayan" />
-                          Online payment is temporarily unavailable
-                        </p>
-                        <p className="text-xs text-charcoal-light">
-                          Secure payment methods are being configured. Please contact us to complete your purchase.
+                    <div className="flex items-center gap-3">
+                      <RadioDot selected={stripeEnabled || stagingSimulatorEnabled} />
+                      <CreditCard size={18} className="flex-shrink-0 text-himalayan" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-charcoal">Pay by card</p>
+                        <p className="mt-0.5 text-xs text-charcoal-light">
+                          {stripeMode === 'test'
+                            ? 'Test mode — Stripe test cards only. No real money is charged.'
+                            : 'Visa, Mastercard, American Express — processed securely by Stripe.'}
                         </p>
                       </div>
+                      {stripeEnabled && (
+                        <span className="hidden flex-shrink-0 rounded-full bg-himalayan px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white sm:inline">
+                          Recommended
+                        </span>
+                      )}
+                    </div>
+
+                    {stripeSession ? (
+                      <div
+                        ref={stripePaymentRef}
+                        className="mt-4 rounded-xl border-2 border-himalayan/50 bg-white p-5 shadow-lg shadow-himalayan/10"
+                      >
+                        <p className="mb-4 text-sm text-charcoal-light">
+                          Secure payment for order {stripeSession.order.order_number} ·{' '}
+                          <strong className="text-charcoal">${totals.total.toFixed(2)}</strong>
+                        </p>
+                        <StripePaymentForm
+                          clientSecret={stripeSession.clientSecret}
+                          publishableKey={stripePublishableKey}
+                          amountLabel={`$${totals.total.toFixed(2)}`}
+                          disabled={submitting || paymentCompleting}
+                          onSuccess={handleStripePaymentSuccess}
+                          onError={(message) => toast.error(message)}
+                        />
+                      </div>
+                    ) : stagingSimulatorEnabled ? (
+                      <div className="mt-4">
+                        <StagingTestPaymentForm
+                          amountLabel={`$${totals.total.toFixed(2)}`}
+                          disabled={submitting || paymentCompleting}
+                          onPay={handleStagingTestPayment}
+                          onUseTestCustomer={useStagingTestCustomer}
+                        />
+                      </div>
                     ) : (
-                      'Complete your shipping address and select a shipping method to load payment options.'
+                      <div className="mt-4 rounded-xl border border-himalayan/30 bg-himalayan/5 p-4 text-sm text-charcoal-light">
+                        {submitting ? (
+                          <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Preparing secure payment…</span>
+                        ) : !stripeConfigLoaded ? (
+                          <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Checking payment options…</span>
+                        ) : !stripeEnabled ? (
+                          <div className="space-y-1.5">
+                            <p className="flex items-center gap-2 font-semibold text-charcoal">
+                              <CreditCard size={18} className="text-himalayan" />
+                              Online payment is temporarily unavailable
+                            </p>
+                            <p className="text-xs text-charcoal-light">
+                              Secure payment methods are being configured. Please contact us to complete your purchase.
+                            </p>
+                          </div>
+                        ) : (
+                          'Complete your shipping address and select a shipping method to load payment options.'
+                        )}
+                      </div>
                     )}
                   </div>
-                )
+
+                  <ComingSoonPaymentRow
+                    name="PayPal"
+                    icon={<Wallet size={18} />}
+                    note="Being set up for this store. Not selectable yet."
+                  />
+                  <ComingSoonPaymentRow
+                    name="Google Pay"
+                    icon={<Wallet size={18} />}
+                    note="Being set up for this store. Not selectable yet."
+                  />
+                  <ComingSoonPaymentRow
+                    name="Pay by bank transfer"
+                    icon={<Banknote size={18} />}
+                    note="Being set up for this store. Not selectable yet."
+                  />
+                </div>
               ) : (
                 <>
-                <p className="text-sm text-charcoal-light mb-5">
-                {stripeEnabled
-                  ? 'Choose an available secure payment method at checkout.'
-                  : 'Online payments are not configured on this site.'}
-              </p>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  disabled={!stripeEnabled}
-                  onClick={() => {
-                    setPaymentMethod('stripe');
-                    setStripeSession(null);
-                  }}
-                  className={`relative text-left rounded-2xl border p-4 transition-colors ${
-                    paymentMethod === 'stripe'
-                      ? 'border-himalayan bg-himalayan/10 ring-2 ring-himalayan/30'
-                      : stripeEnabled
-                        ? 'border-gray-200 hover:border-himalayan/40'
-                        : 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-80'
-                  }`}
-                >
-                  {stripeEnabled && (
-                    <span className="absolute top-3 right-3 rounded-full bg-himalayan px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                      Recommended
-                    </span>
-                  )}
-                  <CreditCard size={20} className="text-himalayan mb-2" />
-                  <p className="font-semibold text-charcoal">Secure online payment</p>
-                  <p className="text-sm text-charcoal-light mt-1">
+                  <p className="mb-5 text-sm text-charcoal-light">
                     {stripeEnabled
-                      ? stripeMode === 'test'
-                        ? 'Continue to enter your payment details securely.'
-                        : 'Stripe will show the methods available for your order and location.'
-                      : 'Online payment is currently unavailable.'}
+                      ? 'Choose an available secure payment method at checkout.'
+                      : 'Online payments are not configured on this site.'}
                   </p>
-                </button>
-              </div>
 
-              {paymentMethod === 'stripe' && stripeEnabled && !stripeSession && (
-                <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-charcoal-light">
-                  <p className="font-semibold text-charcoal mb-1">How secure checkout works</p>
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>Click <strong>Continue to payment</strong> to save your order.</li>
-                    <li>Choose one of the payment methods Stripe makes available for this order.</li>
-                    <li>Continue securely — your order is confirmed after the payment succeeds.</li>
-                  </ol>
-                </div>
-              )}
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      disabled={!stripeEnabled}
+                      aria-pressed={paymentMethod === 'stripe'}
+                      onClick={() => {
+                        setPaymentMethod('stripe');
+                        setStripeSession(null);
+                      }}
+                      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                        paymentMethod === 'stripe'
+                          ? 'border-himalayan bg-himalayan-lighter/50 ring-1 ring-himalayan/25'
+                          : stripeEnabled
+                            ? 'border-himalayan-line/70 hover:border-himalayan/40'
+                            : 'cursor-not-allowed border-himalayan-line/70 bg-warm-white opacity-80'
+                      }`}
+                    >
+                      <RadioDot selected={paymentMethod === 'stripe' && stripeEnabled} />
+                      <CreditCard size={18} className="flex-shrink-0 text-himalayan" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold text-charcoal">Secure online payment</span>
+                        <span className="mt-0.5 block text-sm text-charcoal-light">
+                          {stripeEnabled
+                            ? stripeMode === 'test'
+                              ? 'Continue to enter your payment details securely.'
+                              : 'Stripe will show the methods available for your order and location.'
+                            : 'Online payment is currently unavailable.'}
+                        </span>
+                      </span>
+                      {stripeEnabled && (
+                        <span className="hidden flex-shrink-0 rounded-full bg-himalayan px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white sm:inline">
+                          Recommended
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {paymentMethod === 'stripe' && stripeEnabled && !stripeSession && (
+                    <div className="mt-4 rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3 text-sm text-charcoal-light">
+                      <p className="mb-1 font-semibold text-charcoal">How secure checkout works</p>
+                      <ol className="list-decimal space-y-1 pl-5">
+                        <li>Click <strong>Continue to payment</strong> to save your order.</li>
+                        <li>Choose one of the payment methods Stripe makes available for this order.</li>
+                        <li>Continue securely — your order is confirmed after the payment succeeds.</li>
+                      </ol>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1147,10 +1309,53 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   simulatorEnabled={stagingSimulatorEnabled}
                 />
               )}
+
+              {/* Billing sits with the payment it belongs to, rather than as a card
+                  of its own between the address and the card fields. */}
+              <div className="mt-5 border-t border-himalayan-line/60 pt-4">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={billingSameAsShipping}
+                    onChange={(event) => setBillingSameAsShipping(event.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-himalayan focus:ring-himalayan"
+                  />
+                  <span className="text-sm text-charcoal">Billing address is the same as shipping</span>
+                </label>
+
+                {!billingSameAsShipping && (
+                  <div className="mt-4 grid md:grid-cols-2 gap-4">
+                    <Field label="Billing full name" error={fieldErrors.billingFullName}>
+                      <input value={form.billingFullName} onChange={(event) => handleChange('billingFullName', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing address line 1" error={fieldErrors.billingAddressLine1}>
+                      <input value={form.billingAddressLine1} onChange={(event) => handleChange('billingAddressLine1', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing address line 2">
+                      <input value={form.billingAddressLine2} onChange={(event) => handleChange('billingAddressLine2', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing city" error={fieldErrors.billingCity}>
+                      <input value={form.billingCity} onChange={(event) => handleChange('billingCity', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing state" error={fieldErrors.billingState}>
+                      <input value={form.billingState} onChange={(event) => handleChange('billingState', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing postal code" error={fieldErrors.billingPostalCode}>
+                      <input value={form.billingPostalCode} onChange={(event) => handleChange('billingPostalCode', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing country" error={fieldErrors.billingCountry}>
+                      <input value={form.billingCountry} onChange={(event) => handleChange('billingCountry', event.target.value)} className={inputClass} />
+                    </Field>
+                  </div>
+                )}
+              </div>
             </section>
 
             <section className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6">
-              <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Delivery Notes</h2>
+              <div className="mb-4 flex items-baseline justify-between gap-3">
+                <h2 className="font-serif text-xl font-bold text-charcoal">Delivery notes</h2>
+                <span className="text-xs text-charcoal-light">Optional</span>
+              </div>
               <textarea
                 value={form.notes}
                 onChange={(event) => handleChange('notes', event.target.value)}
@@ -1158,111 +1363,213 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 className={`${inputClass} min-h-28 resize-none`}
               />
             </section>
+
+            {/* The cross-sell row from the reference layout, fed by this shop's own
+                published catalogue rather than a stranger's. See CheckoutAddOns. */}
+            <CheckoutAddOns />
           </div>
 
           <aside className="lg:col-span-1">
-            <div className="bg-white rounded-2xl border border-himalayan-line/60 shadow-sm p-4 sm:p-6 sticky top-[var(--header-height)]">
-              <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Order Summary</h2>
-              <div className="space-y-4 mb-5">
-                {items.map((item) => (
-                  <div key={`${item.id}-${item.grainSize || ''}`} className="flex gap-3">
-                    <img src={item.image} alt={item.name} className="w-14 h-14 rounded-lg object-cover bg-gray-100" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-charcoal line-clamp-2">{item.name}</p>
-                      <p className="text-xs text-charcoal-light">Qty {item.quantity}{item.grainSize ? ` · ${item.grainSize}` : ''}</p>
+            <div className="space-y-4 lg:sticky lg:top-[var(--header-height)]">
+              <div className="rounded-2xl border border-himalayan-line/60 bg-white p-4 shadow-sm sm:p-6">
+                <div className="mb-4 flex items-baseline justify-between gap-3">
+                  <h2 className="font-serif text-xl font-bold text-charcoal">Summary</h2>
+                  <span className="text-xs text-charcoal-light">
+                    {items.length} {items.length === 1 ? 'item' : 'items'}
+                  </span>
+                </div>
+
+                <div className="mb-4 max-h-64 space-y-3 overflow-y-auto pr-1">
+                  {items.map((item) => (
+                    <div key={`${item.id}-${item.grainSize || ''}`} className="flex gap-3">
+                      <img src={item.image} alt={item.name} className="h-14 w-14 rounded-lg bg-warm-white object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 text-sm font-medium text-charcoal">{item.name}</p>
+                        <p className="text-xs text-charcoal-light">Qty {item.quantity}{item.grainSize ? ` · ${item.grainSize}` : ''}</p>
+                      </div>
+                      <span className="text-sm font-semibold text-charcoal">${(item.price * item.quantity).toFixed(2)}</span>
                     </div>
-                    <span className="text-sm font-semibold text-charcoal">${(item.price * item.quantity).toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
 
-              <div className="border-t border-gray-100 pt-4 mb-4">
-                <label className={labelClass}>Coupon Code</label>
-                <div className="flex gap-2">
-                  <input
-                    value={couponInput}
-                    onChange={(event) => setCouponInput(event.target.value)}
-                    aria-label="Coupon code" name="coupon" placeholder="Enter coupon code"
-                    className={inputClass}
-                  />
-                  <button type="button" onClick={applyCoupon} className="px-4 bg-charcoal text-white rounded-xl text-sm font-semibold hover:bg-charcoal-light">
-                    Apply
+                {/*
+                  The reference layout keeps the code box folded behind "Enter"
+                  and shows the applied one in place. Same here — and an applied or
+                  rejected code opens it, because a hidden error is not an error the
+                  shopper can act on.
+                */}
+                <div className="border-t border-himalayan-line/60 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setPromoOpen((open) => !open)}
+                    aria-expanded={promoOpen || Boolean(couponCode) || Boolean(fieldErrors.coupon)}
+                    className="flex w-full items-center justify-between text-sm"
+                  >
+                    <span className="text-charcoal-light">Promo codes</span>
+                    {couponCode ? (
+                      <span className="inline-flex items-center gap-1 font-semibold text-green-700">
+                        <CheckCircle size={14} />
+                        {couponCode}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-semibold text-himalayan">
+                        Enter
+                        <ChevronDown size={14} className={promoOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                      </span>
+                    )}
                   </button>
+
+                  {(promoOpen || couponCode || fieldErrors.coupon) && (
+                    <div className="mt-3">
+                      <div className="flex gap-2">
+                        <input
+                          value={couponInput}
+                          onChange={(event) => setCouponInput(event.target.value)}
+                          aria-label="Coupon code" name="coupon" placeholder="Enter coupon code"
+                          className={inputClass}
+                        />
+                        <button type="button" onClick={applyCoupon} className="rounded-xl bg-charcoal px-4 text-sm font-semibold text-white hover:bg-charcoal-light">
+                          Apply
+                        </button>
+                      </div>
+                      {fieldErrors.coupon && <p className="mt-1 text-xs text-red-600">{fieldErrors.coupon}</p>}
+                      {couponCode && (
+                        <p className="mt-2 flex items-center gap-1 text-xs text-green-700">
+                          <CheckCircle size={14} />
+                          {supportedCoupons[couponCode].label} applied
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {fieldErrors.coupon && <p className="text-xs text-red-600 mt-1">{fieldErrors.coupon}</p>}
-                {couponCode && (
-                  <p className="text-xs text-green-700 mt-2 flex items-center gap-1">
-                    <CheckCircle size={14} />
-                    {supportedCoupons[couponCode].label} applied
-                  </p>
+
+                <div className="space-y-2 border-t border-himalayan-line/60 pt-4">
+                  <SummaryRow label="Subtotal" value={totals.subtotal} />
+                  {totals.discountAmount > 0 && <SummaryRow label="Discount" value={-totals.discountAmount} />}
+                  <SummaryRow label="Shipping fee" value={totals.shippingCost} />
+                  <SummaryRow label="Tax" value={totals.taxAmount} />
+                  <div className="flex items-baseline justify-between border-t border-himalayan-line/60 pt-3">
+                    <span className="font-bold text-charcoal">Total</span>
+                    <span className="text-xl font-bold text-himalayan">${totals.total.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/*
+                  Where the payment actually happens, said once. When the payment
+                  section owns the action (every retail card order, and the staging
+                  simulator) this slot states the amount and points at it rather than
+                  rendering a second button that looks like "pay" — two of those is
+                  how one of them gets clicked for the wrong reason.
+                */}
+                {retailOnly && (stripeEnabled || stagingSimulatorEnabled) && (
+                  <div className="mt-4 rounded-xl border border-himalayan/30 bg-himalayan-lighter/60 px-4 py-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-semibold text-charcoal">Amount due now</span>
+                      <span className="font-bold text-himalayan">${totals.total.toFixed(2)}</span>
+                    </div>
+                    <p className="mt-1 flex items-start gap-2 text-xs text-charcoal-light">
+                      <Lock size={14} className="mt-0.5 flex-shrink-0 text-himalayan" />
+                      <span>
+                        Card details are entered in the Payment methods section above — that is
+                        where the payment is confirmed and this order is created
+                        {stripeSession ? ` (reserved as ${stripeSession.order.order_number})` : ''}.
+                      </span>
+                    </p>
+                  </div>
                 )}
-              </div>
 
-              <div className="border-t border-gray-100 pt-4 space-y-2">
-                <SummaryRow label="Subtotal" value={totals.subtotal} />
-                {totals.discountAmount > 0 && <SummaryRow label="Discount" value={-totals.discountAmount} />}
-                <SummaryRow label="Shipping" value={totals.shippingCost} />
-                <SummaryRow label="Tax" value={totals.taxAmount} />
-                <div className="flex justify-between font-bold text-lg pt-3 border-t border-gray-100">
-                  <span className="text-charcoal">Total</span>
-                  <span className="text-himalayan">${totals.total.toFixed(2)}</span>
-                </div>
-              </div>
+                {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
-              <div className="mt-5 flex items-start gap-2 text-xs text-charcoal-light">
-                <ShieldCheck size={16} className="text-himalayan flex-shrink-0 mt-0.5" />
-                <p>
-                  {retailOnly
-                    ? stripeSession
-                      ? 'Enter your payment details in the Payment section to confirm your order.'
-                      : stripeEnabled
-                        ? 'Enter your secure payment details in the Payment section to continue.'
-                        : stagingSimulatorEnabled
-                          ? 'Complete the Test Payment section to confirm this staging order. No real money is charged.'
-                          : 'Online payment is temporarily unavailable.'
-                    : paymentMethod === 'stripe' && stripeEnabled
-                    ? stripeSession
-                      ? 'Complete card payment below to confirm your order.'
-                      : 'Step 1: Continue to payment, then enter your card details on this page.'
-                    : 'Online payment is temporarily unavailable.'}
+                {(!retailOnly || (!stripeEnabled && !stagingSimulatorEnabled)) && (
+                  <button
+                    type="submit"
+                    disabled={submitting || (retailOnly && !stripeEnabled && !stagingSimulatorEnabled) || (paymentMethod === 'stripe' && Boolean(stripeSession))}
+                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-himalayan py-4 font-semibold text-white shadow-lg shadow-himalayan/25 transition-colors hover:bg-himalayan-dark disabled:bg-gray-300"
+                  >
+                    {submitting && <Loader2 size={18} className="animate-spin" />}
+                    {submitting
+                      ? paymentMethod === 'stripe' ? 'Preparing payment…' : 'Placing order…'
+                      : retailOnly
+                        ? !stripeConfigLoaded
+                          ? 'Checking payment options…'
+                          : !stripeEnabled
+                            ? 'Online payment unavailable'
+                            : stripeSession
+                              ? 'Choose a payment method above'
+                              : `Pay $${totals.total.toFixed(2)}`
+                        : paymentMethod === 'stripe'
+                          ? stripeSession ? 'Enter card details above' : 'Continue to payment'
+                          : 'Place order (invoice)'}
+                  </button>
+                )}
+
+                <p className="mt-3 text-center text-[11px] leading-5 text-charcoal-light">
+                  By placing this order you confirm you have read and accepted the{' '}
+                  <Link to="/terms" className="font-semibold text-himalayan hover:text-himalayan-dark">terms</Link>,{' '}
+                  <Link to="/privacy" className="font-semibold text-himalayan hover:text-himalayan-dark">privacy policy</Link>{' '}
+                  and{' '}
+                  <Link to="/return" className="font-semibold text-himalayan hover:text-himalayan-dark">returns policy</Link>.
                 </p>
               </div>
 
-              {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+              {/*
+                The trust column under the summary. Every line is a fact about this
+                shop's own checkout — who fulfils it, how it ships, who processes the
+                card — rather than a marketplace's boilerplate.
+              */}
+              <div className="rounded-2xl border border-himalayan-line/60 bg-white p-4 shadow-sm sm:p-5">
+                <p className="flex items-center gap-2 font-serif text-base font-bold text-charcoal">
+                  <BadgeCheck size={18} className="text-himalayan" />
+                  Sold and shipped by Himalayan Koh
+                </p>
+                <p className="mt-1.5 text-xs leading-5 text-charcoal-light">
+                  One supplier, one order: nothing here is fulfilled by a third-party marketplace,
+                  and every line ships from our own stock.
+                </p>
+              </div>
 
-              {/*
-                This button only renders when the order cannot be paid inline. For
-                retail that means a disabled label that says what is actually wrong —
-                a greyed-out "Pay $99.90" reads as a broken button rather than as
-                payment not being open yet, and neither is an invoice action.
-              */}
-              {/*
-                Hidden whenever the payment section owns the action, simulator included:
-                two buttons that both look like "pay" is how one of them gets clicked for
-                the wrong reason.
-              */}
-              {(!retailOnly || (!stripeEnabled && !stagingSimulatorEnabled)) && (
-              <button
-                type="submit"
-                disabled={submitting || (retailOnly && !stripeEnabled && !stagingSimulatorEnabled) || (paymentMethod === 'stripe' && Boolean(stripeSession))}
-                className="w-full mt-6 flex items-center justify-center gap-2 py-4 bg-himalayan hover:bg-himalayan-dark disabled:bg-gray-300 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-himalayan/25"
-              >
-                {submitting && <Loader2 size={18} className="animate-spin" />}
-                {submitting
-                  ? paymentMethod === 'stripe' ? 'Preparing payment…' : 'Placing order…'
-                  : retailOnly
-                    ? !stripeConfigLoaded
-                      ? 'Checking payment options…'
-                      : !stripeEnabled
-                        ? 'Online payment unavailable'
-                        : stripeSession
-                          ? 'Choose a payment method above'
-                          : `Pay $${totals.total.toFixed(2)}`
-                    : paymentMethod === 'stripe'
-                      ? stripeSession ? 'Enter card details above' : 'Continue to payment'
-                      : 'Place order (invoice)'}
-              </button>
-              )}
+              <div className="space-y-3 rounded-2xl border border-himalayan-line/60 bg-white p-4 shadow-sm sm:p-5">
+                <div>
+                  <p className="flex items-center gap-2 text-sm font-bold text-charcoal">
+                    <Truck size={16} className="text-himalayan" />
+                    Fast delivery
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-charcoal-light">
+                    Free standard delivery over $50. Live USPS rates at checkout, with tracking on
+                    every parcel.
+                  </p>
+                </div>
+                <div className="border-t border-himalayan-line/60 pt-3">
+                  <p className="flex items-center gap-2 text-sm font-bold text-charcoal">
+                    <ShieldCheck size={16} className="text-himalayan" />
+                    Security &amp; privacy
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-charcoal-light">
+                    Card payments are processed by Stripe over an encrypted connection. Your card
+                    number never reaches this server, and we never sell your details.
+                  </p>
+                </div>
+                <div className="border-t border-himalayan-line/60 pt-3">
+                  <p className="flex items-center gap-2 text-sm font-bold text-charcoal">
+                    <Lock size={16} className="text-himalayan" />
+                    Safe payments
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-charcoal-light">
+                    Popular card networks, handled by our payment partner — your details stay
+                    protected end to end.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {['Visa', 'Mastercard', 'Amex', 'Discover'].map((brand) => (
+                      <span
+                        key={brand}
+                        className="rounded-md border border-himalayan-line/70 bg-warm-white px-2 py-0.5 text-[11px] font-semibold text-charcoal-light"
+                      >
+                        {brand}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </aside>
         </div>
@@ -1301,6 +1608,27 @@ function Field({ label, error, children }: { label: string; error?: string; chil
   );
 }
 
+/**
+ * The selected/empty dot the delivery and payment rows share.
+ *
+ * Purely decorative — the row it sits in already carries the selection state as
+ * `aria-checked`/`aria-pressed`, so the dot is hidden from assistive tech rather
+ * than announced as a second, wordless control.
+ */
+function RadioDot({ selected }: { selected: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`grid h-5 w-5 flex-shrink-0 place-items-center rounded-full border-2 ${
+        selected ? 'border-himalayan' : 'border-himalayan-line'
+      }`}
+    >
+      {selected && <span className="h-2.5 w-2.5 rounded-full bg-himalayan" />}
+    </span>
+  );
+}
+
+/** A delivery option as a radio row, in the shape of the reference layout. */
 function ShippingOption({ active, title, detail, price, onClick }: {
   active: boolean;
   title: string;
@@ -1312,17 +1640,57 @@ function ShippingOption({ active, title, detail, price, onClick }: {
     <button
       type="button"
       onClick={onClick}
-      aria-pressed={active}
-      className={`text-left rounded-xl border p-4 transition-colors ${active ? 'border-himalayan bg-himalayan/10' : 'border-gray-200 hover:border-himalayan/40'}`}
+      role="radio"
+      aria-checked={active}
+      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+        active
+          ? 'border-himalayan bg-himalayan-lighter/50 ring-1 ring-himalayan/25'
+          : 'border-himalayan-line/70 hover:border-himalayan/40'
+      }`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-semibold text-charcoal">{title}</p>
-          <p className="text-sm text-charcoal-light mt-1">{detail}</p>
-        </div>
-        <span className="font-bold text-himalayan">{price}</span>
-      </div>
+      <RadioDot selected={active} />
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold text-charcoal">{title}</span>
+        <span className="mt-0.5 block text-sm text-charcoal-light">{detail}</span>
+      </span>
+      <span className="flex-shrink-0 font-bold text-himalayan">{price}</span>
     </button>
+  );
+}
+
+/**
+ * A payment method the store cannot take yet.
+ *
+ * Rendered as a row so the shopper sees what is coming, and deliberately inert:
+ * there is no click handler and no radio, because a row that looks selectable but
+ * cannot open a payment is worse than no row at all.
+ */
+function ComingSoonPaymentRow({
+  name,
+  icon,
+  note,
+}: {
+  name: string;
+  icon: React.ReactNode;
+  note: string;
+}) {
+  return (
+    <div
+      aria-disabled="true"
+      className="rounded-xl border border-dashed border-himalayan-line/70 bg-warm-white p-3 opacity-70"
+    >
+      <div className="flex items-center gap-3">
+        <span aria-hidden="true" className="grid h-5 w-5 flex-shrink-0 place-items-center rounded-full border-2 border-himalayan-line" />
+        <span className="flex-shrink-0 text-charcoal-light">{icon}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold text-charcoal">{name}</span>
+          <span className="mt-0.5 block text-xs text-charcoal-light">{note}</span>
+        </span>
+        <span className="hidden flex-shrink-0 rounded-full border border-himalayan-line bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-charcoal-light sm:inline">
+          Coming soon
+        </span>
+      </div>
+    </div>
   );
 }
 
