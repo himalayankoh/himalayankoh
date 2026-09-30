@@ -1,7 +1,32 @@
+/**
+ * The admin settings store, as the console edits it.
+ *
+ * ## One read, and the badge that used to cost a second
+ *
+ * Every field the console can edit is described by `SETTINGS_REGISTRY`, and the values
+ * come from one WordPress option per category — so this route reads one category per
+ * registry entry, all at once. That fan-out is already the shape it should be; the reads
+ * are independent and there is nothing to sequence.
+ *
+ * What used to be wasteful was the *screen*. The panel that draws these fields also shows
+ * a Stripe status badge, and it fetched that from `/api/admin/payments` in a second
+ * authenticated request — which re-read the `stripe` category this route already holds,
+ * plus the `payments` category, to say one word. So the badge is answered here now, from
+ * the row already in hand plus a single read of `payments`, and the screen asks once.
+ *
+ * ## Secrets never leave the server
+ *
+ * A stored password is returned as the mask the panel expects (`••••••••`), never as its
+ * value, and the `sources` map says whether each field is configured in WordPress, in the
+ * Worker's environment, or not at all. The Stripe badge goes further and carries no key
+ * material whatsoever — not even a masked fragment — because a badge has no use for it.
+ */
+
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { getSettingsForCategory, upsertSettings } from '@/lib/settings/serverSettings';
+import { getSettingsForCategory, getSettingsForCategoryWithStatus, upsertSettings } from '@/lib/settings/serverSettings';
 import { SETTINGS_REGISTRY } from '@/lib/settings/registry';
+import { stripeBadge, stripeFacts, type StripeBadge } from '@/lib/stripe/server/stripe';
 
 const MASKED = '••••••••';
 
@@ -21,9 +46,19 @@ export async function GET(request: Request) {
   // loop, so the screen paid one store read after another in series — measured
   // on staging: 7 categories, ~11.6s. The categories are independent, so there
   // is nothing to sequence.
-  const categoryValues = await Promise.all(
-    SETTINGS_REGISTRY.map((category) => getSettingsForCategory(category.id))
-  );
+  //
+  // `payments` is not one of them: it is not a field the console edits, it is where the
+  // Stripe badge's state lives. It is read in the same wave rather than after, and a
+  // store that cannot answer it leaves the badge *unknown* instead of failing the screen.
+  //
+  // The status-carrying read is deliberate. `getSettingsForCategory` answers `{}` for
+  // both "nothing is stored" and "the store refused", and built from an empty object the
+  // badge would say "configured and ready" about a provider nothing was read about.
+  const [categoryValues, paymentsRead] = await Promise.all([
+    Promise.all(SETTINGS_REGISTRY.map((category) => getSettingsForCategory(category.id))),
+    getSettingsForCategoryWithStatus('payments'),
+  ]);
+  const paymentValues = paymentsRead.ok ? paymentsRead.values : null;
 
   for (let index = 0; index < SETTINGS_REGISTRY.length; index += 1) {
     const category = SETTINGS_REGISTRY[index];
@@ -46,7 +81,20 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ settings: result, sources });
+  // The Stripe category is one of the rows read above, so the badge costs the `payments`
+  // read and nothing more.
+  let stripe: StripeBadge | null = null;
+  if (paymentValues) {
+    const stripeIndex = SETTINGS_REGISTRY.findIndex((category) => category.id === 'stripe');
+    stripe = stripeBadge(
+      stripeFacts({
+        stripe: stripeIndex >= 0 ? categoryValues[stripeIndex] ?? {} : {},
+        payments: paymentValues,
+      })
+    );
+  }
+
+  return NextResponse.json({ settings: result, sources, stripe });
 }
 
 export async function POST(request: Request) {

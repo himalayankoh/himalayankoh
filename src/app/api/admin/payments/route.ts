@@ -3,10 +3,15 @@ import { createHmac } from 'node:crypto';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { getSettingsForCategory, upsertSettings } from '@/lib/settings/serverSettings';
 import {
-  evaluateCurrentStripeReadiness,
   getStripeSignatureVerifier,
+  readStripeFacts,
   resolveStripeSecretKey,
   resolveStripeWebhookSecret,
+  stripeBadge,
+  stripeFacts,
+  stripePublishableKeyFrom,
+  stripeSecretKeyFrom,
+  stripeWebhookSecretFrom,
 } from '@/lib/stripe/server/stripe';
 
 export const dynamic = 'force-dynamic';
@@ -29,55 +34,42 @@ export async function GET(request: Request) {
       getSettingsForCategory('payments'),
     ]);
 
-    const stripeSecret = await resolveStripeSecretKey();
-    const stripeWebhook = await resolveStripeWebhookSecret();
-    const stripePk =
-      stripeDbSettings.publishable_key?.trim() ||
-      process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() ||
-      process.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim() ||
-      '';
+    // Every Stripe fact this screen shows comes from the two rows read above, through
+    // the same derivation the money routes use. The self-reading resolvers would fetch
+    // both categories again for values already in hand — three extra round trips that
+    // measured seconds on staging.
+    const facts = stripeFacts({ stripe: stripeDbSettings, payments: paymentSettings });
+    const readiness = facts.readiness;
+    const stripeSecret = stripeSecretKeyFrom(stripeDbSettings);
+    const stripePk = stripePublishableKeyFrom(stripeDbSettings);
+    const stripeWebhook = stripeWebhookSecretFrom(stripeDbSettings);
 
-    // The console reports what the server would actually do, not whether keys are
-    // present. `evaluateCurrentStripeReadiness` is the same decision every money
-    // route uses, so the screen cannot call a setup "ready" while checkout is
-    // returning 503 for it.
-    const readiness = await evaluateCurrentStripeReadiness();
-
-    const stripeConfigured = Boolean(stripeSecret && stripePk);
-    const stripeMode = readiness.secretMode === 'live' ? 'production' : 'sandbox';
-    const stripeEnabled = paymentSettings.stripe_enabled !== 'false' && stripeConfigured;
-    /** Test/staging vs live/production, said in words the owner can act on. */
-    const stripeStageLabel =
-      readiness.stage === 'off' ? 'OFF' : readiness.stage === 'live' ? 'LIVE / PRODUCTION' : 'TEST / STAGING';
-    const stripeReady =
-      stripeEnabled && readiness.chargingEnabled && readiness.orderSyncConfigured && (readiness.stage === 'test' || readiness.readyForLive);
-
-    const primary = (paymentSettings.primary_provider as any) || (stripeConfigured ? 'stripe' : 'none');
+    const primary = (paymentSettings.primary_provider as any) || (facts.configured ? 'stripe' : 'none');
     const backup = (paymentSettings.backup_provider as any) || 'none';
 
     const providers = [
       {
         id: 'stripe',
         name: 'Stripe',
-        enabled: stripeEnabled,
+        enabled: facts.enabled,
         role: primary === 'stripe' ? 'primary' : backup === 'stripe' ? 'backup' : 'available',
-        mode: stripeMode,
-        status: !stripeConfigured
+        mode: facts.mode,
+        status: !facts.configured
           ? 'not_configured'
-          : !stripeEnabled
+          : !facts.enabled
           ? 'disabled'
-          : stripeReady
+          : facts.ready
           ? 'ready'
           : 'error',
         stage: readiness.stage,
-        stageLabel: stripeStageLabel,
-        ready: stripeReady,
+        stageLabel: facts.stageLabel,
+        ready: facts.ready,
         readyForLive: readiness.readyForLive,
         chargingEnabled: readiness.chargingEnabled,
         orderSyncConfigured: readiness.orderSyncConfigured,
         blockers: readiness.blockers,
         checks: readiness.checks,
-        isConfigured: stripeConfigured,
+        isConfigured: facts.configured,
         keys: {
           publishableKey: {
             configured: Boolean(stripePk),
@@ -102,13 +94,9 @@ export async function GET(request: Request) {
           'Add Secret Key (sk_test_... or sk_live_...)',
           'Configure Webhook endpoint (/api/stripe/webhook)',
         ],
-        lastTestAt: paymentSettings.stripe_last_test_at || undefined,
-        lastTestOk: paymentSettings.stripe_last_test_ok === 'true',
-        // The first blocker, not a generic "error": the screen has to say what is
-        // missing or the owner has to go looking for it.
-        lastError: stripeReady
-          ? undefined
-          : readiness.blockers[0] || paymentSettings.stripe_last_error || undefined,
+        lastTestAt: facts.lastTestAt,
+        lastTestOk: facts.lastTestOk,
+        lastError: facts.lastError,
       },
       {
         id: 'paypal',
@@ -275,6 +263,9 @@ export async function POST(request: Request) {
           return NextResponse.json({
             ok: false,
             error: 'Stripe secret key is not configured. Add credentials in Admin or environment variables.',
+            // The badge the caller was showing is now wrong, so it is answered here
+            // rather than by a second request that would re-read these same rows.
+            stripe: stripeBadge(await readStripeFacts()),
           });
         }
 
@@ -293,6 +284,7 @@ export async function POST(request: Request) {
           return NextResponse.json({
             ok: true,
             message: `Stripe accepted the key (read-only balance call, livemode: ${balance.livemode}). No charge was made.`,
+            stripe: stripeBadge(await readStripeFacts()),
           });
         } catch (testErr) {
           const msg = (testErr as Error).message || 'Stripe API call failed';
@@ -304,6 +296,7 @@ export async function POST(request: Request) {
           return NextResponse.json({
             ok: false,
             error: msg,
+            stripe: stripeBadge(await readStripeFacts()),
           });
         }
       }

@@ -8,6 +8,12 @@
 // single source of truth for what exists, and `/api/admin/settings` reads and
 // writes it — this component is the missing screen.
 //
+// One request opens it. The Stripe badge beside the fields used to arrive from
+// `/api/admin/payments` in a second authenticated read, which fetched the `stripe`
+// category this screen already holds; the settings read answers the badge now, from
+// the row in hand, and `stripe` is the only one of its fields sent. Writes are
+// unchanged, and the connection test still goes to the route that owns it.
+//
 // What the fields do:
 //   * a secret field is never sent to the browser once stored. The input starts
 //     empty with the saved state shown as a placeholder, so typing replaces the
@@ -31,11 +37,22 @@ type Source = 'db' | 'env' | 'unset';
 interface SettingsPayload {
   settings: Record<string, Record<string, string>>;
   sources: Record<string, Record<string, Source>>;
+  /** The Stripe badge, answered by the same read. Null when the store could not say. */
+  stripe?: StripeProviderStatus | null;
 }
 
+/**
+ * The Stripe facts this screen shows, as the settings read sends them.
+ *
+ * Deliberately narrow: `mode`, the last test, and the first blocker. No key material,
+ * not even the masked form the payments screen shows — a badge has no use for it.
+ */
 interface StripeProviderStatus {
   mode?: 'sandbox' | 'production';
   isConfigured?: boolean;
+  enabled?: boolean;
+  ready?: boolean;
+  stageLabel?: string;
   lastTestAt?: string;
   lastTestOk?: boolean;
   lastError?: string;
@@ -121,6 +138,7 @@ export default function ServiceKeysPanel() {
       }
       const payload = (await res.json()) as SettingsPayload;
       setData(payload);
+      setStripe(payload.stripe ?? null);
       setEdits({});
     } catch (err) {
       setLoadError((err as Error).message || 'Could not load settings.');
@@ -129,22 +147,9 @@ export default function ServiceKeysPanel() {
     }
   }, [authHeaders]);
 
-  const loadStripeStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/payments', { headers: authHeaders() });
-      if (!res.ok) return;
-      const body = (await res.json()) as { providers?: StripeProviderStatus[] };
-      const found = body.providers?.find((p) => (p as { id?: string }).id === 'stripe');
-      if (found) setStripe(found);
-    } catch {
-      /* the status strip is a convenience — the test button is the real check */
-    }
-  }, [authHeaders]);
-
   useEffect(() => {
     void load();
-    void loadStripeStatus();
-  }, [load, loadStripeStatus]);
+  }, [load]);
 
   // Stripe first: it is the credential an owner most often comes here to set.
   const categories = useMemo<SettingsCategory[]>(() => {
@@ -189,8 +194,8 @@ export default function ServiceKeysPanel() {
         return;
       }
       setNote({ kind: 'ok', text: `Saved ${body.saved ?? Object.keys(payload).length} field(s).` });
+      // A full reload, because the badge beside these fields is part of the same read.
       await load();
-      if (categoryId === 'stripe') await loadStripeStatus();
     } catch (err) {
       setNote({ kind: 'err', text: (err as Error).message || 'Save failed.' });
     } finally {
@@ -207,7 +212,15 @@ export default function ServiceKeysPanel() {
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ action: 'test', provider: 'stripe' }),
       });
-      const body = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string; error?: string };
+      const body = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+        stripe?: StripeProviderStatus;
+      };
+      // The test just changed what the badge says, and the route answers with the
+      // updated one — so refreshing it is not a second request.
+      if (body.stripe) setStripe(body.stripe);
       if (body.ok) {
         setTestNote({ kind: 'ok', text: body.message || 'Stripe connection verified.' });
       } else if (body.error && /live stripe keys are disabled/i.test(body.error)) {
@@ -222,7 +235,6 @@ export default function ServiceKeysPanel() {
       setTestNote({ kind: 'err', text: (err as Error).message || 'Test failed.' });
     } finally {
       setTesting(false);
-      void loadStripeStatus();
     }
   };
 

@@ -58,8 +58,8 @@ export async function resolveStripeWebhookSecret(): Promise<string> {
   return dbSecret || process.env.STRIPE_WEBHOOK_SECRET || '';
 }
 
-export async function resolveStripePublishableKey(): Promise<string> {
-  const settings = await getSettingsForCategory('stripe');
+/** The publishable key from an already-read `stripe` settings row, environment second. */
+export function stripePublishableKeyFrom(settings: Record<string, string | null>): string {
   return (
     settings.publishable_key?.trim() ||
     process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() ||
@@ -68,10 +68,30 @@ export async function resolveStripePublishableKey(): Promise<string> {
   );
 }
 
+/**
+ * The publishable key the server would use: stored setting first, environment second.
+ *
+ * Read by *key*, not by category. Three fields take part in a readiness decision, and
+ * fetching the whole category to pick one of them is a round trip nobody asked for.
+ */
+export async function resolveStripePublishableKey(): Promise<string> {
+  const stored = await getSetting('stripe', 'publishable_key');
+  return stripePublishableKeyFrom({ publishable_key: stored });
+}
+
 async function readProbeFlag(key: string): Promise<boolean | null> {
-  const raw = await getSetting('payments', key);
-  if (raw === 'true') return true;
-  if (raw === 'false') return false;
+  return probeFlagFrom(await getSetting('payments', key));
+}
+
+/**
+ * A recorded probe, as the readiness decision reads it.
+ *
+ * `null` is "not established" — the health check has not run — and it blocks live
+ * charging rather than assuming it passed.
+ */
+function probeFlagFrom(value: string | null | undefined): boolean | null {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
   return null;
 }
 
@@ -85,6 +105,25 @@ function liveChargingAllowed(): boolean {
   return process.env.STRIPE_ALLOW_LIVE === 'true';
 }
 
+/** The one place the decision is assembled from its five inputs. */
+function readinessFromKeys(input: {
+  secretKey: string;
+  publishableKey: string;
+  webhookSecret: string;
+  webhookEndpointOk: boolean | null;
+  healthOk: boolean | null;
+}): StripeReadiness {
+  return evaluateStripeReadiness({
+    secretKey: input.secretKey,
+    publishableKey: input.publishableKey,
+    webhookSecret: input.webhookSecret,
+    allowLive: liveChargingAllowed(),
+    origin: SITE_ORIGIN,
+    webhookEndpointOk: input.webhookEndpointOk,
+    healthOk: input.healthOk,
+  });
+}
+
 /** The full readiness decision for this deployment, with every reason it is blocked. */
 export async function evaluateCurrentStripeReadiness(): Promise<StripeReadiness> {
   const [secretKey, publishableKey, webhookSecret, webhookEndpointOk, healthOk] = await Promise.all([
@@ -95,15 +134,136 @@ export async function evaluateCurrentStripeReadiness(): Promise<StripeReadiness>
     readProbeFlag('stripe_health_ok'),
   ]);
 
-  return evaluateStripeReadiness({
-    secretKey,
-    publishableKey,
-    webhookSecret,
-    allowLive: liveChargingAllowed(),
-    origin: SITE_ORIGIN,
-    webhookEndpointOk,
-    healthOk,
+  return readinessFromKeys({ secretKey, publishableKey, webhookSecret, webhookEndpointOk, healthOk });
+}
+
+/**
+ * The same decision, from rows the caller has already read.
+ *
+ * Both console reads hold the `stripe` and `payments` categories before they ask
+ * anything about Stripe, and they hold them for other reasons — the settings screen is
+ * drawing the fields, the payments screen the provider cards. Asking the self-reading
+ * resolver would fetch both categories again for values already in hand, and on staging
+ * that measured seconds per screen.
+ *
+ * The probe flags are mapped exactly as `readProbeFlag` maps them, so "not established"
+ * blocks live charging from either caller.
+ */
+export function stripeReadinessFrom(rows: {
+  stripe: Record<string, string | null>;
+  payments: Record<string, string | null>;
+}): StripeReadiness {
+  return readinessFromKeys({
+    secretKey: stripeSecretKeyFrom(rows.stripe),
+    publishableKey: stripePublishableKeyFrom(rows.stripe),
+    webhookSecret: stripeWebhookSecretFrom(rows.stripe),
+    webhookEndpointOk: probeFlagFrom(rows.payments.stripe_webhook_endpoint_ok),
+    healthOk: probeFlagFrom(rows.payments.stripe_health_ok),
   });
+}
+
+/**
+ * Everything the console says about Stripe, from the two categories it holds.
+ *
+ * ## Why this exists
+ *
+ * Two screens describe Stripe: the payments screen (provider cards) and the settings
+ * screen (one status badge beside the key fields). They used to derive "configured",
+ * "ready" and "last error" separately, which is two places for one decision to drift —
+ * and the badge then says "Configured" while a card says "Error", which is worse than
+ * either being wrong alone. So the derivation lives here once, and each screen picks the
+ * fields it shows.
+ *
+ * ## What it deliberately does not carry
+ *
+ * No key material, not even the masked `abcd••••wxyz` form: `secretKey`,
+ * `publishableKey` and `webhookSecret` are resolved to decide readiness and are never
+ * part of the returned facts. A screen that only shows a badge has no use for them, and
+ * a screen that shows key state reads `keys` from the payments projection, where the
+ * masking rules live.
+ */
+export interface StripeFacts {
+  /** Both keys present. Says nothing about whether charging is permitted. */
+  configured: boolean;
+  /** Configured *and* not switched off by the owner. */
+  enabled: boolean;
+  /** This deployment would actually let that key charge. */
+  ready: boolean;
+  mode: 'sandbox' | 'production';
+  stageLabel: string;
+  readiness: StripeReadiness;
+  lastTestAt?: string;
+  lastTestOk: boolean;
+  /** The first blocker when not ready, or the last recorded error. */
+  lastError?: string;
+}
+
+export function stripeFacts(rows: {
+  stripe: Record<string, string | null>;
+  payments: Record<string, string | null>;
+}): StripeFacts {
+  const readiness = stripeReadinessFrom(rows);
+  const configured = Boolean(stripeSecretKeyFrom(rows.stripe) && stripePublishableKeyFrom(rows.stripe));
+  const enabled = rows.payments.stripe_enabled !== 'false' && configured;
+  const ready =
+    enabled &&
+    readiness.chargingEnabled &&
+    readiness.orderSyncConfigured &&
+    (readiness.stage === 'test' || readiness.readyForLive);
+
+  return {
+    configured,
+    enabled,
+    ready,
+    mode: readiness.secretMode === 'live' ? 'production' : 'sandbox',
+    stageLabel: readiness.stage === 'off' ? 'OFF' : readiness.stage === 'live' ? 'LIVE / PRODUCTION' : 'TEST / STAGING',
+    readiness,
+    lastTestAt: rows.payments.stripe_last_test_at || undefined,
+    lastTestOk: rows.payments.stripe_last_test_ok === 'true',
+    // The first blocker, not a generic "error": the screen has to say what is missing
+    // or the owner has to go looking for it.
+    lastError: ready ? undefined : readiness.blockers[0] || rows.payments.stripe_last_error || undefined,
+  };
+}
+
+/** The Stripe facts from the store, for a caller with no rows in hand. */
+export async function readStripeFacts(): Promise<StripeFacts> {
+  const [stripe, payments] = await Promise.all([
+    getSettingsForCategory('stripe'),
+    getSettingsForCategory('payments'),
+  ]);
+  return stripeFacts({ stripe, payments });
+}
+
+/**
+ * What a status badge needs, and nothing else.
+ *
+ * The Settings screen shows one badge beside the key fields; the payments screen shows
+ * the whole card. Both are cut from the same `StripeFacts`, and this is the narrow cut —
+ * it carries no key material at all, not even masked, because a badge has no use for it.
+ */
+export interface StripeBadge {
+  mode: 'sandbox' | 'production';
+  isConfigured: boolean;
+  enabled: boolean;
+  ready: boolean;
+  stageLabel: string;
+  lastTestAt?: string;
+  lastTestOk: boolean;
+  lastError?: string;
+}
+
+export function stripeBadge(facts: StripeFacts): StripeBadge {
+  return {
+    mode: facts.mode,
+    isConfigured: facts.configured,
+    enabled: facts.enabled,
+    ready: facts.ready,
+    stageLabel: facts.stageLabel,
+    lastTestAt: facts.lastTestAt,
+    lastTestOk: facts.lastTestOk,
+    lastError: facts.lastError,
+  };
 }
 
 /** `'test' | 'live'` from the key's own prefix — the Response `mode` field. */
