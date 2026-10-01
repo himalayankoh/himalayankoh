@@ -233,7 +233,9 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
 
   'licks-blocks': {
     key: 'licks-blocks',
-    productCategoryLabel: 'Salt Licks & Blocks',
+    // Matches the shelf label in `lib/catalog/nicheSections.ts`, which in turn
+    // matches the store's own WooCommerce category name.
+    productCategoryLabel: 'Salt Licks',
     hero: {
       eyebrow: 'Pasture & Stable Minerals',
       title: 'Himalayan Salt Licks & Blocks',
@@ -438,7 +440,7 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
 
   bulk: {
     key: 'bulk',
-    productCategoryLabel: 'Bulk & Wholesale',
+    productCategoryLabel: 'Bulk and Rock Salt',
     hero: {
       eyebrow: 'Kitchen, retail & gifting',
       title: 'Bulk Himalayan Pink Salt',

@@ -44,8 +44,8 @@ const POLICY_PAGES = [
 const CATEGORIES = [
   { name: 'Edible Pink Salt', href: '/products?category=edible-pink-salt' },
   { name: 'Cooking & Serving Slabs', href: '/products?category=cooking-serving' },
-  { name: 'Salt Licks & Blocks for Livestock', href: '/products?category=licks-blocks' },
-  { name: 'Bulk & Wholesale Minerals', href: '/products?category=bulk' },
+  { name: 'Salt Licks', href: '/products?category=licks-blocks' },
+  { name: 'Bulk and Rock Salt', href: '/products?category=bulk' },
 ];
 
 const DEFAULT_PRODUCTS: SitemapProduct[] = [

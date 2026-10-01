@@ -77,6 +77,19 @@ export interface NicheSection {
   description: string;
   /** Public navigation visibility only; Woo records remain untouched. */
   visibleInStorefront: boolean;
+  /**
+   * The store's own WooCommerce category names this shelf serves.
+   *
+   * The owner files a product into a category in WooCommerce and expects it to
+   * appear under that category on the shop. This is the join between the two
+   * vocabularies: a product whose WooCommerce category is named here is placed on
+   * this shelf *before* the name rule is consulted, so the owner's filing wins.
+   *
+   * Keeping the two lists in one place is what stops the shop and WooCommerce
+   * drifting: a category the owner renames stops matching here, which shows up as
+   * a product falling back to the name rule rather than as a silently wrong shelf.
+   */
+  wooCategoryLabels?: readonly string[];
 }
 
 export const NICHE_SECTIONS: readonly NicheSection[] = [
@@ -85,33 +98,66 @@ export const NICHE_SECTIONS: readonly NicheSection[] = [
     label: 'Edible Pink Salt',
     description: 'Fine and coarse pink salt for the kitchen, in jars, pouches and larger bags.',
     visibleInStorefront: true,
+    wooCategoryLabels: ['Edible Pink Salt'],
   },
   {
     key: 'cooking-serving',
     label: 'Cooking & Serving',
     description: 'Salt blocks and plates for grilling, chilling and serving at the table.',
     visibleInStorefront: true,
+    wooCategoryLabels: ['Cooking & Serving', 'Salt Blocks'],
   },
   {
     key: 'licks-blocks',
-    label: 'Salt Licks & Blocks',
+    label: 'Salt Licks',
     description: 'Solid pink salt licks and blocks in the sizes the owner price list covers.',
     visibleInStorefront: true,
+    // The store's own term for this range is `Salt Licks`; the older label came
+    // from the price list's heading for the same goods and still resolves here.
+    wooCategoryLabels: ['Salt Licks', 'Salt Licks & Blocks'],
   },
   {
     key: 'lamps-decor',
     label: 'Salt Lamps & Décor',
     description: 'Hand-carved pink salt lamps and decorative pieces for the home.',
     visibleInStorefront: true,
+    wooCategoryLabels: ['Salt Lamps & Décor', 'Salt Lamps'],
   },
   {
     key: 'bulk',
-    label: 'Bulk & Wholesale',
+    label: 'Bulk and Rock Salt',
     description: 'Larger bags and pouches for kitchens, retailers and gifting at volume.',
-    // Temporary public-nav hold: keep Woo products/category intact and visible in All.
-    visibleInStorefront: false,
+    // Public since 2026-10-01: the owner filed a live product under this category
+    // (`Bulk and Rock Salt`) and asked for the shop's filters to carry the
+    // categories he sets in WooCommerce. The label matches that category, so it no
+    // longer reads as the wholesale programme — wholesale is its own module.
+    visibleInStorefront: true,
+    wooCategoryLabels: ['Bulk and Rock Salt', 'Bulk & Wholesale', 'Bulk Order', 'Bulk'],
   },
 ];
+
+const SHELF_BY_WOO_LABEL = new Map<string, NicheSectionKey>(
+  NICHE_SECTIONS.flatMap((section) =>
+    (section.wooCategoryLabels ?? []).map(
+      (label) => [label.trim().toLowerCase(), section.key] as const
+    )
+  )
+);
+
+/**
+ * The shelf a product is filed on by its WooCommerce category, or `null`.
+ *
+ * This is the owner's own decision in WooCommerce, translated into a shelf. It is
+ * consulted after the rules that read a product's *kind* from its name (a lick is
+ * a lick) and before the rules that only guess from a size in the title, so the
+ * owner's filing settles everything the title does not already answer.
+ */
+export function nicheSectionKeyForWooCategory(
+  label: string | null | undefined
+): NicheSectionKey | null {
+  if (!label) return null;
+  return SHELF_BY_WOO_LABEL.get(label.trim().toLowerCase()) ?? null;
+}
 
 const SECTION_BY_KEY = new Map(NICHE_SECTIONS.map((section) => [section.key, section]));
 
@@ -134,11 +180,22 @@ export function nicheSectionKeyFor(input: NicheCheckInput): NicheSectionKey | nu
   // buying, not a product.
   if (!/\bsalt\b|\blamp|\blantern\b/.test(haystack)) return null;
 
+  // The *kind* of thing comes first, from the name, and it outranks the owner's
+  // category, because that is what a shopper is looking for: a "Salt Lick" is a
+  // lick wherever it is filed, and the staging catalogue really does carry one
+  // filed under `Bulk Order`. Checked before the block rule because "Salt Lick"
+  // names a mineral lick line, not a cooking piece.
   if (/\blamp|lantern|decor|décor|holder|candle|tealight|carved\b/.test(haystack)) return 'lamps-decor';
-  // Checked before the block rule: "Salt Lick" names a mineral lick line, and the
-  // owner list carries it under its own heading (`Salt Licks`), not under cooking.
   if (/\blick|licks\b/.test(haystack)) return 'licks-blocks';
   if (/\bblock|plate|slab|grill|plank\b/.test(haystack)) return 'cooking-serving';
+
+  // Then the owner's own filing. Asked before the size heuristic, because a size
+  // in a title is a hint and a category is a decision: the owner filed "Bag of
+  // Himalayan Pink Salt for Livestock (45 lbs.)" under `Edible Pink Salt`, so it
+  // belongs with the edible salt rather than in the bulk bags.
+  const filed = nicheSectionKeyForWooCategory(input.category ?? null);
+  if (filed) return filed;
+
   if (/\bbulk|wholesale|25 kg|25kg|50 lb|45 lbs|45lb|18 lbs|18lb|pallet\b/.test(haystack)) return 'bulk';
   return 'edible-pink-salt';
 }

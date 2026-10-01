@@ -35,7 +35,7 @@ const aboutLinks = [
 const productLinks = [
   { label: 'Edible Pink Salt', to: buildProductsCategoryPath('edible-pink-salt') },
   { label: 'Cooking & Serving', to: buildProductsCategoryPath('cooking-serving') },
-  { label: 'Salt Licks & Blocks', to: buildProductsCategoryPath('licks-blocks') },
+  { label: 'Salt Licks', to: buildProductsCategoryPath('licks-blocks') },
 ];
 
 export default function Footer() {

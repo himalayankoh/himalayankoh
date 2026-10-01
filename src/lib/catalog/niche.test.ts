@@ -242,6 +242,35 @@ describe('nicheSectionKeyFor', () => {
     expect(nicheSectionKeyFor({ name: 'Canvas Tote Bag', category: 'Bulk Order' })).toBeNull();
     expect(nicheSectionKeyFor({ name: 'Shipping Box', category: 'Uncategorized' })).toBeNull();
   });
+
+  /**
+   * The owner's filing decides, from the real staging rows.
+   *
+   * Both of these were placed wrongly before: the 45 lb bag was read as bulk from
+   * its size while the owner had filed it under `Edible Pink Salt`, and the 30 lb
+   * cattle bag fell through to edible salt even though the owner filed it under
+   * `Bulk and Rock Salt`. A shopper clicking either category found the wrong grid.
+   */
+  it('files a product by the owner\u2019s WooCommerce category over a size in its title', () => {
+    expect(
+      nicheSectionKeyFor({
+        name: 'Bag of Himalayan Pink Salt for Livestock (45 lbs.)',
+        category: 'Edible Pink Salt',
+      })
+    ).toBe('edible-pink-salt');
+    expect(
+      nicheSectionKeyFor({
+        name: 'Himalayan Salt Rock for Cattle 30 Lbs Bag',
+        category: 'Bulk and Rock Salt',
+      })
+    ).toBe('bulk');
+  });
+
+  it('keeps a named kind on its own shelf even when the category is vague', () => {
+    // A licks product filed under `Bulk Order` is still a lick: the name says what
+    // it is, and "Bulk Order" is a way of buying rather than a shelf.
+    expect(nicheSectionKeyFor({ name: 'SALT LICKS', category: 'Bulk Order' })).toBe('licks-blocks');
+  });
 });
 
 describe('sectionsWithProducts', () => {

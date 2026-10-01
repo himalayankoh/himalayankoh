@@ -77,10 +77,10 @@ describe('Catalog Grounding & Duplicate SKU Prevention', () => {
     expect(CATEGORY_FILTER_TABS[0].label).toBe('All');
     expect(categoryKeyFromFilterLabel('Edible Pink Salt')).toBe('edible-pink-salt');
     expect(categoryKeyFromFilterLabel('Cooking & Serving')).toBe('cooking-serving');
-    expect(categoryKeyFromFilterLabel('Salt Licks & Blocks')).toBe('licks-blocks');
-    // Bulk & Wholesale remains in the taxonomy for direct product placement, but
-    // its public filter/link is temporarily hidden by owner instruction.
-    expect(categoryKeyFromFilterLabel('Bulk & Wholesale')).toBeNull();
+    expect(categoryKeyFromFilterLabel('Salt Licks')).toBe('licks-blocks');
+    // The bulk shelf is public and carries the store's own category name, so the
+    // owner's filing in WooCommerce and the shop's filters agree.
+    expect(categoryKeyFromFilterLabel('Bulk and Rock Salt')).toBe('bulk');
 
     expect(buildProductsCategoryPath('edible-pink-salt')).toBe('/products?category=edible-pink-salt');
     expect(buildProductsCategoryPath(null)).toBe('/products');
