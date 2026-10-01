@@ -15,7 +15,6 @@ export interface SeoJson {
   metaDescription?: string;
   focusKeyword?: string;
   seoKeywords?: string[];
-  slug?: string;
   targetKeyword?: string;
   secondaryKeywords?: string[];
   searchIntent?: string;
@@ -39,7 +38,6 @@ export async function generateSeoJson(prompt: string): Promise<SeoJson> {
       metaDescription: typeof parsed.metaDescription === 'string' ? parsed.metaDescription : typeof parsed.description === 'string' ? parsed.description : undefined,
       focusKeyword: typeof parsed.focusKeyword === 'string' ? parsed.focusKeyword : typeof parsed.primaryKeyword === 'string' ? parsed.primaryKeyword : undefined,
       seoKeywords: Array.isArray(parsed.seoKeywords) ? parsed.seoKeywords.map(String) : Array.isArray(parsed.keywords) ? parsed.keywords.map(String) : [],
-      slug: typeof parsed.slug === 'string' ? parsed.slug : undefined,
       targetKeyword: typeof parsed.targetKeyword === 'string' ? parsed.targetKeyword : undefined,
       secondaryKeywords: Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords.map(String) : [],
       searchIntent: typeof parsed.searchIntent === 'string' ? parsed.searchIntent : undefined,
