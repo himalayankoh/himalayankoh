@@ -126,8 +126,11 @@ change, not a redeploy.
 - **Staging data is not production data.** Staging WooCommerce holds its own
   products and **25 orders** (dated 2023 → 2026-09-30) that exist only in the
   staging database. They are not "demo" rows in the code — they are real records
-  in the staging store. Production reads the live store, so they will not appear
-  there; they only need tidying in preview if the owner wants a clean screen.
+  in the staging store (36 at the time of writing, dated 2023 → 2026-09-30).
+  Production reads the live store, so they will not appear there; they only need
+  tidying in preview if the owner wants a clean screen, and `/admin/orders`
+  now has a **Trashed** view for exactly that: select the rows, move them to the
+  store's own trash, and restore them later if one turns out to have mattered.
 - **The session secret.** Sharing it between environments makes staging tokens
   valid in production.
 - **The `staging` path.** If production is pointed at `himalayankoh.com/staging`
