@@ -22,6 +22,7 @@ import {
   Copy,
   Download,
   Images,
+  Info,
   ImageSquare,
   LinkSimple,
   MagnifyingGlass,
@@ -45,14 +46,49 @@ import type { LibraryImage } from '../lib/media/libraryTypes';
 
 const PER_PAGE = 60;
 
-type FilterKey = 'all' | 'products' | 'unused' | 'no-alt';
+type FilterKey = 'library' | 'products' | 'all' | 'no-alt';
+type Scope = 'all' | 'unused' | 'in_use';
 
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: 'all', label: 'All images' },
-  { key: 'products', label: 'In products' },
-  { key: 'unused', label: 'Not in a product' },
-  { key: 'no-alt', label: 'Missing alt text' },
+/**
+ * The store's imagery is two different things, and the library says so.
+ *
+ * "Library images" are files the store holds that no product displays — what the
+ * owner uploaded for other use, and the only half that is safe to clean up.
+ * "Product images" belong to a listing: they are rendered on the storefront, and
+ * deleting one here would break that product's photo, so the view is for looking.
+ * Naming the split is what stops a library tidy-up from touching a listing.
+ */
+const FILTERS: { key: FilterKey; label: string; scope: Scope; hint: string }[] = [
+  {
+    key: 'library',
+    label: 'Library images',
+    scope: 'unused',
+    hint: 'Files no product displays. These are the store’s spare images — safe to edit or delete here.',
+  },
+  {
+    key: 'products',
+    label: 'Product images',
+    scope: 'in_use',
+    hint: 'Each of these is shown on a product. Change one on the product itself — deleting it here would break that product’s photo.',
+  },
+  {
+    key: 'all',
+    label: 'All images',
+    scope: 'all',
+    hint: 'Everything the store holds, product photos included.',
+  },
+  {
+    key: 'no-alt',
+    label: 'Missing alt text',
+    scope: 'all',
+    hint: 'Images with no alt text, product photos included.',
+  },
 ];
+
+/** The library proper is the default: product photos have their own home. */
+const DEFAULT_FILTER: FilterKey = 'library';
+
+const scopeFor = (key: FilterKey): Scope => FILTERS.find((entry) => entry.key === key)?.scope ?? 'all';
 
 const INK = '#26211C';
 const MUTED = '#6D6258';
@@ -85,7 +121,7 @@ export default function ImageLibrary() {
 
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<FilterKey>('all');
+  const [filter, setFilter] = useState<FilterKey>(DEFAULT_FILTER);
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [open, setOpen] = useState<LibraryImage | null>(null);
@@ -117,7 +153,12 @@ export default function ImageLibrary() {
       else if (!options.silent) setLoading(true);
 
       try {
-        const result = await listLibraryImages({ page: targetPage, perPage: PER_PAGE, search: query });
+        const result = await listLibraryImages({
+          page: targetPage,
+          perPage: PER_PAGE,
+          search: query,
+          scope: scopeFor(filter),
+        });
         setImages((current) =>
           options.append && current ? [...current, ...result.images] : result.images
         );
@@ -132,7 +173,7 @@ export default function ImageLibrary() {
         setLoadingMore(false);
       }
     },
-    [query]
+    [query, filter]
   );
 
   useEffect(() => {
@@ -315,22 +356,25 @@ export default function ImageLibrary() {
 
   // --- derived -------------------------------------------------------------
 
-  const counts = useMemo(() => {
+  /**
+   * The server has already scoped this list to the chosen half of the library, so
+   * the only thing left to filter here is alt text. Re-filtering by usage in the
+   * browser would double-count nothing but would hide the real totals.
+   */
+  const visible = useMemo(() => {
     const list = images ?? [];
+    if (filter === 'no-alt') return list.filter((image) => !image.alt);
+    return list;
+  }, [images, filter]);
+
+  const counts = useMemo(() => {
+    const list = visible;
     return {
       total: list.length,
       inUse: list.filter((image) => image.usedBy.length > 0).length,
       missingAlt: list.filter((image) => !image.alt).length,
     };
-  }, [images]);
-
-  const visible = useMemo(() => {
-    const list = images ?? [];
-    if (filter === 'products') return list.filter((image) => image.usedBy.length > 0);
-    if (filter === 'unused') return list.filter((image) => image.usedBy.length === 0);
-    if (filter === 'no-alt') return list.filter((image) => !image.alt);
-    return list;
-  }, [images, filter]);
+  }, [visible]);
 
   const toggleSelected = (id: number) =>
     setSelected((current) => {
@@ -403,7 +447,7 @@ export default function ImageLibrary() {
 
         <dl className="mt-4 grid grid-cols-3 gap-2 sm:max-w-md">
           {[
-            { label: 'Loaded', value: counts.total, color: INK },
+            { label: 'Showing', value: counts.total, color: INK },
             { label: 'In products', value: counts.inUse, color: GREEN },
             { label: 'Missing alt text', value: counts.missingAlt, color: counts.missingAlt > 0 ? AMBER : GREEN },
           ].map((stat) => (
@@ -480,6 +524,17 @@ export default function ImageLibrary() {
           </button>
         )}
       </div>
+
+      {/* Which half of the library is on screen, and what that means for deleting. */}
+      {FILTERS.find((entry) => entry.key === filter) && (
+        <p
+          className="flex items-start gap-2 rounded-xl border px-3 py-2 text-xs leading-relaxed"
+          style={{ borderColor: BORDER, background: PARCHMENT, color: MUTED }}
+        >
+          <Info size={14} className="mt-0.5 shrink-0" style={{ color: GOLD }} />
+          <span>{FILTERS.find((entry) => entry.key === filter)?.hint}</span>
+        </p>
+      )}
 
       {/* Import from URL */}
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-white p-3" style={{ borderColor: BORDER }}>
@@ -571,14 +626,18 @@ export default function ImageLibrary() {
           <div className="px-4 py-14 text-center">
             <ImageSquare size={30} className="mx-auto" style={{ color: BORDER }} />
             <p className="mt-3 text-sm font-semibold" style={{ color: INK }}>
-              {images.length === 0
-                ? 'No images in the library yet.'
-                : 'No images match this filter.'}
+              {images.length === 0 && filter === 'library'
+                ? 'No spare images — every image the store holds is shown on a product.'
+                : images.length === 0
+                  ? 'Nothing to show here yet.'
+                  : 'No images match this filter.'}
             </p>
             <p className="mt-1 text-xs" style={{ color: MUTED }}>
-              {images.length === 0
-                ? 'Upload from your device, paste an image URL, or import a product — its photos land here.'
-                : 'Try “All images”, or clear the search.'}
+              {images.length === 0 && filter === 'library'
+                ? 'Upload from your device or paste an image URL to keep a file that belongs to no product.'
+                : images.length === 0
+                  ? 'Try another tab above, or clear the search.'
+                  : 'Try “All images”, or clear the search.'}
             </p>
           </div>
         ) : (

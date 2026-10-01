@@ -35,11 +35,19 @@ export async function listLibraryImages(options: {
   page?: number;
   perPage?: number;
   search?: string;
+  /**
+   * Which half of the library to read. `unused` is the library proper — files no
+   * product displays; `in_use` is the product photos. Filtering server-side keeps
+   * the pagination and the totals honest: a client-side filter over 60 loaded
+   * files would have reported "42 library images" when the store holds 275.
+   */
+  scope?: 'all' | 'unused' | 'in_use';
 } = {}): Promise<LibraryPage> {
   const params = new URLSearchParams();
   if (options.page) params.set('page', String(options.page));
   if (options.perPage) params.set('perPage', String(options.perPage));
   if (options.search) params.set('search', options.search);
+  if (options.scope && options.scope !== 'all') params.set('scope', options.scope);
 
   const response = await fetch(`/api/admin/media/library?${params.toString()}`, {
     headers: await authHeaders(),

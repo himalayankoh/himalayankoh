@@ -5,9 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * it is tested against a mocked WordPress rather than against the live library:
  * an image a product renders must be refused, and nothing may be sent to
  * WordPress when it is.
+ *
+ * The product the guard sees is deliberately a **draft**: staging proved that
+ * reading the usage index from the storefront-scoped catalogue dropped every
+ * draft, unlisted and off-niche product, which made 27 product photos look
+ * deletable. A draft product's photos are still that product's photos.
  */
 
 const calls: { method: string; path: string; params?: unknown }[] = [];
+/** Set to make the product list read fail, for the fail-closed delete case. */
+let productListFails = false;
 
 vi.mock('@/lib/auth/verifyAdminRequest', () => ({
   verifyAdminRequest: async () => ({ ok: true, userId: 'test-admin', admin: {} }),
@@ -17,16 +24,31 @@ vi.mock('@/lib/backend/wordpressCredentials', () => ({
   requireWordPressCredentials: () => ({ username: 'u', password: 'p' }),
 }));
 
-vi.mock('@/lib/backend/serverCatalog', () => ({
-  getCatalogProducts: async () => ({
-    products: [
+vi.mock('@/lib/woo/productWrite', () => ({
+  listWooProducts: async () => {
+    if (productListFails) throw new Error('WooCommerce is unreachable');
+    return [
       {
-        id: '2653',
+        id: 2653,
         name: 'Edible Pink Salt 16 oz',
-        images: ['https://staging.test/wp-content/uploads/2026/09/edible-jar.jpg'],
+        status: 'draft',
+        images: [{ id: 1, src: 'https://staging.test/wp-content/uploads/2026/09/edible-jar.jpg' }],
       },
-    ],
-  }),
+      {
+        id: 2728,
+        name: 'Salt Rock for Cattle',
+        status: 'publish',
+        images: [{ id: 2, src: 'https://staging.test/wp-content/uploads/2026/09/cattle-rock.jpg' }],
+      },
+      // Trash must never make an image look used.
+      {
+        id: 9999,
+        name: 'Deleted product',
+        status: 'trash',
+        images: [{ id: 3, src: 'https://staging.test/wp-content/uploads/2026/09/trashed.jpg' }],
+      },
+    ];
+  },
 }));
 
 vi.mock('@/lib/backend/wordpress', () => {
@@ -39,6 +61,31 @@ vi.mock('@/lib/backend/wordpress', () => {
       this.status = input.status;
     }
   }
+  const mediaRows = [
+    {
+      id: 2653,
+      date: '2026-09-30T10:00:00',
+      source_url: 'https://staging.test/wp-content/uploads/2026/09/edible-jar.jpg',
+      alt_text: '',
+      mime_type: 'image/jpeg',
+      title: { rendered: 'edible jar' },
+      media_details: {
+        width: 1200,
+        height: 900,
+        filesize: 204800,
+        sizes: { medium: { source_url: 'https://staging.test/wp-content/uploads/2026/09/edible-jar-300x225.jpg' } },
+      },
+    },
+    {
+      id: 2701,
+      date: '2026-09-29T10:00:00',
+      source_url: 'https://staging.test/wp-content/uploads/2026/09/loose-photo.png',
+      alt_text: 'A loose photo',
+      mime_type: 'image/png',
+      title: { rendered: 'loose photo' },
+      media_details: { width: 400, height: 400 },
+    },
+  ];
   return {
     WordPressApiError,
     wordpressRequest: async (path: string, options: { method?: string; params?: unknown } = {}) => {
@@ -51,36 +98,7 @@ vi.mock('@/lib/backend/wordpress', () => {
     },
     wordpressRequestWithMeta: async () => {
       calls.push({ method: 'GET', path: '/wp/v2/media' });
-      return {
-        data: [
-          {
-            id: 2653,
-            date: '2026-09-30T10:00:00',
-            source_url: 'https://staging.test/wp-content/uploads/2026/09/edible-jar.jpg',
-            alt_text: '',
-            mime_type: 'image/jpeg',
-            title: { rendered: 'edible jar' },
-            media_details: {
-              width: 1200,
-              height: 900,
-              filesize: 204800,
-              sizes: { medium: { source_url: 'https://staging.test/wp-content/uploads/2026/09/edible-jar-300x225.jpg' } },
-            },
-          },
-          {
-            id: 2701,
-            date: '2026-09-29T10:00:00',
-            source_url: 'https://staging.test/wp-content/uploads/2026/09/loose-photo.png',
-            alt_text: 'A loose photo',
-            mime_type: 'image/png',
-            title: { rendered: 'loose photo' },
-            media_details: { width: 400, height: 400 },
-          },
-        ],
-        status: 200,
-        total: 2,
-        totalPages: 1,
-      };
+      return { data: mediaRows, status: 200, total: 2, totalPages: 1 };
     },
   };
 });
@@ -98,6 +116,7 @@ const jsonRequest = (method: string, body: unknown) =>
 
 beforeEach(() => {
   calls.length = 0;
+  productListFails = false;
 });
 
 describe('GET /api/admin/media/library', () => {
@@ -118,6 +137,40 @@ describe('GET /api/admin/media/library', () => {
     ]);
     expect(loose.usedBy).toEqual([]);
     expect(loose.thumbnail).toBe(loose.url); // no medium size stored
+  });
+
+  it('counts a draft product as a real user of its photos', async () => {
+    const body = await (await GET(url('?perPage=48'))).json();
+    const productImage = body.images.find((image: { id: number }) => image.id === 2653);
+    expect(productImage.usedBy).toHaveLength(1);
+    expect(productImage.usedBy[0].id).toBe('2653');
+  });
+
+  it('does not count a trashed product as a user of its photos', async () => {
+    // The mock's media list has no trashed image, so assert through the index by
+    // asking the scope filter for unused images: the trashed entry must not remove
+    // anything from that list.
+    const body = await (await GET(url('?scope=unused'))).json();
+    expect(body.images.some((image: { id: number }) => image.id === 2701)).toBe(true);
+  });
+
+  it('scopes to images no product displays when asked', async () => {
+    const body = await (await GET(url('?scope=unused'))).json();
+    expect(body.scope).toBe('unused');
+    expect(body.images.map((image: { id: number }) => image.id)).toEqual([2701]);
+    expect(body.total).toBe(1);
+  });
+
+  it('scopes to product photos when asked', async () => {
+    const body = await (await GET(url('?scope=in_use'))).json();
+    expect(body.scope).toBe('in_use');
+    expect(body.images.map((image: { id: number }) => image.id)).toEqual([2653]);
+  });
+
+  it('falls back to the whole library for an unknown scope', async () => {
+    const body = await (await GET(url('?scope=everything'))).json();
+    expect(body.scope).toBe('all');
+    expect(body.images).toHaveLength(2);
   });
 });
 
@@ -161,5 +214,14 @@ describe('DELETE /api/admin/media/library', () => {
   it('refuses a missing id', async () => {
     const response = await DELETE(url(''));
     expect(response.status).toBe(400);
+  });
+
+  it('fails closed: a product list that cannot be read deletes nothing', async () => {
+    productListFails = true;
+    const response = await DELETE(url('?id=2701'));
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.error).toContain('was not deleted');
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
   });
 });
