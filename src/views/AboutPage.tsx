@@ -55,12 +55,12 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-20 md:py-28">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
           <motion.span
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-5"
+            className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3"
           >
             About Himalayan Koh
           </motion.span>
@@ -68,7 +68,7 @@ export default function AboutPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-5 leading-tight"
+            className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 leading-tight"
           >
             Purity From the Source, Integrity in Every Grain
           </motion.h1>
@@ -76,7 +76,7 @@ export default function AboutPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-white/75 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed"
+            className="text-white/75 text-base md:text-lg max-w-2xl mx-auto leading-relaxed"
           >
             Authentic Himalayan pink rock salt, inspected, packed, and dispatched from Houston, Texas.
           </motion.p>
@@ -84,9 +84,9 @@ export default function AboutPage() {
       </div>
 
       {/* Main Content */}
-      <section className="py-16 md:py-24 bg-cream">
+      <section className="py-10 md:py-14 bg-cream">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          <div className="grid lg:grid-cols-2 gap-6 lg:gap-10 items-center">
             {/* Image Side */}
             <motion.div
               initial={{ opacity: 0, x: -40 }}
@@ -114,11 +114,11 @@ export default function AboutPage() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
-              <h2 className="font-serif text-3xl sm:text-4xl font-bold text-charcoal mb-6 leading-tight">
+              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-charcoal mb-4 leading-tight">
                 Authentic Salt Sourced for{' '}
                 <span className="text-himalayan">Gourmet & Agricultural Excellence</span>
               </h2>
-              <div className="space-y-4 text-charcoal-light leading-relaxed text-base md:text-lg">
+              <div className="space-y-3 text-charcoal-light leading-relaxed text-sm md:text-base">
                 <p>
                   Himalayan pink salt was deposited over 250 million years ago during the Precambrian era as ancient ocean beds evaporated. Protected beneath tectonic mountain strata in Pakistan&apos;s Salt Range, this mineral deposit remained shielded from modern industrial pollutants.
                 </p>
@@ -130,7 +130,7 @@ export default function AboutPage() {
                 </p>
               </div>
 
-              <div className="mt-6 space-y-3">
+              <div className="mt-5 space-y-2">
                 {bulletPoints.map((point, i) => (
                   <motion.div
                     key={i}
@@ -152,26 +152,26 @@ export default function AboutPage() {
       </section>
 
       {/* Benefits Section */}
-      <section className="py-16 md:py-24 bg-white">
+      <section className="py-10 md:py-14 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-14"
+            className="text-center mb-8"
           >
-            <span className="inline-block px-4 py-1.5 bg-himalayan-lighter text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-4">
+            <span className="inline-block px-3 py-1 bg-himalayan-lighter text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3">
               Our Standards
             </span>
-            <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-charcoal mb-4">
+            <h2 className="font-serif text-2xl sm:text-3xl md:text-4xl font-bold text-charcoal mb-3">
               What Natural Unrefined Salt Retains
             </h2>
-            <p className="text-charcoal-light text-lg max-w-2xl mx-auto">
+            <p className="text-charcoal-light text-base max-w-2xl mx-auto">
               Authentic mineral composition tailored for specific culinary and agricultural needs.
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
             {benefits.map((benefit, i) => (
               <motion.div
                 key={benefit.title}
@@ -180,12 +180,12 @@ export default function AboutPage() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: i * 0.08 }}
                 whileHover={{ y: -6 }}
-                className="group bg-white border border-gray-100 rounded-2xl p-7 md:p-8 hover:shadow-xl hover:shadow-himalayan/10 hover:border-himalayan/20 transition-all duration-500"
+                className="group bg-white border border-gray-100 rounded-2xl p-5 hover:shadow-xl hover:shadow-himalayan/10 hover:border-himalayan/20 transition-all duration-500"
               >
-                <div className="w-14 h-14 bg-himalayan-lighter rounded-2xl flex items-center justify-center text-himalayan mb-5 group-hover:bg-himalayan group-hover:text-white transition-all duration-300">
-                  <benefit.icon size={24} />
+                <div className="w-11 h-11 bg-himalayan-lighter rounded-xl flex items-center justify-center text-himalayan mb-3 group-hover:bg-himalayan group-hover:text-white transition-all duration-300">
+                  <benefit.icon size={20} />
                 </div>
-                <h3 className="font-serif text-xl font-bold text-charcoal mb-3">
+                <h3 className="font-serif text-lg font-bold text-charcoal mb-2">
                   {benefit.title}
                 </h3>
                 <p className="text-charcoal-light text-sm leading-relaxed">
@@ -198,38 +198,38 @@ export default function AboutPage() {
       </section>
 
       {/* Sourcing & QC Story Section */}
-      <section className="py-16 md:py-24 bg-charcoal text-white">
+      <section className="py-10 md:py-14 bg-charcoal text-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
           >
-            <span className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-4">
+            <span className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3">
               Direct Origin
             </span>
-            <h2 className="font-serif text-3xl sm:text-4xl font-bold mb-6">
+            <h2 className="font-serif text-2xl sm:text-3xl font-bold mb-4">
               Geological Sourcing from the Khewra Salt Range
             </h2>
-            <p className="text-white/80 text-lg leading-relaxed mb-6">
+            <p className="text-white/80 text-base leading-relaxed mb-4">
               Our Himalayan rose pink salt originates from the ancient Khewra salt mines, situated in the foothills of the Salt Range in Punjab, Pakistan. We work directly with licensed mining partners who practice ethical extraction and traditional craftsmanship.
             </p>
-            <p className="text-white/80 text-lg leading-relaxed mb-6">
+            <p className="text-white/80 text-base leading-relaxed mb-4">
               Upon maritime arrival in the United States, every batch is received at our facility in Houston, Texas. Our team conducts physical inspections for moisture barriers, granulometry consistency, and purity before packaging into sealed, food-safe containers.
             </p>
-            <p className="text-white/80 text-lg leading-relaxed mb-8">
+            <p className="text-white/80 text-base leading-relaxed mb-6">
               We welcome wholesale, retail distribution, and bulk commercial inquiries. For full details on our quality-assurance framework and laboratory protocols, visit our dedicated sourcing guide.
             </p>
-            <div className="flex flex-wrap justify-center gap-4">
+            <div className="flex flex-wrap justify-center gap-3">
               <Link
                 href="/quality"
-                className="px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-all shadow-lg shadow-himalayan/20"
+                className="px-5 py-2.5 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-all shadow-lg shadow-himalayan/20"
               >
                 Quality & Sourcing Standards →
               </Link>
               <Link
                 href="/disclaimer"
-                className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition-all"
+                className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition-all"
               >
                 Product Disclaimer →
               </Link>
@@ -239,13 +239,13 @@ export default function AboutPage() {
       </section>
 
       {/* Leadership & Editorial Trust Section */}
-      <section className="py-16 md:py-24 bg-warm-white border-t border-gray-100">
+      <section className="py-10 md:py-14 bg-warm-white border-t border-gray-100">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-12">
-            <span className="inline-block px-4 py-1.5 bg-himalayan-lighter text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-3">
+          <div className="text-center mb-8">
+            <span className="inline-block px-3 py-1 bg-himalayan-lighter text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3">
               Leadership & Editorial Team
             </span>
-            <h2 className="font-serif text-3xl sm:text-4xl font-bold text-charcoal mb-4">
+            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-charcoal mb-3">
               Transparency & Customer Commitment
             </h2>
             <p className="text-charcoal-light max-w-2xl mx-auto text-base">
@@ -253,45 +253,45 @@ export default function AboutPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-5 max-w-4xl mx-auto">
             {/* Operations & Sourcing Leadership */}
-            <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
               <div>
-                <div className="w-16 h-16 bg-himalayan-lighter rounded-2xl flex items-center justify-center text-himalayan mb-5">
-                  <UserCheck size={32} />
+                <div className="w-12 h-12 bg-himalayan-lighter rounded-xl flex items-center justify-center text-himalayan mb-4">
+                  <UserCheck size={26} />
                 </div>
-                <h3 className="font-serif text-xl font-bold text-charcoal mb-1">Operations & Sourcing Team</h3>
-                <p className="text-xs font-semibold text-himalayan uppercase tracking-wider mb-4">Supply Chain & Quality Control</p>
-                <p className="text-sm text-charcoal-light leading-relaxed mb-4">
+                <h3 className="font-serif text-lg font-bold text-charcoal mb-1">Operations & Sourcing Team</h3>
+                <p className="text-xs font-semibold text-himalayan uppercase tracking-wider mb-3">Supply Chain & Quality Control</p>
+                <p className="text-sm text-charcoal-light leading-relaxed mb-3">
                   Oversees direct supplier auditing in the Salt Range, transatlantic freight logistics, and warehouse quality inspections at our Houston distribution center.
                 </p>
               </div>
-              <div className="pt-4 border-t border-gray-100 text-xs text-charcoal-light">
+              <div className="pt-3 border-t border-gray-100 text-xs text-charcoal-light">
                 Location: Houston, Texas Facility
               </div>
             </div>
 
             {/* Editorial & Educational Review */}
-            <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between">
               <div>
-                <div className="w-16 h-16 bg-himalayan-lighter rounded-2xl flex items-center justify-center text-himalayan mb-5">
-                  <ShieldCheck size={32} />
+                <div className="w-12 h-12 bg-himalayan-lighter rounded-xl flex items-center justify-center text-himalayan mb-4">
+                  <ShieldCheck size={26} />
                 </div>
-                <h3 className="font-serif text-xl font-bold text-charcoal mb-1">Editorial & Resource Board</h3>
-                <p className="text-xs font-semibold text-himalayan uppercase tracking-wider mb-4">Agricultural & Culinary Education</p>
-                <p className="text-sm text-charcoal-light leading-relaxed mb-4">
+                <h3 className="font-serif text-lg font-bold text-charcoal mb-1">Editorial & Resource Board</h3>
+                <p className="text-xs font-semibold text-himalayan uppercase tracking-wider mb-3">Agricultural & Culinary Education</p>
+                <p className="text-sm text-charcoal-light leading-relaxed mb-3">
                   Researches and reviews practical guides on livestock mineral management, equine electrolyte replenishment, and culinary salt block techniques to ensure factual accuracy.
                 </p>
               </div>
-              <div className="pt-4 border-t border-gray-100 text-xs text-charcoal-light">
+              <div className="pt-3 border-t border-gray-100 text-xs text-charcoal-light">
                 Review Standard: Human Fact-Checked Against Extension Guidelines
               </div>
             </div>
           </div>
 
           {/* Direct Verified Contact Bar */}
-          <div className="mt-12 bg-white rounded-2xl p-6 md:p-8 border border-gray-200/70 shadow-sm">
-            <div className="grid sm:grid-cols-3 gap-6 text-center sm:text-left">
+          <div className="mt-8 bg-white rounded-2xl p-5 md:p-6 border border-gray-200/70 shadow-sm">
+            <div className="grid sm:grid-cols-3 gap-5 text-center sm:text-left">
               <div className="flex items-center gap-4 justify-center sm:justify-start">
                 <div className="w-10 h-10 bg-himalayan-lighter rounded-xl flex items-center justify-center text-himalayan flex-shrink-0">
                   <MapPin size={18} />
