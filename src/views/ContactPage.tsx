@@ -42,12 +42,12 @@ export default function ContactPage() {
   return (
     <div className="min-h-screen bg-warm-white">
       {/* Header */}
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-20 md:py-28">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
           <motion.span
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-5"
+            className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3"
           >
             Contact Us
           </motion.span>
@@ -55,7 +55,7 @@ export default function ContactPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-5 leading-tight"
+            className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 leading-tight"
           >
             Get in Touch
           </motion.h1>
@@ -63,7 +63,7 @@ export default function ContactPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-white/75 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed"
+            className="text-white/75 text-base md:text-lg max-w-2xl mx-auto leading-relaxed"
           >
             We&apos;re here to help with all your Himalayan salt needs
           </motion.p>
@@ -71,49 +71,49 @@ export default function ContactPage() {
       </div>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 md:py-20">
-        <div className="grid lg:grid-cols-3 gap-8 lg:gap-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
+        <div className="grid lg:grid-cols-3 gap-5 lg:gap-8">
           {/* Contact Info */}
           <motion.div
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}
-            className="lg:col-span-1 space-y-6"
+            className="lg:col-span-1 space-y-4"
           >
-            <div className="bg-white rounded-2xl p-6 shadow-md">
-              <h3 className="font-serif text-xl font-bold text-charcoal mb-6">Contact Information</h3>
+            <div className="bg-white rounded-2xl p-5 shadow-md">
+              <h3 className="font-serif text-lg font-bold text-charcoal mb-4">Contact Information</h3>
               
-              <div className="space-y-5">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-himalayan-lighter rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Mail size={20} className="text-himalayan" />
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-himalayan-lighter rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Mail size={18} className="text-himalayan" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-charcoal mb-1">Email</h4>
+                    <h4 className="font-semibold text-charcoal mb-0.5">Email</h4>
                     <a href="mailto:sales@himalayankoh.com" className="text-himalayan hover:underline text-sm">
                       sales@himalayankoh.com
                     </a>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-himalayan-lighter rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Phone size={20} className="text-himalayan" />
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-himalayan-lighter rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Phone size={18} className="text-himalayan" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-charcoal mb-1">Phone</h4>
+                    <h4 className="font-semibold text-charcoal mb-0.5">Phone</h4>
                     <a href="tel:8322246466" className="text-himalayan hover:underline text-sm">
                       (832) 224-6466
                     </a>
                   </div>
                 </div>
 
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-himalayan-lighter rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Clock size={20} className="text-himalayan" />
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-himalayan-lighter rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Clock size={18} className="text-himalayan" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-charcoal mb-1">Phone Hours</h4>
+                    <h4 className="font-semibold text-charcoal mb-0.5">Phone Hours</h4>
                     <p className="text-charcoal-light text-sm">
                       Monday - Friday: 8:00 AM - 5:00 PM CST<br />
                       Closed weekends and holidays
@@ -121,17 +121,17 @@ export default function ContactPage() {
                   </div>
                 </div>
 
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-himalayan-lighter rounded-xl flex items-center justify-center flex-shrink-0">
-                    <MapPin size={20} className="text-himalayan" />
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-himalayan-lighter rounded-lg flex items-center justify-center flex-shrink-0">
+                    <MapPin size={18} className="text-himalayan" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-charcoal mb-1">Mailing Address</h4>
+                    <h4 className="font-semibold text-charcoal mb-0.5">Mailing Address</h4>
                     <p className="text-charcoal-light text-sm">
                       12620 FM 1960 W Ste A-4<br />
                       Houston, TX 77065
                     </p>
-                    <p className="text-charcoal-light text-xs mt-2">
+                    <p className="text-charcoal-light text-xs mt-1.5">
                       Returns go to a different address - see the{' '}
                       <Link href="/return" className="text-himalayan hover:underline font-semibold">
                         return policy
@@ -144,10 +144,10 @@ export default function ContactPage() {
             </div>
 
             {/* Quick Call CTA */}
-            <div className="bg-himalayan rounded-2xl p-6 text-white">
-              <MessageSquare size={24} className="mb-4" />
-              <h3 className="font-serif text-xl font-bold mb-2">Need Bulk Orders?</h3>
-              <p className="text-white/80 text-sm mb-4">
+            <div className="bg-himalayan rounded-2xl p-5 text-white">
+              <MessageSquare size={20} className="mb-3" />
+              <h3 className="font-serif text-lg font-bold mb-1.5">Need Bulk Orders?</h3>
+              <p className="text-white/80 text-sm mb-3">
                 Call us directly for bulk order inquiries.
               </p>
               <a
@@ -167,9 +167,9 @@ export default function ContactPage() {
             transition={{ delay: 0.4 }}
             className="lg:col-span-2"
           >
-            <div className="bg-white rounded-2xl p-6 md:p-8 shadow-md">
-              <h3 className="font-serif text-2xl font-bold text-charcoal mb-2">Send us a Message</h3>
-              <p className="text-charcoal-light mb-8">
+            <div className="bg-white rounded-2xl p-5 md:p-6 shadow-md">
+              <h3 className="font-serif text-xl font-bold text-charcoal mb-1.5">Send us a Message</h3>
+              <p className="text-charcoal-light mb-5">
                 Fill out the form and we&apos;ll get back to you. We answer messages during
                 business hours, Monday to Friday.
               </p>
@@ -178,17 +178,17 @@ export default function ContactPage() {
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="text-center py-12"
+                  className="text-center py-8"
                 >
-                  <CheckCircle size={64} className="text-green-500 mx-auto mb-4" />
-                  <h4 className="font-serif text-2xl font-bold text-charcoal mb-2">Message Sent!</h4>
+                  <CheckCircle size={48} className="text-green-500 mx-auto mb-3" />
+                  <h4 className="font-serif text-xl font-bold text-charcoal mb-1.5">Message Sent!</h4>
                   <p className="text-charcoal-light">We&apos;ll get back to you shortly.</p>
                 </motion.div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  <div className="grid sm:grid-cols-2 gap-5">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-charcoal mb-2">
+                      <label className="block text-sm font-semibold text-charcoal mb-1.5">
                         Full Name *
                       </label>
                       <input
@@ -196,12 +196,12 @@ export default function ContactPage() {
                         required
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
                         placeholder="John Doe"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-charcoal mb-2">
+                      <label className="block text-sm font-semibold text-charcoal mb-1.5">
                         Email Address *
                       </label>
                       <input
@@ -209,34 +209,34 @@ export default function ContactPage() {
                         required
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
                         placeholder="john@example.com"
                       />
                     </div>
                   </div>
 
-                  <div className="grid sm:grid-cols-2 gap-5">
+                  <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-charcoal mb-2">
+                      <label className="block text-sm font-semibold text-charcoal mb-1.5">
                         Phone Number
                       </label>
                       <input
                         type="tel"
                         value={formData.phone}
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
                         placeholder="(123) 456-7890"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-charcoal mb-2">
+                      <label className="block text-sm font-semibold text-charcoal mb-1.5">
                         Subject *
                       </label>
                       <select
                         required
                         value={formData.subject}
                         onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
                       >
                         <option value="">Select a subject</option>
                         <option value="general">General Inquiry</option>
@@ -248,34 +248,34 @@ export default function ContactPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-charcoal mb-2">
+                    <label className="block text-sm font-semibold text-charcoal mb-1.5">
                       Message *
                     </label>
                     <textarea
                       required
-                      rows={5}
+                      rows={4}
                       value={formData.message}
                       onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all resize-none"
+                      className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all resize-none"
                       placeholder="How can we help you?"
                     />
                   </div>
 
                   {submitError && (
-                    <p className="text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">{submitError}</p>
+                    <p className="text-sm text-red-600 bg-red-50 px-4 py-2.5 rounded-xl">{submitError}</p>
                   )}
                   <motion.button
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
                     type="submit"
                     disabled={submitting}
-                    className="w-full flex items-center justify-center gap-2 min-h-12 bg-himalayan hover:bg-himalayan-dark disabled:opacity-70 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-himalayan/25"
+                    className="w-full flex items-center justify-center gap-2 min-h-11 bg-himalayan hover:bg-himalayan-dark disabled:opacity-70 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-himalayan/25"
                   >
                     {submitting ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                     {submitting ? 'Sending…' : 'Send Message'}
                   </motion.button>
 
-                  <p className="text-xs text-charcoal-light leading-relaxed pt-1">
+                  <p className="text-xs text-charcoal-light leading-relaxed">
                     By sending this form you agree that the details you submit are collected and
                     stored so we can answer you. For further details on how we handle your data,
                     see our{' '}
