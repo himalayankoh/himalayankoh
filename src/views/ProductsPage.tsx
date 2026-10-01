@@ -15,7 +15,11 @@ import CategoryEducationPanel from '../components/category/CategoryEducationPane
 import CategoryFilterNav from '../components/category/CategoryFilterNav';
 import CategoryHubLayout from '../components/category/CategoryHubLayout';
 import CategoryShopPanel from '../components/category/CategoryShopPanel';
-import { productMatchesCategoryFilter } from '../lib/categoryContent';
+import {
+  ALL_LABEL,
+  productMatchesCategoryFilter,
+  productsCategoryTabs,
+} from '../lib/categoryContent';
 import { getCatalogProducts } from '../lib/backend/catalogClient';
 import { useCategoryBlogArticles } from '../hooks/useCategoryBlogArticles';
 import { useCategoryHubContent } from '../hooks/useCategoryHubContent';
@@ -39,7 +43,6 @@ export default function ProductsPage({
   initialProducts,
   initialCategoryKey,
 }: ProductsPageProps = {}) {
-  const { activeFilter, categoryKey } = useProductsCategoryFilter(initialCategoryKey);
   const [searchQuery, setSearchQuery] = useState('');
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
   // No bundled catalogue as the initial value: the store's read is the only
@@ -49,6 +52,16 @@ export default function ProductsPage({
   // the catalog read answers. There is no credential to consult: the read goes
   // through the backend on every source.
   const [loading, setLoading] = useState(!initialProducts);
+
+  // The pills are the categories the catalogue actually carries, so a category
+  // the owner adds in WooCommerce shows up here with no code change — and the
+  // filter hook validates `?category=` against the same list.
+  const tabs = useMemo(() => productsCategoryTabs(products), [products]);
+  const { categoryKey } = useProductsCategoryFilter(initialCategoryKey, products);
+  const activeFilter = useMemo(
+    () => tabs.find((tab) => tab.key === categoryKey)?.label ?? ALL_LABEL,
+    [tabs, categoryKey]
+  );
   const prevCategoryKey = useRef<string | null>(null);
   const fetchSeq = useRef(0);
   const serverCatalogRef = useRef(Boolean(initialProducts));
@@ -205,7 +218,7 @@ export default function ProductsPage({
       >
         <div className="mb-5">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <CategoryFilterNav activeFilter={activeFilter} products={products} />
+            <CategoryFilterNav activeKey={categoryKey} tabs={tabs} />
             <div className="relative w-full md:w-72">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
               <input

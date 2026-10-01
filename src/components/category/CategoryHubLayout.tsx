@@ -1,9 +1,9 @@
 import { ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import type { CategoryContentKey } from '../../lib/categoryContent';
 
 interface Props {
-  categoryKey: CategoryContentKey | null;
+  /** The selected `?category=` value; used only to key the transition. */
+  categoryKey: string | null;
   products: ReactNode;
   education: ReactNode;
 }

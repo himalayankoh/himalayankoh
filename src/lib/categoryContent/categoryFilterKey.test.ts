@@ -16,7 +16,11 @@
 // computed, or React throws the server's HTML away and re-renders the page.
 // ============================================================================
 import { describe, expect, it } from 'vitest';
-import { resolveCategoryFilterKey, type CategoryFilterKeyInput } from './keys';
+import {
+  resolveAvailableCategoryKey,
+  resolveCategoryFilterKey,
+  type CategoryFilterKeyInput,
+} from './keys';
 
 const SHELF = 'edible-pink-salt';
 /** A value that is not a live shelf, e.g. one of the retired livestock shelves. */
@@ -107,7 +111,11 @@ describe('resolveCategoryFilterKey', () => {
     ).toBeNull();
   });
 
-  it('treats a route key that is not a live shelf as All', () => {
+  it('keeps a well-formed route key and leaves existence to the catalogue', () => {
+    // The pills are built from the catalogue now, so a route key is no longer
+    // checked against a fixed shelf list here: any well-formed slug passes through.
+    // Whether anything is behind it is `resolveAvailableCategoryKey`'s question,
+    // asked against the products the page is showing.
     expect(
       resolveCategoryFilterKey({
         hydrated: false,
@@ -115,6 +123,12 @@ describe('resolveCategoryFilterKey', () => {
         fromSearchParams: null,
         initialCategoryKey: RETIRED,
       })
-    ).toBeNull();
+    ).toBe(RETIRED);
+
+    const catalogue = [
+      { name: 'Himalayan Edible Pink Salt – 16 oz Jar', category: 'Edible Pink Salt' },
+    ];
+    expect(resolveAvailableCategoryKey(RETIRED, catalogue)).toBeNull();
+    expect(resolveAvailableCategoryKey('edible-pink-salt', catalogue)).toBe('edible-pink-salt');
   });
 });

@@ -2,6 +2,7 @@ import {
   NICHE_SECTIONS,
   nicheSection,
   nicheSectionKeyFor,
+  nicheSectionKeyForWooCategory,
   type NicheCheckInput,
   type NicheSectionKey,
 } from '../catalog/nicheSections';
@@ -18,29 +19,61 @@ import {
  * pills, the hub pages, the sitemap and the PDP from each listing a different
  * set of shelves.
  *
+ * ## The pills are built from the catalogue, not from a code list
+ *
+ * The filter pills used to come from `NICHE_SECTIONS` alone, which meant the
+ * owner could not add a category without a code change — a new category in
+ * WooCommerce was invisible until someone edited a list here and redeployed.
+ * They are now derived from the products the page is actually showing
+ * (`productsCategoryTabs`): a product's own WooCommerce category decides its
+ * filter (`productCategoryFilterKey`), so a category the owner creates in
+ * WooCommerce becomes a working pill the moment a product carries it, and a
+ * category with no products never appears. `NICHE_SECTIONS` still owns the
+ * shelves the shop *means* to have — a category the owner names after one keeps
+ * that shelf's key, its hub copy and its existing links.
+ *
  * The livestock shelves that used to live here are gone rather than renamed: the
  * store does not sell feed-trade products, so those hubs, their copy and their
  * filter pills were retired together with the SKUs. `licks-blocks` is not one of
  * them returning — it is the shelf for the Salt Licks range the owner authorises
  * in the price list, which is why it exists in `NICHE_SECTIONS` and is admitted by
  * SKU rather than by the term guard. A link that still carries a retired value is
- * not special-cased anywhere — `normalizeCategoryQueryValue` treats every value
- * that is not a live shelf key as All, so a retired shelf and a misspelled one
- * behave identically and neither can render an empty hub.
+ * not special-cased anywhere — `normalizeCategoryQueryValue` accepts any
+ * well-formed slug, and `resolveAvailableCategoryKey` resolves it against the
+ * catalogue, so a retired shelf and a misspelled one both land on All and neither
+ * can render an empty hub.
  */
 
 /** Display label for "no shelf selected". */
 export const ALL_LABEL = 'All';
 
+/** A shelf the taxonomy's hub content is written for. */
 export type CategoryContentKey = NicheSectionKey;
+
+/**
+ * A `?category=` value: a shelf key, or the slug of a WooCommerce category the
+ * catalogue carries. Deliberately open — the pills are built from the products,
+ * so a value that is well-formed but not one of the shelves has to be addressable
+ * the moment a product carries it.
+ */
+export type CategoryFilterKey = string;
 
 export interface CategoryFilterTab {
   label: string;
   /** `null` is the All tab. */
-  key: CategoryContentKey | null;
+  key: CategoryFilterKey | null;
 }
 
-/** The filter pills, All first, then the shelves in the order niche.ts lists them. */
+/**
+ * The shelves the shop means to have, All first, in curation order.
+ *
+ * This is the *known* taxonomy — the labels the hub copy is written for and the keys
+ * old links and the sitemap use. It is no longer the pill row itself: the pills
+ * are `productsCategoryTabs(products)`, so a category with no products is not
+ * offered and a category the owner adds is offered without a code change. Kept
+ * exported because shelf order, the footer's link lookup and the category-hub
+ * registry are all keyed off it.
+ */
 export const CATEGORY_FILTER_TABS: readonly CategoryFilterTab[] = [
   { label: ALL_LABEL, key: null },
   ...NICHE_SECTIONS.filter((section) => section.visibleInStorefront)
@@ -71,21 +104,121 @@ export function productShelfKey(product: NicheCheckInput): CategoryContentKey | 
   return nicheSectionKeyFor(product);
 }
 
+/** A URL-safe slug for a WooCommerce category name ("Gift Sets & Samplers" → "gift-sets-and-samplers"). */
+export function categorySlugFromLabel(label: string): string {
+  return label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/g, '');
+}
+
+/** Reads a slug back into a title-ish label, for a category with no content registry entry. */
+export function prettyCategoryLabelFromKey(key: string): string {
+  return key
+    .split('-')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/** True when a value is a well-formed `?category=` value (a shelf key or a category slug). */
+export function isCategoryFilterValue(value: string): boolean {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
+
+/**
+ * The filter a product belongs to, from the owner's own filing in WooCommerce.
+ *
+ * The owner files a product into a category in WooCommerce and expects the shop's
+ * filter row to carry it, so the filing decides the filter:
+ *
+ * 1. a category the taxonomy already serves (`nicheSectionKeyForWooCategory`)
+ *    keeps its shelf key, so the hub page, its copy and its old links stay put;
+ * 2. any other named category becomes its own filter, keyed by the slug of the
+ *    category name — this is what lets a brand-new category appear without a code
+ *    change;
+ * 3. a product with no category falls back to the shelf its name implies, so an
+ *    uncategorised record is still reachable rather than only under "All".
+ *
+ * The owner's filing outranks the name heuristic here on purpose: the filter row
+ * is the shop's categories, and a shopper picking one expects the products the
+ * owner put there.
+ */
+export function productCategoryFilterKey(product: NicheCheckInput): CategoryFilterKey | null {
+  const filed = (product.category ?? '').trim();
+  if (filed) {
+    const shelved = nicheSectionKeyForWooCategory(filed);
+    if (shelved) return shelved;
+    const slug = categorySlugFromLabel(filed);
+    if (slug) return slug;
+  }
+  return productShelfKey(product);
+}
+
+/** The label a filter shows: the shelf's own label, or the category name the owner wrote. */
+export function categoryFilterLabelForProduct(
+  product: NicheCheckInput,
+  key: CategoryFilterKey
+): string {
+  if (isCategoryContentKey(key)) return filterLabelFromKey(key);
+  return (product.category ?? '').trim() || prettyCategoryLabelFromKey(key);
+}
+
+/**
+ * The category pills, built from the products themselves.
+ *
+ * "All" first, then one pill per category the catalogue actually carries: shelves
+ * the taxonomy knows in their curation order, then any newer WooCommerce category
+ * alphabetically. A category with no products never appears — there is no empty
+ * filter — and a category the owner adds in WooCommerce appears the moment a
+ * product carries it, with no code change.
+ */
+export function productsCategoryTabs(
+  products: ReadonlyArray<NicheCheckInput>
+): CategoryFilterTab[] {
+  const labelByKey = new Map<CategoryFilterKey, string>();
+  for (const product of products) {
+    const key = productCategoryFilterKey(product);
+    if (!key || labelByKey.has(key)) continue;
+    labelByKey.set(key, categoryFilterLabelForProduct(product, key));
+  }
+
+  const shelfOrder = new Map<string, number>(
+    NICHE_SECTIONS.map((section, index) => [section.key, index])
+  );
+  const keys = [...labelByKey.keys()].sort((a, b) => {
+    const ai = shelfOrder.get(a) ?? Number.POSITIVE_INFINITY;
+    const bi = shelfOrder.get(b) ?? Number.POSITIVE_INFINITY;
+    if (ai !== bi) return ai - bi;
+    return (labelByKey.get(a) ?? '').localeCompare(labelByKey.get(b) ?? '');
+  });
+
+  return [
+    { label: ALL_LABEL, key: null },
+    ...keys.map((key) => ({ label: labelByKey.get(key) ?? prettyCategoryLabelFromKey(key), key })),
+  ];
+}
+
 /**
  * Whether a product shows under the selected filter.
  *
- * A single judgement serves the pills, the grid and the hub counts: the product
- * is matched by the same placement function that decides which shelf it would be
+ * A single judgement serves the pills, the grid and any count: the product is
+ * matched by the same placement function that decides which filter it would be
  * filed under, so a product can never appear under one pill and be counted under
  * another.
  */
 export function productMatchesCategoryFilter(
   product: NicheCheckInput,
-  categoryKey: CategoryContentKey | null,
-  activeFilter: string
+  categoryKey: CategoryFilterKey | null,
+  activeFilter?: string
 ): boolean {
-  if (activeFilter === ALL_LABEL || !categoryKey) return true;
-  return productShelfKey(product) === categoryKey;
+  if (!categoryKey || activeFilter === ALL_LABEL) return true;
+  return productCategoryFilterKey(product) === categoryKey;
 }
 
 export const CATEGORY_QUERY_PARAM = 'category';
@@ -96,23 +229,53 @@ export function isCategoryContentKey(value: string): value is CategoryContentKey
   return VALID_KEYS.has(value);
 }
 
+/** Narrows a URL value to a key the hub registry has content for, or `null`. */
+export function toCategoryContentKey(value: string | null | undefined): CategoryContentKey | null {
+  if (!value) return null;
+  return isCategoryContentKey(value) ? value : null;
+}
+
 /**
- * Resolves a `?category=` value.
+ * Resolves a `?category=` value's *well-formedness*.
  *
- * Returns `null` for All and for anything that is not a live shelf key alike —
- * `useProductsCategoryFilter` strips the parameter in that case, which is the
- * honest outcome: the shopper sees the whole catalogue rather than an empty grid
- * under a shelf that does not exist. A retired shelf key, a typo and an invented
- * one therefore need no list of their own.
+ * Returns `null` for All and for anything that is not a URL-safe slug alike. It no
+ * longer decides whether the value names a live shelf — the pills are built from
+ * the catalogue now, so this cannot know what the shop carries. Whether anything
+ * is behind the key is `resolveAvailableCategoryKey`'s question, answered against
+ * the products the page is showing.
  */
-export function normalizeCategoryQueryValue(raw: string | null | undefined): CategoryContentKey | null {
+export function normalizeCategoryQueryValue(
+  raw: string | null | undefined
+): CategoryFilterKey | null {
   if (!raw) return null;
   const normalized = raw.trim().toLowerCase();
   if (!normalized) return null;
-  return isCategoryContentKey(normalized) ? normalized : null;
+  return isCategoryFilterValue(normalized) ? normalized : null;
 }
 
-export function parseCategoryFromSearchParams(params: URLSearchParams): CategoryContentKey | null {
+/**
+ * A `?category=` value resolved against the catalogue the page is showing.
+ *
+ * `normalizeCategoryQueryValue` says whether the value is well-formed; this says
+ * whether anything is behind it. A live shelf, a brand-new WooCommerce category,
+ * an old link to a retired shelf and a typo all come through the same door: only a
+ * key the products actually carry survives, and everything else is "All". That is
+ * the honest outcome for a filter — the shopper sees the whole catalogue rather
+ * than an empty grid under a shelf that does not exist.
+ */
+export function resolveAvailableCategoryKey(
+  raw: string | null | undefined,
+  products: ReadonlyArray<NicheCheckInput>
+): CategoryFilterKey | null {
+  const key = normalizeCategoryQueryValue(raw);
+  if (!key) return null;
+  if (!products.some((product) => productCategoryFilterKey(product) === key)) return null;
+  return key;
+}
+
+export function parseCategoryFromSearchParams(
+  params: URLSearchParams
+): CategoryFilterKey | null {
   return normalizeCategoryQueryValue(params.get(CATEGORY_QUERY_PARAM));
 }
 
@@ -145,7 +308,7 @@ export interface CategoryFilterKeyInput {
   /** Whether the browser's address bar carries a query string at all. */
   browserHasQuery: boolean;
   /** The shelf the router's query string names, already normalized. */
-  fromSearchParams: CategoryContentKey | null;
+  fromSearchParams: CategoryFilterKey | null;
   /** The key the route was rendered for — the shelf route's own key, or null. */
   initialCategoryKey?: string | null;
 }
@@ -155,7 +318,7 @@ export function resolveCategoryFilterKey({
   browserHasQuery,
   fromSearchParams,
   initialCategoryKey,
-}: CategoryFilterKeyInput): CategoryContentKey | null {
+}: CategoryFilterKeyInput): CategoryFilterKey | null {
   // Once the client owns the render the address bar is the source of truth: a
   // query string naming no live shelf is All, and the effect in
   // `useProductsCategoryFilter` drops that value from the URL.
@@ -166,12 +329,12 @@ export function resolveCategoryFilterKey({
   return null;
 }
 
-export function buildProductsCategoryPath(key: CategoryContentKey | null): string {
+export function buildProductsCategoryPath(key: CategoryFilterKey | null): string {
   if (!key) return '/products';
   return `/products?${CATEGORY_QUERY_PARAM}=${encodeURIComponent(key)}`;
 }
 
-export function buildProductsCategorySearch(key: CategoryContentKey | null): string {
+export function buildProductsCategorySearch(key: CategoryFilterKey | null): string {
   if (!key) return '';
   return `?${CATEGORY_QUERY_PARAM}=${encodeURIComponent(key)}`;
 }

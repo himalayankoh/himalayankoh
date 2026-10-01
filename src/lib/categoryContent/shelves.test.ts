@@ -12,7 +12,10 @@ import {
   filterLabelFromKey,
   normalizeCategoryQueryValue,
   parseCategoryFromSearchParams,
+  productCategoryFilterKey,
   productMatchesCategoryFilter,
+  productsCategoryTabs,
+  resolveAvailableCategoryKey,
 } from './index';
 import { queryOnlyDestination } from '../router/locationMatch';
 
@@ -150,21 +153,93 @@ describe('the URL is the filter', () => {
     }
   });
 
-  it('falls back to All for a retired shelf, a typo, and nothing at all', () => {
-    // `licings-blocks` is a real key with one letter moved; `animal-feed` was a
-    // staging taxonomy term. Neither may open a shelf, and neither may render an
-    // empty grid under a heading that claims to be a filter.
-    expect(normalizeCategoryQueryValue('licings-blocks')).toBeNull();
-    expect(normalizeCategoryQueryValue('animal-feed')).toBeNull();
-    expect(normalizeCategoryQueryValue('himalayan-chef-fine-grain-jar-1-lbs')).toBeNull();
+  it('accepts any well-formed category slug, because the categories come from the catalogue', () => {
+    // The pills are built from the products now, so this resolver only judges the
+    // *shape* of the value: a slug is a value the shop can address. Whether
+    // anything is filed under it is the catalogue's question, below.
+    expect(normalizeCategoryQueryValue('gift-sets-and-samplers')).toBe('gift-sets-and-samplers');
+    expect(normalizeCategoryQueryValue('licings-blocks')).toBe('licings-blocks');
+    expect(normalizeCategoryQueryValue('animal-feed')).toBe('animal-feed');
+    expect(normalizeCategoryQueryValue('Not A Slug!')).toBeNull();
     expect(normalizeCategoryQueryValue('')).toBeNull();
     expect(normalizeCategoryQueryValue(null)).toBeNull();
-    expect(parseCategoryFromSearchParams(new URLSearchParams('category=animal-feed'))).toBeNull();
+  });
+
+  it('falls back to All for a category no product carries', () => {
+    // A retired shelf, a typo, a legacy term, and a category the shop has no
+    // product for. None may open a filter or render an empty grid under a heading
+    // that claims to be one.
+    const catalogue = [
+      product('Himalayan Salt Lick — 30 lbs', ['Salt Licks']),
+      product('Himalayan Salt Fine Grain — 45 lbs (0.5–1.0 mm)', ['Bulk and Rock Salt']),
+    ];
+    expect(resolveAvailableCategoryKey('licks-blocks', catalogue)).toBe('licks-blocks');
+    expect(resolveAvailableCategoryKey('bulk', catalogue)).toBe('bulk');
+    expect(resolveAvailableCategoryKey('licings-blocks', catalogue)).toBeNull();
+    expect(resolveAvailableCategoryKey('animal-feed', catalogue)).toBeNull();
+    expect(resolveAvailableCategoryKey('himalayan-chef-fine-grain-jar-1-lbs', catalogue)).toBeNull();
+    expect(resolveAvailableCategoryKey('', catalogue)).toBeNull();
+    expect(resolveAvailableCategoryKey(null, catalogue)).toBeNull();
+    expect(parseCategoryFromSearchParams(new URLSearchParams('category=animal-feed'))).toBe(
+      'animal-feed'
+    );
   });
 
   it('is case- and whitespace-insensitive, so a hand-typed link still works', () => {
     const key = shelves[0].key;
     expect(normalizeCategoryQueryValue(`  ${key.toUpperCase()}  `)).toBe(key);
+  });
+});
+
+describe('the pills are built from the catalogue, not a code list', () => {
+  it('turns a brand-new WooCommerce category into a working pill with no code change', () => {
+    const catalogue = [
+      product('Himalayan Pink Salt Gift Trio', ['Gift Sets & Samplers']),
+      product('Himalayan Edible Pink Salt – 16 oz Jar', ['Edible Pink Salt']),
+    ];
+    const tabs = productsCategoryTabs(catalogue);
+    expect(tabs[0]).toEqual({ label: ALL_LABEL, key: null });
+    expect(tabs.map((tab) => tab.label)).toEqual([
+      'All',
+      'Edible Pink Salt',
+      'Gift Sets & Samplers',
+    ]);
+    expect(tabs.find((tab) => tab.label === 'Gift Sets & Samplers')?.key).toBe(
+      'gift-sets-and-samplers'
+    );
+  });
+
+  it('filters by the new category and not another', () => {
+    const gift = product('Himalayan Pink Salt Gift Trio', ['Gift Sets & Samplers']);
+    expect(productMatchesCategoryFilter(gift, 'gift-sets-and-samplers')).toBe(true);
+    expect(productMatchesCategoryFilter(gift, 'edible-pink-salt')).toBe(false);
+    expect(productMatchesCategoryFilter(gift, null, ALL_LABEL)).toBe(true);
+  });
+
+  it('keeps the shelf key for a category the taxonomy already serves', () => {
+    // The owner files under the WooCommerce name "Salt Licks"; the shelf key is
+    // still `licks-blocks`, so its hub copy and its existing links stay reachable.
+    const lick = product('Himalayan Pink Salt Licks for Horses 2 lbs', ['Salt Licks']);
+    expect(productCategoryFilterKey(lick)).toBe('licks-blocks');
+  });
+
+  it('offers no pill for a category with no products', () => {
+    const tabs = productsCategoryTabs([product('Himalayan Salt Lick — 30 lbs', ['Salt Licks'])]);
+    expect(tabs.map((tab) => tab.label)).toEqual(['All', 'Salt Licks']);
+  });
+
+  it('orders shelves by the taxonomy and newer categories after them', () => {
+    const catalogue = [
+      product('Himalayan Pink Salt Gift Trio', ['Gift Sets & Samplers']),
+      product('Himalayan Salt Fine Grain — 45 lbs (0.5–1.0 mm)', ['Bulk and Rock Salt']),
+      product('Himalayan Edible Pink Salt – 16 oz Jar', ['Edible Pink Salt']),
+    ];
+    expect(productsCategoryTabs(catalogue).map((tab) => tab.label)).toEqual([
+      'All',
+      'Edible Pink Salt',
+      'Bulk and Rock Salt',
+      'Gift Sets & Samplers',
+    ]);
   });
 });
 

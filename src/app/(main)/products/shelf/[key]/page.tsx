@@ -7,8 +7,9 @@ import {
   filterLabelFromKey,
   getCategoryContent,
   normalizeCategoryQueryValue,
-  productShelfKey,
-  type CategoryContentKey,
+  productCategoryFilterKey,
+  toCategoryContentKey,
+  type CategoryFilterKey,
 } from '@/lib/categoryContent';
 import { NICHE_SECTIONS } from '@/lib/catalog/nicheSections';
 import JsonLd from '@/components/seo/JsonLd';
@@ -56,7 +57,7 @@ export function generateStaticParams(): Params[] {
 }
 
 /** The shelf a path key names, or `null` for `all` and for anything unknown. */
-function shelfFromKey(raw: string): CategoryContentKey | null {
+function shelfFromKey(raw: string): CategoryFilterKey | null {
   if (!raw || raw === ALL_KEY) return null;
   return normalizeCategoryQueryValue(raw);
 }
@@ -87,7 +88,7 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   let hasProducts = true;
   try {
     const { products } = await getCatalogProducts();
-    hasProducts = products.some((product) => productShelfKey(product) === categoryKey);
+    hasProducts = products.some((product) => productCategoryFilterKey(product) === categoryKey);
   } catch (err) {
     console.error('Could not check category product count for robots meta:', err);
   }
@@ -104,16 +105,19 @@ export default async function Page({ params }: { params: Promise<Params> }) {
   const { key } = await params;
   const categoryKey = shelfFromKey(key);
   const category = categoryKey ? getCategoryContent(categoryKey) : null;
+  // Only a real shelf key has hub content and a curated label; a newer WooCommerce
+  // category renders the plain grid under the catalogue breadcrumb.
+  const contentKey = toCategoryContentKey(categoryKey);
 
   const breadcrumb = [
     { name: 'Home', path: '/' },
     { name: 'Products', path: '/products' },
   ];
 
-  if (category && categoryKey) {
+  if (category && contentKey) {
     breadcrumb.push({
-      name: filterLabelFromKey(categoryKey),
-      path: buildProductsCategoryPath(categoryKey),
+      name: filterLabelFromKey(contentKey),
+      path: buildProductsCategoryPath(contentKey),
     });
   }
 

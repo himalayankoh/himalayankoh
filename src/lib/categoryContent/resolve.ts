@@ -1,6 +1,6 @@
 import { CATEGORY_CONTENT_REGISTRY } from './registry';
 import type { CategoryContentAvailability, CategoryContentBundle } from './types';
-import type { CategoryContentKey } from './keys';
+import { toCategoryContentKey } from './keys';
 
 function buildAvailability(bundle: CategoryContentBundle): CategoryContentAvailability {
   return {
@@ -15,9 +15,13 @@ function buildAvailability(bundle: CategoryContentBundle): CategoryContentAvaila
  * Resolve educational content for a shop category filter.
  * Returns null for "All" or unknown labels.
  */
-export function getCategoryContent(key: CategoryContentKey | null): CategoryContentBundle | null {
-  if (!key) return null;
-  const bundle = CATEGORY_CONTENT_REGISTRY[key];
+export function getCategoryContent(key: string | null): CategoryContentBundle | null {
+  // A `?category=` value can now be a WooCommerce category the registry has no
+  // content for (the pills are built from the catalogue). The hub layout is for
+  // the shelves the shop wrote copy for; a newer category renders the plain grid.
+  const contentKey = toCategoryContentKey(key);
+  if (!contentKey) return null;
+  const bundle = CATEGORY_CONTENT_REGISTRY[contentKey];
   if (!bundle) return null;
   return bundle;
 }

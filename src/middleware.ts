@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { offNicheTerm } from '@/lib/catalog/niche';
-import { NICHE_SECTIONS } from '@/lib/catalog/nicheSections';
+import { isCategoryFilterValue } from '@/lib/categoryContent/keys';
 
 /**
  * Request-URL normalisation for the public shop, decided before anything renders.
@@ -25,9 +25,12 @@ import { NICHE_SECTIONS } from '@/lib/catalog/nicheSections';
  * 2. **`?query=` values that name something off-niche are dropped.** A search term
  *    is serialised too, so it is judged the same way, and the rest of the request
  *    (sort, page, a valid shelf) is left alone.
- * 3. **`?category=` values must be live shelves.** An unknown value rendered the
- *    whole catalogue under a different query string with a canonical to itself, and
- *    echoed the retired shelf name in the process.
+ * 3. **`?category=` values must be well-formed.** The shop's categories are built
+ *    from its products now, so the edge cannot know which names are live — an
+ *    invented shelf value rendered the whole catalogue under a different query
+ *    string with a canonical to itself, and echoed the retired shelf name in the
+ *    process. A URL-safe slug is therefore kept and validated against the
+ *    catalogue by the page; anything that is not a slug is dropped.
  *
  * One denylist, one shelf list, both borrowed from the modules that already own
  * them — no second copy of either judgement lives here.
@@ -76,10 +79,8 @@ const SHELF_PATH = '/products/shelf';
 /** The shelf the catalogue request actually names, or `all` for any other query. */
 function shelfRouteFor(params: URLSearchParams): string {
   const shelf = params.get(CATEGORY_PARAM);
-  return `${SHELF_PATH}/${shelf && VALID_SHELF_KEYS.has(shelf) ? shelf : 'all'}`;
+  return `${SHELF_PATH}/${shelf && isCategoryFilterValue(shelf) ? shelf : 'all'}`;
 }
-
-const VALID_SHELF_KEYS = new Set<string>(NICHE_SECTIONS.map((section) => section.key));
 
 /** A path segment as text, or the raw segment when it is not valid escaping. */
 function decodePathSegment(segment: string): string {
@@ -129,11 +130,13 @@ export function middleware(request: NextRequest): NextResponse {
 
   const requestedShelf = params.get(CATEGORY_PARAM);
   if (requestedShelf !== null) {
-    // A retired, invented or mis-cased shelf value is not a URL this shop serves:
-    // it is dropped, so an old link lands on the whole catalogue instead of on a
-    // duplicate URL that names a shelf the shop no longer has.
+    // A category is a live name only if a product carries it, and the edge has no
+    // catalogue — so it keeps any well-formed slug and lets the page resolve it
+    // against the products it is showing (`resolveAvailableCategoryKey`). A value
+    // that is not a slug at all is not a URL this shop serves and is dropped, so
+    // an old link lands on the whole catalogue instead of a duplicate URL.
     const shelf = requestedShelf.trim().toLowerCase();
-    if (VALID_SHELF_KEYS.has(shelf)) params.set(CATEGORY_PARAM, shelf);
+    if (isCategoryFilterValue(shelf)) params.set(CATEGORY_PARAM, shelf);
     else params.delete(CATEGORY_PARAM);
   }
 

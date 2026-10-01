@@ -3,7 +3,7 @@ import { getCategoryContent } from '../lib/categoryContent/resolve';
 import { applyCategoryHubOverride } from '../lib/categoryContent/cmsMerge';
 import type { CategoryHubOverrideRow } from '../lib/categoryContent/cmsTypes';
 import type { CategoryContentBundle } from '../lib/categoryContent';
-import type { CategoryContentKey } from '../lib/categoryContent';
+import { toCategoryContentKey } from '../lib/categoryContent';
 
 /**
  * Static registry content for a category hub, plus the published CMS override
@@ -16,21 +16,24 @@ import type { CategoryContentKey } from '../lib/categoryContent';
  * no "is the CMS configured" test any more — it used to gate this read, and it
  * was the reason a Supabase import sat in the catalog's client graph.
  */
-export function useCategoryHubContent(categoryKey: CategoryContentKey | null) {
-  const staticContent = useMemo(() => getCategoryContent(categoryKey), [categoryKey]);
+export function useCategoryHubContent(categoryKey: string | null) {
+  // A newer WooCommerce category has no registry content and no CMS override, so
+  // it renders the plain grid. Only a real shelf key is asked about here.
+  const contentKey = toCategoryContentKey(categoryKey);
+  const staticContent = useMemo(() => getCategoryContent(contentKey), [contentKey]);
   const [override, setOverride] = useState<CategoryHubOverrideRow | null>(null);
 
   /** Show the new shelf's registry content immediately when switching categories (no stale shelf content). */
   useEffect(() => {
     setOverride(null);
-  }, [categoryKey]);
+  }, [contentKey]);
 
   useEffect(() => {
-    if (!categoryKey) return;
+    if (!contentKey) return;
 
     let cancelled = false;
 
-    void fetch(`/api/category-hub?key=${encodeURIComponent(categoryKey)}`)
+    void fetch(`/api/category-hub?key=${encodeURIComponent(contentKey)}`)
       .then(async (response) => {
         if (!response.ok) return null;
         const body = (await response.json()) as { override?: CategoryHubOverrideRow | null };
@@ -47,7 +50,7 @@ export function useCategoryHubContent(categoryKey: CategoryContentKey | null) {
     return () => {
       cancelled = true;
     };
-  }, [categoryKey]);
+  }, [contentKey]);
 
   const content = useMemo<CategoryContentBundle | null>(
     () => (staticContent ? applyCategoryHubOverride(staticContent, override) : staticContent),

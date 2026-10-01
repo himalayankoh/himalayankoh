@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import { loadCategoryArticles } from '../lib/categoryContent/blogArticles';
 import type { CategoryArticleCard } from '../lib/categoryContent';
-import type { CategoryContentKey } from '../lib/categoryContent';
+import { toCategoryContentKey } from '../lib/categoryContent';
 
 export type CategoryArticleSource = 'blog' | 'placeholder' | 'idle';
 
 export function useCategoryBlogArticles(
-  categoryKey: CategoryContentKey | null,
+  categoryKey: string | null,
   placeholderArticles: CategoryArticleCard[] = []
 ) {
+  // Only a shelf key has a blog mapping; a newer category renders no article row.
+  const contentKey = toCategoryContentKey(categoryKey);
   const [articles, setArticles] = useState<CategoryArticleCard[]>(placeholderArticles);
   const [loading, setLoading] = useState(false);
   const [source, setSource] = useState<CategoryArticleSource>(
@@ -16,7 +18,7 @@ export function useCategoryBlogArticles(
   );
 
   useEffect(() => {
-    if (!categoryKey) {
+    if (!contentKey) {
       setArticles([]);
       setSource('idle');
       setLoading(false);
@@ -26,7 +28,7 @@ export function useCategoryBlogArticles(
     let cancelled = false;
     setLoading(true);
 
-    void loadCategoryArticles(categoryKey, placeholderArticles).then((result) => {
+    void loadCategoryArticles(contentKey, placeholderArticles).then((result) => {
       if (cancelled) return;
       setArticles(result.articles);
       setSource(result.source);
@@ -36,7 +38,7 @@ export function useCategoryBlogArticles(
     return () => {
       cancelled = true;
     };
-  }, [categoryKey, placeholderArticles]);
+  }, [contentKey, placeholderArticles]);
 
   return { articles, loading, source };
 }

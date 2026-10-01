@@ -85,6 +85,16 @@ describe('middleware — browse query strings', () => {
     expect(run('/products?category=Bulk').location).toBe('https://himalayankoh.com/products?category=bulk');
   });
 
+  it('keeps a category slug the edge does not know, so a new WooCommerce category works', () => {
+    // The shop's categories are built from its products, and the edge has no
+    // catalogue — so a well-formed slug is passed through and the page resolves it
+    // against the products it is showing.
+    const res = run('/products?category=gift-sets-and-samplers');
+    expect(res.passesThrough).toBe(false);
+    expect(res.rewriteTo).toBe('/products/shelf/gift-sets-and-samplers');
+    expect(res.rewriteSearch).toBe('?category=gift-sets-and-samplers');
+  });
+
   it('passes the bare catalogue through untouched, so it stays prerenderable', () => {
     // `/products` is the page that must remain free of `searchParams`: it is
     // prerendered and edge-cached, and any query string is answered by the shelf

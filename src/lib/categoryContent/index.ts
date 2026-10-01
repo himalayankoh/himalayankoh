@@ -4,18 +4,31 @@ export {
   CATEGORY_QUERY_PARAM,
   buildProductsCategoryPath,
   buildProductsCategorySearch,
+  categoryFilterLabelForProduct,
   categoryKeyFromFilterLabel,
+  categorySlugFromLabel,
   filterLabelFromKey,
   isCategoryContentKey,
+  isCategoryFilterValue,
   normalizeCategoryQueryValue,
   parseCategoryFromSearchParams,
+  prettyCategoryLabelFromKey,
+  productCategoryFilterKey,
+  productsCategoryTabs,
+  resolveAvailableCategoryKey,
   resolveCategoryFilterKey,
   productMatchesCategoryFilter,
   productShelfKey,
   productsPathForCategoryTitle,
+  toCategoryContentKey,
   CATEGORY_LINK_BY_TITLE,
 } from './keys';
-export type { CategoryContentKey, CategoryFilterKeyInput, CategoryFilterTab } from './keys';
+export type {
+  CategoryContentKey,
+  CategoryFilterKey,
+  CategoryFilterKeyInput,
+  CategoryFilterTab,
+} from './keys';
 export { CATEGORY_CONTENT_REGISTRY } from './registry';
 export { CATEGORY_BLOG_MAPPING } from './blogMapping';
 export { loadCategoryArticles, mapBlogPostToCategoryArticle } from './blogArticles';

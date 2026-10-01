@@ -47,6 +47,8 @@ describe('Product and Shop Page Flicker Prevention Audits', () => {
     const content = fs.readFileSync(pagePath, 'utf8');
 
     expect(content).toContain('initialCategoryKey');
-    expect(content).toContain('useProductsCategoryFilter(initialCategoryKey)');
+    // The hook also takes the products, because the pills are built from the
+    // catalogue and a `?category=` value is validated against them.
+    expect(content).toContain('useProductsCategoryFilter(initialCategoryKey, products)');
   });
 });

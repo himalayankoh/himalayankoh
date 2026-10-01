@@ -161,6 +161,19 @@ No such action was taken unilaterally.
 No production Worker exists yet. The plan is written and committed — see §8. The
 owner has asked to **hold** this; nothing production-facing has been changed.
 
+### F8 — Category hub pages log a React hydration retry (`#418`) on the deployed preview
+A full load of a shelf with hub content that carries **more than one** product —
+e.g. `/products?category=edible-pink-salt` — logs `Minified React error #418`
+(hydration text mismatch). The page still renders; React discards the server HTML
+and re-renders client-side, so the shopper sees a correct page with one extra pass.
+`/products`, `/products?category=bulk` and `/products?category=licks-blocks` are
+clean. **This predates the category-pill work** — it reproduces on a build of the
+previous commit with no pill changes present (verified 2026-10-01 by redeploying
+that build to preview), and it does not reproduce in the dev runtimes. The shelf
+route is prerendered/ISR (`revalidate = 60`), and the mismatch is in the reserved,
+cached HTML rather than in the render code. **Needs:** a look at the static/ISR path
+or removal of the affected shelves from `generateStaticParams`.
+
 ### F6 — Documentation drift
 `AGENTS.md` names the old repository as `8002salman-ai/himalayan-koh`; the configured
 `old-origin` is `salmanbashir80/himalayan-koh`. Worth correcting so the rules file
