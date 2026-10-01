@@ -10,6 +10,7 @@ export {
   filterLabelFromKey,
   isCategoryContentKey,
   isCategoryFilterValue,
+  isShelfRoutePath,
   normalizeCategoryQueryValue,
   parseCategoryFromSearchParams,
   prettyCategoryLabelFromKey,

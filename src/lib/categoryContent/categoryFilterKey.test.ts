@@ -89,13 +89,46 @@ describe('resolveCategoryFilterKey', () => {
     ).toBeNull();
   });
 
-  it('falls back to the route key when there is no query string to read', () => {
+  it('keeps the route key when the client is on the shelf path itself', () => {
+    // A direct visit to the rewrite target (/products/shelf/<key>) has no query
+    // string in the address bar but still names its shelf.
     expect(
       resolveCategoryFilterKey({
         hydrated: true,
         browserHasQuery: false,
+        browserPath: `/products/shelf/${SHELF}`,
         fromSearchParams: null,
         initialCategoryKey: SHELF,
+      })
+    ).toBe(SHELF);
+  });
+
+  it('reads a query-less /products as All even when the route was rendered for a shelf', () => {
+    // The shopper arrived on a category URL (the shelf route rendered it and is
+    // still the current route), then chose "All". The query string that requested
+    // the shelf is gone, so the shelf must be too — the route prop alone must not
+    // keep it selected. Landing on /products and still seeing the category hub is
+    // a real bug this pins: the query-only navigation the pills use rewrites the
+    // address bar in place, so this is exactly the read that follows it.
+    const routeRenderedForShelf = {
+      hydrated: true,
+      browserHasQuery: false,
+      browserPath: '/products',
+      fromSearchParams: null,
+      initialCategoryKey: SHELF,
+    } as const;
+
+    expect(resolveCategoryFilterKey(routeRenderedForShelf)).toBeNull();
+
+    // …and the opposite move, All → category, is the query-bearing branch and is
+    // unaffected by the rule above.
+    expect(
+      resolveCategoryFilterKey({
+        hydrated: true,
+        browserHasQuery: true,
+        browserPath: '/products',
+        fromSearchParams: SHELF,
+        initialCategoryKey: null,
       })
     ).toBe(SHELF);
   });

@@ -1,14 +1,8 @@
 import { useState } from 'react';
 import { FileText, Eye } from 'lucide-react';
 import type { ContentPdfResource } from '../../lib/content/types';
+import { formatPublishedMonthYear } from '../../lib/content/publishedDate';
 import PdfViewerModal from './PdfViewerModal';
-
-/** "March 2026" — the label beside a resource's file size. */
-function formatPdfPublishedLabel(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-}
 
 interface Props {
   resources: ContentPdfResource[];
@@ -55,7 +49,7 @@ export default function ProductPdfLibrary({
                     {resource.description}
                   </p>
                   <p className="text-[11px] text-charcoal-light/80 mb-3">
-                    {resource.fileSize} · {formatPdfPublishedLabel(resource.publishedAt)}
+                    {resource.fileSize} · {formatPublishedMonthYear(resource.publishedAt)}
                   </p>
                   <button
                     type="button"

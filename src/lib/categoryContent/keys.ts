@@ -307,15 +307,33 @@ export interface CategoryFilterKeyInput {
   hydrated: boolean;
   /** Whether the browser's address bar carries a query string at all. */
   browserHasQuery: boolean;
+  /**
+   * The browser's pathname, or `''` on the server.
+   *
+   * Needed only once the client owns the render: it is what tells a client-side
+   * navigation to a query-less `/products` (All) apart from a direct visit to the
+   * shelf *path* (`/products/shelf/<key>`), which still names its shelf. The
+   * middleware never rewrites the address bar, so a shopper on a category is
+   * always on `/products?category=<key>` — `/products/shelf/...` is only ever the
+   * internal target of the rewrite or an explicitly requested path.
+   */
+  browserPath?: string;
   /** The shelf the router's query string names, already normalized. */
   fromSearchParams: CategoryFilterKey | null;
   /** The key the route was rendered for — the shelf route's own key, or null. */
   initialCategoryKey?: string | null;
 }
 
+/** True when a pathname is the shelf *path* the middleware rewrites to. */
+export function isShelfRoutePath(path: string | null | undefined): boolean {
+  if (!path) return false;
+  return path === '/products/shelf' || path.startsWith('/products/shelf/');
+}
+
 export function resolveCategoryFilterKey({
   hydrated,
   browserHasQuery,
+  browserPath,
   fromSearchParams,
   initialCategoryKey,
 }: CategoryFilterKeyInput): CategoryFilterKey | null {
@@ -323,6 +341,16 @@ export function resolveCategoryFilterKey({
   // query string naming no live shelf is All, and the effect in
   // `useProductsCategoryFilter` drops that value from the URL.
   if (hydrated && browserHasQuery) return fromSearchParams;
+
+  // No query string in the address bar, and the client is rendering on its own.
+  // Only a direct visit to the shelf path names a shelf here; on `/products` an
+  // absent `?category=` is All. Falling back to `initialCategoryKey` regardless
+  // was a real bug: a shopper who arrived on a category URL and then chose "All"
+  // stayed on the category, because the key the route was *first* rendered for
+  // outlived the query string that requested it.
+  if (hydrated) {
+    return isShelfRoutePath(browserPath) ? normalizeCategoryQueryValue(initialCategoryKey) : null;
+  }
 
   if (fromSearchParams !== null) return fromSearchParams;
   if (initialCategoryKey) return normalizeCategoryQueryValue(initialCategoryKey);

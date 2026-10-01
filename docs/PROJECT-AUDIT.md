@@ -161,18 +161,42 @@ No such action was taken unilaterally.
 No production Worker exists yet. The plan is written and committed — see §8. The
 owner has asked to **hold** this; nothing production-facing has been changed.
 
-### F8 — Category hub pages log a React hydration retry (`#418`) on the deployed preview
+### F8 — Category hub pages logged a React hydration retry (`#418`) on the deployed preview — RESOLVED
 A full load of a shelf with hub content that carries **more than one** product —
-e.g. `/products?category=edible-pink-salt` — logs `Minified React error #418`
-(hydration text mismatch). The page still renders; React discards the server HTML
-and re-renders client-side, so the shopper sees a correct page with one extra pass.
-`/products`, `/products?category=bulk` and `/products?category=licks-blocks` are
-clean. **This predates the category-pill work** — it reproduces on a build of the
-previous commit with no pill changes present (verified 2026-10-01 by redeploying
-that build to preview), and it does not reproduce in the dev runtimes. The shelf
-route is prerendered/ISR (`revalidate = 60`), and the mismatch is in the reserved,
-cached HTML rather than in the render code. **Needs:** a look at the static/ISR path
-or removal of the affected shelves from `generateStaticParams`.
+e.g. `/products?category=edible-pink-salt` — logged `Minified React error #418`
+(hydration text mismatch, arg `text`). The page still rendered; React discarded the
+server HTML and re-rendered client-side. `/products`, `/products?category=bulk` and
+`/products?category=licks-blocks` were clean. **This predated the category-pill
+work** — it reproduced on a build of the previous commit with no pill changes
+present (verified 2026-10-01 by redeploying that build to preview), and it did not
+reproduce in the dev runtimes (which run in the shopper's timezone).
+
+**Root cause (2026-10-01):** the shelf hub's PDF row date. `ProductPdfLibrary`
+formatted each resource's `publishedAt` with `new Date(iso).toLocaleDateString('en-US',
+{ month: 'long', year: 'numeric' })` — no `timeZone`. Cloudflare Workers render in
+UTC; a browser west of Greenwich does not. A date-only string like `'2026-03-01'`
+is parsed as UTC midnight and lands on the **previous day** in every western zone, so
+the same node read `"March 2026"` on the server and `"February 2026"` in the
+browser. Only the edible shelf's grain-size guide is dated the 1st of a month, which
+is why exactly that URL tripped #418 and the shelves dated the 5th or later stayed
+clean. (A separate ordering bug in the same area was found in the same pass: landing
+on a category URL and then choosing **All** left the stale shelf selected, because
+`resolveCategoryFilterKey` fell back to the route's `initialCategoryKey` whenever the
+address bar had no query string, even after a client-side query-only navigation to
+`/products`. Fixed together.)
+
+**Fix:** `formatPublishedMonthYear` (`src/lib/content/publishedDate.ts`) pins the
+format to `timeZone: 'UTC'` so the label is the authored calendar date on every
+runtime, and `resolveCategoryFilterKey` now treats a query-less `/products` as All
+unless the browser is actually on the shelf *path* (`/products/shelf/<key>`). Pure
+helpers, unit-tested, no suppression flag, no change to caching/ISR/SEO.
+
+**Verified:** deployed to preview, 0 × #418 at 320/375/768/1440 on `/products`,
+`?category=edible-pink-salt`, `?category=bulk`, `?category=licks-blocks`,
+`?search=salt`, an invalid category, a PDP and `/blog`; All ⇄ category client
+navigation and browser back/forward clean; server and hydrated SEO (title,
+description, canonical, OG, JSON-LD, H1) agree; category shelf still answered from
+edge cache.
 
 ### F6 — Documentation drift
 `AGENTS.md` names the old repository as `8002salman-ai/himalayan-koh`; the configured

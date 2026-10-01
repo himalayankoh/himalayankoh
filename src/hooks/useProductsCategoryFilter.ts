@@ -46,6 +46,7 @@ export function useProductsCategoryFilter(
     const resolved = resolveCategoryFilterKey({
       hydrated,
       browserHasQuery: typeof window !== 'undefined' && Boolean(window.location.search),
+      browserPath: typeof window !== 'undefined' ? window.location.pathname : '',
       fromSearchParams: parseCategoryFromSearchParams(searchParams),
       initialCategoryKey,
     });
