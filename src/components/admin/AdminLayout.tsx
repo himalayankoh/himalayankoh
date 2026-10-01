@@ -67,6 +67,25 @@ type NavItem = { to: string; icon: NavIcon; label: string; g: string; dot: strin
  * - Gold / Bronze: #C98745 -> #9e632b
  * - Neutral Slate: #453d36 -> #2d2722
  */
+/**
+ * The rail, grouped the way the shop is actually run.
+ *
+ * "Catalog" used to be one drawer holding thirteen unrelated things — products,
+ * promotions, gift drops, campaigns, the order book, staff, coupons — so nothing
+ * in it was findable by thinking about what you wanted to do. Each block below
+ * answers one question instead:
+ *
+ *   Overview   how is the shop doing
+ *   Catalog    what we sell, and what has been bought: products, orders, the
+ *              people who bought, the people who work here, reviews, stock
+ *   Wholesale  the B2B side, on its own
+ *   Marketing  demand: LeadOS and outreach, SEO, channels, CRM, analytics
+ *   Promotions the offer machinery, on its own rail
+ *   Research   what to sell next: scouting, product research, intel
+ *   AI Studio  the tooling that turns research into listings
+ *   Media      the files
+ *   System     running the store: shipping, suppliers, payment, settings
+ */
 const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: 'Overview',
@@ -76,10 +95,17 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
-    title: 'LeadOS',
+    title: 'Catalog',
     items: [
-      { to: '/admin/leados', icon: Target, label: 'LeadOS Workspace', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
-      { to: '/admin/client-outreach', icon: PaperPlaneRight, label: 'Client Outreach', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
+      { to: '/admin/products', icon: Package, label: 'Products', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
+      { to: '/admin/orders', icon: ShoppingCart, label: 'Orders', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
+      { to: '/admin/customers', icon: UsersIcon, label: 'Customers', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
+      { to: '/admin/users', icon: UserGear, label: 'Users', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
+      { to: '/admin/reviews', icon: Star, label: 'Reviews', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
+      { to: '/admin/inventory', icon: Stack, label: 'Inventory', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#E25726' },
+      { to: '/admin/categories', icon: TreeStructure, label: 'Categories', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
+      { to: '/admin/category-hubs', icon: SquaresFour, label: 'Category Hubs', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
+      { to: '/admin/blog', icon: FileText, label: 'Blog Posts', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
     ],
   },
   {
@@ -92,32 +118,12 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
-    title: 'Catalog',
-    items: [
-      { to: '/admin/products', icon: Package, label: 'Products', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
-      { to: '/admin/promotions', icon: Tag, label: 'Promotions', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
-      { to: '/admin/gift-drop', icon: Gift, label: 'Gift Drop', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
-      { to: '/admin/campaigns', icon: Megaphone, label: 'Campaigns', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
-      { to: '/admin/orders', icon: ShoppingCart, label: 'Orders', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
-      { to: '/admin/customers', icon: UsersIcon, label: 'Customers', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
-      { to: '/admin/users', icon: UserGear, label: 'Users', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
-      { to: '/admin/categories', icon: TreeStructure, label: 'Categories', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
-      { to: '/admin/reviews', icon: Star, label: 'Reviews', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
-      { to: '/admin/blog', icon: FileText, label: 'Blog Posts', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
-      { to: '/admin/category-hubs', icon: SquaresFour, label: 'Category Hubs', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
-      { to: '/admin/inventory', icon: Stack, label: 'Inventory', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#E25726' },
-      { to: '/admin/coupons', icon: Tag, label: 'Coupons', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
-    ],
-  },
-  {
-    title: 'Media',
-    items: [
-      { to: '/admin/media', icon: Images, label: 'Media Library', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
-    ],
-  },
-  {
     title: 'Marketing',
+    // LeadOS moved in here: outreach is marketing, and it was sitting above the
+    // wholesale section as if it were a separate business.
     items: [
+      { to: '/admin/leados', icon: Target, label: 'LeadOS Workspace', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
+      { to: '/admin/client-outreach', icon: PaperPlaneRight, label: 'Client Outreach', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
       { to: '/admin/seo', icon: Sparkle, label: 'SEO Engine', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
       { to: '/admin/marketing', icon: Megaphone, label: 'Marketing Gen', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
       { to: '/admin/marketing-traffic', icon: TrendUp, label: 'Marketing & Traffic', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
@@ -127,16 +133,40 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
+    title: 'Promotions',
+    // Its own rail: everything that changes what a customer pays belongs together,
+    // and none of it belongs in the product catalogue.
+    items: [
+      { to: '/admin/promotions', icon: Tag, label: 'Promotions', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
+      { to: '/admin/coupons', icon: Tag, label: 'Coupons', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
+      { to: '/admin/gift-drop', icon: Gift, label: 'Gift Drop', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
+      { to: '/admin/campaigns', icon: Megaphone, label: 'Campaigns', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
+    ],
+  },
+  {
+    title: 'Research',
+    // What to sell next — pulled out of AI Studio, where it was buried under the
+    // tools that build a listing rather than the work that decides one.
+    items: [
+      { to: '/admin/scout', icon: Target, label: 'Product Scout', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
+      { to: '/admin/product-research', icon: TrendUp, label: 'Product Research', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
+      { to: '/admin/ai-intelligence', icon: Sparkle, label: 'AI Intelligence', g: 'linear-gradient(135deg,#B86452,#C98745)', dot: '#B86452' },
+    ],
+  },
+  {
     title: 'AI Studio',
     items: [
       { to: '/admin/variant-gen', icon: Stack, label: 'Variant Gen', g: 'linear-gradient(135deg,#3F6550,#C98745)', dot: '#C98745' },
       { to: '/admin/ai', icon: Robot, label: 'AI Hub', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
       { to: '/admin/ai-import', icon: Robot, label: 'AI Import', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
       { to: '/admin/listing-task', icon: List, label: 'Listing Task', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
-      { to: '/admin/scout', icon: Target, label: 'Product Scout', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
-      { to: '/admin/product-research', icon: TrendUp, label: 'Product Research', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
       { to: '/admin/ai-control', icon: Cpu, label: 'AI Control', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
-      { to: '/admin/ai-intelligence', icon: Sparkle, label: 'AI Intelligence', g: 'linear-gradient(135deg,#B86452,#C98745)', dot: '#B86452' },
+    ],
+  },
+  {
+    title: 'Media',
+    items: [
+      { to: '/admin/media', icon: Images, label: 'Media Library', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
     ],
   },
   {
@@ -145,8 +175,8 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/admin/labels', icon: Truck, label: 'Shipping Labels', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
       { to: '/admin/suppliers', icon: Package, label: 'Suppliers', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
       { to: '/admin/payments', icon: CreditCard, label: 'Payments', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
-      { to: '/admin/settings', icon: GearSix, label: 'Settings', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
       { to: '/admin/listing-playbook', icon: BookBookmark, label: 'Listing Playbook', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
+      { to: '/admin/settings', icon: GearSix, label: 'Settings', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
     ],
   },
 ];
