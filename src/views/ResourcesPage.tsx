@@ -36,12 +36,12 @@ export default function ResourcesPage() {
   return (
     <div className="min-h-screen bg-warm-white">
       {/* Hero */}
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-20 md:py-28 text-white">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
           <motion.span
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-4"
+            className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3"
           >
             Educational Hub & Research Library
           </motion.span>
@@ -49,7 +49,7 @@ export default function ResourcesPage() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold mb-6"
+            className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold mb-3"
           >
             Himalayan Salt Resource Center
           </motion.h1>
@@ -57,7 +57,7 @@ export default function ResourcesPage() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-white/80 text-lg md:text-xl max-w-3xl mx-auto leading-relaxed"
+            className="text-white/80 text-base md:text-lg max-w-3xl mx-auto leading-relaxed"
           >
             Evidence-based guides, pasture management protocols, culinary techniques, and geological science—reviewed for factual rigor.
           </motion.p>
@@ -65,7 +65,7 @@ export default function ResourcesPage() {
       </div>
 
       {/* Main Grid & Filters */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 md:py-16 space-y-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12 space-y-6">
         {/* Filter and Search Bar */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
           {/* Category Pills */}

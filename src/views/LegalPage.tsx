@@ -176,7 +176,7 @@ const content: Record<LegalPageProps['type'], { eyebrow: string; title: string; 
       {
         title: 'Returns, Refunds & Damaged Goods',
         body: 'We accept returns on unopened standard retail products in their original packaging within 30 days of the order date. Bulk bags, pallet quantities, and custom-cut salt blocks over 20 lbs are packed to order and are non-returnable. Customers must contact support to obtain prior return authorization.',
-        link: { href: '/return', label: 'View Full Return & Refund Policy' },
+        link: { href: '/returns', label: 'View Full Return & Refund Policy' },
       },
       {
         title: 'Customer Account Responsibilities',
@@ -333,12 +333,12 @@ export default function LegalPage({ type }: LegalPageProps) {
 
   return (
     <div className="min-h-screen bg-warm-white">
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-20 md:py-28">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
           <motion.span
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-5"
+            className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3"
           >
             {page.eyebrow}
           </motion.span>
@@ -346,7 +346,7 @@ export default function LegalPage({ type }: LegalPageProps) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-5 leading-tight"
+            className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 leading-tight"
           >
             {page.title}
           </motion.h1>
@@ -354,14 +354,14 @@ export default function LegalPage({ type }: LegalPageProps) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-white/75 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed"
+            className="text-white/75 text-base md:text-lg max-w-2xl mx-auto leading-relaxed"
           >
             {page.description}
           </motion.p>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 md:py-16">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 md:py-12">
         <div className="bg-white rounded-2xl shadow-md p-6 md:p-8 space-y-8">
           {page.sections.map((section) => (
             <section key={section.title} className="border-b border-gray-100 last:border-b-0 pb-6 last:pb-0">

@@ -36,7 +36,7 @@ const POLICY_PAGES = [
   { name: 'Privacy Policy & Google AdSense Disclosures', href: '/privacy' },
   { name: 'Terms of Service', href: '/terms' },
   { name: 'Shipping & Delivery Policy', href: '/shipping' },
-  { name: 'Return Policy & RMA Instructions', href: '/return' },
+  { name: 'Return Policy & RMA Instructions', href: '/returns' },
   { name: 'Google ads.txt Verification Record', href: '/ads.txt' },
   { name: 'Machine-Readable XML Sitemap', href: '/sitemap.xml' },
 ];
@@ -67,22 +67,22 @@ export default function SitemapPage({ products = DEFAULT_PRODUCTS }: SitemapPage
   return (
     <div className="min-h-screen bg-warm-white">
       {/* Header */}
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-16 md:py-24 text-white">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
-          <span className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-4">
+          <span className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3">
             Navigation Index
           </span>
-          <h1 className="font-serif text-4xl sm:text-5xl font-bold mb-4">
+          <h1 className="font-serif text-3xl sm:text-4xl font-bold mb-3">
             Sitemap
           </h1>
-          <p className="text-white/80 text-lg max-w-2xl mx-auto">
+          <p className="text-white/80 text-base max-w-2xl mx-auto">
             A complete index of all public catalog products, educational guides, policy disclosures, and commercial hubs.
           </p>
         </div>
       </div>
 
       {/* Main Directory Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 md:py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           
           {/* Main Pages */}

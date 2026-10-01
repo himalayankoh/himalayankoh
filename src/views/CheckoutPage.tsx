@@ -1516,7 +1516,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   <Link to="/terms" className="font-semibold text-himalayan hover:text-himalayan-dark">terms</Link>,{' '}
                   <Link to="/privacy" className="font-semibold text-himalayan hover:text-himalayan-dark">privacy policy</Link>{' '}
                   and{' '}
-                  <Link to="/return" className="font-semibold text-himalayan hover:text-himalayan-dark">returns policy</Link>.
+                  <Link to="/returns" className="font-semibold text-himalayan hover:text-himalayan-dark">returns policy</Link>.
                 </p>
               </div>
 

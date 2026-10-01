@@ -60,12 +60,12 @@ export default function BlogPage({ initialPosts = [] }: BlogPageProps) {
   return (
     <div className="min-h-screen bg-warm-white">
       {/* Header */}
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-20 md:py-28">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
           <motion.span
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-5"
+            className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3"
           >
             Our Blog
           </motion.span>
@@ -81,7 +81,7 @@ export default function BlogPage({ initialPosts = [] }: BlogPageProps) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-white/70 text-lg max-w-2xl mx-auto"
+            className="text-white/70 text-base max-w-2xl mx-auto"
           >
 Notes on pink salt: how it is used, how it is stored, and what the labels mean
           </motion.p>
@@ -89,8 +89,8 @@ Notes on pink salt: how it is used, how it is stored, and what the labels mean
       </div>
 
       {/* Blog Grid */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 md:py-16">
-        <div className="relative max-w-md mb-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
+        <div className="relative max-w-md mb-6">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={searchQuery}
@@ -127,7 +127,7 @@ Notes on pink salt: how it is used, how it is stored, and what the labels mean
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="mb-12 bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-500 cursor-pointer group"
+          className="mb-8 bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-500 cursor-pointer group"
         >
           <Link to={`/blog/${featuredPost.slug}`} className="grid md:grid-cols-2 gap-0">
             <div className="aspect-[16/10] md:aspect-auto overflow-hidden">

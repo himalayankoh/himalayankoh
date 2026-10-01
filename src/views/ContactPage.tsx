@@ -75,8 +75,8 @@ export default function ContactPage() {
         <div className="grid lg:grid-cols-3 gap-5 lg:gap-8">
           {/* Contact Info */}
           <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
             className="lg:col-span-1 space-y-4"
           >
@@ -133,7 +133,7 @@ export default function ContactPage() {
                     </p>
                     <p className="text-charcoal-light text-xs mt-1.5">
                       Returns go to a different address - see the{' '}
-                      <Link href="/return" className="text-himalayan hover:underline font-semibold">
+                      <Link href="/returns" className="text-himalayan hover:underline font-semibold">
                         return policy
                       </Link>
                       .
@@ -162,8 +162,8 @@ export default function ContactPage() {
 
           {/* Contact Form */}
           <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
             className="lg:col-span-2"
           >

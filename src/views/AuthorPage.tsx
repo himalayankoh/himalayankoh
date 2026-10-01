@@ -13,7 +13,7 @@ export default function AuthorPage({ author }: AuthorPageProps) {
   return (
     <div className="min-h-screen bg-warm-white">
       {/* Header Profile Section */}
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-16 md:py-24 text-white">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14 text-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6">
           <Link
             href="/resources"
@@ -58,7 +58,7 @@ export default function AuthorPage({ author }: AuthorPageProps) {
       </div>
 
       {/* Bio & Articles Section */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 md:py-16 space-y-12">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 md:py-12 space-y-7">
         {/* Biography Card */}
         <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm space-y-4">
           <h2 className="font-serif text-2xl font-bold text-charcoal flex items-center gap-2">

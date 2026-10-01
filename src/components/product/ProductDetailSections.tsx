@@ -69,7 +69,7 @@ export default function ProductDetailSections({ product }: Props) {
             <Link to="/shipping" className="hover:underline">
               Shipping Policy →
             </Link>
-            <Link to="/return" className="hover:underline">
+            <Link to="/returns" className="hover:underline">
               Return & RMA Policy →
             </Link>
           </div>

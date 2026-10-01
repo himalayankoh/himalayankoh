@@ -90,19 +90,19 @@ const TERMS = [
 export default function WholesaleLandingPage() {
   return (
     <div className="min-h-screen bg-warm-white">
-      <section className="relative overflow-hidden bg-gradient-to-br from-charcoal via-charcoal to-charcoal-light py-20 md:py-28">
+      <section className="relative overflow-hidden bg-gradient-to-br from-charcoal via-charcoal to-charcoal-light py-10 md:py-14">
         <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(circle_at_20%_20%,white,transparent_45%)]" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-12 items-center">
+          <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-8 items-center">
             <div>
-              <span className="inline-flex items-center gap-2 px-4 py-1.5 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-widest uppercase rounded-full mb-6">
+              <span className="inline-flex items-center gap-2 px-4 py-1.5 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-widest uppercase rounded-full mb-3">
                 <Handshake className="w-3.5 h-3.5" />
                 Wholesale &amp; Trade
               </span>
-              <h1 className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold text-white leading-[1.08] mb-6">
+              <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-white leading-[1.08] mb-4">
                 Himalayan pink salt, by the pallet and the container.
               </h1>
-              <p className="text-white/75 text-lg md:text-xl leading-relaxed max-w-2xl mb-8">
+              <p className="text-white/75 text-base md:text-lg leading-relaxed max-w-2xl mb-6">
                 We supply retailers, distributors and importers from the salt range at Khewra. Buy from a single
                 pallet up to a full container, in one grade or a mixed load, priced on the Incoterm that suits you.
               </p>
@@ -151,7 +151,7 @@ export default function WholesaleLandingPage() {
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-24">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-10 md:py-14">
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {PILLARS.map((pillar) => (
             <div key={pillar.title} className="bg-white rounded-2xl border border-charcoal/8 p-6 shadow-sm">
@@ -166,9 +166,9 @@ export default function WholesaleLandingPage() {
       </section>
 
       <section className="bg-white border-y border-charcoal/8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 md:py-14">
           <h2 className="font-serif text-3xl md:text-4xl font-bold text-charcoal mb-3">How a wholesale order works</h2>
-          <p className="text-charcoal-light mb-10 max-w-3xl">
+          <p className="text-charcoal-light mb-6 max-w-3xl">
             Four steps, and a person at Himalayan Koh on every one of them.
           </p>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -183,8 +183,8 @@ export default function WholesaleLandingPage() {
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16 md:py-24">
-        <div className="grid lg:grid-cols-2 gap-12">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-10 md:py-14">
+        <div className="grid lg:grid-cols-2 gap-8">
           <div>
             <h2 className="font-serif text-3xl md:text-4xl font-bold text-charcoal mb-6">How we price</h2>
             <ul className="space-y-4">

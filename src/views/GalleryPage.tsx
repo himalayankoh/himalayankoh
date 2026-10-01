@@ -19,12 +19,12 @@ export default function GalleryPage() {
   return (
     <div className="min-h-screen bg-cream">
       {/* Header */}
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-20 md:py-28">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
           <motion.span
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-5"
+            className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3"
           >
             Gallery
           </motion.span>
@@ -32,7 +32,7 @@ export default function GalleryPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-5 leading-tight"
+            className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 leading-tight"
           >
             Our Salt in Action
           </motion.h1>
@@ -40,7 +40,7 @@ export default function GalleryPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-white/75 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed"
+            className="text-white/75 text-base md:text-lg max-w-2xl mx-auto leading-relaxed"
           >
 Unrefined pink salt in the kitchen, on the table, and by the bag
           </motion.p>
@@ -48,13 +48,13 @@ Unrefined pink salt in the kitchen, on the table, and by the bag
       </div>
 
       {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 md:py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
         {/* Filters */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="flex flex-wrap justify-center gap-2 mb-10"
+          className="flex flex-wrap justify-center gap-2 mb-6"
         >
           {galleryCategories.map((cat) => (
             <button

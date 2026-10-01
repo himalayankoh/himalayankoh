@@ -206,7 +206,8 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -214,10 +215,10 @@ export default function LoginPage() {
             </div>
 
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-center gap-2 cursor-pointer py-1.5">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded border-gray-300 text-himalayan focus:ring-himalayan"
+                  className="h-5 w-5 rounded border-gray-300 text-himalayan focus:ring-himalayan"
                 />
                 <span className="text-sm text-charcoal-light">Remember me</span>
               </label>

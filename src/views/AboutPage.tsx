@@ -89,8 +89,8 @@ export default function AboutPage() {
           <div className="grid lg:grid-cols-2 gap-6 lg:gap-10 items-center">
             {/* Image Side */}
             <motion.div
-              initial={{ opacity: 0, x: -40 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
               <div className="relative">
@@ -110,8 +110,8 @@ export default function AboutPage() {
 
             {/* Text Side */}
             <motion.div
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
             >
               <h2 className="font-serif text-2xl sm:text-3xl font-bold text-charcoal mb-4 leading-tight">
@@ -134,8 +134,8 @@ export default function AboutPage() {
                 {bulletPoints.map((point, i) => (
                   <motion.div
                     key={i}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.4 + i * 0.1 }}
                     className="flex items-center gap-3"
                   >

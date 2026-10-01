@@ -150,7 +150,7 @@ export default function WholesaleApplyPage() {
 
   return (
     <div className="min-h-screen bg-warm-white">
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-14 md:py-20">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14">
         <div className="max-w-3xl mx-auto px-4 sm:px-6">
           <h1 className="font-serif text-4xl md:text-5xl font-bold text-white mb-4">Wholesale account application</h1>
           <p className="text-white/70 text-lg leading-relaxed">
@@ -160,7 +160,7 @@ export default function WholesaleApplyPage() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 md:py-16">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 md:py-12">
         <form onSubmit={submit} className="bg-white rounded-3xl border border-charcoal/8 shadow-sm p-6 md:p-9">
           <h2 className="font-serif text-xl font-semibold text-charcoal mb-5">Business</h2>
           <div className="grid sm:grid-cols-2 gap-5 mb-8">

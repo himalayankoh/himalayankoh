@@ -112,12 +112,12 @@ function FaqItem({ faq, index }: { faq: Faq; index: number }) {
 export default function FaqPage() {
   return (
     <div className="min-h-screen bg-warm-white">
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-20 md:py-28">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
           <motion.span
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-5"
+            className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3"
           >
             How We Help
           </motion.span>
@@ -125,7 +125,7 @@ export default function FaqPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-5 leading-tight"
+            className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-3 leading-tight"
           >
             Frequently Asked Questions
           </motion.h1>
@@ -133,7 +133,7 @@ export default function FaqPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-white/75 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed"
+            className="text-white/75 text-base md:text-lg max-w-2xl mx-auto leading-relaxed"
           >
             Returns, shipping, payment and the questions we are asked most about
             Himalayan pink salt
@@ -141,7 +141,7 @@ export default function FaqPage() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 md:py-16">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 md:py-12">
         <div className="space-y-4">
           {faqs.map((faq, i) => (
             <FaqItem key={faq.question} faq={faq} index={i} />
@@ -152,7 +152,7 @@ export default function FaqPage() {
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="mt-12 bg-himalayan rounded-2xl p-8 text-center text-white"
+          className="mt-8 bg-himalayan rounded-2xl p-6 text-center text-white"
         >
           <HelpCircle size={28} className="mx-auto mb-4" />
           <h2 className="font-serif text-2xl font-bold mb-2">Still have a question?</h2>

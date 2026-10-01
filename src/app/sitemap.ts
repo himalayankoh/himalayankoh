@@ -22,7 +22,7 @@ const STATIC_ROUTES: { path: string; priority: number; changeFrequency: ChangeFr
   { path: '/disclaimer', priority: 0.5, changeFrequency: 'monthly' },
   { path: '/sitemap', priority: 0.5, changeFrequency: 'weekly' },
   { path: '/shipping', priority: 0.4, changeFrequency: 'yearly' },
-  { path: '/return', priority: 0.4, changeFrequency: 'yearly' },
+  { path: '/returns', priority: 0.4, changeFrequency: 'yearly' },
   { path: '/terms', priority: 0.3, changeFrequency: 'yearly' },
   { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' },
 ];
