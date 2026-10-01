@@ -29,6 +29,15 @@ import { STATS_WINDOW, pageCoversStatsWindow } from '@/lib/admin/orderStatsWindo
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * How many orders one bulk request may carry.
+ *
+ * Not a business rule — a budget. Trashing one order costs three upstream
+ * subrequests and Cloudflare kills an invocation at 50, so 15 is the largest
+ * number that always completes. See the guard in `POST`.
+ */
+const MAX_BULK_ORDERS = 15;
+
 const APP_STATUSES: AppOrderStatus[] = [
   'pending',
   'confirmed',
@@ -129,9 +138,17 @@ export async function POST(request: Request) {
   if (ids.length === 0) {
     return NextResponse.json({ error: 'A list of order ids is required.' }, { status: 400 });
   }
-  // Bounded so one request cannot walk the whole order book against a slow store.
-  if (ids.length > 50) {
-    return NextResponse.json({ error: 'At most 50 orders can be changed at once.' }, { status: 400 });
+  // Bounded to what one invocation can actually finish. Each trashed order costs
+  // three upstream calls (read the order, remember its status, move it), and
+  // Cloudflare aborts an invocation at 50 subrequests — so a request for more than
+  // this would be rejected by the runtime partway through, leaving the caller with a
+  // partial change and a "too many subrequests" error. The console sends smaller
+  // batches than this anyway; the cap just stops a direct caller walking past it.
+  if (ids.length > MAX_BULK_ORDERS) {
+    return NextResponse.json(
+      { error: `At most ${MAX_BULK_ORDERS} orders can be changed at once.` },
+      { status: 400 },
+    );
   }
 
   try {

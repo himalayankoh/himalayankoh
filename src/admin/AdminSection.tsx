@@ -304,7 +304,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
 interface DashOrderRow { id: string; order_number: string; customer_email: string | null; total: number | null; currency: string | null; status: string; payment_status?: string | null; created_at: string; }
 
-interface DashStats { revenue: number; paidCount: number; aov: number; days: { label: string; total: number }[]; }
+// `pending`/`shipped` are optional and only set by the Orders screen: they carry the
+// store-wide fulfilment counts so its KPI row is counted from the same record set as
+// the total and revenue beside them, instead of mixing a full-store total with a
+// page-only count (which read as "0 Total Orders" next to "1 Needs Fulfilment" on the
+// Trashed view). The Dashboard sets neither and is unaffected.
+interface DashStats { revenue: number; paidCount: number; aov: number; days: { label: string; total: number }[]; pending?: number; shipped?: number; }
 
 export function ADashboard() {
   const { users } = useApp();
@@ -1062,18 +1067,35 @@ export function AOrders() {
       .then(async (r) => {
         const d = (await r.json().catch(() => ({}))) as {
           orders?: AdminOrderRow[];
-          stats?: { totalOrders?: number; totalRevenue?: number } | null;
+          stats?: {
+            totalOrders?: number;
+            totalRevenue?: number;
+            pendingOrders?: number;
+            processingOrders?: number;
+            shippedOrders?: number;
+            deliveredOrders?: number;
+          } | null;
         };
         if (!r.ok) throw new Error('The store\u2019s orders could not be read.');
         const orders = Array.isArray(d.orders) ? d.orders : [];
         const revenue = Number(d.stats?.totalRevenue ?? 0) || 0;
         const paid = orders.filter((o) => o.payment_status === 'paid');
         setStripeOrders(orders.map(adminOrderToRow));
+        // Counted from the server's stats window (the same set as `totalOrders`, and
+        // one that never includes trashed orders), so the KPI row cannot contradict
+        // itself. See the DashStats comment for the bug this replaces.
+        const statsMissing = !d.stats || typeof d.stats.totalOrders !== 'number';
         setOrderStats({
           revenue,
           paidCount: Number(d.stats?.totalOrders ?? paid.length) || 0,
           aov: paid.length ? revenue / paid.length : 0,
           days: [],
+          ...(statsMissing
+            ? {}
+            : {
+                pending: Number(d.stats?.pendingOrders ?? 0) + Number(d.stats?.processingOrders ?? 0),
+                shipped: Number(d.stats?.shippedOrders ?? 0) + Number(d.stats?.deliveredOrders ?? 0),
+              }),
         });
       })
       .catch(() => { setStripeOrders([]); setOrderStats(null); })
@@ -1117,28 +1139,40 @@ export function AOrders() {
     setOrderBusy(true);
     try {
       const token = getAccessToken();
-      const r = await fetch('/api/admin/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ action, ids }),
-      });
-      const d = (await r.json().catch(() => ({}))) as {
-        error?: string;
-        changed?: number[];
-        failed?: Array<{ id: number; error: string }>;
-      };
-      if (!r.ok) throw new Error(d?.error || `The store refused the change (HTTP ${r.status}).`);
+      // Sent in small batches rather than one request. Each order costs the Worker
+      // three upstream subrequests (read, remember, trash), and Cloudflare caps a
+      // single invocation at 50 — so a large "Select all" in one request would fail
+      // partway with a confusing "too many subrequests" error on the orders it never
+      // reached. Twelve per request stays well inside that budget.
+      const BATCH = 12;
+      const changed: number[] = [];
+      const failed: Array<{ id: number; error: string }> = [];
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const r = await fetch('/api/admin/orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ action, ids: ids.slice(i, i + BATCH) }),
+        });
+        const d = (await r.json().catch(() => ({}))) as {
+          error?: string;
+          changed?: number[];
+          failed?: Array<{ id: number; error: string }>;
+        };
+        if (!r.ok) throw new Error(d?.error || `The store refused the change (HTTP ${r.status}).`);
+        changed.push(...(d.changed ?? []));
+        failed.push(...(d.failed ?? []));
+      }
 
-      const moved = d.changed?.length ?? 0;
-      const failed = d.failed?.length ?? 0;
+      const moved = changed.length;
+      const failedCount = failed.length;
       notify(
         `${action === 'trash' ? 'Moved to trash' : 'Restored'} ${moved} order${moved === 1 ? '' : 's'}.` +
-          (failed ? ` ${failed} could not be changed.` : '')
+          (failedCount ? ` ${failedCount} could not be changed.` : '')
       );
-      if (d.failed?.[0]?.error) notify(d.failed[0].error, 'error');
+      if (failed[0]?.error) notify(failed[0].error, 'error');
       setPicked(new Set());
       refreshOrders();
     } catch (e) {
@@ -1285,8 +1319,10 @@ export function AOrders() {
     // Paid-only counts/revenue from the server (refunds subtracted, no page cap).
     total: orderStats ? orderStats.paidCount : stripeOrders.length,
     revenue: orderStats ? orderStats.revenue : 0,
-    pending: stripeOrders.filter(o => ['pending', 'awaiting_payment', 'paid', 'processing'].includes(String(o.status || ''))).length,
-    shipped: stripeOrders.filter(o => ['shipped', 'delivered'].includes(String(o.status || ''))).length,
+    // Fulfilment counts from the same server read when it supplied the total above;
+    // only fall back to counting this page when the server gave no stats at all.
+    pending: orderStats?.pending ?? stripeOrders.filter(o => ['pending', 'awaiting_payment', 'paid', 'processing'].includes(String(o.status || ''))).length,
+    shipped: orderStats?.shipped ?? stripeOrders.filter(o => ['shipped', 'delivered'].includes(String(o.status || ''))).length,
   };
 
   const statusColor = (s: string) =>
