@@ -1034,7 +1034,6 @@ export function AOrders() {
   const [tracking, setTracking] = useState<Record<string, { carrier: string; number: string }>>({});
   const [labelOrder, setLabelOrder] = useState<StripeOrderRow | null>(null);
   const [invoiceOrder, setInvoiceOrder] = useState<StripeOrderRow | null>(null);
-  const [showDemo, setShowDemo] = useState(true);
   // Per-order invoice extras (shipping / tax rate / discount) — admin-recorded,
   // persisted locally like tracking. Defaults are honest: 0 = not recorded.
   const [orderExtras, setOrderExtras] = useState<Record<string, { shipping: number; taxRate: number; discount: number }>>({});
@@ -1086,7 +1085,7 @@ export function AOrders() {
   };
 
   const extrasFor = (o: StripeOrderRow) => {
-    const e = orderExtras[o.id] || (o.id === 'demo-order-001' ? { shipping: 6.99, taxRate: 8.25, discount: 0 } : { shipping: 0, taxRate: 0, discount: 0 });
+    const e = orderExtras[o.id] || { shipping: 0, taxRate: 0, discount: 0 };
     // Round defensively — stale localStorage values may carry float artifacts.
     return { shipping: Math.round(e.shipping * 100) / 100, taxRate: Math.round(e.taxRate * 100) / 100, discount: Math.round(e.discount * 100) / 100 };
   };
@@ -1162,7 +1161,7 @@ export function AOrders() {
   };
 
   // ── CSV export (real orders only, accounting-friendly columns for the Embani
-  //    Excel workbook — the demo LX-1001 order and gift-drop rows never appear). ──
+  //    Excel workbook — gift-drop rows never appear). ──
   const downloadCsv = () => {
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const header = ['order_id', 'order_number', 'date', 'customer_name', 'customer_email', 'sku', 'item', 'quantity', 'unit_price', 'subtotal', 'shipping', 'tax', 'discount', 'total', 'currency', 'payment_status', 'fulfillment_status', 'stripe_payment_id', 'tracking_number'];
@@ -1192,22 +1191,17 @@ export function AOrders() {
     notify(`CSV exported — ${stripeOrders.length} order(s). Import it into the Himalayan Koh ERP workbook.`);
   };
 
-  // DEMO order — clearly marked, only shown for UI preview until the first
-  // real Stripe payment arrives. Never treated as a real sale.
-  const demoOrder: StripeOrderRow = {
-    id: 'demo-order-001', order_number: 'LX-1001', customer_email: 'sarah@example.com', total: 74.97,
-    currency: 'USD', status: 'shipped', stripe_session_id: 'cs_demo_preview', created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-    items: [
-      { id: 'i1', name: 'Interactive Squeaky Enrichment Toy for Dogs', quantity: 1, price: 19.99 },
-      { id: 'i2', name: 'Orthopedic Memory Foam Pet Bed — Large', quantity: 1, price: 54.98 },
-    ],
-  };
-  const demoTracking = { carrier: 'USPS', number: '9405510200888822222222' };
-
-  const visibleOrders = [
-    ...(showDemo ? [{ order: demoOrder, isDemo: true, tr: demoTracking }] : []),
-    ...stripeOrders.map(o => ({ order: o, isDemo: false, tr: tracking[o.id] || null })),
-  ];
+  /*
+   * Nothing on this screen is invented.
+   *
+   * A hard-coded demo order (LX-1001) used to be prepended so the tracking and
+   * label UI had something to show before the first real sale — and its fake USPS
+   * number was ALSO the fallback the label printed for a real order that had no
+   * tracking yet, so a genuine parcel could go out carrying a stranger's tracking
+   * number. The demo row and its number are both gone; every row below is the
+   * store's own order, read from WooCommerce.
+   */
+  const visibleOrders = stripeOrders.map(o => ({ order: o, tr: tracking[o.id] || null }));
 
   const stats = {
     // Paid-only counts/revenue from the server (refunds subtracted, no page cap).
@@ -1250,16 +1244,15 @@ export function AOrders() {
     } catch { notify('Copy failed', 'error'); }
   };
 
-  const orderBadges = (o: StripeOrderRow, isDemo: boolean) => {
+  const orderBadges = (o: StripeOrderRow) => {
     const pp = String((o as unknown as Record<string, unknown>).payment_provider || '');
     const ot = String((o as unknown as Record<string, unknown>).order_type || 'paid');
     return (
       <div className="flex items-center gap-1.5 flex-wrap">
-        {isDemo && <span className="text-[9px] font-bold px-1.5 py-0.5 bg-amber-200 text-amber-800 rounded-full">DEMO</span>}
-        {!isDemo && (ot === 'free_gift' || pp === 'none') && (
+        {(ot === 'free_gift' || pp === 'none') && (
           <span className="text-[9px] font-bold px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full">🎁 FREE GIFT</span>
         )}
-        {!isDemo && pp && pp !== 'stripe' && pp !== 'none' && (
+        {pp && pp !== 'stripe' && pp !== 'none' && (
           <span className="text-[9px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full capitalize">{pp}</span>
         )}
       </div>
@@ -1274,7 +1267,7 @@ export function AOrders() {
     </div>
   );
 
-  const orderDetail = (o: StripeOrderRow, isDemo: boolean, tr: { carrier: string; number: string } | null) => (
+  const orderDetail = (o: StripeOrderRow, tr: { carrier: string; number: string } | null) => (
     <div className="grid gap-4 sm:grid-cols-3">
       {/* Items */}
       <div className="min-w-0">
@@ -1324,7 +1317,6 @@ export function AOrders() {
           <div className="flex justify-between border-t border-gray-100 pt-1"><span className="text-gray-400">Total</span><span className="font-semibold">${totalsOf(o).grand.toFixed(2)}</span></div>
           <div className="flex justify-between"><span className="text-gray-400">Currency</span><span>{o.currency || 'USD'}</span></div>
           <div className="flex justify-between items-start gap-2"><span className="text-gray-400">Stripe</span><span className="font-mono text-[10px] text-gray-500 break-all">{o.stripe_session_id || '—'}</span></div>
-          {isDemo && <p className="text-[10px] text-amber-600 pt-1">Demo record — payment not real.</p>}
         </div>
         <div className="flex gap-1.5 mt-2">
           <button onClick={() => setInvoiceOrder(o)} className="btn-glow flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"><Receipt size={14} /> Invoice</button>
@@ -1343,7 +1335,6 @@ export function AOrders() {
           <p className="text-xs text-gray-500 mt-0.5">Track and fulfil the store&apos;s orders. Export the CSV for the ERP workbook.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {showDemo && <button onClick={() => setShowDemo(false)} className="text-xs text-gray-400 hover:text-gray-600 underline whitespace-nowrap">Hide demo order</button>}
           <button onClick={refreshOrders} className="btn-glow inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-xs font-semibold transition-colors"><ArrowClockwise size={13} /> Refresh</button>
         </div>
       </div>
@@ -1382,13 +1373,6 @@ export function AOrders() {
         <button onClick={downloadCsv} className="btn-glow inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors"><Download size={13} /> Export CSV (Excel)</button>
       </div>
 
-    {/* Demo banner */}
-    {showDemo && (
-      <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-3 text-xs text-amber-800 flex items-center gap-2">
-        <Lightning size={14} /> Demo order (LX-1001) shown below so you can preview the tracking + label UI — it is NOT a real sale. Hide it any time, and it never appears on the storefront.
-      </div>
-    )}
-
 {/* Orders table — responsive: full table on desktop (container scrolls on tablet), stacked cards on mobile */}
     <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-emerald-100">
       <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
@@ -1402,7 +1386,7 @@ export function AOrders() {
       ) : visibleOrders.length === 0 ? (
         <div className="px-6 py-10 text-center">
           <p className="text-sm text-gray-500 mb-1">No orders yet</p>
-          <p className="text-xs text-gray-400">Completed Stripe payments will appear here automatically. A demo order is hidden — press "Show demo" to preview the UI.</p>
+          <p className="text-xs text-gray-400">Completed Stripe payments will appear here automatically, read from WooCommerce.</p>
         </div>
       ) : (
         <>
@@ -1418,19 +1402,19 @@ export function AOrders() {
                 <th className="px-6 py-3 w-[160px]">Tracking</th>
                 <th className="px-6 py-3">Actions</th>
               </tr></thead>
-              <tbody>{visibleOrders.map(({ order: o, isDemo, tr }) => (
+              <tbody>{visibleOrders.map(({ order: o, tr }) => (
                 <Fragment key={o.id}>
-                  <tr className={`border-t hover:bg-gray-50 cursor-pointer ${isDemo ? 'bg-amber-50/40' : ''}`} onClick={() => setExpanded(expanded === o.id ? null : o.id)}>
+                  <tr className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => setExpanded(expanded === o.id ? null : o.id)}>
                     <td className="px-6 py-3 align-top">
                       <p className="font-mono text-xs font-semibold text-gray-800">{o.order_number}</p>
-                      <div className="mt-1">{orderBadges(o, isDemo)}</div>
+                      <div className="mt-1">{orderBadges(o)}</div>
                       <p className="text-[10px] text-gray-400 mt-1">{new Date(o.created_at).toLocaleString()}</p>
                     </td>
                     <td className="px-6 py-3 text-sm text-gray-600 align-top break-words">{o.customer_email || '—'}</td>
                     <td className="px-6 py-3 text-xs text-gray-500 align-top">{fmtItems(o.items).length} item(s)</td>
                     <td className="px-6 py-3 font-semibold align-top">${Number(o.total || 0).toFixed(2)}</td>
                     <td className="px-6 py-3 align-top">
-                      <select value={String(o.status || '')} onChange={(e) => { const s = e.target.value; if (isDemo) return; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
+                      <select value={String(o.status || '')} onChange={(e) => { const s = e.target.value; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
                         {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
@@ -1448,7 +1432,7 @@ export function AOrders() {
                           <p className="text-[10px] uppercase tracking-wider text-gray-400">Order detail — {o.order_number}</p>
                           <button onClick={() => setInvoiceOrder(o)} className="btn-glow px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1.5"><Receipt size={13} /> Maximize — Full Invoice</button>
                         </div>
-                        {orderDetail(o, isDemo, tr)}
+                        {orderDetail(o, tr)}
                       </td>
                     </tr>
                   )}
@@ -1459,14 +1443,14 @@ export function AOrders() {
 
           {/* Mobile stacked cards (< md) — order number/status top, customer/items/total middle, tracking + actions bottom */}
           <div className="md:hidden divide-y divide-gray-100">
-            {visibleOrders.map(({ order: o, isDemo, tr }) => (
-              <div key={o.id} className={`p-4 ${isDemo ? 'bg-amber-50/40' : ''}`}>
+            {visibleOrders.map(({ order: o, tr }) => (
+              <div key={o.id} className="p-4">
                 <div className="flex items-start justify-between gap-2 flex-wrap">
                   <div className="min-w-0">
                     <p className="font-mono text-xs font-semibold text-gray-800">{o.order_number}</p>
                     <p className="text-[10px] text-gray-400 mt-0.5">{new Date(o.created_at).toLocaleString()}</p>
                   </div>
-                  <div className="shrink-0">{orderBadges(o, isDemo)}</div>
+                  <div className="shrink-0">{orderBadges(o)}</div>
                 </div>
                 <div className="mt-3 space-y-1.5 text-xs">
                   <div className="flex justify-between gap-2"><span className="text-gray-400 shrink-0">Customer</span><span className="text-gray-700 text-right break-words min-w-0">{o.customer_email || '—'}</span></div>
@@ -1474,7 +1458,7 @@ export function AOrders() {
                   <div className="flex justify-between gap-2"><span className="text-gray-400">Total</span><span className="font-semibold text-gray-900">${Number(o.total || 0).toFixed(2)}</span></div>
                   <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
                     <span className="text-gray-400 shrink-0">Status</span>
-                    <select value={String(o.status || '')} onChange={(e) => { const s = e.target.value; if (isDemo) return; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
+                    <select value={String(o.status || '')} onChange={(e) => { const s = e.target.value; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
                       {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
@@ -1488,7 +1472,7 @@ export function AOrders() {
                 <div className="mt-3">{orderActions(o)}</div>
                 {expanded === o.id && (
                   <div id={`order-detail-${o.id}`} className="mt-3 rounded-lg border border-gray-100 bg-gray-50/60 p-3">
-                    {orderDetail(o, isDemo, tr)}
+                    {orderDetail(o, tr)}
                   </div>
                 )}
               </div>
@@ -1587,7 +1571,7 @@ export function AOrders() {
             <div className="mt-4 border-t border-dashed border-gray-300 pt-3">
               <div className="flex items-center justify-center gap-2 text-gray-700">
                 <Barcode size={60} />
-                <div className="font-mono text-[10px] text-gray-400">{(tracking[labelOrder.id] || demoTracking).number || 'TRACKING-PENDING'}</div>
+                <div className="font-mono text-[10px] text-gray-400">{tracking[labelOrder.id]?.number || 'TRACKING-PENDING'}</div>
               </div>
             </div>
           </div>
