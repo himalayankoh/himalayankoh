@@ -14,7 +14,6 @@ import {
   TreeStructure,
   Star,
   FileText,
-  YoutubeLogo,
   Sparkle,
   TrendUp,
   PaperPlaneRight,
@@ -36,6 +35,7 @@ import {
   X,
   CaretDown,
   SidebarSimple,
+  Images,
 } from '@phosphor-icons/react';
 import { useAuthContext } from '../../context/AuthContext';
 import { signOutOfBrowser } from '../../lib/auth/browserSignOut';
@@ -112,7 +112,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: 'Media',
     items: [
-      { to: '/admin/media', icon: YoutubeLogo, label: 'Media Hub', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
+      { to: '/admin/media', icon: Images, label: 'Media Library', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
     ],
   },
   {

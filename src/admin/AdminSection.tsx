@@ -72,7 +72,7 @@ import {
   ShareNetwork, ShieldCheck, ShoppingCart, Shuffle, Sliders, DeviceMobile, Sparkle, Star, Table, Tag,
   Target, ToggleLeft, ToggleRight, Trash, TrendUp, UploadSimple, User as UserIcon,
   Users as UsersIcon, MagicWand, X, Lightning, Truck, Printer, Barcode, MapPin,
-  Receipt, CloudArrowUp, YoutubeLogo, CreditCard, Gift, BookBookmark,
+  Receipt, CloudArrowUp, YoutubeLogo, CreditCard, Gift, BookBookmark, Images,
 } from '@phosphor-icons/react';
 
 // ADMIN PANEL - FULL WORKING SYSTEM
@@ -127,7 +127,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     {
       title: 'Media',
       items: [
-        { to: '/admin/media', icon: YoutubeLogo, label: 'Media Hub', g: 'linear-gradient(135deg,#ef4444,#f97316)', dot: '#f87171' },
+        { to: '/admin/media', icon: Images, label: 'Media Library', g: 'linear-gradient(135deg,#9a6f16,#26211C)', dot: '#9a6f16' },
         { to: '/admin/youtube-media', icon: YoutubeLogo, label: 'YouTube Media', g: 'linear-gradient(135deg,#ff0000,#cc0000)', dot: '#ff4444' },
       ],
     },
