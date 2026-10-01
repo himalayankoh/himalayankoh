@@ -1041,6 +1041,13 @@ export function AOrders() {
   // fake order history — the legacy demo table was removed for truthfulness.
   // Paid-only stats come from the server (full order set); refresh near-real-time.
   const [orderStats, setOrderStats] = useState<DashStats | null>(null);
+  // The order book has two views: the orders in play, and the ones moved out of
+  // the way. Trashing is reversible from the second view, which is why nothing
+  // here offers a permanent delete — nothing in this console can verify that an
+  // order was really a test order, and a deleted order cannot be argued with.
+  const [orderView, setOrderView] = useState<'active' | 'trash'>('active');
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [orderBusy, setOrderBusy] = useState(false);
   const loadOrders = useCallback(() => {
     const token = getAccessToken();
     if (!token) { setLoaded(true); return Promise.resolve(); }
@@ -1048,7 +1055,10 @@ export function AOrders() {
     // console's authenticated read of them. This screen used to call
     // `/api/checkout?action=orders` — a route that no longer exists — so every
     // mount produced a 404 and an empty list.
-    return fetch('/api/admin/orders?limit=100', { headers: { Authorization: `Bearer ${token}` } })
+    const url = orderView === 'trash'
+      ? '/api/admin/orders?limit=100&status=trash'
+      : '/api/admin/orders?limit=100';
+    return fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (r) => {
         const d = (await r.json().catch(() => ({}))) as {
           orders?: AdminOrderRow[];
@@ -1068,15 +1078,83 @@ export function AOrders() {
       })
       .catch(() => { setStripeOrders([]); setOrderStats(null); })
       .finally(() => setLoaded(true));
-  }, []);
+  }, [orderView]);
   const refreshOrders = useAutoRefresh(loadOrders);
-  useEffect(() => { refreshOrders(); }, [refreshOrders]);
+  // Call the loader directly, keyed on `loadOrders` (which changes with `orderView`),
+  // rather than through the stable, in-flight-guarded `refreshOrders`: a switch to the
+  // Trashed view must read the trash immediately, even if the previous view's read has
+  // not finished. Through the guard, that switch was dropped and the table kept showing
+  // the other view's rows. The guard still governs the focus/interval refresh.
+  useEffect(() => { void loadOrders(); }, [loadOrders]);
+  // A selection belongs to the view it was made in.
+  useEffect(() => { setPicked(new Set()); }, [orderView]);
   useEffect(() => {
     try { const raw = localStorage.getItem('luxedge-tracking'); if (raw) setTracking(JSON.parse(raw)); } catch { /* ignore */ }
     try { const raw = localStorage.getItem('luxedge-order-extras'); if (raw) setOrderExtras(JSON.parse(raw)); } catch { /* ignore */ }
     // Purge legacy plaintext ERP settings that older builds stored locally.
     try { localStorage.removeItem('luxedge-erp-webhook'); localStorage.removeItem('luxedge-erp-token'); } catch { /* ignore */ }
   }, []);
+
+  /**
+   * Trash or restore the selected orders.
+   *
+   * Confirmed before it runs, because one click writes to many real order records,
+   * and labelled honestly: trashing is reversible, and the trashed view is where
+   * it is undone.
+   */
+  const bulkOrderAction = async (action: 'trash' | 'restore') => {
+    const ids = [...picked].map(Number).filter((n) => Number.isFinite(n) && n > 0);
+    if (!ids.length) return;
+    if (
+      action === 'trash' &&
+      !window.confirm(
+        `Move ${ids.length} order${ids.length === 1 ? '' : 's'} to the trash?\n\nThey leave this list but they are NOT destroyed. Open the Trashed view to put them back.`
+      )
+    ) {
+      return;
+    }
+
+    setOrderBusy(true);
+    try {
+      const token = getAccessToken();
+      const r = await fetch('/api/admin/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ action, ids }),
+      });
+      const d = (await r.json().catch(() => ({}))) as {
+        error?: string;
+        changed?: number[];
+        failed?: Array<{ id: number; error: string }>;
+      };
+      if (!r.ok) throw new Error(d?.error || `The store refused the change (HTTP ${r.status}).`);
+
+      const moved = d.changed?.length ?? 0;
+      const failed = d.failed?.length ?? 0;
+      notify(
+        `${action === 'trash' ? 'Moved to trash' : 'Restored'} ${moved} order${moved === 1 ? '' : 's'}.` +
+          (failed ? ` ${failed} could not be changed.` : '')
+      );
+      if (d.failed?.[0]?.error) notify(d.failed[0].error, 'error');
+      setPicked(new Set());
+      refreshOrders();
+    } catch (e) {
+      notify((e as Error).message || 'The orders could not be changed.', 'error');
+    } finally {
+      setOrderBusy(false);
+    }
+  };
+
+  const togglePicked = (id: string) =>
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const saveTracking = (id: string, t: { carrier: string; number: string }) => {
     const next = { ...tracking, [id]: t };
@@ -1335,6 +1413,20 @@ export function AOrders() {
           <p className="text-xs text-gray-500 mt-0.5">Track and fulfil the store&apos;s orders. Export the CSV for the ERP workbook.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex overflow-hidden rounded-lg border border-gray-200">
+            {([['active', 'Orders'], ['trash', 'Trashed']] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setOrderView(key)}
+                aria-pressed={orderView === key}
+                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  orderView === key ? 'bg-[#9a6f16] text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button onClick={refreshOrders} className="btn-glow inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-xs font-semibold transition-colors"><ArrowClockwise size={13} /> Refresh</button>
         </div>
       </div>
@@ -1373,6 +1465,52 @@ export function AOrders() {
         <button onClick={downloadCsv} className="btn-glow inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors"><Download size={13} /> Export CSV (Excel)</button>
       </div>
 
+      {/* Bulk actions for the view on screen */}
+      {picked.size > 0 && (
+        <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm">
+          <span className="text-xs font-semibold text-gray-700">{picked.size} selected</span>
+          <button
+            onClick={() => setPicked(new Set(stripeOrders.map((o) => o.id)))}
+            className="text-xs text-gray-500 underline hover:text-gray-700"
+          >
+            Select all {stripeOrders.length}
+          </button>
+          <button
+            onClick={() => setPicked(new Set())}
+            className="text-xs text-gray-500 underline hover:text-gray-700"
+          >
+            Clear
+          </button>
+          <div className="ml-auto">
+            {orderView === 'active' ? (
+              <button
+                onClick={() => void bulkOrderAction('trash')}
+                disabled={orderBusy}
+                className="btn-glow inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                <Trash size={13} /> {orderBusy ? 'Working…' : 'Move to trash'}
+              </button>
+            ) : (
+              <button
+                onClick={() => void bulkOrderAction('restore')}
+                disabled={orderBusy}
+                className="btn-glow inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                <ArrowClockwise size={13} /> {orderBusy ? 'Working…' : 'Restore'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Trashed orders are the store's own records, kept and reversible. */}
+      {orderView === 'trash' && (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3 text-xs text-gray-600 flex items-center gap-2">
+          <Trash size={14} /> Orders moved out of the list. They are still in the store and nothing has been
+          deleted — select any of them and press Restore to put them back exactly as they were.
+        </div>
+      )}
+
 {/* Orders table — responsive: full table on desktop (container scrolls on tablet), stacked cards on mobile */}
     <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-emerald-100">
       <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
@@ -1394,6 +1532,17 @@ export function AOrders() {
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full min-w-[880px]">
               <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase"><tr>
+                <th className="px-6 py-3 w-[36px]">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all orders"
+                    checked={stripeOrders.length > 0 && picked.size === stripeOrders.length}
+                    onChange={(e) =>
+                      setPicked(e.target.checked ? new Set(stripeOrders.map((o) => o.id)) : new Set())
+                    }
+                    className="rounded border-gray-300"
+                  />
+                </th>
                 <th className="px-6 py-3 w-[190px]">Order</th>
                 <th className="px-6 py-3 w-[200px]">Customer</th>
                 <th className="px-6 py-3 w-[80px]">Items</th>
@@ -1405,6 +1554,15 @@ export function AOrders() {
               <tbody>{visibleOrders.map(({ order: o, tr }) => (
                 <Fragment key={o.id}>
                   <tr className="border-t hover:bg-gray-50 cursor-pointer" onClick={() => setExpanded(expanded === o.id ? null : o.id)}>
+                    <td className="px-6 py-3 align-top" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select order ${o.order_number}`}
+                        checked={picked.has(o.id)}
+                        onChange={() => togglePicked(o.id)}
+                        className="rounded border-gray-300"
+                      />
+                    </td>
                     <td className="px-6 py-3 align-top">
                       <p className="font-mono text-xs font-semibold text-gray-800">{o.order_number}</p>
                       <div className="mt-1">{orderBadges(o)}</div>
@@ -1414,7 +1572,7 @@ export function AOrders() {
                     <td className="px-6 py-3 text-xs text-gray-500 align-top">{fmtItems(o.items).length} item(s)</td>
                     <td className="px-6 py-3 font-semibold align-top">${Number(o.total || 0).toFixed(2)}</td>
                     <td className="px-6 py-3 align-top">
-                      <select value={String(o.status || '')} onChange={(e) => { const s = e.target.value; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
+                      <select value={String(o.status || '')} disabled={orderView === 'trash'} onChange={(e) => { const s = e.target.value; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
                         {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </td>
@@ -1423,11 +1581,11 @@ export function AOrders() {
                         <div className="flex items-center gap-1.5 min-w-0"><Truck size={13} className="text-blue-500 shrink-0" /><div className="min-w-0"><p className="font-mono text-[10px] text-gray-700 truncate">{tr.number}</p><p className="text-[9px] text-gray-400 uppercase">{tr.carrier}</p></div></div>
                       ) : <span className="text-xs text-gray-300">—</span>}
                     </td>
-                    <td className="px-6 py-3 align-top">{orderActions(o)}</td>
+                    <td className="px-6 py-3 align-top">{orderView === 'trash' ? <span className="text-[10px] text-gray-400">Restore it to work on it</span> : orderActions(o)}</td>
                   </tr>
                   {expanded === o.id && (
                     <tr id={`order-detail-${o.id}`} className="border-t bg-gray-50/60">
-                      <td colSpan={7} className="px-6 py-5">
+                      <td colSpan={8} className="px-6 py-5">
                         <div className="flex items-center justify-between mb-3">
                           <p className="text-[10px] uppercase tracking-wider text-gray-400">Order detail — {o.order_number}</p>
                           <button onClick={() => setInvoiceOrder(o)} className="btn-glow px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold flex items-center gap-1.5"><Receipt size={13} /> Maximize — Full Invoice</button>
@@ -1447,7 +1605,16 @@ export function AOrders() {
               <div key={o.id} className="p-4">
                 <div className="flex items-start justify-between gap-2 flex-wrap">
                   <div className="min-w-0">
-                    <p className="font-mono text-xs font-semibold text-gray-800">{o.order_number}</p>
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select order ${o.order_number}`}
+                        checked={picked.has(o.id)}
+                        onChange={() => togglePicked(o.id)}
+                        className="rounded border-gray-300"
+                      />
+                      <span className="font-mono text-xs font-semibold text-gray-800">{o.order_number}</span>
+                    </label>
                     <p className="text-[10px] text-gray-400 mt-0.5">{new Date(o.created_at).toLocaleString()}</p>
                   </div>
                   <div className="shrink-0">{orderBadges(o)}</div>
@@ -1458,7 +1625,7 @@ export function AOrders() {
                   <div className="flex justify-between gap-2"><span className="text-gray-400">Total</span><span className="font-semibold text-gray-900">${Number(o.total || 0).toFixed(2)}</span></div>
                   <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
                     <span className="text-gray-400 shrink-0">Status</span>
-                    <select value={String(o.status || '')} onChange={(e) => { const s = e.target.value; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
+                    <select value={String(o.status || '')} disabled={orderView === 'trash'} onChange={(e) => { const s = e.target.value; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
                       {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
@@ -1469,7 +1636,7 @@ export function AOrders() {
                     ) : <span className="text-xs text-gray-300">—</span>}
                   </div>
                 </div>
-                <div className="mt-3">{orderActions(o)}</div>
+                <div className="mt-3">{orderView === 'trash' ? <span className="text-[10px] text-gray-400">Restore it to work on it</span> : orderActions(o)}</div>
                 {expanded === o.id && (
                   <div id={`order-detail-${o.id}`} className="mt-3 rounded-lg border border-gray-100 bg-gray-50/60 p-3">
                     {orderDetail(o, tr)}

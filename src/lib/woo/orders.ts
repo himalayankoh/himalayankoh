@@ -394,13 +394,33 @@ export function wooWritePlan(status: AppOrderStatus): { status: string; meta: st
   };
 }
 
+/**
+ * Where a trashed order's own status is kept while it sits in the trash.
+ *
+ * WooCommerce has one `trash` status for every order, so it cannot remember what
+ * an order was before. Without this key, restoring would have to invent a state —
+ * turning a delivered order into a pending one — which is worse than leaving it
+ * trashed. The state is written before the order moves, and cleared on restore.
+ */
+export const TRASH_STATUS_META = '_hk_status_before_trash';
+
+/** The outcome of a bulk order change: what moved, and what the store refused. */
+export interface WooOrderBulkResult {
+  changed: number[];
+  failed: Array<{ id: number; error: string }>;
+}
+
 /* ------------------------------------------------------------------ */
 /* Reads                                                              */
 /* ------------------------------------------------------------------ */
 
 export interface WooOrderQuery {
-  /** App statuses; translated to the Woo statuses that carry them. */
-  status?: AppOrderStatus;
+  /**
+   * App statuses; translated to the Woo statuses that carry them. `'trash'` is
+   * passed to WooCommerce as-is, because a trashed order is not a fulfilment
+   * state — see `trashWooOrders` for why the console moves orders there instead.
+   */
+  status?: AppOrderStatus | 'trash';
   search?: string;
   customerId?: number;
   /** Woo order ids, when a caller already knows which orders it may see. */
@@ -424,8 +444,14 @@ export async function listWooOrders(query: WooOrderQuery = {}): Promise<{
   // A meta-only state ('packed', 'shipped') has no Woo status of its own, so the
   // server cannot filter for it: those pages are read by Woo status and then
   // narrowed here, with the store's count adjusted to match what was filtered.
-  const metaOnly = query.status && META_ONLY_STATUSES.includes(query.status);
-  const nativeStatus = query.status ? APP_STATUS_TO_NATIVE[query.status] : 'any';
+  const wantsTrash = query.status === 'trash';
+  const metaOnly =
+    !wantsTrash && !!query.status && META_ONLY_STATUSES.includes(query.status as AppOrderStatus);
+  const nativeStatus = wantsTrash
+    ? 'trash'
+    : query.status
+      ? APP_STATUS_TO_NATIVE[query.status as AppOrderStatus]
+      : 'any';
 
   const response = await wordpressRequestWithMeta<WooOrderLike[]>(`${REST_V3}/orders`, {
     useCredentials: true,
@@ -680,6 +706,119 @@ export async function updateWooOrderStatus(
     const message = error instanceof Error ? error.message : String(error);
     throw new WooOrderError(`Order ${id} could not be updated in the store: ${message}`);
   }
+}
+
+/** One order's status and `_hk_*` meta, read straight from the store. */
+async function readWooOrderForTrash(id: number): Promise<WooOrderLike> {
+  return wordpressRequest<WooOrderLike>(`${REST_V3}/orders/${id}`, {
+    useCredentials: true,
+    params: { _fields: 'id,status,meta_data' },
+    timeoutMs: READ_TIMEOUT,
+  });
+}
+
+/**
+ * The trash bookmark: the app status an order was in before it was trashed, plus the
+ * meta row's id so the row can be removed rather than left blank on restore.
+ */
+function readTrashBookmark(order: WooOrderLike): { id?: number; status: AppOrderStatus } | null {
+  const row = (order.meta_data ?? []).find((entry) => entry?.key === TRASH_STATUS_META);
+  if (!row) return null;
+  const value = row.value == null ? '' : String(row.value).trim();
+  if (!value || !(value in APP_STATUS_TO_NATIVE)) return null;
+  return { id: typeof row.id === 'number' ? row.id : undefined, status: value as AppOrderStatus };
+}
+
+/**
+ * Move orders to the store's own trash.
+ *
+ * Trash, not delete. WooCommerce keeps a trashed order and `restoreWooOrders`
+ * puts it back in the exact state it was in, which a permanent delete could never
+ * do — and these rows are the store's real order records even when the owner
+ * wants them out of the way. The state each order was in is written to meta
+ * *before* it moves, so the restore does not have to guess.
+ *
+ * The move itself is a plain `DELETE` — no `force` — because that is the only thing
+ * the store's REST API accepts: `status: 'trash'` is rejected with
+ * `rest_invalid_param`, verified against the live store. Without `force` nothing is
+ * destroyed; the order simply moves into the bin, reversibly.
+ *
+ * One order failing does not stop the rest: the caller gets both lists and can
+ * say exactly which orders did not move.
+ */
+export async function trashWooOrders(ids: number[]): Promise<WooOrderBulkResult> {
+  requireWooCredentials();
+  const changed: number[] = [];
+  const failed: Array<{ id: number; error: string }> = [];
+
+  for (const id of ids) {
+    try {
+      const order = await readWooOrderForTrash(id);
+      if (String(order.status ?? '') === 'trash') {
+        failed.push({ id, error: 'Already in the trash.' });
+        continue;
+      }
+      // Remember the state first: the store's own `trash` status is the same for
+      // every trashed order and cannot say what this one was.
+      const previous = appStatusFromWoo(order);
+      await wordpressRequest<WooOrderLike>(`${REST_V3}/orders/${id}`, {
+        useCredentials: true,
+        method: 'PUT',
+        body: { meta_data: metaPayload({ [TRASH_STATUS_META]: previous }) },
+        timeoutMs: 30_000,
+      });
+      await trashWooOrder(id);
+      changed.push(id);
+    } catch (error) {
+      failed.push({ id, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return { changed, failed };
+}
+
+/** Put trashed orders back in the state they were in before they were trashed. */
+export async function restoreWooOrders(ids: number[]): Promise<WooOrderBulkResult> {
+  requireWooCredentials();
+  const changed: number[] = [];
+  const failed: Array<{ id: number; error: string }> = [];
+
+  for (const id of ids) {
+    try {
+      const order = await readWooOrderForTrash(id);
+      const bookmark = readTrashBookmark(order);
+      if (!bookmark) {
+        // Never guess. With no remembered state, restoring has to invent one — which is
+        // how a delivered order once came back as pending. Refuse, and leave it put.
+        failed.push({
+          id,
+          error: 'No remembered status to restore to; left in the trash rather than guessed.',
+        });
+        continue;
+      }
+      const plan = wooWritePlan(bookmark.status);
+      // Re-state the app status that belongs with the restored Woo status, and remove
+      // the bookmark row (by id) so the order carries no leftover custom field.
+      const meta: Array<{ id?: number; key: string; value: string | null }> = [
+        { key: HK_META.status, value: plan.meta ?? '' },
+      ];
+      if (bookmark.id !== undefined) {
+        meta.push({ id: bookmark.id, key: TRASH_STATUS_META, value: null });
+      }
+
+      await wordpressRequest<WooOrderLike>(`${REST_V3}/orders/${id}`, {
+        useCredentials: true,
+        method: 'PUT',
+        body: { status: plan.status, meta_data: meta },
+        timeoutMs: 30_000,
+      });
+      changed.push(id);
+    } catch (error) {
+      failed.push({ id, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  return { changed, failed };
 }
 
 /**

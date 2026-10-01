@@ -20,7 +20,9 @@ import {
   WooOrderError,
   listWooOrders,
   orderWithItemsFromWoo,
+  restoreWooOrders,
   statsFromWooOrders,
+  trashWooOrders,
   type AppOrderStatus,
 } from '@/lib/woo/orders';
 import { STATS_WINDOW, pageCoversStatsWindow } from '@/lib/admin/orderStatsWindow';
@@ -44,9 +46,14 @@ export async function GET(request: Request) {
 
   const params = new URL(request.url).searchParams;
   const statusParam = params.get('status') || '';
-  const status = APP_STATUSES.includes(statusParam as AppOrderStatus)
-    ? (statusParam as AppOrderStatus)
-    : undefined;
+  // `trash` is not a fulfilment state — it is a request for the orders the console
+  // has moved out of the way. It passes through to WooCommerce as its own status.
+  const status: AppOrderStatus | 'trash' | undefined =
+    statusParam === 'trash'
+      ? 'trash'
+      : APP_STATUSES.includes(statusParam as AppOrderStatus)
+        ? (statusParam as AppOrderStatus)
+        : undefined;
 
   const search = params.get('search') || undefined;
   const pageNumber = Number(params.get('page') ?? '1') || 1;
@@ -54,12 +61,16 @@ export async function GET(request: Request) {
 
   // One WooCommerce read whenever the page already is the stats window; see
   // `pageCoversStatsWindow` for why that is sound and when it is not.
-  const reusesPage = pageCoversStatsWindow({
-    status,
-    search,
-    page: pageNumber,
-    perPage,
-  });
+  // The statistics describe the shop's real trade, so a trash read never doubles
+  // as the stats window: the KPI row must not be counted from deleted rows.
+  const reusesPage =
+    status !== 'trash' &&
+    pageCoversStatsWindow({
+      status,
+      search,
+      page: pageNumber,
+      perPage,
+    });
 
   try {
     // When the page read is *not* the stats window, the two reads describe
@@ -84,6 +95,51 @@ export async function GET(request: Request) {
   } catch (error) {
     const status = error instanceof WooOrderError ? error.status : 502;
     const message = error instanceof Error ? error.message : 'The orders could not be read.';
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+/**
+ * Move orders to the store's trash, or put them back.
+ *
+ * Deliberately not a delete. These are the store's own order records, and the
+ * owner's intent — "get these out of my list" — is served by trashing them, which
+ * WooCommerce can undo. A permanent delete is offered nowhere in this console,
+ * because nothing here can verify an order was really a test order.
+ */
+export async function POST(request: Request) {
+  const auth = await verifyAdminRequest(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  let body: { action?: unknown; ids?: unknown };
+  try {
+    body = (await request.json()) as { action?: unknown; ids?: unknown };
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+  }
+
+  const action = body.action === 'trash' || body.action === 'restore' ? body.action : null;
+  if (!action) {
+    return NextResponse.json({ error: 'action must be "trash" or "restore".' }, { status: 400 });
+  }
+
+  const ids = Array.isArray(body.ids)
+    ? body.ids.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+    : [];
+  if (ids.length === 0) {
+    return NextResponse.json({ error: 'A list of order ids is required.' }, { status: 400 });
+  }
+  // Bounded so one request cannot walk the whole order book against a slow store.
+  if (ids.length > 50) {
+    return NextResponse.json({ error: 'At most 50 orders can be changed at once.' }, { status: 400 });
+  }
+
+  try {
+    const result = action === 'trash' ? await trashWooOrders(ids) : await restoreWooOrders(ids);
+    return NextResponse.json({ ok: result.failed.length === 0, action, ...result });
+  } catch (error) {
+    const status = error instanceof WooOrderError ? error.status : 502;
+    const message = error instanceof Error ? error.message : 'The orders could not be changed.';
     return NextResponse.json({ error: message }, { status });
   }
 }
