@@ -20,6 +20,7 @@ import {
   CheckSquare,
   CloudArrowUp,
   Copy,
+  Download,
   Images,
   ImageSquare,
   LinkSimple,
@@ -34,6 +35,7 @@ import {
 import { useApp } from '../App';
 import {
   deleteLibraryImage,
+  downloadLibraryImage,
   importLibraryImageFromUrl,
   listLibraryImages,
   updateLibraryImage,
@@ -97,6 +99,7 @@ export default function ImageLibrary() {
   const [dragging, setDragging] = useState(false);
   const [confirmIds, setConfirmIds] = useState<number[] | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [downloading, setDownloading] = useState<Set<number>>(new Set());
 
   const fileInput = useRef<HTMLInputElement | null>(null);
   const dragDepth = useRef(0);
@@ -234,20 +237,44 @@ export default function ImageLibrary() {
     }
   };
 
+  const download = async (image: LibraryImage) => {
+    setDownloading((current) => new Set(current).add(image.id));
+    try {
+      const filename = await downloadLibraryImage(image);
+      notify(`Saved “${filename}”.`);
+    } catch (error) {
+      notify((error as Error).message || 'The image could not be downloaded.', 'error');
+    } finally {
+      setDownloading((current) => {
+        const next = new Set(current);
+        next.delete(image.id);
+        return next;
+      });
+    }
+  };
+
   const confirmList = useMemo(
     () => (confirmIds ?? []).map((id) => (images ?? []).find((image) => image.id === id)).filter(Boolean) as LibraryImage[],
     [confirmIds, images]
   );
 
+  /** What the confirm dialog is actually about to do, decided before it opens. */
+  const confirmPlan = useMemo(() => {
+    const deletable = confirmList.filter((image) => image.usedBy.length === 0);
+    const blocked = confirmList.filter((image) => image.usedBy.length > 0);
+    return { deletable, blocked };
+  }, [confirmList]);
+
   const runDelete = async () => {
-    const ids = confirmIds ?? [];
     // In-use images are refused by the server; filtering here keeps the operation
     // honest about what it will actually do.
-    const deletable = confirmList.filter((image) => image.usedBy.length === 0).map((image) => image.id);
-    const skipped = ids.length - deletable.length;
+    const deletable = confirmPlan.deletable.map((image) => image.id);
+    const skipped = confirmPlan.blocked.length;
     if (deletable.length === 0) {
-      notify('Nothing deleted — every selected image is used by a product.', 'error');
-      setConfirmIds(null);
+      notify(
+        `Nothing deleted — ${skipped === 1 ? 'that image is' : 'those images are'} still shown on a product. Open the image to see which one.`,
+        'error'
+      );
       return;
     }
 
@@ -270,7 +297,7 @@ export default function ImageLibrary() {
     if (removed > 0) {
       notify(
         `Deleted ${removed} image${removed === 1 ? '' : 's'}.` +
-          (skipped > 0 ? ` ${skipped} skipped — still used by a product.` : '')
+          (skipped > 0 ? ` ${skipped} skipped — still shown on a product.` : '')
       );
       await load({ silent: true });
     }
@@ -631,6 +658,20 @@ export default function ImageLibrary() {
                       >
                         <PencilLine size={13} />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void download(image)}
+                        disabled={downloading.has(image.id)}
+                        title="Download this image"
+                        aria-label="Download this image"
+                        className="rounded-md p-1.5 text-white/85 hover:bg-white/15 hover:text-white disabled:opacity-50"
+                      >
+                        {downloading.has(image.id) ? (
+                          <SpinnerGap size={13} className="animate-spin" />
+                        ) : (
+                          <Download size={13} />
+                        )}
+                      </button>
                       <a
                         href={image.url}
                         target="_blank"
@@ -641,13 +682,19 @@ export default function ImageLibrary() {
                       >
                         <ArrowSquareOut size={13} />
                       </a>
+                      {/*
+                        Never disabled. A greyed-out button that does nothing is
+                        exactly what made "delete doesn't work" hard to diagnose:
+                        the click produced no dialog, no message, nothing. It now
+                        always opens the confirmation, and that confirmation says
+                        which product is holding the image.
+                      */}
                       <button
                         type="button"
                         onClick={() => setConfirmIds([image.id])}
-                        disabled={inUse}
-                        title={inUse ? 'Used by a product — remove it from the product first' : 'Delete'}
+                        title={inUse ? 'Shown on a product — you will be told which one' : 'Delete'}
                         aria-label="Delete image"
-                        className="ml-auto rounded-md p-1.5 text-white/85 hover:bg-red-500/70 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        className="ml-auto rounded-md p-1.5 text-white/85 hover:bg-red-500/70 hover:text-white"
                       >
                         <Trash size={13} />
                       </button>
@@ -845,6 +892,20 @@ export default function ImageLibrary() {
                 >
                   <Copy size={14} /> Copy URL
                 </button>
+                <button
+                  type="button"
+                  onClick={() => void download(open)}
+                  disabled={downloading.has(open.id)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-60"
+                  style={{ borderColor: BORDER, color: INK }}
+                >
+                  {downloading.has(open.id) ? (
+                    <SpinnerGap size={14} className="animate-spin" />
+                  ) : (
+                    <Download size={14} />
+                  )}
+                  {downloading.has(open.id) ? 'Saving…' : 'Download'}
+                </button>
                 <a
                   href={open.url}
                   target="_blank"
@@ -857,9 +918,8 @@ export default function ImageLibrary() {
                 <button
                   type="button"
                   onClick={() => setConfirmIds([open.id])}
-                  disabled={open.usedBy.length > 0}
-                  title={open.usedBy.length > 0 ? 'Remove it from its product first' : 'Delete this image'}
-                  className="ml-auto inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+                  title={open.usedBy.length > 0 ? 'Shown on a product — you will be told which one' : 'Delete this image'}
+                  className="ml-auto inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold"
                   style={{ borderColor: '#e3b4a0', color: '#B23B24' }}
                 >
                   <Trash size={14} /> Delete
@@ -880,25 +940,70 @@ export default function ImageLibrary() {
         >
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="text-lg font-bold" style={{ color: INK }}>
-              Delete {confirmIds.length} image{confirmIds.length === 1 ? '' : 's'}?
+              {confirmPlan.deletable.length === 0
+                ? 'This image cannot be deleted yet'
+                : `Delete ${confirmPlan.deletable.length} image${confirmPlan.deletable.length === 1 ? '' : 's'}?`}
             </h3>
-            <p className="mt-2 text-sm" style={{ color: MUTED }}>
-              The file is removed from the WordPress media library. This cannot be undone.
-            </p>
-            <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-xl border p-3" style={{ borderColor: BORDER }}>
-              {confirmList.map((image) => (
-                <li key={image.id} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate" style={{ color: INK }}>
-                    {displayName(image)}
-                  </span>
-                  {image.usedBy.length > 0 && (
-                    <span className="shrink-0 font-semibold" style={{ color: AMBER }}>
-                      in use — will be skipped
-                    </span>
+
+            {/*
+              The old dialog said nothing about why an image could not go. The
+              owner pressed Delete, the file stayed, and there was no explanation
+              anywhere — so the feature read as broken. This names the product.
+            */}
+            {confirmPlan.blocked.length > 0 && (
+              <div
+                className="mt-3 rounded-xl border p-3 text-sm"
+                style={{ borderColor: '#e6cd9a', background: '#fdf7e8', color: '#7a5312' }}
+              >
+                <p className="flex items-center gap-2 font-semibold">
+                  <WarningCircle size={16} weight="fill" />
+                  {confirmPlan.blocked.length === 1
+                    ? 'One of these images is shown on a product'
+                    : `${confirmPlan.blocked.length} of these images are shown on products`}
+                </p>
+                <p className="mt-1.5 text-xs leading-relaxed">
+                  Deleting an image a product displays would leave that product with a broken photo on
+                  the storefront, so it is kept. Remove it from the product first — the links below open
+                  the product.
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {confirmPlan.blocked.flatMap((image) =>
+                    image.usedBy.map((usage) => (
+                      <li key={`${image.id}-${usage.id}`}>
+                        <Link
+                          to={`/admin/products/edit/${usage.id}`}
+                          className="text-xs font-semibold underline underline-offset-2"
+                          style={{ color: '#7a5312' }}
+                        >
+                          {usage.name}
+                        </Link>
+                      </li>
+                    ))
                   )}
-                </li>
-              ))}
-            </ul>
+                </ul>
+              </div>
+            )}
+
+            {confirmPlan.deletable.length > 0 && (
+              <>
+                <p className="mt-3 text-sm" style={{ color: MUTED }}>
+                  The file is removed from the WordPress media library. This cannot be undone.
+                </p>
+                <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-xl border p-3" style={{ borderColor: BORDER }}>
+                  {confirmPlan.deletable.map((image) => (
+                    <li key={image.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate" style={{ color: INK }}>
+                        {displayName(image)}
+                      </span>
+                      <span className="shrink-0 text-[11px]" style={{ color: MUTED }}>
+                        #{image.id}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
@@ -906,18 +1011,22 @@ export default function ImageLibrary() {
                 className="rounded-lg border px-4 py-2 text-sm font-semibold"
                 style={{ borderColor: BORDER, color: INK }}
               >
-                Cancel
+                {confirmPlan.deletable.length === 0 ? 'Close' : 'Cancel'}
               </button>
-              <button
-                type="button"
-                onClick={() => void runDelete()}
-                disabled={deleting}
-                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                style={{ background: '#B23B24' }}
-              >
-                {deleting ? <SpinnerGap size={14} className="animate-spin" /> : <Trash size={14} />}
-                {deleting ? 'Deleting…' : 'Delete'}
-              </button>
+              {confirmPlan.deletable.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void runDelete()}
+                  disabled={deleting}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  style={{ background: '#B23B24' }}
+                >
+                  {deleting ? <SpinnerGap size={14} className="animate-spin" /> : <Trash size={14} />}
+                  {deleting
+                    ? 'Deleting…'
+                    : `Delete ${confirmPlan.deletable.length} image${confirmPlan.deletable.length === 1 ? '' : 's'}`}
+                </button>
+              )}
             </div>
           </div>
         </div>

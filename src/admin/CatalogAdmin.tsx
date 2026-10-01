@@ -9,7 +9,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  Plus, PencilSimple, Trash, ArrowLeft, Copy, Eye,
+  Plus, PencilSimple, Trash, ArrowLeft, Copy, Eye, Images,
   MagnifyingGlass, FloppyDisk, Image as ImageIcon, Stack, Tag, Globe, Truck, Package, CurrencyDollar,
   GearSix, X, Download, List, Megaphone, Warning, Brain, UploadSimple, Sparkle, CaretDown, CaretUp, ArrowSquareOut, Rocket, BookBookmark,
   DotsThreeVertical, Clock, CheckCircle, DotsSixVertical, ArrowsClockwise, ArrowsHorizontal, Sun,
@@ -51,6 +51,8 @@ import {
   type CatalogColumnKey, type CatalogColumnWidths,
 } from '../features/catalog/tableColumns';
 import { parseHtmlPage } from '../features/ai/importer';
+import { listLibraryImages } from '../lib/media/libraryClient';
+import type { LibraryImage } from '../lib/media/libraryTypes';
 import { prepareImageForUpload } from '../lib/image-upload';
 import { getListingPlaybook, validateListingAgainstPlaybook, supplierBrandForUrl } from '../features/catalog/listingPlaybook';
 import { humanSaveError } from '../features/catalog/saveError';
@@ -3918,6 +3920,192 @@ async function adjustBrightness(dataUrl: string, brightness: number, contrast: n
 
 function clamp(v: number) { return Math.max(0, Math.min(255, Math.round(v))); }
 
+/**
+ * One product photo, inside the editor's picker tile.
+ *
+ * The editor used to hide a failing <img> outright (`style.display = 'none'`),
+ * which left the grey placeholder showing and explained nothing — an upload that
+ * could not be displayed looked exactly like an image that had never been added.
+ * This says the picture failed rather than pretending there is none.
+ */
+function ProductThumb({ url, alt }: { url: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-gray-50 p-2 text-center">
+        <Warning size={18} className="text-red-400" />
+        <span className="text-[10px] font-semibold leading-tight text-red-500">This image could not load</span>
+        <span className="break-all text-[9px] leading-tight text-gray-400">{url}</span>
+      </span>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt={alt}
+      loading="lazy"
+      className="absolute inset-0 h-full w-full object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/**
+ * "From library" — attach images the store already holds.
+ *
+ * The product editor could only take a file off the machine or a URL, so an image
+ * already sitting in the media library was invisible from here unless the owner
+ * happened to know its URL. This lists the same library `/admin/media` shows and
+ * attaches the chosen files to the product — it never re-uploads them, so the
+ * gallery and the media library stay the same set of files.
+ */
+function ImageLibraryPicker({
+  open,
+  onClose,
+  onAdd,
+  attachedUrls,
+  room,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onAdd: (urls: string[]) => void;
+  attachedUrls: string[];
+  room: number;
+}) {
+  const [images, setImages] = useState<LibraryImage[] | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [chosen, setChosen] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!open) return;
+    setChosen(new Set());
+    setError('');
+    setLoading(true);
+    listLibraryImages({ perPage: 48 })
+      .then((page) => setImages(page.images))
+      .catch((e) => {
+        setImages([]);
+        setError((e as Error).message || 'The image library could not be read.');
+      })
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  if (!open) return null;
+
+  const chosenUrls = (images ?? [])
+    .filter((image) => chosen.has(image.id))
+    .map((image) => image.url);
+
+  const toggle = (image: LibraryImage) =>
+    setChosen((current) => {
+      const next = new Set(current);
+      if (next.has(image.id)) next.delete(image.id);
+      else if (next.size < room) next.add(image.id);
+      return next;
+    });
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-3 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Choose images from the library"
+    >
+      <div className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b px-5 py-4">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Add from library</h3>
+            <p className="text-xs text-gray-500">
+              Images already stored for the store. Pick up to {room} — they are attached to this product,
+              not uploaded again.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="min-h-[12rem] flex-1 overflow-y-auto p-4">
+          {loading && <p className="py-10 text-center text-sm text-gray-400">Loading the library…</p>}
+          {!loading && error && (
+            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>
+          )}
+          {!loading && !error && (images ?? []).length === 0 && (
+            <p className="py-10 text-center text-sm text-gray-400">The library has no images yet.</p>
+          )}
+          {!loading && (images ?? []).length > 0 && (
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+              {(images ?? []).map((image) => {
+                const isAttached = hasCatalogImageUrl(attachedUrls, image.url);
+                const isChosen = chosen.has(image.id);
+                return (
+                  <button
+                    key={image.id}
+                    type="button"
+                    disabled={isAttached}
+                    onClick={() => toggle(image)}
+                    title={isAttached ? 'Already on this product' : image.title || image.url}
+                    className={`relative aspect-square overflow-hidden rounded-xl border-2 transition ${
+                      isChosen ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'
+                    } ${isAttached ? 'cursor-not-allowed opacity-40' : 'hover:border-blue-300'}`}
+                  >
+                    <img
+                      src={image.thumbnail || image.url}
+                      alt={image.alt || image.title}
+                      loading="lazy"
+                      className="h-full w-full object-cover"
+                    />
+                    {isChosen && (
+                      <span className="absolute left-1.5 top-1.5 rounded bg-blue-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        ADD
+                      </span>
+                    )}
+                    {isAttached && (
+                      <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-[10px] font-semibold text-white">
+                        on product
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
+          <span className="mr-auto text-xs text-gray-500">
+            {chosen.size} selected · {room} slot{room === 1 ? '' : 's'} left
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={chosenUrls.length === 0}
+            onClick={() => {
+              onAdd(chosenUrls);
+              onClose();
+            }}
+            className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Add {chosenUrls.length} image{chosenUrls.length === 1 ? '' : 's'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // IMAGE MANAGER
 // ============================================================================
@@ -3993,6 +4181,8 @@ function ImageManager({ product, onProduct }: { product: CatalogProduct; onProdu
     }
   };
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const [showLibrary, setShowLibrary] = useState(false);
 
   const addByUrl = async () => {
     const u = url.trim();
@@ -4238,6 +4428,9 @@ function ImageManager({ product, onProduct }: { product: CatalogProduct; onProdu
           <button onClick={() => fileRef.current?.click()} disabled={uploading || product.images.length >= 5} className="btn-glow px-3.5 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg text-sm flex items-center gap-1.5">
             <UploadSimple size={15} />{uploading ? 'Working…' : `Upload from PC (${product.images.length}/5)`}
           </button>
+          <button onClick={() => setShowLibrary(true)} disabled={uploading || product.images.length >= 5} className="px-3.5 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 rounded-lg text-sm flex items-center gap-1.5" title="Attach images the store already holds, without uploading them again">
+            <Images size={15} />From library
+          </button>
           <div className="flex-1 min-w-[200px]">
             <input value={url} onChange={(e) => setUrl(e.target.value)} className={I} placeholder="Image URL — or paste a product page to fetch ALL its images" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); importAllFromUrl(); } }} />
           </div>
@@ -4253,6 +4446,35 @@ function ImageManager({ product, onProduct }: { product: CatalogProduct; onProdu
         <p className="text-xs text-gray-400 mt-2">Up to 5 images. Images are attached through the configured staging media backend and keep their durable public URL. “Find by name” searches the store for this product and pulls its images (AI drops the ones that are not it); paste a product page URL + “Fetch all from page” to pull every image from a page you already know. Then ✕ the ones you do not want.</p>
       </div>
 
+      <ImageLibraryPicker
+        open={showLibrary}
+        onClose={() => setShowLibrary(false)}
+        attachedUrls={product.images.map((image) => image.url)}
+        room={Math.max(0, 5 - product.images.length)}
+        onAdd={(urls) => {
+          const startLen = product.images.length;
+          const fresh = urls.filter((u) => !hasCatalogImageUrl(product.images.map((image) => image.url), u));
+          if (!fresh.length) return;
+          onProduct({
+            ...product,
+            images: [
+              ...product.images,
+              ...fresh.map((u, i) => ({
+                id: uid(),
+                productId: product.id,
+                url: u,
+                altText: product.name || '',
+                kind: 'product' as const,
+                isPrimary: startLen === 0 && i === 0,
+                sortOrder: startLen + i,
+                variantId: null,
+              })),
+            ],
+          });
+          notify(fresh.length === 1 ? 'Image added from the library' : `${fresh.length} images added from the library`);
+        }}
+      />
+
       {/* Image grid with thumbnail picker */}
       {product.images.length === 0 ? (
         <div className="text-center py-10 text-gray-400 border border-dashed rounded-xl"><ImageIcon size={28} className="mx-auto mb-2 text-gray-300" />No images yet — upload or add at least one.</div>
@@ -4263,9 +4485,7 @@ function ImageManager({ product, onProduct }: { product: CatalogProduct; onProdu
               {/* Image preview */}
               <button type="button" onClick={() => setPrimary(idx)} className="block w-full relative aspect-square bg-gray-100" title="Click to make this the main thumbnail">
                 <span className="absolute inset-0 flex items-center justify-center text-gray-300"><ImageIcon size={24} className="shrink-0" /></span>
-                {img.url?.trim() ? (
-                  <img src={img.url} alt={img.altText || ''} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                ) : null}
+                {img.url?.trim() ? <ProductThumb url={img.url} alt={img.altText || ''} /> : null}
               </button>
               {img.isPrimary && <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-blue-500 text-white text-[10px] font-bold rounded">MAIN</span>}
               <button type="button" onClick={() => remove(idx)} className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 hover:bg-red-600 shadow" title="Remove image">✕</button>

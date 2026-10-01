@@ -118,6 +118,54 @@ export async function updateLibraryImage(input: {
 }
 
 /**
+ * The filename the server chose, read back out of `Content-Disposition`. The
+ * header carries both `filename` and `filename*`; the plain one is what the
+ * anchor needs, and the server has already stripped anything unsafe from it.
+ */
+function filenameFromDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const match = header.match(/filename="([^"]*)"/i);
+  const name = (match?.[1] || '').trim();
+  return name || fallback;
+}
+
+/**
+ * Saves one image to the machine.
+ *
+ * The file comes through `/api/admin/media/library/download` rather than straight
+ * from the media host: WordPress serves images `Content-Disposition: inline` with
+ * no CORS header, so an `<a download>` would open a tab and a client-side `fetch`
+ * could not read the body. Fetched as a blob here, so the admin bearer token
+ * travels in a header — never in a query string the browser would log.
+ *
+ * Returns the filename it saved under, so the caller can say which file landed.
+ */
+export async function downloadLibraryImage(image: { id: number; url: string }): Promise<string> {
+  const response = await fetch(
+    `/api/admin/media/library/download?id=${encodeURIComponent(String(image.id))}`,
+    { headers: await authHeaders() }
+  );
+  if (!response.ok) throw new Error(await readError(response, 'The image could not be downloaded.'));
+
+  const blob = await response.blob();
+  const fallback = image.url.split('/').pop()?.split('?')[0] || `image-${image.id}`;
+  const filename = filenameFromDisposition(response.headers.get('content-disposition'), fallback);
+
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  // Revoking immediately can cancel the save in some browsers; give it a moment.
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+
+  return filename;
+}
+
+/**
  * Deletes an image. Refused by the server while a product still renders it, with
  * that product named — the message is the server's, not a generic failure.
  */
