@@ -28,6 +28,7 @@ import {
   uid, isWooId,
   type ProductInput,
 } from '../features/catalog/repository';
+import { createDirtyFields, type DirtyFieldTracker } from './dirtyFields';
 import { listRecommendations } from '../features/hermes/repository';
 import type { HermesRecommendationRow } from '../features/hermes/types';
 import {
@@ -2225,7 +2226,14 @@ export function CatalogProductEditor() {
   );
   const [p, setP] = useState<CatalogProduct | null>(null);
   const [originalProduct, setOriginalProduct] = useState<CatalogProduct | null>(null);
-  const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set());
+  // The edited-field set lives in a ref, not in state: a mark has to be visible
+  // to a save that runs in the same tick (the SEO tab's "Generate SEO & Save"
+  // writes four fields and saves immediately), and a `useState` update is only
+  // visible after the next render — so the generated SEO was never in the patch
+  // while the toast said it was saved. See `admin/dirtyFields.ts`.
+  const dirtyFieldsRef = useRef<DirtyFieldTracker | null>(null);
+  if (!dirtyFieldsRef.current) dirtyFieldsRef.current = createDirtyFields();
+  const dirtyFields = dirtyFieldsRef.current;
   // Status the product had when the editor loaded it. The Listing Playbook
   // gate blocks *publishing* (transition into Live); it must NOT block edits
   // of a listing that is already live — otherwise legacy live products
@@ -2245,7 +2253,7 @@ export function CatalogProductEditor() {
         setOriginStatus(prod.status);
         setP(prod);
         setOriginalProduct(prod);
-        setDirtyFields(new Set());
+        dirtyFields.clear();
         setHydrated(true);
       } else {
         const initialNew: CatalogProduct = {
@@ -2263,7 +2271,7 @@ export function CatalogProductEditor() {
         setP(initialNew);
         setOriginalProduct(initialNew);
         setOriginStatus(null);
-        setDirtyFields(new Set());
+        dirtyFields.clear();
         setHydrated(true);
       }
     } catch (e) {
@@ -2271,12 +2279,15 @@ export function CatalogProductEditor() {
     } finally {
       setLoading(false);
     }
-  }, [paramId, nav]);
+    // `dirtyFields` is the stable tracker from `admin/dirtyFields.ts` — one
+    // object for the editor's lifetime — so listing it changes nothing except
+    // telling the linter the truth.
+  }, [paramId, nav, dirtyFields]);
 
   useEffect(() => { void load(); }, [paramId]);
 
   const set = <K extends keyof CatalogProduct>(k: K, v: CatalogProduct[K]) => {
-    setDirtyFields((prev) => new Set(prev).add(k));
+    dirtyFields.mark(k as string);
     setP((prev) => (prev ? { ...prev, [k]: v } : prev));
   };
 
@@ -2290,7 +2301,7 @@ export function CatalogProductEditor() {
    * re-maining an image therefore changed nothing but this screen.
    */
   const onImagesChange = (next: CatalogProduct) => {
-    setDirtyFields((prev) => new Set(prev).add('images'));
+    dirtyFields.mark('images');
     setP(next);
   };
 
@@ -2299,7 +2310,7 @@ export function CatalogProductEditor() {
     const productToSave = productOverride ?? p;
     if (!productToSave) return;
     if (!productToSave.name.trim()) { setSaveError('Product name is required.'); notify('Product name is required', 'error'); return; }
-    if (!isNew && dirtyFields.size === 0 && !productOverride) {
+    if (!isNew && dirtyFields.size() === 0 && !productOverride) {
       notify('No changes to save');
       return;
     }
@@ -2569,7 +2580,7 @@ export function CatalogProductEditor() {
       } else {
         setP(nextProduct);
         setOriginalProduct(nextProduct);
-        setDirtyFields(new Set());
+        dirtyFields.clear();
       }
     } catch (e) {
       setSaveStatus('idle');

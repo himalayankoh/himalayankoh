@@ -53,6 +53,12 @@ export interface WooProductPatch {
   weight?: number | null;
   featured?: boolean;
   seo?: { title?: string | null; description?: string | null };
+  /**
+   * `_himalayan_koh_seo_keywords`, stored beside the SEO title and description.
+   * The route has always accepted it (`PRODUCT_PATCH_FIELDS`); this type did not
+   * name it, so the SEO screen could not send the keywords it had generated.
+   */
+  seoKeywords?: string[];
 }
 
 /** A variation edit, addressed by its Woo variation id. */

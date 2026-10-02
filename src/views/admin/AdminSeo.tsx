@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuthContext } from '../../context/AuthContext';
 import { getFreshAccessToken } from '../../services/wordpressAdminAuth';
+import { getWooAdminProduct, updateWooAdminProduct } from '../../lib/admin/wooProductApi';
 import { NICHE_SECTIONS } from '../../lib/catalog/nicheSections';
 
 interface ProductItem {
@@ -84,6 +85,11 @@ export default function AdminSeo() {
 
   // Clipboard feedback
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Writing the reviewed draft onto the product, and the store's own answer.
+  const [applying, setApplying] = useState(false);
+  const [applyNotice, setApplyNotice] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const getAuthToken = useCallback(async (): Promise<string> => {
     if (session?.access_token) return session.access_token;
@@ -232,6 +238,68 @@ export default function AdminSeo() {
       setGenError(err instanceof Error ? err.message : 'SEO generation failed.');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  /**
+   * Writes the reviewed draft onto the product in the store.
+   *
+   * It goes through the same write seam the product editor saves with — the
+   * values land in the product's own `meta_data` (`_yoast_wpseo_title`,
+   * `_yoast_wpseo_metadesc`, `_himalayan_koh_seo_keywords`), which is what the
+   * storefront reads and what the store's own admin shows. The product is then
+   * read back, because "saved" is only honest if the store hands the value back:
+   * a write that is kept but not returned would otherwise be reported as done.
+   *
+   * Categories are not products: a shelf's copy lives in the hub's content, and
+   * that is edited on the Category Hubs screen, so this stays a product action.
+   */
+  const applyToStore = async () => {
+    if (!selectedProduct || !draft) return;
+    setApplying(true);
+    setApplyError(null);
+    setApplyNotice(null);
+    const title = reviewTitle.trim();
+    const description = reviewMeta.trim();
+    try {
+      // A form left open past the session's expiry must not fail the write.
+      await getFreshAccessToken();
+      const keywords = [draft.primaryKeyword, ...draft.secondaryKeywords]
+        .map((keyword) => keyword.trim())
+        .filter((keyword, index, all) => keyword.length > 0 && all.indexOf(keyword) === index);
+
+      const result = await updateWooAdminProduct(selectedProduct.id, {
+        seo: { title: title || null, description: description || null },
+        seoKeywords: keywords,
+      });
+
+      const refused = result.ignored.map((entry) => `${entry.field}: ${entry.reason}`);
+      if (refused.length) {
+        setApplyError(`The store would not store: ${refused.join('; ')}`);
+      }
+
+      const stored = await getWooAdminProduct(selectedProduct.id)
+        .then((answer) => answer.product)
+        .catch(() => null);
+      const storedTitle = stored?.seoTitle ?? null;
+
+      if (!stored) {
+        setApplyNotice(
+          'The store accepted the write, but the product could not be read back to confirm it. Check the product in WooCommerce.'
+        );
+      } else if (storedTitle === (title || null)) {
+        setApplyNotice(
+          `Saved and read back from the store: ${title ? `“${title}”` : 'the SEO title is now empty'}. The storefront shows it on its next render.`
+        );
+      } else {
+        setApplyNotice(
+          `The store reports ${storedTitle ? `“${storedTitle}”` : 'nothing'} for the SEO title, not what was sent. Check the product in WooCommerce.`
+        );
+      }
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : 'The SEO could not be written to the store.');
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -652,25 +720,41 @@ export default function AdminSeo() {
                     <div className="flex items-start gap-3">
                       <Info size={18} className="text-gray-400 shrink-0 mt-0.5" />
                       <div className="text-xs text-gray-600 space-y-1">
-                        <p className="font-semibold text-gray-800">Staging WordPress REST Write Gated</p>
-                        <p>
-                          Staging WordPress/Yoast REST API currently provides read access to rendered SEO metadata, but writeable REST meta registration (
-                          <code className="bg-gray-200 px-1 py-0.5 rounded text-[11px]">_yoast_wpseo_title</code>,{' '}
-                          <code className="bg-gray-200 px-1 py-0.5 rounded text-[11px]">_yoast_wpseo_metadesc</code>
-                          ) is not yet exposed for direct REST mutations on the staging endpoint.
-                        </p>
-                        <p className="text-gray-500">
-                          Direct writes are safely disabled to prevent fake or failing mutations. Use the copy buttons above to paste generated values directly into WordPress or your staging admin editor.
-                        </p>
+                        {sourceMode === 'product' ? (
+                          <>
+                            <p className="font-semibold text-gray-800">
+                              Written to the product in the store, then read back
+                            </p>
+                            <p>
+                              Applying writes the reviewed title, meta description and keywords onto{' '}
+                              {selectedProduct ? selectedProduct.name : 'the selected product'} as the store&apos;s own SEO fields (
+                              <code className="bg-gray-200 px-1 py-0.5 rounded text-[11px]">_yoast_wpseo_title</code>,{' '}
+                              <code className="bg-gray-200 px-1 py-0.5 rounded text-[11px]">_yoast_wpseo_metadesc</code>
+                              ) — the same write the product editor&apos;s SEO tab makes — and then reads the product
+                              back, so &quot;saved&quot; here means the store returned the value.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="font-semibold text-gray-800">A shelf&apos;s own copy is edited elsewhere</p>
+                            <p>
+                              A category is not a product: its title, meta description and landing copy belong to the
+                              hub, and they are edited on the <span className="font-medium text-gray-800">Category Hubs</span>{' '}
+                              screen. Use the copy buttons above if you want the draft somewhere else.
+                            </p>
+                          </>
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3 pt-2">
+                    <div className="flex flex-wrap items-center gap-3 pt-2">
                       <button
-                        disabled
-                        className="px-4 py-2 bg-gray-200 text-gray-400 text-xs font-semibold rounded-xl cursor-not-allowed"
+                        onClick={() => void applyToStore()}
+                        disabled={applying || sourceMode !== 'product' || !selectedProduct}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
                       >
-                        Apply to Store (Disabled)
+                        {applying ? <Loader2 size={13} className="animate-spin" /> : null}
+                        {applying ? 'Writing to the store…' : 'Apply to Store'}
                       </button>
                       <button
                         onClick={copyAllBundle}
@@ -680,6 +764,17 @@ export default function AdminSeo() {
                         Copy All Metadata
                       </button>
                     </div>
+
+                    {applyNotice && (
+                      <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
+                        {applyNotice}
+                      </p>
+                    )}
+                    {applyError && (
+                      <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2.5">
+                        {applyError}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

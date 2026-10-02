@@ -39,6 +39,8 @@ const canRun = enabled && hasWooCommerceCredentials() && isStaging;
 
 const TEST_SKU = 'TEST-WOO-DELETE';
 const TEST_TITLE = 'TEST - DELETE ME - WOO ADMIN';
+const TEST_SEO_TITLE = 'TEST SEO title - delete me';
+const TEST_SEO_DESCRIPTION = 'TEST meta description written by the console integration test.';
 
 describe.skipIf(!canRun)('WooCommerce product write path (live staging)', () => {
   let createdId: number | null = null;
@@ -70,6 +72,7 @@ describe.skipIf(!canRun)('WooCommerce product write path (live staging)', () => 
       features: ['Fine grain', 'Food grade'],
       specifications: { weightOz: 720, packagePreset: 'BOX_BAG_45' },
       ownerNotes: 'Throwaway product — safe to delete',
+      seo: { title: TEST_SEO_TITLE, description: TEST_SEO_DESCRIPTION },
     });
 
     createdId = created.product.id;
@@ -86,6 +89,14 @@ describe.skipIf(!canRun)('WooCommerce product write path (live staging)', () => 
     expect(stored.regular_price).toBe('1.00');
     expect(stored.manage_stock).toBe(true);
     expect(stored.stock_quantity).toBe(1);
+
+    // The SEO tab's fields ride in the same `meta_data` write as the console
+    // fields, and the store's own read has to hand them back — the editor shows
+    // the store's value, so a write the store kept but does not return reads to
+    // the owner as "it saved nothing, it went back to the old one".
+    const storedSeo = fromWooProduct(stored);
+    expect(storedSeo.seoTitle).toBe(TEST_SEO_TITLE);
+    expect(storedSeo.seoDescription).toBe(TEST_SEO_DESCRIPTION);
 
     // The console's own fields, read back out of the store's meta — the round
     // trip thirty-one editor fields never made.
@@ -111,6 +122,9 @@ describe.skipIf(!canRun)('WooCommerce product write path (live staging)', () => 
       price: 2.5,
       sku: `${TEST_SKU}-2`,
       stockQuantity: 5,
+      // An SEO-only edit after the product exists: the exact save the editor's
+      // SEO tab makes, and the one the owner reports as reverting.
+      seo: { title: `${TEST_SEO_TITLE} (edited)`, description: `${TEST_SEO_DESCRIPTION} Edited.` },
     });
     expect(updated.product.name).toBe(`${TEST_TITLE} (edited)`);
     expect(updated.product.price).toBe(2.5);
@@ -121,6 +135,10 @@ describe.skipIf(!canRun)('WooCommerce product write path (live staging)', () => 
     expect(storedAgain.regular_price).toBe('2.50');
     expect(storedAgain.stock_quantity).toBe(5);
     expect(storedAgain.sku).toBe(`${TEST_SKU}-2`);
+
+    const seoAgain = fromWooProduct(storedAgain);
+    expect(seoAgain.seoTitle).toBe(`${TEST_SEO_TITLE} (edited)`);
+    expect(seoAgain.seoDescription).toBe(`${TEST_SEO_DESCRIPTION} Edited.`);
 
     const fieldsAgain = fromWooProduct(storedAgain).consoleFields;
     expect(fieldsAgain).toMatchObject({
