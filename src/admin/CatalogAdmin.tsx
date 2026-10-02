@@ -4488,7 +4488,7 @@ function ImageManager({ product, onProduct }: { product: CatalogProduct; onProdu
                 {img.url?.trim() ? <ProductThumb url={img.url} alt={img.altText || ''} /> : null}
               </button>
               {img.isPrimary && <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-blue-500 text-white text-[10px] font-bold rounded">MAIN</span>}
-              <button type="button" onClick={() => remove(idx)} className="absolute top-1.5 right-1.5 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 hover:bg-red-600 shadow" title="Remove image">✕</button>
+              <button type="button" onClick={() => remove(idx)} className="absolute top-1.5 right-1.5 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center text-sm hover:bg-red-600 shadow-md transition-colors" title="Remove image">✕</button>
 
               {/* Editing toolbar — always visible, not hidden behind hover */}
               <div className="flex items-center gap-1 px-2 py-1.5 bg-gray-50 border-t border-gray-100">
