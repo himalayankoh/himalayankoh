@@ -3078,7 +3078,7 @@ function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats:
       const category = cats.find((c) => c.id === product.categoryId)?.name || product.categoryName || '';
       const parsed = await generateSeoJson(buildProductSeoPrompt(product, category));
       const kw = Array.isArray(parsed.seoKeywords) ? parsed.seoKeywords.map(String).slice(0, 8) : [];
-      const slug = String(parsed.slug || product.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 90);
+      const slug = String((parsed as any).slug || product.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 90);
       const nextKeywords = parsed.focusKeyword
         ? (kw.includes(String(parsed.focusKeyword)) ? kw : [String(parsed.focusKeyword), ...kw])
         : kw;

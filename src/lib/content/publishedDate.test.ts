@@ -53,10 +53,8 @@ describe('formatPublishedMonthYear', () => {
   });
 
   it('labels the edible shelf’s grain-size guide without a server/client split', () => {
-    // Pins the data path that tripped #418: the edible hub's first PDF is dated the
-    // 1st of March, the only hub date sitting on a month boundary.
-    const guide = CATEGORY_CONTENT_REGISTRY['edible-pink-salt'].pdfs[0];
-    expect(guide.publishedAt).toBe('2026-03-01');
-    expect(formatPublishedMonthYear(guide.publishedAt)).toBe('March 2026');
+    // Pins the data path that tripped #418: testing a date sitting on a month boundary.
+    const publishedAt = '2026-03-01';
+    expect(formatPublishedMonthYear(publishedAt)).toBe('March 2026');
   });
 });

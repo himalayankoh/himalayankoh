@@ -17,7 +17,6 @@ import { buildProductsCategoryPath } from '../lib/categoryContent';
 const aboutLinks = [
   { label: 'About Himalayan Koh', to: '/about' },
   { label: 'Quality & Sourcing', to: '/quality' },
-  { label: 'Resource Center', to: '/resources' },
   { label: 'Shop Products', to: '/products' },
   { label: 'Contact Us', to: '/contact' },
   { label: 'FAQs', to: '/faqs' },
@@ -34,7 +33,6 @@ const aboutLinks = [
  */
 const productLinks = [
   { label: 'Edible Pink Salt', to: buildProductsCategoryPath('edible-pink-salt') },
-  { label: 'Cooking & Serving', to: buildProductsCategoryPath('cooking-serving') },
   { label: 'Salt Licks', to: buildProductsCategoryPath('licks-blocks') },
 ];
 
@@ -221,7 +219,6 @@ export default function Footer() {
           <div className="flex flex-wrap items-center gap-4">
             <Link prefetch={false} to="/disclaimer" className="hover:text-white/75 transition-colors">Disclaimer</Link>
             <Link prefetch={false} to="/quality" className="hover:text-white/75 transition-colors">Quality Standards</Link>
-            <Link prefetch={false} to="/resources" className="hover:text-white/75 transition-colors">Resource Center</Link>
             <Link prefetch={false} to="/privacy" className="hover:text-white/75 transition-colors">Privacy Policy</Link>
             <Link prefetch={false} to="/terms" className="hover:text-white/75 transition-colors">Terms of Service</Link>
             <Link prefetch={false} to="/shipping" className="hover:text-white/75 transition-colors">Shipping Policy</Link>

@@ -42,7 +42,7 @@ export default function QualityPage() {
           <section className="space-y-4">
             <div className="flex items-center gap-3 text-himalayan">
               <Factory className="w-6 h-6 flex-shrink-0" />
-              <h2 className="font-serif text-2xl font-bold text-charcoal">1. Geological Provenance & Mining Ethics</h2>
+              <h2 className="font-serif text-2xl font-bold text-charcoal">Geological Provenance & Mining Ethics</h2>
             </div>
             <p className="text-charcoal-light">
               All Himalayan pink salt distributed by Himalayan Koh originates exclusively from the Salt Range of northern Punjab, Pakistan—principally the historic Khewra mining region. These subterranean salt formations represent remnants of a vast ancient inland sea (the Tethys Sea) that dried up during the late Precambrian to early Cambrian periods, more than 250 million years ago.
@@ -61,7 +61,7 @@ export default function QualityPage() {
           <section className="space-y-4">
             <div className="flex items-center gap-3 text-himalayan">
               <ShieldCheck className="w-6 h-6 flex-shrink-0" />
-              <h2 className="font-serif text-2xl font-bold text-charcoal">2. Supplier Vetting & Traceability Protocol</h2>
+              <h2 className="font-serif text-2xl font-bold text-charcoal">Supplier Vetting & Traceability Protocol</h2>
             </div>
             <p className="text-charcoal-light">
               Not all rock salt exported from South Asia satisfies commercial and culinary food-safety standards. Himalayan Koh maintains a rigorous supplier evaluation checklist before entering into supply contracts:
@@ -85,7 +85,7 @@ export default function QualityPage() {
           <section className="space-y-4">
             <div className="flex items-center gap-3 text-himalayan">
               <PackageCheck className="w-6 h-6 flex-shrink-0" />
-              <h2 className="font-serif text-2xl font-bold text-charcoal">3. Houston Warehouse Receiving & Quality Verification</h2>
+              <h2 className="font-serif text-2xl font-bold text-charcoal">Houston Warehouse Receiving & Quality Verification</h2>
             </div>
             <p className="text-charcoal-light">
               When freight containers arrive at our Houston, Texas distribution warehouse, our quality-assurance team executes an intensive multi-step receiving protocol:
@@ -124,7 +124,7 @@ export default function QualityPage() {
           <section className="space-y-4">
             <div className="flex items-center gap-3 text-himalayan">
               <Layers className="w-6 h-6 flex-shrink-0" />
-              <h2 className="font-serif text-2xl font-bold text-charcoal">4. Packaging Standards & Climate-Controlled Storage</h2>
+              <h2 className="font-serif text-2xl font-bold text-charcoal">Packaging Standards & Climate-Controlled Storage</h2>
             </div>
             <p className="text-charcoal-light">
               Sodium chloride is naturally hygroscopic, meaning it attracts and absorbs ambient atmospheric moisture. In humid climates like the Texas Gulf Coast, improper storage leads to clumping, dissolution, and package degradation.
@@ -154,7 +154,7 @@ export default function QualityPage() {
           <section className="space-y-4">
             <div className="flex items-center gap-3 text-himalayan">
               <FileSearch className="w-6 h-6 flex-shrink-0" />
-              <h2 className="font-serif text-2xl font-bold text-charcoal">5. Understanding Natural Mineral Claims Factually</h2>
+              <h2 className="font-serif text-2xl font-bold text-charcoal">Understanding Natural Mineral Claims Factually</h2>
             </div>
             <p className="text-charcoal-light">
               Consumer wellness literature frequently cites that Himalayan pink salt contains &ldquo;84 minerals.&rdquo; At Himalayan Koh, we believe in scientific transparency rather than marketing sensationalism:
@@ -178,7 +178,7 @@ export default function QualityPage() {
           <section className="space-y-4">
             <div className="flex items-center gap-3 text-himalayan">
               <AlertTriangle className="w-6 h-6 flex-shrink-0" />
-              <h2 className="font-serif text-2xl font-bold text-charcoal">6. Laboratory Analysis & Certificate of Analysis (COA) Status</h2>
+              <h2 className="font-serif text-2xl font-bold text-charcoal">Laboratory Analysis & Certificate of Analysis (COA) Status</h2>
             </div>
             <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-6 space-y-3">
               <div className="flex items-center gap-2 text-amber-800 font-bold text-sm uppercase tracking-wide">
@@ -198,7 +198,7 @@ export default function QualityPage() {
 
           {/* Section 7: Sourcing Questions & Wholesale Inquiries */}
           <section className="space-y-4">
-            <h2 className="font-serif text-2xl font-bold text-charcoal">7. Technical Inquiries & Wholesale Supply</h2>
+            <h2 className="font-serif text-2xl font-bold text-charcoal">Technical Inquiries & Wholesale Supply</h2>
             <p className="text-charcoal-light">
               For additional questions about our geological provenance, commercial bulk freight specifications, or custom carving capabilities, please contact our Houston facility:
             </p>

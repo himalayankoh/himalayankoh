@@ -144,9 +144,6 @@ export default function ProductDetailSections({ product }: Props) {
           <Link to="/quality" className="text-himalayan hover:underline">
             Quality & Sourcing Standards →
           </Link>
-          <Link to="/resources" className="text-himalayan hover:underline">
-            Educational Resource Guides →
-          </Link>
         </div>
       </section>
     </div>

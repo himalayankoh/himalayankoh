@@ -43,7 +43,6 @@ const POLICY_PAGES = [
 
 const CATEGORIES = [
   { name: 'Edible Pink Salt', href: '/products?category=edible-pink-salt' },
-  { name: 'Cooking & Serving Slabs', href: '/products?category=cooking-serving' },
   { name: 'Salt Licks', href: '/products?category=licks-blocks' },
   { name: 'Bulk and Rock Salt', href: '/products?category=bulk' },
 ];
@@ -55,7 +54,6 @@ const DEFAULT_PRODUCTS: SitemapProduct[] = [
   { name: 'Himalayan Salt Lick — 12 to 14 lbs', slug: 'himalayan-salt-lick-12-to-14-lbs' },
   { name: 'Himalayan Salt Lick — 5 to 6 lbs', slug: 'himalayan-salt-lick-5-to-6-lbs' },
   { name: 'Himalayan Salt Lick — 1 to 2 lbs', slug: 'himalayan-salt-lick-1-to-2-lbs' },
-  { name: 'Himalayan Salt Block — 30 lbs', slug: 'himalayan-salt-block-30-lbs' },
   { name: 'Himalayan Pink Edible Salt Fine Grain Pouch — 6 lbs', slug: 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs' },
   { name: 'Himalayan Pink Edible Salt Fine Grain Pouch — 3 lbs', slug: 'himalayan-pink-edible-salt-fine-grain-pouch-3-lbs' },
   { name: 'Himalayan Pink Edible Salt Fine & Coarse Grain — 16 oz Jar', slug: 'himalayan-pink-edible-salt-16-oz-jar' },
