@@ -116,7 +116,17 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
         ],
       },
     ],
-    pdfs: [],
+    pdfs: [
+      {
+        id: 'grain-size-guide',
+        title: 'Grain Size Guide',
+        description: 'Which grain to reach for, for baking, brining, grinding and finishing.',
+        url: '/resources/grain-size-guide.pdf',
+        fileSize: '140 KB',
+        publishedAt: '2026-03-01',
+        visible: false,
+      },
+    ],
     emptyStates: {},
   },
 
@@ -209,7 +219,17 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
         ],
       },
     ],
-    pdfs: [],
+    pdfs: [
+      {
+        id: 'salt-block-guide',
+        title: 'Salt Block Handling Guide',
+        description: 'Warm-up schedules, cleaning method and what to avoid.',
+        url: '/resources/salt-block-guide.pdf',
+        fileSize: '180 KB',
+        publishedAt: '2026-03-10',
+        visible: false,
+      },
+    ],
     emptyStates: {},
   },
 
@@ -305,7 +325,17 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
         ],
       },
     ],
-    pdfs: [],
+    pdfs: [
+      {
+        id: 'livestock-salt-guide',
+        title: 'Livestock Salt Management Guide',
+        description: 'Intake baselines, stall mounting, pasture placement, and seasonal pasture management.',
+        url: '/resources/salt-block-vs-loose-salt-for-livestock',
+        fileSize: 'Online Guide',
+        publishedAt: '2026-03-12',
+        visible: false,
+      },
+    ],
     emptyStates: {},
   },
 
@@ -398,7 +428,17 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
         ],
       },
     ],
-    pdfs: [],
+    pdfs: [
+      {
+        id: 'salt-lamp-care',
+        title: 'Salt Lamp Care Sheet',
+        description: 'Placement, moisture handling and bulb replacement.',
+        url: '/resources/salt-lamp-care.pdf',
+        fileSize: '150 KB',
+        publishedAt: '2026-03-15',
+        visible: false,
+      },
+    ],
     emptyStates: {},
   },
 
@@ -491,7 +531,17 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
         ],
       },
     ],
-    pdfs: [],
+    pdfs: [
+      {
+        id: 'bulk-storage-sheet',
+        title: 'Bulk Storage & Refill Sheet',
+        description: 'Container guidance, humidity notes and a refill workflow for retail shelves.',
+        url: '/resources/bulk-storage-sheet.pdf',
+        fileSize: '160 KB',
+        publishedAt: '2026-03-05',
+        visible: false,
+      },
+    ],
     emptyStates: {},
   },
 };

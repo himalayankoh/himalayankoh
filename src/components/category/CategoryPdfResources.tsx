@@ -16,6 +16,10 @@ export default function CategoryPdfResources({
 }: Props) {
   const visible = resources.filter((r) => r.visible !== false);
 
+  if (visible.length === 0) {
+    return null;
+  }
+
   return (
     <section aria-labelledby="category-pdf-heading" className="border-t border-gray-100 pt-6">
       <div className="flex items-center gap-2 mb-3">
@@ -25,15 +29,7 @@ export default function CategoryPdfResources({
         </h3>
       </div>
 
-      {visible.length > 0 ? (
-        <ProductPdfLibrary resources={resources} embedded />
-      ) : (
-        <PdpEmptyState
-          title="Resources"
-          message={emptyMessage || 'PDF guides for this category will be added soon.'}
-          compact
-        />
-      )}
+      <ProductPdfLibrary resources={resources} embedded />
     </section>
   );
 }

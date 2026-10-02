@@ -24,7 +24,7 @@ const STATIC_PAGES = [
   { name: 'Home', href: '/' },
   { name: 'About Himalayan Koh', href: '/about' },
   { name: 'Quality, Sourcing & Verification Standards', href: '/quality' },
-  { name: 'Resource Center & Guides', href: '/resources' },
+  // { name: 'Resource Center & Guides', href: '/resources' },
   { name: 'All Products Shop', href: '/products' },
   { name: 'Visual Gallery', href: '/gallery' },
   { name: 'Frequently Asked Questions (FAQs)', href: '/faqs' },
@@ -143,45 +143,49 @@ export default function SitemapPage({ products = DEFAULT_PRODUCTS }: SitemapPage
             </ul>
           </div>
 
-          {/* Educational Articles */}
-          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4 md:col-span-2 lg:col-span-2">
-            <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-himalayan" /> Resource Center & Research Library ({RESOURCE_ARTICLES.length} Guides)
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
-              {RESOURCE_ARTICLES.map((art) => (
-                <div key={art.slug}>
-                  <Link
-                    href={`/resources/${art.slug}`}
-                    className="text-charcoal-light hover:text-himalayan transition-colors flex items-start gap-1.5"
-                  >
-                    <span className="text-himalayan/60 mt-1">•</span>
-                    <span className="leading-snug">{art.title}</span>
-                  </Link>
-                </div>
-              ))}
+          {/* Educational Articles - Hidden for now */}
+          {false && (
+            <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4 md:col-span-2 lg:col-span-2">
+              <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-himalayan" /> Resource Center & Research Library ({RESOURCE_ARTICLES.length} Guides)
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
+                {RESOURCE_ARTICLES.map((art) => (
+                  <div key={art.slug}>
+                    <Link
+                      href={`/resources/${art.slug}`}
+                      className="text-charcoal-light hover:text-himalayan transition-colors flex items-start gap-1.5"
+                    >
+                      <span className="text-himalayan/60 mt-1">•</span>
+                      <span className="leading-snug">{art.title}</span>
+                    </Link>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Authors */}
-          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4">
-            <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
-              <Users className="w-5 h-5 text-himalayan" /> Authors & Editorial Board
-            </h2>
-            <ul className="space-y-2.5 text-sm">
-              {authors.map((auth) => (
-                <li key={auth.slug}>
-                  <Link
-                    href={`/author/${auth.slug}`}
-                    className="text-charcoal-light hover:text-himalayan transition-colors flex items-center gap-1.5"
-                  >
-                    <span className="text-himalayan/60">•</span>
-                    <span>{auth.name} ({auth.role})</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* Authors - Hidden for now */}
+          {false && (
+            <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4">
+              <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
+                <Users className="w-5 h-5 text-himalayan" /> Authors & Editorial Board
+              </h2>
+              <ul className="space-y-2.5 text-sm">
+                {authors.map((auth) => (
+                  <li key={auth.slug}>
+                    <Link
+                      href={`/author/${auth.slug}`}
+                      className="text-charcoal-light hover:text-himalayan transition-colors flex items-center gap-1.5"
+                    >
+                      <span className="text-himalayan/60">•</span>
+                      <span>{auth.name} ({auth.role})</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Published Products */}
           <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4 md:col-span-2 lg:col-span-3">
