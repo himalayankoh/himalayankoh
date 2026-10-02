@@ -424,7 +424,7 @@ export async function listProducts(forceFresh = false): Promise<CatalogProduct[]
   // Server context (a server component, or a route calling this): read Woo
   // directly. Imported lazily so the Woo client and its credential reads can
   // never be pulled into a browser bundle through this module.
-  const { readAdminCatalogPage } = await import('../../lib/backend/adminCatalog');
+  const { readAdminCatalogPage } = await import(/* webpackIgnore: true */ '../../lib/backend/adminCatalog');
   const page = await readAdminCatalogPage({ perPage: 100 });
   const rows = (page as { rows?: unknown }).rows;
   if (!Array.isArray(rows)) return [];

@@ -12,7 +12,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useApp, Modal } from '../App';
 import { getFreshAccessToken } from '../services/wordpressAdminAuth';
-import { listProducts } from '../features/catalog/repository';
 import type { CatalogProduct } from '../features/catalog/types';
 import type { EvidenceRecord, EvidenceStatus } from '../lib/hermes/types';
 import {
@@ -119,8 +118,10 @@ export default function HermesIntel() {
     if (activeTab !== 'catalog-qa') return;
     setCatalogLoading(true);
     try {
-      const prods = await listProducts();
-      setCatalogProducts(prods || []);
+      const token = await getFreshAccessToken();
+      const res = await fetch('/api/admin/catalog', { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      setCatalogProducts(data?.products || []);
     } catch {
       setCatalogProducts([]);
     } finally {

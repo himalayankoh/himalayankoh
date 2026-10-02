@@ -62,7 +62,8 @@ vi.mock('@/lib/backend/wordpress', () => {
   };
 });
 
-const { GET, mediaDownloadFilename } = await import('./route');
+const { mediaDownloadFilename } = await import('./route.utils');
+const { GET } = await import('./route');
 
 const url = (query: string) => new Request(`https://preview.test/api/admin/media/library/download${query}`);
 

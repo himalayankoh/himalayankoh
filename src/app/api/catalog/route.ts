@@ -3,7 +3,6 @@ import {
   getCatalogProducts,
   getFeaturedCatalogProducts,
   lookupCatalogProduct,
-  STOREFRONT_READ_TTL_SECONDS,
 } from '@/lib/backend/serverCatalog';
 import type { CatalogResult } from '@/lib/backend/products';
 
@@ -85,7 +84,7 @@ import type { CatalogResult } from '@/lib/backend/products';
 // Declares the window this route's reads are allowed to reuse. It cannot make
 // the response itself cacheable — see the note above on the bypass entrypoint —
 // so its effect is on the WordPress read and nothing else.
-export const revalidate = STOREFRONT_READ_TTL_SECONDS;
+export const revalidate = 60;
 
 const MAX_PER_PAGE = 100;
 

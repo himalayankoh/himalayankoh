@@ -27,35 +27,7 @@ export const dynamic = 'force-dynamic';
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 25_000;
 
-interface WpMedia {
-  id?: number;
-  source_url?: string;
-  title?: { rendered?: string };
-  mime_type?: string;
-}
-
-/**
- * The name the owner gets on disk.
- *
- * Uploads are stored under a UUID, so the URL basename is useless to a human —
- * the media *title* is the original file name in that case. Prefer the title when
- * it already carries an extension, otherwise fall back to the URL. Either way a
- * path separator or a quote can never reach the header.
- */
-export function mediaDownloadFilename(media: WpMedia): string {
-  const urlName = String(media.source_url || '').split('/').pop()?.split('?')[0] || '';
-  const title = String(media.title?.rendered || '').trim();
-  const titleLooksLikeFile = /\.[a-z0-9]{2,5}$/i.test(title);
-  const base = titleLooksLikeFile ? title : urlName || title || `image-${media.id ?? 'download'}`;
-
-  const cleaned = base
-    .replace(/[\\/]+/g, '-')
-    .replace(/[\u0000-\u001f\u007f"]/g, '')
-    .trim()
-    .slice(0, 140);
-
-  return cleaned || `image-${media.id ?? 'download'}`;
-}
+import { type WpMedia, mediaDownloadFilename } from './route.utils';
 
 function failure(error: unknown, fallback: string) {
   if (error instanceof WordPressApiError) {
