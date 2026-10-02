@@ -17,6 +17,7 @@ import CategoryHubLayout from '../components/category/CategoryHubLayout';
 import CategoryShopPanel from '../components/category/CategoryShopPanel';
 import {
   ALL_LABEL,
+  categoryGalleryFromProducts,
   productMatchesCategoryFilter,
   productsCategoryTabs,
 } from '../lib/categoryContent';
@@ -127,6 +128,17 @@ export default function ProductsPage({
       return matchesCategory && matchesSearch;
     });
   }, [activeFilter, categoryKey, searchQuery, products]);
+
+  // The hub's gallery is about the shelf, not the search box, so it is built from
+  // the shelf's products before the search term is applied: searching "pouch"
+  // must not empty the category's photographs. See `categoryGalleryFromProducts`.
+  const hubGallery = useMemo(
+    () =>
+      categoryGalleryFromProducts(
+        products.filter((p) => productMatchesCategoryFilter(p, categoryKey, activeFilter))
+      ),
+    [activeFilter, categoryKey, products]
+  );
 
   const productList = (
     <>
@@ -241,6 +253,7 @@ export default function ProductsPage({
               <AnimatePresence mode="wait">
                 <CategoryEducationPanel
                   content={categoryContent}
+                  galleryImages={hubGallery}
                   articles={categoryArticles}
                   articlesLoading={articlesLoading}
                   articlesSource={articlesSource}

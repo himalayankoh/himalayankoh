@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import type { CategoryContentBundle } from '../../lib/categoryContent';
+import type { ContentGalleryImage } from '../../lib/content/types';
 import { enrichArticleList, getCategoryAvailability } from '../../lib/categoryContent';
 import CategoryHubGallery from './CategoryHubGallery';
 import type { CategoryArticleSource } from '../../hooks/useCategoryBlogArticles';
@@ -12,6 +13,12 @@ import PdpEmptyState from '../product/PdpEmptyState';
 
 interface Props {
   content: CategoryContentBundle;
+  /**
+   * The gallery built from the shelf's products. When it is missing or empty the
+   * registry's own photographs stand in, so a hub whose products carry no usable
+   * photo still shows something rather than an empty state.
+   */
+  galleryImages?: ContentGalleryImage[];
   articles?: CategoryArticleCard[];
   articlesLoading?: boolean;
   articlesSource?: CategoryArticleSource;
@@ -19,6 +26,7 @@ interface Props {
 
 export default function CategoryEducationPanel({
   content,
+  galleryImages,
   articles,
   articlesLoading,
   articlesSource,
@@ -28,8 +36,11 @@ export default function CategoryEducationPanel({
     [articles, content.articles]
   );
 
+  const gallery = galleryImages && galleryImages.length > 0 ? galleryImages : content.gallery;
+
   const availability = getCategoryAvailability({
     ...content,
+    gallery,
     articles: resolvedArticles,
   });
 
@@ -47,7 +58,7 @@ export default function CategoryEducationPanel({
           Lifestyle gallery
         </h3>
         {availability.gallery ? (
-          <CategoryHubGallery images={content.gallery} title={content.hero.title} />
+          <CategoryHubGallery images={gallery} title={content.hero.title} />
         ) : (
           <PdpEmptyState
             title="Gallery"
