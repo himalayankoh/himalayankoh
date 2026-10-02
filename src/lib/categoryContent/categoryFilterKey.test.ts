@@ -17,6 +17,10 @@
 // ============================================================================
 import { describe, expect, it } from 'vitest';
 import {
+  buildProductsCategoryPath,
+  categoryFilterLabelForProduct,
+  productCategoryFilterKey,
+  productShelfKey,
   resolveAvailableCategoryKey,
   resolveCategoryFilterKey,
   type CategoryFilterKeyInput,
@@ -163,5 +167,53 @@ describe('resolveCategoryFilterKey', () => {
     ];
     expect(resolveAvailableCategoryKey(RETIRED, catalogue)).toBeNull();
     expect(resolveAvailableCategoryKey('edible-pink-salt', catalogue)).toBe('edible-pink-salt');
+  });
+});
+
+// ============================================================================
+// The crumb on a product page — the same filing the pills read
+//
+// The product page's breadcrumb names the category the owner filed a product
+// under. It used to ask `productShelfKey`, which only knows the shelves the
+// taxonomy has a hub for; a product filed under a category the taxonomy has no
+// shelf for (`Live Stock`, holding the 6 lbs livestock pouches) therefore fell
+// through the name heuristic to `Edible Pink Salt` — a livestock pouch whose own
+// eyebrow read LIVE STOCK announced itself as edible salt just above it, and the
+// crumb sent the shopper to the edible shelf. The pills never had the bug
+// because they read the owner's filing, so the fix is for the crumb to read it
+// too. These cases pin that a product's crumb and its pill always agree.
+// ============================================================================
+describe('the product page crumb follows the owner\u2019s filing', () => {
+  const POUCH = {
+    name: 'Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes - 6 lbs - Himalayan Koh',
+    category: 'Live Stock',
+  };
+
+  it('names the category the owner wrote, not the shelf the name implies', () => {
+    // The shelf resolver is what the crumb used to use, and it still answers the
+    // wrong shelf here — that is the bug this pins. The crumb must not use it.
+    expect(productShelfKey(POUCH)).toBe('edible-pink-salt');
+
+    const key = productCategoryFilterKey(POUCH);
+    expect(key).toBe('live-stock');
+    expect(categoryFilterLabelForProduct(POUCH, key!)).toBe('Live Stock');
+    expect(buildProductsCategoryPath(key)).toBe('/products?category=live-stock');
+  });
+
+  it('leaves a product filed under a shelved category on its hub', () => {
+    const jar = { name: 'Himalayan Edible Pink Salt \u2013 16 oz Jar | Fine Grain', category: 'Edible Pink Salt' };
+    const key = productCategoryFilterKey(jar);
+
+    expect(key).toBe('edible-pink-salt');
+    expect(categoryFilterLabelForProduct(jar, key!)).toBe('Edible Pink Salt');
+    expect(buildProductsCategoryPath(key)).toBe('/products?category=edible-pink-salt');
+  });
+
+  it('still answers for a product the store never categorised', () => {
+    const uncategorised = { name: 'Himalayan Salt Lamp', category: '' };
+    const key = productCategoryFilterKey(uncategorised);
+
+    expect(key).toBe('lamps-decor');
+    expect(categoryFilterLabelForProduct(uncategorised, key!)).toBe('Salt Lamps & D\u00e9cor');
   });
 });

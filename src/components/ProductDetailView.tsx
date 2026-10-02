@@ -14,8 +14,8 @@ import { wishlistApi } from '../lib/wishlist/client';
 import ProductImageGallery from './ProductImageGallery';
 import {
   buildProductsCategoryPath,
-  filterLabelFromKey,
-  productShelfKey,
+  categoryFilterLabelForProduct,
+  productCategoryFilterKey,
 } from '../lib/categoryContent';
 
 interface ProductDetailViewProps {
@@ -51,12 +51,15 @@ export default function ProductDetailView({
   const { user } = useAuthContext();
   const toast = useToast();
   const displayName = getProductDisplayName(product);
-  // The shelf comes from the product's own name and category through the shared
-  // taxonomy, not from a display-label lookup: a WooCommerce product whose
-  // category is "Uncategorized" still has a shelf if it is a salt lamp.
-  const categoryKey = productShelfKey(product);
+  // The crumb names the category the owner filed the product under, through the
+  // same taxonomy the filter row uses — so the two can never disagree. The shelf
+  // resolver is not enough on its own: it only knows the shelves the taxonomy has
+  // copy for, and a product filed under a newer WooCommerce category (the
+  // livestock pouches under `Live Stock`) falls back to `Edible Pink Salt` while
+  // its own eyebrow, which reads the category straight, says otherwise.
+  const categoryKey = productCategoryFilterKey(product);
   const categoryShopPath = categoryKey ? buildProductsCategoryPath(categoryKey) : '/products';
-  const categoryShopLabel = categoryKey ? filterLabelFromKey(categoryKey) : 'Products';
+  const categoryShopLabel = categoryKey ? categoryFilterLabelForProduct(product, categoryKey) : 'Products';
 
   useEffect(() => {
     setQty(1);

@@ -22,6 +22,9 @@ const IMG = {
   pouch: legacyImage('saltPouch6lb'),
   jar: legacyImage('pinkSaltJar16oz'),
   rockBag: legacyImage('saltRockBag'),
+  // The edible range is fine grain only, so the edible hub's gallery needs a
+  // photograph of that grain rather than the coarse retail bag it used to show.
+  finePouch: '/images/products/himalayan-edible-pink-salt-fine-grain-pouch.webp',
 };
 
 export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryContentBundle> = {
@@ -32,12 +35,12 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
       eyebrow: 'Kitchen & table',
       title: 'Edible Himalayan Pink Salt',
       subtitle:
-        'Unrefined cooking salt with its natural trace minerals intact — fine for baking and brining, coarse for the grinder and the finish.',
+        'Unrefined cooking salt with its natural trace minerals intact — fine grain for baking, brining and the table.',
     },
     seo: {
-      title: 'Edible Himalayan Pink Salt — Fine & Coarse | Himalayan Koh',
+      title: 'Edible Himalayan Pink Salt — Fine Grain | Himalayan Koh',
       description:
-        'Shop edible Himalayan pink salt in fine, medium and coarse grain. Mineral-rich and unprocessed, in jars, pouches and bulk bags for the kitchen.',
+        'Shop edible Himalayan pink salt in fine grain — mineral-rich and unprocessed, in jars, pouches and bulk bags for the kitchen.',
     },
     trustPoints: [
       { label: 'Unrefined crystals', detail: 'No anti-caking agents, no bleaching, nothing added.' },
@@ -48,7 +51,7 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
       { id: 'edible-bowl', src: IMG.saltBowl, alt: 'Bowl of pink Himalayan cooking salt crystals', width: 600, height: 450 },
       { id: 'edible-pouch', src: IMG.pouch, alt: 'Resealable pouch of Himalayan pink salt for home kitchens', width: 600, height: 450 },
       { id: 'edible-jar', src: IMG.jar, alt: 'Jar of Himalayan pink table salt', width: 500, height: 500 },
-      { id: 'edible-rock', src: IMG.rockBag, alt: 'Coarse Himalayan rock salt in retail packaging', width: 600, height: 450 },
+      { id: 'edible-fine', src: IMG.finePouch, alt: 'Fine grain Himalayan pink salt pouch', width: 573, height: 573 },
     ],
     articles: [
       {

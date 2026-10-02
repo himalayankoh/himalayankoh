@@ -1,7 +1,13 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { CURATED_PRODUCT_IMAGES, curatedProductImages, resolveCuratedProductImages } from './curatedImages';
+import {
+  CURATED_PRODUCT_IMAGES,
+  UNPUBLISHABLE_PRODUCT_IMAGES,
+  curatedProductImages,
+  resolveCuratedProductImages,
+  unpublishableProductImages,
+} from './curatedImages';
 
 describe('Curated product images for salt blocks and licks', () => {
   it('defines 4 high quality images for himalayan-salt-block-30-lbs and himalayan-salt-lick-30-lbs', () => {
@@ -59,6 +65,62 @@ describe('Curated product images for salt blocks and licks', () => {
     const existing = ['/images/products/pouch.webp'];
     const resolved = resolveCuratedProductImages('unrelated-product', 'HK-OTHER', existing);
     expect(resolved).toEqual(existing);
+  });
+});
+
+// The 6 lbs livestock pouch. Its store gallery opened on a screenshot of the
+// storefront rather than on the product, so the curated set is what the card and
+// the gallery must open on, and the screenshot must not be published at all.
+describe('Curated product images for the livestock rock salt pouch', () => {
+  const SLUG = 'himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs';
+  const STORE_SCREENSHOT =
+    'https://himalayankoh.com/staging/wp-content/uploads/2026/10/rock-salt-label-6lbs.jpg';
+  const STORE_GENUINE = [
+    'https://himalayankoh.com/staging/wp-content/uploads/2026/09/S4.jpeg',
+    'https://himalayankoh.com/staging/wp-content/uploads/2026/09/S1.jpeg',
+  ];
+
+  it('defines 4 curated images, opening on the pouch itself', () => {
+    const pouch = CURATED_PRODUCT_IMAGES[SLUG];
+    expect(pouch).toHaveLength(4);
+    expect(pouch[0]).toBe('/images/products/himalayan-rock-salt-pouch-6lbs-hero.webp');
+    expect(pouch[1]).toBe('/images/products/himalayan-rock-salt-pouch-6lbs-fine-grain.webp');
+    expect(pouch[2]).toBe('/images/products/himalayan-rock-salt-pouch-6lbs-coarse-grain.webp');
+    expect(pouch[3]).toBe('/images/products/himalayan-rock-salt-pouch-6lbs-horse.webp');
+  });
+
+  it('opens on the pouch shots and drops the store screenshot from the gallery', () => {
+    const resolved = resolveCuratedProductImages(SLUG, 'HK-ESF-6lbs', [
+      STORE_SCREENSHOT,
+      ...STORE_GENUINE,
+    ]);
+
+    expect(resolved[0]).toBe('/images/products/himalayan-rock-salt-pouch-6lbs-hero.webp');
+    expect(resolved).not.toContain(STORE_SCREENSHOT);
+    expect(resolved).toHaveLength(6);
+  });
+
+  it('resolves the same overlays by SKU, case-insensitively', () => {
+    expect(curatedProductImages('some-other-slug', 'hk-esf-6lbs')).toHaveLength(4);
+    expect(unpublishableProductImages('some-other-slug', 'HK-ESF-6lbs')).toEqual([STORE_SCREENSHOT]);
+  });
+
+  it('drops only the named store image, leaving every other one alone', () => {
+    const resolved = resolveCuratedProductImages('an-unrelated-product', null, [
+      STORE_SCREENSHOT,
+    ]);
+    expect(resolved).toEqual([STORE_SCREENSHOT]);
+
+    const others = resolveCuratedProductImages(SLUG, null, STORE_GENUINE);
+    expect(others).toHaveLength(6);
+    expect(others.slice(4)).toEqual(STORE_GENUINE);
+  });
+
+  it('keys every unpublishable entry to a product, not to an image alone', () => {
+    for (const [key, hidden] of Object.entries(UNPUBLISHABLE_PRODUCT_IMAGES)) {
+      expect(hidden.length, key).toBeGreaterThan(0);
+      expect(CURATED_PRODUCT_IMAGES[key], key).toBeDefined();
+    }
   });
 });
 
