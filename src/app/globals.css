@@ -273,6 +273,105 @@ img {
 
 /* ── Admin Himalayan Koh Design System Polish ────────────── */
 
+/* Scoped to the console: the storefront keeps its serif brand typography.
+   Glass is limited to the rail selection and topbar, not the data surfaces. */
+.hk-admin {
+  --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  --font-serif: var(--font-sans);
+  --color-admin-canvas: #f5f1ed;
+  --color-admin-line: #ded3cb;
+  --color-admin-line-subtle: #eee6e0;
+  --color-admin-line-strong: #bdaa9e;
+  --color-admin-ink: #302622;
+  --color-admin-muted: #72635a;
+  background: var(--color-admin-canvas);
+  color: var(--color-admin-ink);
+  font-family: var(--font-sans);
+}
+.hk-admin :where(h1, h2, h3, h4, h5, h6, input, select, textarea, button) {
+  font-family: var(--font-sans);
+}
+.hk-admin :where(h1, h2, h3) { letter-spacing: -0.025em; }
+.hk-admin .admin-content {
+  background: linear-gradient(135deg, #f9f5f1 0%, #f4efeb 65%, #f5eeeb 100%);
+}
+.hk-admin .admin-rail {
+  background: radial-gradient(ellipse at 0 0, #985c4f 0, transparent 65%),
+    linear-gradient(165deg, #925b51 0%, #7a4e46 52%, #63433f 100%);
+  box-shadow: inset -1px 0 0 rgb(255 235 220 / 25%), 5px 0 24px rgb(75 44 36 / 9%);
+  color: #fff3eb;
+}
+.hk-admin .admin-rail-search {
+  color: #ffe8dc;
+  background: rgb(47 25 22 / 22%);
+  border: 1px solid rgb(255 228 211 / 28%);
+  box-shadow: inset 0 1px 2px rgb(53 29 24 / 12%), 0 1px 0 rgb(255 255 255 / 8%);
+}
+.hk-admin .admin-rail-search:focus-within {
+  border-color: #ffd8a9;
+  box-shadow: 0 0 0 3px rgb(255 216 169 / 16%);
+}
+.hk-admin .admin-rail-nav { scrollbar-color: #c18d7c transparent; }
+.hk-admin .admin-rail-link { border: 1px solid transparent; }
+.hk-admin .admin-rail-link:hover { background-color: rgb(255 243 233 / 5%); }
+.hk-admin .admin-rail-link-active {
+  background: linear-gradient(115deg, rgb(255 248 239 / 97%), rgb(255 239 225 / 90%));
+  border-color: rgb(255 244 233 / 80%);
+  color: #763f32;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 65%), 0 5px 12px rgb(47 25 22 / 18%);
+  font-weight: 650;
+}
+.hk-admin .admin-rail-icon {
+  border: 1px solid rgb(255 255 255 / 30%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 24%), 0 2px 5px rgb(35 24 20 / 20%);
+}
+.hk-admin .admin-rail :where(a, button, input, [tabindex]):focus-visible {
+  outline-color: #ffe0b9;
+  outline-offset: 2px;
+}
+.hk-admin .admin-topbar {
+  background: rgb(255 252 248 / 92%);
+  border-bottom: 1px solid var(--color-admin-line);
+  box-shadow: 0 2px 12px rgb(81 54 41 / 4%);
+}
+@supports (backdrop-filter: blur(12px)) {
+  .hk-admin .admin-topbar {
+    background: rgb(255 252 248 / 80%);
+    backdrop-filter: blur(12px);
+  }
+}
+.hk-admin .admin-surface,
+.hk-admin .admin-content :where(.bg-white.rounded-xl.border, .bg-white.rounded-2xl.border) {
+  border-color: var(--color-admin-line);
+  box-shadow: 0 1px 2px rgb(72 45 32 / 3%), 0 5px 18px rgb(72 45 32 / 4%);
+}
+.hk-admin .admin-field-control {
+  box-shadow: inset 0 1px 2px rgb(70 40 25 / 3%), 0 1px 2px rgb(70 40 25 / 3%);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+.hk-admin .admin-field-control:not(:disabled):not([aria-invalid="true"]):hover {
+  border-color: #b99d8e;
+}
+.hk-admin .admin-field-control:not([aria-invalid="true"]):focus {
+  border-color: #a75f4d;
+  box-shadow: 0 0 0 3px rgb(167 95 77 / 14%), 0 1px 2px rgb(70 40 25 / 5%);
+}
+.hk-admin .admin-field-control:disabled {
+  background-color: #f4efeb;
+  color: #81756b;
+  cursor: not-allowed;
+}
+.hk-admin .admin-action-primary {
+  background: linear-gradient(180deg, #a95f4c, #914b3c);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 18%), 0 2px 4px rgb(109 53 38 / 18%);
+}
+.hk-admin .admin-action-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #974f3e, #813e32);
+}
+@media (max-width: 639px) {
+  .hk-admin .admin-field-control { font-size: 16px; }
+}
+
 /* Admin card polish */
 .admin-card {
   background: #ffffff;

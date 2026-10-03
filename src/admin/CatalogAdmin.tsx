@@ -65,9 +65,9 @@ import {
 
 const ProductImageStudio = lazy(() => import('../components/admin/ProductImageStudio'));
 
-const I = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all';
-const FI = 'w-full px-2 py-1 border border-gray-200 rounded-md text-xs focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all bg-white h-8 text-gray-700';
-const L = 'block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5';
+const I = 'admin-field-control w-full px-3.5 py-2.5 border border-admin-line rounded-xl bg-white text-sm text-admin-ink focus:outline-none focus:border-himalayan focus:ring-2 focus:ring-himalayan/20 transition-colors';
+const FI = 'admin-field-control w-full px-2 py-1 border border-admin-line rounded-lg text-xs focus:outline-none focus:border-himalayan focus:ring-1 focus:ring-himalayan/20 transition-colors bg-white h-8 text-admin-ink';
+const L = 'block text-xs font-semibold text-admin-ink tracking-normal mb-2';
 const BADGE: Record<string, string> = {
   active: 'bg-green-100 text-green-700',
   ready: 'bg-blue-100 text-blue-700',
@@ -2748,7 +2748,7 @@ export function CatalogProductEditor() {
                 Saving…
               </span>
             )}
-            <button onClick={() => void handleSave()} disabled={saving || loading || !hydrated} className="btn-glow px-4 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0">
+            <button onClick={() => void handleSave()} disabled={saving || loading || !hydrated} className="admin-action-primary px-4 py-1.5 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0">
               <FloppyDisk size={14} />{saving ? 'Saving…' : 'Save'}
             </button>
           </>
@@ -2787,7 +2787,7 @@ export function CatalogProductEditor() {
         <div className="flex gap-1.5 overflow-x-auto pb-1">
           {TABS.map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`shrink-0 px-3.5 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors ${tab === t.id ? 'bg-blue-500 text-white' : 'bg-white border text-gray-600 hover:bg-gray-50'}`}>
+              className={`shrink-0 px-3.5 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors ${tab === t.id ? 'admin-action-primary text-white border border-transparent' : 'bg-white border border-admin-line text-admin-muted hover:bg-himalayan-lighter'}`}>
               {t.icon}{t.label}
             </button>
           ))}

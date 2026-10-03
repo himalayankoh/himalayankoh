@@ -6,9 +6,8 @@
  * change to the console's appearance lands in one file instead of in a hundred
  * `className` strings that drift.
  *
- * The language is ported from the Luxedge admin: a dark navigation rail beside a
- * light canvas, hairline-bordered panels with soft elevation, 12–16px radii,
- * uppercase micro-labels on stat tiles, and pill chips for state.
+ * Copper-rose navigation, a warm porcelain canvas, softly raised surfaces,
+ * readable system typography and compact controls are shared across workspaces.
  *
  * Colours come from the `admin-*` design tokens in `app/globals.css`, so the
  * storefront's palette and utilities are untouched by anything in this folder.
@@ -25,7 +24,7 @@ export const ADMIN_CANVAS_MIN_WIDTH = 1280;
 
 /** Panel: the base surface every card, table and form section sits on. */
 export const SURFACE =
-  'rounded-xl border border-admin-line bg-admin-surface shadow-sm';
+  'admin-surface rounded-xl border border-admin-line bg-admin-surface shadow-sm';
 
 /** The header strip inside a panel, above its body. */
 export const SURFACE_HEADER =
@@ -46,7 +45,7 @@ export const CONTROL_BASE =
   'inline-flex items-center justify-center gap-2 min-h-10 rounded-lg text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55';
 
 export const BUTTON = {
-  primary: `${CONTROL_BASE} bg-himalayan px-4 py-2.5 text-white hover:bg-himalayan-dark`,
+  primary: `${CONTROL_BASE} admin-action-primary bg-himalayan px-4 py-2.5 text-white hover:bg-himalayan-dark`,
   secondary: `${CONTROL_BASE} border border-admin-line bg-admin-surface px-4 py-2.5 text-admin-ink hover:bg-admin-canvas`,
   ghost: `${CONTROL_BASE} px-3 py-2 text-admin-muted hover:bg-admin-canvas hover:text-admin-ink`,
   danger: `${CONTROL_BASE} bg-red-600 px-4 py-2.5 text-white hover:bg-red-700`,
@@ -58,7 +57,7 @@ export const CONTROL_DISABLED_NOTE =
   'text-[11px] font-medium text-admin-muted';
 
 const FIELD =
-  'rounded-xl border border-admin-line bg-admin-surface px-3.5 text-sm text-admin-ink placeholder:text-admin-muted/70 focus:border-himalayan focus:outline-none focus:ring-2 focus:ring-himalayan/25';
+  'admin-field-control rounded-xl border border-admin-line bg-admin-surface px-3.5 text-sm text-admin-ink placeholder:text-admin-muted/70 focus:border-himalayan focus:outline-none focus:ring-2 focus:ring-himalayan/25';
 
 export const INPUT = `${FIELD} py-2.5`;
 export const SELECT = `${FIELD} py-2.5 pr-8`;

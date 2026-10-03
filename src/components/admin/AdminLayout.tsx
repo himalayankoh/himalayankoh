@@ -90,22 +90,22 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: 'Overview',
     items: [
-      { to: '/admin', icon: SquaresFour, label: 'Dashboard', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
-      { to: '/admin/sales', icon: CurrencyDollar, label: 'Sales & Profit', g: 'linear-gradient(135deg,#3F6550,#238636)', dot: '#3fb950' },
+      { to: '/admin', icon: SquaresFour, label: 'Dashboard', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
+      { to: '/admin/sales', icon: CurrencyDollar, label: 'Sales & Profit', g: 'linear-gradient(145deg,#6BA98B,#366F60)', dot: '#3fb950' },
     ],
   },
   {
     title: 'Catalog',
     items: [
-      { to: '/admin/products', icon: Package, label: 'Products', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
-      { to: '/admin/orders', icon: ShoppingCart, label: 'Orders', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
-      { to: '/admin/customers', icon: UsersIcon, label: 'Customers', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
-      { to: '/admin/users', icon: UserGear, label: 'Users', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
-      { to: '/admin/reviews', icon: Star, label: 'Reviews', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
-      { to: '/admin/inventory', icon: Stack, label: 'Inventory', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#E25726' },
-      { to: '/admin/categories', icon: TreeStructure, label: 'Categories', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
-      { to: '/admin/category-hubs', icon: SquaresFour, label: 'Category Hubs', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
-      { to: '/admin/blog', icon: FileText, label: 'Blog Posts', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
+      { to: '/admin/products', icon: Package, label: 'Products', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
+      { to: '/admin/orders', icon: ShoppingCart, label: 'Orders', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
+      { to: '/admin/customers', icon: UsersIcon, label: 'Customers', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
+      { to: '/admin/users', icon: UserGear, label: 'Users', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
+      { to: '/admin/reviews', icon: Star, label: 'Reviews', g: 'linear-gradient(145deg,#D8B070,#AD783C)', dot: '#C98745' },
+      { to: '/admin/inventory', icon: Stack, label: 'Inventory', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#E25726' },
+      { to: '/admin/categories', icon: TreeStructure, label: 'Categories', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
+      { to: '/admin/category-hubs', icon: SquaresFour, label: 'Category Hubs', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
+      { to: '/admin/blog', icon: FileText, label: 'Blog Posts', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
     ],
   },
   {
@@ -114,7 +114,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     // workspace's own tab set rather than as a second block of rail items — the
     // retail catalogue keeps the rail it already had.
     items: [
-      { to: '/admin/wholesale', icon: Truck, label: 'Wholesale', g: 'linear-gradient(135deg,#3F6550,#C98745)', dot: '#C98745' },
+      { to: '/admin/wholesale', icon: Truck, label: 'Wholesale', g: 'linear-gradient(145deg,#8AA38F,#526F68)', dot: '#C98745' },
     ],
   },
   {
@@ -122,14 +122,14 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     // LeadOS moved in here: outreach is marketing, and it was sitting above the
     // wholesale section as if it were a separate business.
     items: [
-      { to: '/admin/leados', icon: Target, label: 'LeadOS Workspace', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
-      { to: '/admin/client-outreach', icon: PaperPlaneRight, label: 'Client Outreach', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
-      { to: '/admin/seo', icon: Sparkle, label: 'SEO Engine', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
-      { to: '/admin/marketing', icon: Megaphone, label: 'Marketing Gen', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
-      { to: '/admin/marketing-traffic', icon: TrendUp, label: 'Marketing & Traffic', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
-      { to: '/admin/email-marketing', icon: PaperPlaneRight, label: 'Email Marketing', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
-      { to: '/admin/crm', icon: UsersIcon, label: 'CRM (Leads)', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
-      { to: '/admin/analytics', icon: TrendUp, label: 'Analytics', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
+      { to: '/admin/leados', icon: Target, label: 'LeadOS Workspace', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
+      { to: '/admin/client-outreach', icon: PaperPlaneRight, label: 'Client Outreach', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
+      { to: '/admin/seo', icon: Sparkle, label: 'SEO Engine', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
+      { to: '/admin/marketing', icon: Megaphone, label: 'Marketing Gen', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
+      { to: '/admin/marketing-traffic', icon: TrendUp, label: 'Marketing & Traffic', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
+      { to: '/admin/email-marketing', icon: PaperPlaneRight, label: 'Email Marketing', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
+      { to: '/admin/crm', icon: UsersIcon, label: 'CRM (Leads)', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
+      { to: '/admin/analytics', icon: TrendUp, label: 'Analytics', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
     ],
   },
   {
@@ -137,10 +137,10 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     // Its own rail: everything that changes what a customer pays belongs together,
     // and none of it belongs in the product catalogue.
     items: [
-      { to: '/admin/promotions', icon: Tag, label: 'Promotions', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
-      { to: '/admin/coupons', icon: Tag, label: 'Coupons', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
-      { to: '/admin/gift-drop', icon: Gift, label: 'Gift Drop', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
-      { to: '/admin/campaigns', icon: Megaphone, label: 'Campaigns', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
+      { to: '/admin/promotions', icon: Tag, label: 'Promotions', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
+      { to: '/admin/coupons', icon: Tag, label: 'Coupons', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
+      { to: '/admin/gift-drop', icon: Gift, label: 'Gift Drop', g: 'linear-gradient(145deg,#D8B070,#AD783C)', dot: '#C98745' },
+      { to: '/admin/campaigns', icon: Megaphone, label: 'Campaigns', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
     ],
   },
   {
@@ -148,35 +148,35 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     // What to sell next — pulled out of AI Studio, where it was buried under the
     // tools that build a listing rather than the work that decides one.
     items: [
-      { to: '/admin/scout', icon: Target, label: 'Product Scout', g: 'linear-gradient(135deg,#E25726,#B86452)', dot: '#E25726' },
-      { to: '/admin/product-research', icon: TrendUp, label: 'Product Research', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
-      { to: '/admin/ai-intelligence', icon: Sparkle, label: 'AI Intelligence', g: 'linear-gradient(135deg,#B86452,#C98745)', dot: '#B86452' },
+      { to: '/admin/scout', icon: Target, label: 'Product Scout', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
+      { to: '/admin/product-research', icon: TrendUp, label: 'Product Research', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
+      { to: '/admin/ai-intelligence', icon: Sparkle, label: 'AI Intelligence', g: 'linear-gradient(145deg,#B08CAA,#805D81)', dot: '#B86452' },
     ],
   },
   {
     title: 'AI Studio',
     items: [
-      { to: '/admin/variant-gen', icon: Stack, label: 'Variant Gen', g: 'linear-gradient(135deg,#3F6550,#C98745)', dot: '#C98745' },
-      { to: '/admin/ai', icon: Robot, label: 'AI Hub', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
-      { to: '/admin/ai-import', icon: Robot, label: 'AI Import', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
-      { to: '/admin/listing-task', icon: List, label: 'Listing Task', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
-      { to: '/admin/ai-control', icon: Cpu, label: 'AI Control', g: 'linear-gradient(135deg,#3F6550,#2a4435)', dot: '#3F6550' },
+      { to: '/admin/variant-gen', icon: Stack, label: 'Variant Gen', g: 'linear-gradient(145deg,#8AA38F,#526F68)', dot: '#C98745' },
+      { to: '/admin/ai', icon: Robot, label: 'AI Hub', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
+      { to: '/admin/ai-import', icon: Robot, label: 'AI Import', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
+      { to: '/admin/listing-task', icon: List, label: 'Listing Task', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
+      { to: '/admin/ai-control', icon: Cpu, label: 'AI Control', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
     ],
   },
   {
     title: 'Media',
     items: [
-      { to: '/admin/media', icon: Images, label: 'Media Library', g: 'linear-gradient(135deg,#C98745,#E25726)', dot: '#C98745' },
+      { to: '/admin/media', icon: Images, label: 'Media Library', g: 'linear-gradient(145deg,#D8B070,#AD783C)', dot: '#C98745' },
     ],
   },
   {
     title: 'System',
     items: [
-      { to: '/admin/labels', icon: Truck, label: 'Shipping Labels', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
-      { to: '/admin/suppliers', icon: Package, label: 'Suppliers', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
-      { to: '/admin/payments', icon: CreditCard, label: 'Payments', g: 'linear-gradient(135deg,#C98745,#9e632b)', dot: '#C98745' },
-      { to: '/admin/listing-playbook', icon: BookBookmark, label: 'Listing Playbook', g: 'linear-gradient(135deg,#B86452,#8D4133)', dot: '#B86452' },
-      { to: '/admin/settings', icon: GearSix, label: 'Settings', g: 'linear-gradient(135deg,#453d36,#2d2722)', dot: '#C98745' },
+      { to: '/admin/labels', icon: Truck, label: 'Shipping Labels', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
+      { to: '/admin/suppliers', icon: Package, label: 'Suppliers', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
+      { to: '/admin/payments', icon: CreditCard, label: 'Payments', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
+      { to: '/admin/listing-playbook', icon: BookBookmark, label: 'Listing Playbook', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
+      { to: '/admin/settings', icon: GearSix, label: 'Settings', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
     ],
   },
 ];
@@ -367,21 +367,17 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   const renderSidebar = ({ mobile, mini }: { mobile?: boolean; mini?: boolean }) => (
     <aside
-      className={`flex flex-col shrink-0 ${
+      className={`admin-rail flex flex-col shrink-0 ${
         mobile
           ? 'w-full h-full'
           : `fixed inset-y-0 left-0 z-40 hidden lg:flex w-[var(--hk-rail)] ${
               railDragging ? '' : 'transition-[width] duration-200'
             }`
       }`}
-      style={{
-        background: '#FAF0EB',
-        boxShadow: 'inset -1px 0 0 #E8D3CA',
-      }}
     >
       {/* Brand */}
-      <div className={`py-4 border-b border-[#E8D3CA] flex items-center gap-2.5 ${mini ? 'justify-center px-2' : 'px-3.5'}`}>
-        <div className="w-9 h-9 rounded-lg overflow-hidden border border-[#E8D3CA] shadow-md bg-[#FFFDF8] flex items-center justify-center shrink-0">
+      <div className={`py-4 border-b border-white/15 flex items-center gap-2.5 ${mini ? 'justify-center px-2' : 'px-3.5'}`}>
+        <div className="w-10 h-10 rounded-xl overflow-hidden border border-white/50 shadow-md bg-[#FFFDF8] flex items-center justify-center shrink-0">
           <img
             src="/images/hk_salt_crystal.webp"
             alt="Himalayan Koh"
@@ -389,13 +385,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           />
         </div>
         <div className={`leading-tight min-w-0 ${mini ? 'sr-only' : ''}`}>
-          <span className="font-bold text-sm text-[#26211C] tracking-tight block truncate">Himalayan Koh</span>
-          <span className="text-[9px] uppercase tracking-[0.2em] text-[#8D4133] font-semibold">Admin Console</span>
+          <span className="font-semibold text-sm text-white tracking-tight block truncate">Himalayan Koh</span>
+          <span className="text-[9px] uppercase tracking-[0.18em] text-[#FFF0E6] font-semibold">Admin Console</span>
         </div>
         {mobile && (
           <button
             onClick={() => setMobSide(false)}
-            className="ml-auto p-1.5 hover:bg-[#F3E4DE] rounded-lg text-[#6D6258] hover:text-[#26211C]"
+            className="ml-auto p-2 hover:bg-white/15 rounded-lg text-white"
             aria-label="Close menu"
           >
             <X size={15} />
@@ -406,11 +402,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Nav List */}
       {/* The workspace filter needs its label to make sense, so the mini rail
           drops it instead of showing a mystery input. */}
-      {!mini && <div className="px-3 py-3"><input aria-label="Find an admin workspace" placeholder="Find a workspace…" value={railQuery} onChange={e => setRailQuery(e.target.value)} className="w-full min-w-0 min-h-10 rounded-lg border border-[#E8D3CA] bg-[#FFFDF8] px-3 text-sm text-[#26211C] placeholder:text-[#6D6258]" /></div>}
-      <nav aria-label="Admin workspaces" className="flex-1 p-2 space-y-4 overflow-y-auto">
+      {!mini && <div className="px-3 py-3"><div className="admin-rail-search flex items-center gap-2 rounded-xl px-3"><MagnifyingGlass size={15} className="shrink-0" aria-hidden="true" /><input aria-label="Find an admin workspace" placeholder="Find a workspace…" value={railQuery} onChange={e => setRailQuery(e.target.value)} className="w-full min-w-0 min-h-10 bg-transparent text-xs text-white placeholder:text-[#F5DED5] outline-none" /></div></div>}
+      <nav aria-label="Admin workspaces" className="admin-rail-nav flex-1 p-2 space-y-4 overflow-y-auto">
         {SECTIONS.map(sec => ({ ...sec, items: sec.items.filter(item => `${sec.title} ${item.label}`.toLowerCase().includes(railQuery.toLowerCase())) })).filter(sec => sec.items.length > 0).map((sec) => (
           <div key={sec.title}>
-            <p className={`px-2.5 mb-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#6D6258] ${mini ? 'sr-only' : ''}`}>
+            <p className={`px-2.5 mb-1.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#FFF0E6] ${mini ? 'sr-only' : ''}`}>
               {sec.title}
             </p>
             <div className="space-y-0.5">
@@ -425,36 +421,24 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     to={l.to}
                     aria-current={isActive ? 'page' : undefined}
                     title={l.label}
-                    className={`group relative flex items-center gap-2.5 px-2.5 py-2 min-h-10 rounded-lg text-[13px] font-medium transition-all duration-200 ${
+                    className={`admin-rail-link group relative flex items-center gap-2.5 px-2.5 py-2 min-h-10 rounded-xl text-[13px] font-medium transition-colors duration-150 ${
                       mini ? 'justify-center px-1.5' : ''
                     } ${
-                      isActive ? 'text-[#8D4133]' : 'text-[#6D6258] hover:text-[#26211C] hover:bg-[#F3E4DE]'
+                      isActive ? 'admin-rail-link-active' : 'text-[#FFF3EB] hover:text-white'
                     }`}
-                    style={
-                      isActive
-                        ? {
-                            background: '#F3E4DE',
-                            boxShadow: 'inset 0 0 0 1px #D7AFA0',
-                          }
-                        : undefined
-                    }
                   >
                     {isActive && (
                       <div
-                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-[#B86452]"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-[#FFD8A9]"
                       />
                     )}
                     <span
-                      className={`min-w-[26px] min-h-[26px] w-[26px] h-[26px] rounded-md flex items-center justify-center text-white transition-all duration-200 ${
-                        isActive ? 'scale-105' : 'opacity-90 group-hover:scale-105 group-hover:opacity-100'
-                      }`}
+                      className="admin-rail-icon w-8 h-8 shrink-0 rounded-[10px] flex items-center justify-center text-white"
                       style={{
-                        background: isActive ? '#8D4133' : `${l.dot}18`,
-                        color: isActive ? '#FFFFFF' : l.dot,
-                        boxShadow: 'none',
+                        background: l.g,
                       }}
                     >
-                      <Icon size={13} weight="bold" />
+                      <Icon size={17} weight="duotone" />
                     </span>
                     {/* Kept in the tree (sr-only) in the mini rail so the link
                         keeps a readable name for screen readers and tooltips. */}
@@ -468,13 +452,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       </nav>
 
       {/* Footer / Store / Logout */}
-      <div className="p-2 border-t border-[#E8D3CA] space-y-0.5">
+      <div className="p-2 border-t border-white/15 bg-black/5 space-y-0.5">
         <Link prefetch={false}
           to="/"
           title="Storefront"
-          className={`flex items-center gap-2 text-[11px] text-[#6D6258] hover:text-[#26211C] px-2.5 py-1.5 rounded-lg hover:bg-[#F3E4DE] transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
+          className={`flex items-center gap-2 text-xs text-[#FFF3EB] hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-white/10 transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
         >
-          <span className="w-[26px] h-[26px] rounded-md bg-[#F3E4DE] flex items-center justify-center text-[#8D4133]">
+          <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-[#FFE1BA]">
             <ArrowLeft size={12} />
           </span>
           <span className={mini ? 'sr-only' : ''}>Storefront</span>
@@ -482,9 +466,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <button
           onClick={handleSignOut}
           title="Logout"
-          className={`flex items-center gap-2 text-[11px] text-red-700 hover:text-red-800 px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 w-full transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
+          className={`flex items-center gap-2 text-xs text-[#FFE1D9] hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-white/10 w-full transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
         >
-          <span className="w-[26px] h-[26px] rounded-md bg-red-500/10 flex items-center justify-center">
+          <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
             <SignOut size={12} />
           </span>
           <span className={mini ? 'sr-only' : ''}>Logout</span>
@@ -510,7 +494,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         >
           {/* Hairline at rest so the edge looks grabbable, solid while hovered
               or focused so the target is obvious under the pointer. */}
-          <span className="pointer-events-none absolute inset-y-0 right-0 w-px bg-[#E8D3CA] transition-colors group-hover/resize:bg-[#C98745] group-focus-visible/resize:bg-[#C98745]" />
+          <span className="pointer-events-none absolute inset-y-0 right-0 w-px bg-white/20 transition-colors group-hover/resize:bg-[#FFD8A9] group-focus-visible/resize:bg-[#FFD8A9]" />
           <span className="pointer-events-none absolute right-0 top-1/2 h-10 w-[3px] -translate-y-1/2 rounded-l-full bg-[#C98745] opacity-0 transition-opacity group-hover/resize:opacity-90 group-focus-visible/resize:opacity-90" />
         </span>
       )}
@@ -523,7 +507,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const railVars = { '--hk-rail': `${railWidth}px` } as unknown as React.CSSProperties;
 
   return (
-    <div className="hk-admin h-dvh w-full bg-[#FAF7F1] flex overflow-hidden font-sans" style={railVars}>
+    <div className="hk-admin h-dvh w-full flex overflow-hidden font-sans" style={railVars}>
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip bg-white p-3 rounded-lg">Skip to workspace</a>
       {renderSidebar({ mini: railMini })}
 
@@ -543,7 +527,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         }`}
       >
         {/* Header */}
-        <header className="h-14 shrink-0 bg-[#FFFDF8]/95 backdrop-blur-md border-b border-[#E0D6C8] flex items-center justify-between gap-3 px-4 lg:px-6 z-30">
+        <header className="admin-topbar h-16 shrink-0 flex items-center justify-between gap-3 px-4 lg:px-6 z-30">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setMobSide(true)}
@@ -568,7 +552,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             </button>
             <form
               onSubmit={handleSearch}
-              className="hidden md:flex items-center gap-2 bg-[#FAF7F1] border border-[#E0D6C8] rounded-lg px-3 py-1.5 w-64 focus-within:ring-2 focus-within:ring-[#B86452]/25 focus-within:border-[#B86452]"
+              className="hidden md:flex items-center gap-2 bg-white/80 border border-admin-line rounded-xl px-3 py-2 w-64 shadow-xs focus-within:ring-2 focus-within:ring-[#B86452]/25 focus-within:border-[#B86452]"
             >
               <MagnifyingGlass size={13} className="text-[#6D6258] shrink-0" />
               <input
@@ -733,7 +717,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <main
           id="main-content"
           tabIndex={-1} className="admin-content flex-1 overflow-y-auto min-w-0 p-3 pb-24 lg:p-5"
-          style={{ background: '#FAF7F1' }}
         >
           {children}
         </main>
