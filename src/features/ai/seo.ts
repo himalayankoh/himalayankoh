@@ -54,3 +54,42 @@ export async function generateSeoJson(prompt: string): Promise<SeoJson> {
     throw new Error('Could not parse AI response as JSON. Please retry.');
   }
 }
+export async function generateGeneralTitleJson(prompt: string): Promise<{ optimizedTitle: string }> {
+  const text = await callAIProvider(
+    prompt,
+    loadAIProviders(),
+    undefined,
+    'You write honest, factual ecommerce product copy for Himalayan Koh in English. Return ONLY valid JSON matching the schema.',
+  );
+  const cleaned = text.replace(/`(?:json)?/gi, '').replace(/`/g, '').trim();
+  const obj = cleaned.match(/(\{[\s\S]*\})/);
+  if (!obj) throw new Error('AI backend returned non-JSON text. Please retry.');
+  try {
+    const parsed = JSON.parse(obj[1]) as Record<string, unknown>;
+    return {
+      optimizedTitle: typeof parsed.optimizedTitle === 'string' ? parsed.optimizedTitle.trim() : typeof parsed.title === 'string' ? parsed.title.trim() : '',
+    };
+  } catch {
+    throw new Error('Could not parse AI response as JSON. Please retry.');
+  }
+}
+
+export async function generateGeneralDescriptionJson(prompt: string): Promise<{ optimizedDescription: string }> {
+  const text = await callAIProvider(
+    prompt,
+    loadAIProviders(),
+    undefined,
+    'You write honest, factual ecommerce product descriptions for Himalayan Koh in English. Return ONLY valid JSON matching the schema.',
+  );
+  const cleaned = text.replace(/`(?:json)?/gi, '').replace(/`/g, '').trim();
+  const obj = cleaned.match(/(\{[\s\S]*\})/);
+  if (!obj) throw new Error('AI backend returned non-JSON text. Please retry.');
+  try {
+    const parsed = JSON.parse(obj[1]) as Record<string, unknown>;
+    return {
+      optimizedDescription: typeof parsed.optimizedDescription === 'string' ? parsed.optimizedDescription.trim() : typeof parsed.description === 'string' ? parsed.description.trim() : '',
+    };
+  } catch {
+    throw new Error('Could not parse AI response as JSON. Please retry.');
+  }
+}

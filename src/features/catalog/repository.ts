@@ -339,6 +339,7 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     seoDescriptionStored: typeof r.seoDescription === 'string' && r.seoDescription ? r.seoDescription : null,
     seoKeywords: Array.isArray(r.seoKeywords) ? r.seoKeywords.filter((x): x is string => typeof x === 'string') : [],
     canonicalSlug: typeof r.canonicalSlug === 'string' && r.canonicalSlug ? r.canonicalSlug : slug,
+    seoContext: asRecord(cf.seoContext) as CatalogProduct['seoContext'],
     // The other half of what the product page shows: imagery this app ships
     // rather than the store's. Carried through read-only — see `CatalogProduct`.
     storefrontDefaultImages: Array.isArray(r.storefrontDefaultImages)

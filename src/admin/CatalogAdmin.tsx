@@ -43,7 +43,7 @@ import {
 import { commerceReadinessChecklist } from '../features/catalog/readinessChecklist';
 import { SUPPLIER_SOURCE_PRESETS, supplierSearchUrl } from '../features/catalog/supplierSource';
 import { getAutoPublishEnabled, setAutoPublishEnabled } from '../features/catalog/autoPublish';
-import { generateSeoJson } from '../features/ai/seo';
+import { generateSeoJson, generateGeneralTitleJson, generateGeneralDescriptionJson } from '../features/ai/seo';
 import { useSeoJobStore } from '../features/catalog/seoJobStore';
 import {
   CATALOG_COLUMN_LABELS, loadCatalogColumns, saveCatalogColumns, loadServerColumns, saveServerColumns, moveColumn,
@@ -2212,7 +2212,51 @@ export function CatalogProductEditor() {
   // know the product is not live yet and why.
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [tab, setTab] = useState<EditorTab>('general');
+  const [generatingTitle, setGeneratingTitle] = useState(false);
+  const [generatingDesc, setGeneratingDesc] = useState(false);
   const [newCatOpen, setNewCatOpen] = useState(false);
+
+  const handleGenerateTitle = async () => {
+    if (!p) return;
+    if (!p.name.trim()) { notify('Please enter a product name first to generate an improved title.', 'error'); return; }
+    setGeneratingTitle(true);
+    try {
+      const category = cats.find((c) => c.id === p.categoryId)?.name || p.categoryName || '';
+      const prompt = buildGeneralTitlePrompt(p, category);
+      const res = await generateGeneralTitleJson(prompt);
+      if (res.optimizedTitle) {
+        set('name', res.optimizedTitle);
+        notify('Title improved with AI (Not saved yet)');
+      } else {
+        notify('AI returned an empty title.', 'error');
+      }
+    } catch (e) {
+      notify(`AI Title failed: ${(e as Error).message}`, 'error');
+    } finally {
+      setGeneratingTitle(false);
+    }
+  };
+
+  const handleGenerateDesc = async () => {
+    if (!p) return;
+    if (!p.name.trim()) { notify('Please enter a product name first.', 'error'); return; }
+    setGeneratingDesc(true);
+    try {
+      const category = cats.find((c) => c.id === p.categoryId)?.name || p.categoryName || '';
+      const prompt = buildGeneralDescriptionPrompt(p, category);
+      const res = await generateGeneralDescriptionJson(prompt);
+      if (res.optimizedDescription) {
+        set('description', res.optimizedDescription);
+        notify('Description improved with AI (Not saved yet)');
+      } else {
+        notify('AI returned an empty description.', 'error');
+      }
+    } catch (e) {
+      notify(`AI Description failed: ${(e as Error).message}`, 'error');
+    } finally {
+      setGeneratingDesc(false);
+    }
+  };
   const [newCatName, setNewCatName] = useState('');
   const [addingCat, setAddingCat] = useState(false);
   // Quick Add = compact one-screen form; Detail Add = full tabbed editor;
@@ -2735,11 +2779,23 @@ export function CatalogProductEditor() {
         {/* ── GENERAL ── */}
         {tab === 'general' && (
           <div className="grid sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2"><label className={L}>Product name <span className="text-red-500">*</span> <span className="normal-case font-normal text-gray-400">required</span></label><input value={p.name} onChange={(e) => set('name', e.target.value)} className={I} placeholder="e.g. Handcrafted Himalayan Pink Salt Lamp (Natural Shape)" /></div>
+            <div className="sm:col-span-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className={L}>Product name <span className="text-red-500">*</span> <span className="normal-case font-normal text-gray-400">required</span></label>
+                <button type="button" onClick={handleGenerateTitle} disabled={generatingTitle || !hydrated} className="text-[11px] font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50 flex items-center gap-1 transition-colors">✨ {generatingTitle ? 'Generating...' : 'AI Optimize'}</button>
+              </div>
+              <input value={p.name} onChange={(e) => set('name', e.target.value)} className={I} placeholder="e.g. Handcrafted Himalayan Pink Salt Lamp (Natural Shape)" />
+            </div>
             <div><label className={L}>Short title <span className="normal-case font-normal text-gray-400">(optional)</span></label><input value={p.shortTitle || ''} onChange={(e) => set('shortTitle', e.target.value)} className={I} /></div>
             <div><label className={L}>Subtitle <span className="normal-case font-normal text-gray-400">(optional)</span></label><input value={p.subtitle || ''} onChange={(e) => set('subtitle', e.target.value)} className={I} /></div>
             <div className="sm:col-span-2"><label className={L}>Short description <span className="normal-case font-normal text-gray-400">(optional)</span></label><textarea value={p.shortDescription} onChange={(e) => set('shortDescription', e.target.value)} rows={2} className={I} /></div>
-            <div className="sm:col-span-2"><label className={L}>Description <span className="normal-case font-normal text-gray-400">(optional)</span></label><textarea value={p.description} onChange={(e) => set('description', e.target.value)} rows={6} className={I} placeholder="Concise opening benefit, key features, practical use, sizing, care. No fake claims." /></div>
+            <div className="sm:col-span-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className={L}>Description <span className="normal-case font-normal text-gray-400">(optional)</span></label>
+                <button type="button" onClick={handleGenerateDesc} disabled={generatingDesc || !hydrated} className="text-[11px] font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50 flex items-center gap-1 transition-colors">✨ {generatingDesc ? 'Generating...' : 'Improve with AI'}</button>
+              </div>
+              <textarea value={p.description} onChange={(e) => set('description', e.target.value)} rows={6} className={I} placeholder="Concise opening benefit, key features, practical use, sizing, care. No fake claims." />
+            </div>
             <div>
               <label className={L}>Category</label>
               <div className="flex gap-1.5">
@@ -3061,30 +3117,26 @@ export function CatalogProductEditor() {
 // SEO TAB (with one-click AI generation + save)
 // ============================================================================
 
-function buildProductSeoPrompt(p: CatalogProduct, category: string, categories: CatalogCategory[]): string {
+function buildProductContextBase(p: CatalogProduct, category: string): string {
   const ctx = p.seoContext || {};
-  const catNames = categories.map(c => `"${c.name}"`).join(', ');
-
-  return `Write premium, honest SEO for this authentic Himalayan salt and mineral product for Himalayan Koh (a premium US artisan and mineral salt store).
-
-${ctx.productType ? `Product Type / What is this: ${ctx.productType}` : ''}
-${ctx.intendedAudience ? `Intended Audience: ${ctx.intendedAudience}` : ''}
-${ctx.primaryUse ? `Primary Use / Purpose: ${ctx.primaryUse}` : ''}
-${ctx.primaryKeyword ? `Primary Target Keyword: ${ctx.primaryKeyword}` : ''}
-${ctx.secondaryKeywords ? `Secondary Keywords: ${ctx.secondaryKeywords}` : ''}
-${ctx.confirmedFacts ? `Important Confirmed Facts: ${ctx.confirmedFacts}` : ''}
-${ctx.avoidClaims ? `Avoid / Do Not Claim: ${ctx.avoidClaims}` : ''}
-
+  return `${ctx.productType ? `Product Type / What is this: ${ctx.productType}\n` : ''}${ctx.intendedAudience ? `Intended Audience: ${ctx.intendedAudience}\n` : ''}${ctx.primaryUse ? `Primary Use / Purpose: ${ctx.primaryUse}\n` : ''}${ctx.primaryKeyword ? `Primary Target Keyword: ${ctx.primaryKeyword}\n` : ''}${ctx.secondaryKeywords ? `Secondary Keywords: ${ctx.secondaryKeywords}\n` : ''}${ctx.confirmedFacts ? `Important Confirmed Facts: ${ctx.confirmedFacts}\n` : ''}${ctx.avoidClaims ? `Avoid / Do Not Claim: ${ctx.avoidClaims}\n` : ''}
 Product name (as currently listed): ${p.name}
 Brand: ${p.brand || 'Himalayan Koh'}
 Current Category: ${category || 'None'}
 Short description: ${p.shortDescription || ''}
 Long description: ${p.description || ''}
-
+${p.tags?.length ? `Tags: ${p.tags.join(', ')}\n` : ''}
 IMPORTANT DATA PRIORITY RULE:
 The Admin-confirmed context fields above (Product Type, Audience, Facts, Avoid Claims) override any conflicting information in the product name or description.
 If the imported title/description conflicts with the context, follow the Admin context exactly.
-Example: If title says "Livestock" but Avoid Claims says "Do not mention livestock", you MUST NOT mention livestock.
+Example: If title says "Livestock" but Avoid Claims says "Do not mention livestock", you MUST NOT mention livestock.`;
+}
+
+function buildProductSeoPrompt(p: CatalogProduct, category: string, categories: CatalogCategory[]): string {
+  const catNames = categories.map(c => `"${c.name}"`).join(', ');
+  return `Write premium, honest SEO for this authentic Himalayan salt and mineral product for Himalayan Koh (a premium US artisan and mineral salt store).
+
+${buildProductContextBase(p, category)}
 
 CATEGORY INTELLIGENCE RULE:
 Current categories: ${catNames}.
@@ -3100,6 +3152,46 @@ Return ONLY valid JSON with EXACTLY these keys:
   "categoryRecommendationReason": "why you suggested this category",
   "seoReviewSummary": "Internal review summary checklist: Context complete? Keywords present? Any conflicts?",
   "contentMismatchDetected": "If product title/desc conflicts with the Admin-confirmed facts, explain it here. Otherwise empty string."
+}
+No other text.`;
+}
+
+function buildGeneralTitlePrompt(p: CatalogProduct, category: string): string {
+  return `Rewrite the product title for this authentic Himalayan salt and mineral product for Himalayan Koh (a premium US artisan and mineral salt store).
+
+${buildProductContextBase(p, category)}
+
+TITLE OPTIMIZATION RULES:
+- Do not blindly preserve bad wording just because it exists in the source title.
+- Make it factually correct, category-correct, customer-readable, and SEO-friendly.
+- Remove incorrect or mismatched terms (e.g. do not call livestock salt "edible culinary salt" and do not call human salt "animal feed").
+- Do not keyword stuff.
+- Do not invent facts, weight, or certifications.
+- If it is for livestock/animals (e.g. cattle, horse, deer), ensure it reads correctly for animals and is not styled as a culinary cooking block.
+
+Return ONLY valid JSON with EXACTLY this key:
+{
+  "optimizedTitle": "The new, improved, factual, and natural product title."
+}
+No other text.`;
+}
+
+function buildGeneralDescriptionPrompt(p: CatalogProduct, category: string): string {
+  return `Rewrite and improve the full product description for this authentic Himalayan salt and mineral product for Himalayan Koh.
+
+${buildProductContextBase(p, category)}
+
+DESCRIPTION OPTIMIZATION RULES:
+- Fix mismatched content (e.g., livestock product described as human cooking salt, cattle wording copied into horse product, etc.).
+- Ensure category references and usage claims are accurate.
+- Remove irrelevant keywords, copied descriptions from other SKUs, and conflicting size/weight info.
+- Improve grammar and remove keyword stuffing.
+- DO NOT invent weight, dimensions, grain size, ingredients, certifications, FDA claims, USDA claims, Halal (unless supported), organic, medical claims, health-treatment claims, mineral percentages, animal health outcomes, country-of-origin (unless supported), or feeding dosages.
+- If product data conflicts, avoid the disputed detail or preserve the verified value. Do not fabricate.
+
+Return ONLY valid JSON with EXACTLY this key:
+{
+  "optimizedDescription": "The new, improved, factual product description. Use line breaks or formatting if needed."
 }
 No other text.`;
 }
@@ -3172,7 +3264,7 @@ function SeoTab({ product, cats, set, onSave, onAddCategory }: { product: Catalo
       const c = await onAddCategory(recommendedCatName);
       if (c) {
         set('categoryId', c.id);
-        notify(`Category "${c.name}" created and assigned. Storefront caches invalidated.`);
+        notify(`Category "${c.name}" created. Click Save to persist assignment.`);
       }
     } catch (e) {
       notify(`Could not create category: ${(e as Error).message}`, 'error');
@@ -3243,15 +3335,16 @@ function SeoTab({ product, cats, set, onSave, onAddCategory }: { product: Catalo
             
             {isBetterExisting && existingCatMatch && (
               <div className="mt-3">
+                <p className="text-xs font-semibold text-amber-800 mb-1">Existing category found: {existingCatMatch.name}</p>
                 <button onClick={() => set('categoryId', existingCatMatch.id)} className="px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-xs font-semibold hover:bg-amber-100">
-                  Assign Recommended Category
+                  Use Existing Category
                 </button>
               </div>
             )}
             {isNewRecommended && onAddCategory && (
               <div className="mt-3">
                 <button onClick={handleCreateAndAssign} disabled={creatingCat} className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-xs font-semibold hover:bg-blue-100 disabled:opacity-50">
-                  {creatingCat ? 'Creating & Assigning...' : 'Create & Assign New Category'}
+                  {creatingCat ? 'Creating...' : 'Create & Assign (Requires Save)'}
                 </button>
               </div>
             )}

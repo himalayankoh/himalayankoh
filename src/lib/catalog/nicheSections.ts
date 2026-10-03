@@ -189,7 +189,7 @@ export function nicheSectionKeyFor(input: NicheCheckInput): NicheSectionKey | nu
   if (/\blick|licks\b/.test(haystack)) return 'licks-blocks';
   
   if (/\bblock|plate|slab|grill|plank\b/.test(haystack)) {
-    if (/\blivestock|animal|horse|deer|cattle\b/.test(haystack)) return 'licks-blocks';
+    if (/\blivestock|live stock|animal|horse|deer|cattle\b/.test(haystack)) return 'licks-blocks';
     return 'cooking-serving';
   }
 
