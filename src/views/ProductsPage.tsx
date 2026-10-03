@@ -18,8 +18,10 @@ import CategoryShopPanel from '../components/category/CategoryShopPanel';
 import {
   ALL_LABEL,
   categoryGalleryFromProducts,
+  filterLabelFromKey,
   productMatchesCategoryFilter,
   productsCategoryTabs,
+  toCategoryContentKey,
 } from '../lib/categoryContent';
 import { getCatalogProducts } from '../lib/backend/catalogClient';
 import { useCategoryBlogArticles } from '../hooks/useCategoryBlogArticles';
@@ -59,9 +61,11 @@ export default function ProductsPage({
   // filter hook validates `?category=` against the same list.
   const tabs = useMemo(() => productsCategoryTabs(products), [products]);
   const { categoryKey } = useProductsCategoryFilter(initialCategoryKey, products);
+  const contentKey = toCategoryContentKey(categoryKey);
   const activeFilter = useMemo(
-    () => tabs.find((tab) => tab.key === categoryKey)?.label ?? ALL_LABEL,
-    [tabs, categoryKey]
+    () => tabs.find((tab) => tab.key === categoryKey)?.label
+      ?? (contentKey ? filterLabelFromKey(contentKey) : ALL_LABEL),
+    [tabs, categoryKey, contentKey]
   );
   const prevCategoryKey = useRef<string | null>(null);
   const fetchSeq = useRef(0);

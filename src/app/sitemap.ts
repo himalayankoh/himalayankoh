@@ -1,10 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { siteOrigin, fetchSeoBlogPosts } from '@/lib/seo/server';
-import { buildProductsCategoryPath, productShelfKey } from '@/lib/categoryContent';
-import { NICHE_SECTIONS } from '@/lib/catalog/nicheSections';
-import type { CategoryContentKey } from '@/lib/categoryContent';
+import { buildProductsCategoryPath, productsCategoryTabs } from '@/lib/categoryContent';
 import { getCatalogProducts } from '@/lib/backend/serverCatalog';
-import { RESOURCE_ARTICLES } from '@/data/resources';
 import { getAllAuthors } from '@/data/authors';
 
 type ChangeFrequency = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
@@ -41,7 +38,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // The catalog goes through the backend layer so the sitemap, the listing page
   // and the product page can never disagree about which products exist or what
-  // they are called. The backend's Supabase source already applies the same
+  // they are called. The WooCommerce backend already applies the same
   // "real catalog product" gate this file used to apply itself. Category
   // membership now comes from each product's resolved category name, so the
   // separate categories query is no longer needed to join the two.
@@ -71,21 +68,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // noindexed on the page itself (see products/page.tsx), so listing it here
   // would just send crawlers to a page that asks not to be indexed.
   //
-  // Shelves come from the niche taxonomy and are counted by the same placement
-  // function the shop grid uses, so the sitemap can never advertise a hub the
-  // grid would render empty, or omit one that has products behind it.
-  const shelvesWithProducts = new Set(
-    realProducts.map((product) => productShelfKey(product)).filter(Boolean)
-  );
-
-  // Category hubs are real landing pages (own hero, copy, guides, SEO title) served
-  // from /products?category=<key>. Without these the hub content is unreachable to
-  // crawlers, which only ever see the unfiltered /products page.
-  for (const section of NICHE_SECTIONS) {
-    if (!section.visibleInStorefront || !shelvesWithProducts.has(section.key)) continue;
+  // Use exactly the active pills' keys, including owner-created Woo categories.
+  // Heuristic size shelves must not advertise a URL the grid cannot filter by.
+  for (const tab of productsCategoryTabs(realProducts)) {
+    if (!tab.key) continue;
 
     entries.push({
-      url: `${origin}${buildProductsCategoryPath(section.key)}`,
+      url: `${origin}${buildProductsCategoryPath(tab.key)}`,
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.85,

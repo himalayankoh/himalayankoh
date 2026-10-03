@@ -19,12 +19,15 @@ import { describe, expect, it } from 'vitest';
 import {
   buildProductsCategoryPath,
   categoryFilterLabelForProduct,
+  productMatchesCategoryFilter,
+  productsCategoryTabs,
   productCategoryFilterKey,
   productShelfKey,
   resolveAvailableCategoryKey,
   resolveCategoryFilterKey,
   type CategoryFilterKeyInput,
 } from './keys';
+import { getCategoryContent } from './resolve';
 
 const SHELF = 'edible-pink-salt';
 /** A value that is not a live shelf, e.g. one of the retired livestock shelves. */
@@ -190,9 +193,8 @@ describe('the product page crumb follows the owner\u2019s filing', () => {
   };
 
   it('names the category the owner wrote, not the shelf the name implies', () => {
-    // The shelf resolver is what the crumb used to use, and it still answers the
-    // wrong shelf here — that is the bug this pins. The crumb must not use it.
-    expect(productShelfKey(POUCH)).toBe('edible-pink-salt');
+    // Live Stock now has its own hub; its crumb and filter keep the owner's filing.
+    expect(productShelfKey(POUCH)).toBe('live-stock');
 
     const key = productCategoryFilterKey(POUCH);
     expect(key).toBe('live-stock');
@@ -215,5 +217,34 @@ describe('the product page crumb follows the owner\u2019s filing', () => {
 
     expect(key).toBe('lamps-decor');
     expect(categoryFilterLabelForProduct(uncategorised, key!)).toBe('Salt Lamps & D\u00e9cor');
+  });
+});
+
+describe('animal salt cannot bypass the Cooking & Serving guard through Woo filing', () => {
+  it.each(['Cattle', 'Livestock', 'Live Stock', 'Animal', 'Horses', 'Deer'])(
+    'keeps salt for %s off Cooking & Serving without relying on product IDs',
+    (animal) => {
+      const salt = { name: `Himalayan Salt Rock for ${animal}`, category: 'Salt Blocks' };
+      expect(productCategoryFilterKey(salt)).toBe('licks-blocks');
+      expect(productShelfKey(salt)).toBe('licks-blocks');
+      expect(productMatchesCategoryFilter(salt, 'cooking-serving')).toBe(false);
+    }
+  );
+
+  it('keeps real cooking blocks and the existing Live Stock filing', () => {
+    const cooking = { name: 'Himalayan Salt Block — Rectangular 8 x 4 x 1 in', category: 'Salt Blocks' };
+    const livestock = { name: 'Himalayan Pink Salt for Livestock — 6 lbs', category: 'Live Stock' };
+    expect(productMatchesCategoryFilter(cooking, 'cooking-serving')).toBe(true);
+    expect(productMatchesCategoryFilter(livestock, 'live-stock')).toBe(true);
+    expect(getCategoryContent('live-stock')?.hero.title).toBe('Himalayan Pink Salt for Livestock');
+    expect(getCategoryContent('licks-blocks')?.hero.title).toBe('Himalayan Salt Licks & Blocks');
+  });
+
+  it('does not show cattle under All when the last cooking item was misfiled', () => {
+    const catalogue = [{ name: 'Salt Rock for Cattle 30 Lbs', category: 'Salt Blocks' }];
+    const key = resolveAvailableCategoryKey('cooking-serving', catalogue);
+    expect(key).toBe('cooking-serving');
+    expect(catalogue.filter((p) => productMatchesCategoryFilter(p, key))).toEqual([]);
+    expect(productsCategoryTabs(catalogue).map((tab) => tab.key)).toEqual([null, 'licks-blocks']);
   });
 });

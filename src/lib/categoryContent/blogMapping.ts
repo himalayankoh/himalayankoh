@@ -38,6 +38,11 @@ export const CATEGORY_BLOG_MAPPING: Record<CategoryContentKey, CategoryBlogMappi
     blogTags: [],
     maxArticles: 0,
   },
+  'live-stock': {
+    blogCategories: [],
+    blogTags: [],
+    maxArticles: 0,
+  },
   'lamps-decor': {
     blogCategories: ['Guides', 'Industry Insights'],
     blogTags: ['salt lamp', 'decor', 'home', 'care'],

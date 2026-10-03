@@ -342,6 +342,30 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
     emptyStates: {},
   },
 
+  'live-stock': {
+    key: 'live-stock',
+    productCategoryLabel: 'Live Stock',
+    hero: {
+      eyebrow: 'Pasture & Stable',
+      title: 'Himalayan Pink Salt for Livestock',
+      subtitle: 'Explore our livestock salt range in bags and pouches. Compare the listed weights and grain sizes to find the right format for your farm or stable.',
+    },
+    seo: {
+      title: 'Himalayan Pink Salt for Livestock | Himalayan Koh',
+      description: 'Shop Himalayan pink salt bags and pouches in our Live Stock range. Compare product weights, grain sizes and current availability from Himalayan Koh.',
+    },
+    trustPoints: [
+      { label: 'Weights as listed', detail: 'Compare the pack size shown on each product.' },
+      { label: 'Grain options', detail: 'Choose from the grain sizes available on the product page.' },
+      { label: 'Houston distribution', detail: 'Dispatched from our Texas warehouse.' },
+    ],
+    gallery: [],
+    guides: [],
+    articles: [],
+    pdfs: [],
+    emptyStates: {},
+  },
+
   'lamps-decor': {
     key: 'lamps-decor',
     productCategoryLabel: 'Salt Lamps & Décor',

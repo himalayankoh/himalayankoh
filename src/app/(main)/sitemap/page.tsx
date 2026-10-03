@@ -19,6 +19,7 @@ export default async function Page() {
   const mappedProducts = products.map((p) => ({
     name: p.name,
     slug: p.slug,
+    category: p.category,
   }));
 
   return (
@@ -29,7 +30,7 @@ export default async function Page() {
           { name: 'Sitemap', path: '/sitemap' },
         ])}
       />
-      <SitemapClient products={mappedProducts.length > 0 ? mappedProducts : undefined} />
+      <SitemapClient products={mappedProducts} />
     </>
   );
 }

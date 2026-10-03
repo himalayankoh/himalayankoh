@@ -152,6 +152,13 @@ const SHELF_DEFAULTS: Record<NicheSectionKey, Omit<ProductContent, 'displayName'
       },
     ],
   },
+  'live-stock': {
+    useCases: ['Salt supplied in the bag or pouch size listed for the livestock range'],
+    mineralHighlights: ['Unrefined Himalayan pink salt in the grain sizes shown on each product'],
+    shippingInfo: SHARED_SHIPPING,
+    trustIndicators: SHARED_TRUST,
+    faqs: [],
+  },
   'lamps-decor': {
     useCases: [
       'Warm amber light for a living room, bedroom or hallway',
@@ -321,8 +328,20 @@ export function getProductDisplayName(product: Product): string {
     if (short.length >= 12 && short.length <= 72) name = `${short}${grainMatch[0]}`;
   }
 
+  // Removing marketing words can leave a connector even without truncation.
+  const cleanEnding = (title: string) => title
+    .replace(/(?:[\s&,/|:;\-–—]+|\s+\b(?:and|or|with|for|of|to)\b)+$/gi, '')
+    .trim();
+  name = cleanEnding(name);
+
   if (name.length > 72) {
-    name = `${name.slice(0, 69).trim()}…`;
+    let cut = name.slice(0, 69);
+    // Avoid cutting a word in half; keep a whole final word when it fits.
+    if (!/\s/.test(name[69]) && !/\s$/.test(cut)) {
+      const boundary = cut.lastIndexOf(' ');
+      if (boundary > 0) cut = cut.slice(0, boundary);
+    }
+    name = `${cleanEnding(cut)}…`;
   }
 
   return name || product.name;

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { RESOURCE_ARTICLES } from '@/data/resources';
 import { getAllAuthors } from '@/data/authors';
+import { buildProductsCategoryPath, productsCategoryTabs } from '@/lib/categoryContent/keys';
 
 interface SitemapProduct {
   name: string;
@@ -41,12 +42,6 @@ const POLICY_PAGES = [
   { name: 'Machine-Readable XML Sitemap', href: '/sitemap.xml' },
 ];
 
-const CATEGORIES = [
-  { name: 'Edible Pink Salt', href: '/products?category=edible-pink-salt' },
-  { name: 'Salt Licks', href: '/products?category=licks-blocks' },
-  { name: 'Bulk and Rock Salt', href: '/products?category=bulk' },
-];
-
 const DEFAULT_PRODUCTS: SitemapProduct[] = [
   { name: 'Himalayan Rock Salt — 45 lbs (2–3 large chunks)', slug: 'himalayan-rock-salt-45-lbs-large-chunks' },
   { name: 'Himalayan Salt Fine & Coarse Grain — 6 lbs', slug: 'himalayan-salt-6-lbs' },
@@ -61,6 +56,9 @@ const DEFAULT_PRODUCTS: SitemapProduct[] = [
 
 export default function SitemapPage({ products = DEFAULT_PRODUCTS }: SitemapPageProps) {
   const authors = getAllAuthors();
+  const categories = productsCategoryTabs(products)
+    .filter((tab) => tab.key)
+    .map((tab) => ({ name: tab.label, href: buildProductsCategoryPath(tab.key) }));
 
   return (
     <div className="min-h-screen bg-warm-white">
@@ -129,7 +127,7 @@ export default function SitemapPage({ products = DEFAULT_PRODUCTS }: SitemapPage
               <FolderTree className="w-5 h-5 text-himalayan" /> Catalog Shelves
             </h2>
             <ul className="space-y-2.5 text-sm">
-              {CATEGORIES.map((cat) => (
+              {categories.map((cat) => (
                 <li key={cat.href}>
                   <Link
                     href={cat.href}

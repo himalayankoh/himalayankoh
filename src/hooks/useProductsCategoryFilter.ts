@@ -5,7 +5,7 @@ import {
   CATEGORY_QUERY_PARAM,
   normalizeCategoryQueryValue,
   parseCategoryFromSearchParams,
-  productCategoryFilterKey,
+  resolveAvailableCategoryKey,
   resolveCategoryFilterKey,
 } from '../lib/categoryContent';
 
@@ -15,10 +15,9 @@ import {
  * The category pills are built from the catalogue (`productsCategoryTabs`), so the
  * set of valid keys is no longer fixed in code: it is whatever categories the
  * products carry. That is why the products are an input here. A `?category=` value
- * that is not well-formed, or that names a category nothing is filed under, is
- * All and the parameter is dropped, so an old link — from the livestock shelves
- * the store used to have, or a typo — lands on the whole catalogue instead of an
- * empty grid. Browser back/forward restores filters.
+ * that is not well-formed or names an unknown category is All and is dropped.
+ * Known hubs retain their filter when empty, so a cooking link cannot display
+ * animal products by silently falling back to All. Browser back/forward restores filters.
  *
  * The address bar is only read from the render *after mount*. Before that the
  * router reports an empty query string on purpose (its `getServerSnapshot`),
@@ -53,9 +52,7 @@ export function useProductsCategoryFilter(
     if (!resolved) return null;
     // With no catalogue read yet there is nothing to check the key against.
     if (products.length === 0) return resolved;
-    return products.some((product) => productCategoryFilterKey(product) === resolved)
-      ? resolved
-      : null;
+    return resolveAvailableCategoryKey(resolved, products);
   }, [hydrated, searchParams, initialCategoryKey, products]);
 
   /** Strip invalid ?category= values so broken and stale links fall back to All. */
@@ -66,8 +63,7 @@ export function useProductsCategoryFilter(
     const resolved = normalizeCategoryQueryValue(raw);
     const known =
       resolved !== null &&
-      (products.length === 0 ||
-        products.some((product) => productCategoryFilterKey(product) === resolved));
+      (products.length === 0 || resolveAvailableCategoryKey(resolved, products) !== null);
 
     if (!known || resolved === null) {
       setSearchParams(

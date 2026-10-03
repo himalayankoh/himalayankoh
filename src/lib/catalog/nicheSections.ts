@@ -67,6 +67,7 @@ export type NicheSectionKey =
   | 'edible-pink-salt'
   | 'cooking-serving'
   | 'licks-blocks'
+  | 'live-stock'
   | 'lamps-decor'
   | 'bulk';
 
@@ -117,6 +118,13 @@ export const NICHE_SECTIONS: readonly NicheSection[] = [
     wooCategoryLabels: ['Salt Licks', 'Salt Licks & Blocks'],
   },
   {
+    key: 'live-stock',
+    label: 'Live Stock',
+    description: 'Himalayan pink salt bags and pouches filed in the livestock range.',
+    visibleInStorefront: true,
+    wooCategoryLabels: ['Live Stock', 'Livestock'],
+  },
+  {
     key: 'lamps-decor',
     label: 'Salt Lamps & Décor',
     description: 'Hand-carved pink salt lamps and decorative pieces for the home.',
@@ -153,10 +161,17 @@ const SHELF_BY_WOO_LABEL = new Map<string, NicheSectionKey>(
  * owner's filing settles everything the title does not already answer.
  */
 export function nicheSectionKeyForWooCategory(
-  label: string | null | undefined
+  label: string | null | undefined,
+  productName = ''
 ): NicheSectionKey | null {
   if (!label) return null;
-  return SHELF_BY_WOO_LABEL.get(label.trim().toLowerCase()) ?? null;
+  const key = SHELF_BY_WOO_LABEL.get(label.trim().toLowerCase()) ?? null;
+  // "Salt Blocks" is shared by cooking pieces and animal salt in WooCommerce.
+  // Keep the latter on Salt Licks, even when the category is read before the name.
+  if (key === 'cooking-serving' && /\b(?:livestock|live\s+stock|animals?|horses?|deer|cattle)\b/i.test(productName)) {
+    return 'licks-blocks';
+  }
+  return key;
 }
 
 const SECTION_BY_KEY = new Map(NICHE_SECTIONS.map((section) => [section.key, section]));
@@ -197,7 +212,7 @@ export function nicheSectionKeyFor(input: NicheCheckInput): NicheSectionKey | nu
   // in a title is a hint and a category is a decision: the owner filed "Bag of
   // Himalayan Pink Salt for Livestock (45 lbs.)" under `Edible Pink Salt`, so it
   // belongs with the edible salt rather than in the bulk bags.
-  const filed = nicheSectionKeyForWooCategory(input.category ?? null);
+  const filed = nicheSectionKeyForWooCategory(input.category ?? null, input.name);
   if (filed) return filed;
 
   if (/\bbulk|wholesale|25 kg|25kg|50 lb|45 lbs|45lb|18 lbs|18lb|pallet\b/.test(haystack)) return 'bulk';

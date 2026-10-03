@@ -32,6 +32,7 @@ describe('storefront category visibility', () => {
       'Edible Pink Salt',
       'Cooking & Serving',
       'Salt Licks',
+      'Live Stock',
       'Salt Lamps & Décor',
       'Bulk and Rock Salt',
     ]);

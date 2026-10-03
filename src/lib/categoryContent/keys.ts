@@ -32,16 +32,9 @@ import {
  * shelves the shop *means* to have — a category the owner names after one keeps
  * that shelf's key, its hub copy and its existing links.
  *
- * The livestock shelves that used to live here are gone rather than renamed: the
- * store does not sell feed-trade products, so those hubs, their copy and their
- * filter pills were retired together with the SKUs. `licks-blocks` is not one of
- * them returning — it is the shelf for the Salt Licks range the owner authorises
- * in the price list, which is why it exists in `NICHE_SECTIONS` and is admitted by
- * SKU rather than by the term guard. A link that still carries a retired value is
- * not special-cased anywhere — `normalizeCategoryQueryValue` accepts any
- * well-formed slug, and `resolveAvailableCategoryKey` resolves it against the
- * catalogue, so a retired shelf and a misspelled one both land on All and neither
- * can render an empty hub.
+ * `live-stock` serves the owner's current Live Stock filing; retired category
+ * slugs remain unsupported. Known hubs keep their filter when empty so a direct
+ * cooking-category link cannot silently display animal products under All.
  */
 
 /** Display label for "no shelf selected". */
@@ -152,7 +145,7 @@ export function isCategoryFilterValue(value: string): boolean {
 export function productCategoryFilterKey(product: NicheCheckInput): CategoryFilterKey | null {
   const filed = (product.category ?? '').trim();
   if (filed) {
-    const shelved = nicheSectionKeyForWooCategory(filed);
+    const shelved = nicheSectionKeyForWooCategory(filed, product.name);
     if (shelved) return shelved;
     const slug = categorySlugFromLabel(filed);
     if (slug) return slug;
@@ -257,11 +250,10 @@ export function normalizeCategoryQueryValue(
  * A `?category=` value resolved against the catalogue the page is showing.
  *
  * `normalizeCategoryQueryValue` says whether the value is well-formed; this says
- * whether anything is behind it. A live shelf, a brand-new WooCommerce category,
- * an old link to a retired shelf and a typo all come through the same door: only a
- * key the products actually carry survives, and everything else is "All". That is
- * the honest outcome for a filter — the shopper sees the whole catalogue rather
- * than an empty grid under a shelf that does not exist.
+ * whether it names a known hub or a category carried by the products. Known hubs
+ * retain their filter when empty (and are noindexed/excluded from the sitemap);
+ * otherwise a cooking link could display cattle products by falling back to All.
+ * Unknown and retired values still resolve to All.
  */
 export function resolveAvailableCategoryKey(
   raw: string | null | undefined,
@@ -269,6 +261,7 @@ export function resolveAvailableCategoryKey(
 ): CategoryFilterKey | null {
   const key = normalizeCategoryQueryValue(raw);
   if (!key) return null;
+  if (isCategoryContentKey(key)) return key;
   if (!products.some((product) => productCategoryFilterKey(product) === key)) return null;
   return key;
 }
