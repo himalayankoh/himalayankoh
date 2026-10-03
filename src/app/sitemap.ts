@@ -15,7 +15,6 @@ const STATIC_ROUTES: { path: string; priority: number; changeFrequency: ChangeFr
   { path: '/products', priority: 0.9, changeFrequency: 'daily' },
   { path: '/about', priority: 0.7, changeFrequency: 'monthly' },
   { path: '/quality', priority: 0.7, changeFrequency: 'monthly' },
-  { path: '/resources', priority: 0.8, changeFrequency: 'weekly' },
   { path: '/gallery', priority: 0.6, changeFrequency: 'monthly' },
   { path: '/contact', priority: 0.6, changeFrequency: 'monthly' },
   { path: '/faqs', priority: 0.5, changeFrequency: 'monthly' },
@@ -109,15 +108,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: post.updated_at ? new Date(post.updated_at) : post.published_at ? new Date(post.published_at) : now,
       changeFrequency: 'monthly',
       priority: 0.6,
-    });
-  }
-
-  for (const article of RESOURCE_ARTICLES) {
-    entries.push({
-      url: `${origin}/resources/${article.slug}`,
-      lastModified: new Date(article.updatedAt),
-      changeFrequency: 'monthly',
-      priority: 0.7,
     });
   }
 

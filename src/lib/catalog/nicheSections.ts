@@ -186,7 +186,7 @@ export function nicheSectionKeyFor(input: NicheCheckInput): NicheSectionKey | nu
   // filed under `Bulk Order`. Checked before the block rule because "Salt Lick"
   // names a mineral lick line, not a cooking piece.
   if (/\blamp|lantern|decor|décor|holder|candle|tealight|carved\b/.test(haystack)) return 'lamps-decor';
-  if (/\blick|licks\b/.test(haystack)) return 'licks-blocks';
+  if (/\blick|licks|livestock|animal|horse\b/.test(haystack)) return 'licks-blocks';
   if (/\bblock|plate|slab|grill|plank\b/.test(haystack)) return 'cooking-serving';
 
   // Then the owner's own filing. Asked before the size heuristic, because a size
