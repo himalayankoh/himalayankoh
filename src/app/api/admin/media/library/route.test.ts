@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const calls: { method: string; path: string; params?: unknown }[] = [];
 /** Set to make the product list read fail, for the fail-closed delete case. */
 let productListFails = false;
+let productReads = 0;
 
 vi.mock('@/lib/auth/verifyAdminRequest', () => ({
   verifyAdminRequest: async () => ({ ok: true, userId: 'test-admin', admin: {} }),
@@ -26,6 +27,7 @@ vi.mock('@/lib/backend/wordpressCredentials', () => ({
 
 vi.mock('@/lib/woo/productWrite', () => ({
   listWooProducts: async () => {
+    productReads += 1;
     if (productListFails) throw new Error('WooCommerce is unreachable');
     return [
       {
@@ -120,6 +122,14 @@ beforeEach(() => {
 });
 
 describe('GET /api/admin/media/library', () => {
+  it('lets attachment pickers page and search the full library without loading the catalogue', async () => {
+    productReads = 0;
+    const body = await (await GET(url('?usage=0&page=2&perPage=48&search=label'))).json();
+    expect(body.page).toBe(2);
+    expect(body.usageIncluded).toBe(false);
+    expect(body.images).toHaveLength(2);
+    expect(productReads).toBe(0);
+  });
   it('returns images with a thumbnail, usage and pagination', async () => {
     const response = await GET(url('?perPage=48'));
     expect(response.status).toBe(200);

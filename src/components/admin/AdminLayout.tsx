@@ -375,13 +375,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             }`
       }`}
       style={{
-        background: '#26211C',
-        boxShadow: 'inset -1px 0 0 rgba(224,214,200,0.1)',
+        background: '#FAF0EB',
+        boxShadow: 'inset -1px 0 0 #E8D3CA',
       }}
     >
       {/* Brand */}
-      <div className={`py-4 border-b border-[#E0D6C8]/10 flex items-center gap-2.5 ${mini ? 'justify-center px-2' : 'px-3.5'}`}>
-        <div className="w-9 h-9 rounded-lg overflow-hidden border border-[#E0D6C8]/20 shadow-md bg-[#1f1a16] flex items-center justify-center shrink-0">
+      <div className={`py-4 border-b border-[#E8D3CA] flex items-center gap-2.5 ${mini ? 'justify-center px-2' : 'px-3.5'}`}>
+        <div className="w-9 h-9 rounded-lg overflow-hidden border border-[#E8D3CA] shadow-md bg-[#FFFDF8] flex items-center justify-center shrink-0">
           <img
             src="/images/hk_salt_crystal.webp"
             alt="Himalayan Koh"
@@ -389,13 +389,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           />
         </div>
         <div className={`leading-tight min-w-0 ${mini ? 'sr-only' : ''}`}>
-          <span className="font-bold text-sm text-[#FAF7F1] tracking-tight block truncate">Himalayan Koh</span>
-          <span className="text-[9px] uppercase tracking-[0.2em] text-[#C98745] font-semibold">Admin Console</span>
+          <span className="font-bold text-sm text-[#26211C] tracking-tight block truncate">Himalayan Koh</span>
+          <span className="text-[9px] uppercase tracking-[0.2em] text-[#8D4133] font-semibold">Admin Console</span>
         </div>
         {mobile && (
           <button
             onClick={() => setMobSide(false)}
-            className="ml-auto p-1.5 hover:bg-white/10 rounded-lg text-[#b6aba0] hover:text-[#FAF7F1]"
+            className="ml-auto p-1.5 hover:bg-[#F3E4DE] rounded-lg text-[#6D6258] hover:text-[#26211C]"
             aria-label="Close menu"
           >
             <X size={15} />
@@ -406,11 +406,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Nav List */}
       {/* The workspace filter needs its label to make sense, so the mini rail
           drops it instead of showing a mystery input. */}
-      {!mini && <div className="px-3 py-3"><input aria-label="Find an admin workspace" placeholder="Find a workspace…" value={railQuery} onChange={e => setRailQuery(e.target.value)} className="w-full min-w-0 min-h-10 rounded-lg border border-white/20 bg-white/5 px-3 text-sm text-white placeholder:text-white/60" /></div>}
+      {!mini && <div className="px-3 py-3"><input aria-label="Find an admin workspace" placeholder="Find a workspace…" value={railQuery} onChange={e => setRailQuery(e.target.value)} className="w-full min-w-0 min-h-10 rounded-lg border border-[#E8D3CA] bg-[#FFFDF8] px-3 text-sm text-[#26211C] placeholder:text-[#6D6258]" /></div>}
       <nav aria-label="Admin workspaces" className="flex-1 p-2 space-y-4 overflow-y-auto">
         {SECTIONS.map(sec => ({ ...sec, items: sec.items.filter(item => `${sec.title} ${item.label}`.toLowerCase().includes(railQuery.toLowerCase())) })).filter(sec => sec.items.length > 0).map((sec) => (
           <div key={sec.title}>
-            <p className={`px-2.5 mb-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#8e8276] ${mini ? 'sr-only' : ''}`}>
+            <p className={`px-2.5 mb-1 text-[9px] font-bold uppercase tracking-[0.18em] text-[#6D6258] ${mini ? 'sr-only' : ''}`}>
               {sec.title}
             </p>
             <div className="space-y-0.5">
@@ -428,20 +428,20 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     className={`group relative flex items-center gap-2.5 px-2.5 py-2 min-h-10 rounded-lg text-[13px] font-medium transition-all duration-200 ${
                       mini ? 'justify-center px-1.5' : ''
                     } ${
-                      isActive ? 'text-[#FAF7F1]' : 'text-[#b6aba0] hover:text-[#FAF7F1] hover:bg-white/[0.05]'
+                      isActive ? 'text-[#8D4133]' : 'text-[#6D6258] hover:text-[#26211C] hover:bg-[#F3E4DE]'
                     }`}
                     style={
                       isActive
                         ? {
-                            background: 'rgba(184,100,82,0.15)',
-                            boxShadow: 'inset 0 0 0 1px rgba(184,100,82,0.30)',
+                            background: '#F3E4DE',
+                            boxShadow: 'inset 0 0 0 1px #D7AFA0',
                           }
                         : undefined
                     }
                   >
                     {isActive && (
                       <div
-                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-[#E25726]"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-[#B86452]"
                       />
                     )}
                     <span
@@ -449,7 +449,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         isActive ? 'scale-105' : 'opacity-90 group-hover:scale-105 group-hover:opacity-100'
                       }`}
                       style={{
-                        background: isActive ? '#8d4133' : 'rgba(255,255,255,0.07)',
+                        background: isActive ? '#8D4133' : `${l.dot}18`,
+                        color: isActive ? '#FFFFFF' : l.dot,
                         boxShadow: 'none',
                       }}
                     >
@@ -467,13 +468,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       </nav>
 
       {/* Footer / Store / Logout */}
-      <div className="p-2 border-t border-[#E0D6C8]/10 space-y-0.5">
+      <div className="p-2 border-t border-[#E8D3CA] space-y-0.5">
         <Link prefetch={false}
           to="/"
           title="Storefront"
-          className={`flex items-center gap-2 text-[11px] text-[#b6aba0] hover:text-[#FAF7F1] px-2.5 py-1.5 rounded-lg hover:bg-white/[0.05] transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
+          className={`flex items-center gap-2 text-[11px] text-[#6D6258] hover:text-[#26211C] px-2.5 py-1.5 rounded-lg hover:bg-[#F3E4DE] transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
         >
-          <span className="w-[26px] h-[26px] rounded-md bg-white/[0.05] flex items-center justify-center text-[#C98745]">
+          <span className="w-[26px] h-[26px] rounded-md bg-[#F3E4DE] flex items-center justify-center text-[#8D4133]">
             <ArrowLeft size={12} />
           </span>
           <span className={mini ? 'sr-only' : ''}>Storefront</span>
@@ -481,7 +482,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <button
           onClick={handleSignOut}
           title="Logout"
-          className={`flex items-center gap-2 text-[11px] text-red-400 hover:text-red-300 px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 w-full transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
+          className={`flex items-center gap-2 text-[11px] text-red-700 hover:text-red-800 px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 w-full transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
         >
           <span className="w-[26px] h-[26px] rounded-md bg-red-500/10 flex items-center justify-center">
             <SignOut size={12} />
@@ -509,7 +510,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         >
           {/* Hairline at rest so the edge looks grabbable, solid while hovered
               or focused so the target is obvious under the pointer. */}
-          <span className="pointer-events-none absolute inset-y-0 right-0 w-px bg-[#E0D6C8]/20 transition-colors group-hover/resize:bg-[#C98745] group-focus-visible/resize:bg-[#C98745]" />
+          <span className="pointer-events-none absolute inset-y-0 right-0 w-px bg-[#E8D3CA] transition-colors group-hover/resize:bg-[#C98745] group-focus-visible/resize:bg-[#C98745]" />
           <span className="pointer-events-none absolute right-0 top-1/2 h-10 w-[3px] -translate-y-1/2 rounded-l-full bg-[#C98745] opacity-0 transition-opacity group-hover/resize:opacity-90 group-focus-visible/resize:opacity-90" />
         </span>
       )}

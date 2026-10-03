@@ -27,6 +27,7 @@ export interface AskModelResult {
   text: string;
   provider: string;
   model: string;
+  sources?: Array<{ url: string; title: string }>;
 }
 
 export async function askModel(options: {
@@ -36,10 +37,15 @@ export async function askModel(options: {
   json?: boolean;
   timeoutMs?: number;
   maxTokens?: number;
+  /** Always run a real search; citations are returned separately from model copy. */
+  webSearch?: boolean;
 }): Promise<AskModelResult> {
   const config = await resolveAiSeoConfig();
   if (!config.apiKey) {
     throw new AiAskError('AI assistant is not configured. Add an API key in Admin Settings or the server environment.', 503);
+  }
+  if (options.webSearch && config.provider !== 'openrouter') {
+    throw new AiAskError('Market research requires the configured OpenRouter web search integration. Configure OpenRouter in Admin Settings.', 503);
   }
 
   const controller = new AbortController();
@@ -65,18 +71,26 @@ export async function askModel(options: {
           ],
           temperature: 0.1,
           max_tokens: maxTokens,
+          ...(options.webSearch ? { plugins: [{ id: 'web', engine: 'exa', max_results: 3 }] } : {}),
         }),
       });
       if (!response.ok) throw providerError('AI provider', response.status);
       const payload = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
+        choices?: Array<{ message?: { content?: string; annotations?: Array<{ type?: string; url_citation?: { url?: string; title?: string } }> } }>;
         error?: { message?: string };
       };
-      if (payload.error?.message) throw new AiAskError(payload.error.message);
+      if (payload.error) throw new AiAskError('AI provider could not complete this request.');
+      const sources = (payload.choices?.[0]?.message?.annotations ?? [])
+        .filter((annotation) => annotation.type === 'url_citation' && /^https?:\/\//i.test(annotation.url_citation?.url ?? ''))
+        .map((annotation) => ({ url: annotation.url_citation!.url!, title: annotation.url_citation?.title || annotation.url_citation!.url! }));
+      if (options.webSearch && !sources.length) {
+        throw new AiAskError('Web search returned no cited evidence. SEO generation was stopped; retry research or turn research off to use product facts only.', 502);
+      }
       return {
         text: payload.choices?.[0]?.message?.content?.trim() || '',
         provider: config.provider,
         model: config.model,
+        ...(options.webSearch ? { sources } : {}),
       };
     }
 

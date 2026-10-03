@@ -185,11 +185,14 @@ export async function GET(request: Request) {
     : 'all';
 
   try {
-    // Badges only: a catalogue read that fails costs the usage labels, never the images.
-    const usageIndex = await loadUsageIndex().catch(() => new Map<string, ImageUsage[]>());
-
     if (scope === 'all') {
-      const media = await fetchMediaPage(page, perPage, search);
+      // Attachment pickers do not render usage badges. Do not load the entire
+      // catalogue on every picker page; the Media Hub keeps its usage audit.
+      const includeUsage = url.searchParams.get('usage') !== '0';
+      const [media, usageIndex] = await Promise.all([
+        fetchMediaPage(page, perPage, search),
+        includeUsage ? loadUsageIndex().catch(() => new Map<string, ImageUsage[]>()) : Promise.resolve(new Map<string, ImageUsage[]>()),
+      ]);
       const rows = Array.isArray(media.data) ? media.data : [];
       const images = rows.filter(hasStoredFile).map((item) => toLibraryImage(item, usageIndex));
 
@@ -206,8 +209,10 @@ export async function GET(request: Request) {
         total: media.total,
         totalPages: media.totalPages,
         hasMore,
+        usageIncluded: includeUsage,
       });
     }
+    const usageIndex = await loadUsageIndex().catch(() => new Map<string, ImageUsage[]>());
 
     /*
      * A scoped read filters by usage, and WordPress cannot filter by that — so the

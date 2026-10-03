@@ -42,12 +42,15 @@ export async function listLibraryImages(options: {
    * files would have reported "42 library images" when the store holds 275.
    */
   scope?: 'all' | 'unused' | 'in_use';
+  /** Pickers need files, not an expensive full-catalogue usage audit. */
+  includeUsage?: boolean;
 } = {}): Promise<LibraryPage> {
   const params = new URLSearchParams();
   if (options.page) params.set('page', String(options.page));
   if (options.perPage) params.set('perPage', String(options.perPage));
   if (options.search) params.set('search', options.search);
   if (options.scope && options.scope !== 'all') params.set('scope', options.scope);
+  if (options.includeUsage === false) params.set('usage', '0');
 
   const response = await fetch(`/api/admin/media/library?${params.toString()}`, {
     headers: await authHeaders(),
