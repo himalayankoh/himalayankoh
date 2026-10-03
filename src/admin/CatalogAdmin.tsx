@@ -2889,7 +2889,7 @@ export function CatalogProductEditor() {
         {tab === 'variants' && <VariantManager product={p} onProduct={(next) => setP(next)} />}
 
         {/* ── SEO ── */}
-        {tab === 'seo' && <SeoTab product={p} cats={cats} set={set} onSave={handleSave} />}
+        {tab === 'seo' && <SeoTab product={p} cats={cats} set={set} onSave={handleSave} onAddCategory={addCategory} />}
 
         {/* ── COMMERCE / SOURCING ── */}
         {tab === 'commerce' && (
@@ -3099,13 +3099,12 @@ Return ONLY valid JSON with EXACTLY these keys:
   "recommendedCategory": "name of recommended category",
   "categoryRecommendationReason": "why you suggested this category",
   "seoReviewSummary": "Internal review summary checklist: Context complete? Keywords present? Any conflicts?",
-  "contentMismatchDetected": "If product title/desc conflicts with the Admin-confirmed facts, explain it here. Otherwise empty string.",
-  "slug": "do NOT change existing slug unless missing"
+  "contentMismatchDetected": "If product title/desc conflicts with the Admin-confirmed facts, explain it here. Otherwise empty string."
 }
 No other text.`;
 }
 
-function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats: CatalogCategory[]; set: <K extends keyof CatalogProduct>(k: K, v: CatalogProduct[K]) => void; onSave?: (product?: CatalogProduct) => Promise<void> }) {
+function SeoTab({ product, cats, set, onSave, onAddCategory }: { product: CatalogProduct; cats: CatalogCategory[]; set: <K extends keyof CatalogProduct>(k: K, v: CatalogProduct[K]) => void; onSave?: (product?: CatalogProduct) => Promise<void>; onAddCategory?: (name: string) => Promise<CatalogCategory | null>; }) {
   const { notify } = useApp();
   const [busy, setBusy] = useState(false);
   const [aiResult, setAiResult] = useState<{
@@ -3129,7 +3128,6 @@ function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats:
       const parsed = await generateSeoJson(buildProductSeoPrompt(product, category, cats));
       setAiResult(parsed);
       const kw = Array.isArray(parsed.seoKeywords) ? parsed.seoKeywords.map(String).slice(0, 8) : [];
-      const slug = String((parsed as any).slug || product.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 90);
       const nextKeywords = parsed.focusKeyword
         ? (kw.includes(String(parsed.focusKeyword)) ? kw : [String(parsed.focusKeyword), ...kw])
         : kw;
@@ -3138,12 +3136,10 @@ function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats:
         seoTitle: String(parsed.seoTitle || '').trim(),
         seoDescription: String(parsed.metaDescription || '').trim(),
         seoKeywords: nextKeywords,
-        ...(slug && !product.canonicalSlug ? { canonicalSlug: slug } : {}), // Never automatically change existing slug
       };
       set('seoTitle', nextProduct.seoTitle);
       set('seoDescription', nextProduct.seoDescription);
       set('seoKeywords', nextProduct.seoKeywords);
-      if (slug && !product.canonicalSlug) set('canonicalSlug', slug);
       if (saveNow && onSave) {
         await onSave(nextProduct);
         notify('SEO generated and saved');
@@ -3160,9 +3156,30 @@ function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats:
   const meta = buildProductMeta(product);
   const jsonLd = buildProductJsonLd(product);
 
-  const recommendedCatId = aiResult?.recommendedCategory 
-    ? cats.find(c => c.name.toLowerCase() === aiResult.recommendedCategory?.toLowerCase())?.id 
-    : undefined;
+  const recommendedCatName = aiResult?.recommendedCategory?.trim();
+  const normalizedRec = recommendedCatName?.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const existingCatMatch = normalizedRec ? cats.find(c => c.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normalizedRec) : undefined;
+  
+  const isCurrentAppropriate = existingCatMatch?.id === product.categoryId && recommendedCatName;
+  const isBetterExisting = existingCatMatch && existingCatMatch.id !== product.categoryId;
+  const isNewRecommended = recommendedCatName && !existingCatMatch;
+
+  const [creatingCat, setCreatingCat] = useState(false);
+  const handleCreateAndAssign = async () => {
+    if (!onAddCategory || !recommendedCatName) return;
+    setCreatingCat(true);
+    try {
+      const c = await onAddCategory(recommendedCatName);
+      if (c) {
+        set('categoryId', c.id);
+        notify(`Category "${c.name}" created and assigned. Storefront caches invalidated.`);
+      }
+    } catch (e) {
+      notify(`Could not create category: ${(e as Error).message}`, 'error');
+    } finally {
+      setCreatingCat(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -3211,20 +3228,31 @@ function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats:
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="bg-white border rounded-xl p-4 shadow-sm space-y-2">
             <h3 className="text-sm font-bold text-gray-800 border-b pb-2 mb-2">Category Intelligence</h3>
+            
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-bold text-gray-500 uppercase">Review State:</span>
+              {isCurrentAppropriate && <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Current category is appropriate</span>}
+              {isBetterExisting && <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Better existing category recommended</span>}
+              {isNewRecommended && <span className="text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">New category recommended</span>}
+              {!recommendedCatName && <span className="text-xs font-medium text-gray-700 bg-gray-50 px-2 py-0.5 rounded border border-gray-200">Category review required</span>}
+            </div>
+
             <p className="text-xs text-gray-500"><span className="font-semibold text-gray-700">Current:</span> {cats.find(c => c.id === product.categoryId)?.name || 'None'}</p>
-            <p className="text-xs text-gray-500"><span className="font-semibold text-gray-700">Recommended:</span> {aiResult.recommendedCategory || 'None'}</p>
+            <p className="text-xs text-gray-500"><span className="font-semibold text-gray-700">Recommended:</span> {recommendedCatName || 'None'}</p>
             {aiResult.categoryRecommendationReason && <p className="text-xs text-gray-500 italic">"{aiResult.categoryRecommendationReason}"</p>}
             
-            {aiResult.recommendedCategory && recommendedCatId && recommendedCatId !== product.categoryId && (
+            {isBetterExisting && existingCatMatch && (
               <div className="mt-3">
-                <button onClick={() => set('categoryId', recommendedCatId)} className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-xs font-semibold hover:bg-blue-100">
+                <button onClick={() => set('categoryId', existingCatMatch.id)} className="px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-xs font-semibold hover:bg-amber-100">
                   Assign Recommended Category
                 </button>
               </div>
             )}
-            {aiResult.recommendedCategory && !recommendedCatId && (
-              <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
-                New category recommended. Please create "{aiResult.recommendedCategory}" in WooCommerce first.
+            {isNewRecommended && onAddCategory && (
+              <div className="mt-3">
+                <button onClick={handleCreateAndAssign} disabled={creatingCat} className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-xs font-semibold hover:bg-blue-100 disabled:opacity-50">
+                  {creatingCat ? 'Creating & Assigning...' : 'Create & Assign New Category'}
+                </button>
               </div>
             )}
           </div>

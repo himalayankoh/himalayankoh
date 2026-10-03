@@ -236,6 +236,7 @@ export const CONSOLE_META_FIELDS: readonly ConsoleMetaField[] = [
   { field: 'ogImage', key: '_himalayan_koh_og_image', kind: 'string' },
   { field: 'ownerNotes', key: '_himalayan_koh_owner_notes', kind: 'string' },
   { field: 'evidenceNotes', key: '_himalayan_koh_evidence_notes', kind: 'string' },
+  { field: 'seoContext', key: '_himalayan_koh_seo_context', kind: 'json' },
 ];
 
 /**

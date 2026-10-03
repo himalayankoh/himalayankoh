@@ -179,6 +179,32 @@ describe('P0 — Product Editor Save / Hydration & Patch Semantics Regression', 
     expect(wooBody).not.toHaveProperty('name');
   });
 
+  it('Test J: explicit slug edit maps correctly but missing canonicalSlug does not overwrite', async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    const mockFetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/api/admin/products/2487') && init?.method === 'PUT') {
+        capturedBody = JSON.parse(init.body as string);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ product: { ...authoritativeProduct2487, slug: 'new-explicit-slug' } }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({ ok: false, status: 404 } as unknown as Response);
+    });
+
+    vi.stubGlobal('fetch', mockFetch);
+
+    // Explicit manual edit sends the slug
+    await updateProduct('2487', { canonicalSlug: 'new-explicit-slug' });
+    expect(capturedBody).toEqual({ slug: 'new-explicit-slug' });
+
+    // Other edits do not send a slug overwrite
+    capturedBody = null;
+    await updateProduct('2487', { price: 25.0 });
+    expect(capturedBody).not.toHaveProperty('slug');
+  });
+
   it('Test E & F: cancel edit or save immediately after opening — zero network calls or empty diff', async () => {
     const mockFetch = vi.fn();
     vi.stubGlobal('fetch', mockFetch);
