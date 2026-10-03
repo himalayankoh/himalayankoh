@@ -143,6 +143,16 @@ export interface CatalogProduct {
   /** Raw persisted seo_description column (no display fallback). */
   seoDescriptionStored: string | null;
   seoKeywords: string[];
+  seoContext?: {
+    productType?: string;
+    intendedAudience?: string;
+    primaryUse?: string;
+    primaryKeyword?: string;
+    secondaryKeywords?: string;
+    confirmedFacts?: string;
+    avoidClaims?: string;
+    researchMode?: boolean;
+  };
   canonicalSlug?: string;
   ogImage?: string;
   /**

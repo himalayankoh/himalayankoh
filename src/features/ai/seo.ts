@@ -18,6 +18,10 @@ export interface SeoJson {
   targetKeyword?: string;
   secondaryKeywords?: string[];
   searchIntent?: string;
+  recommendedCategory?: string;
+  categoryRecommendationReason?: string;
+  seoReviewSummary?: string;
+  contentMismatchDetected?: string;
 }
 
 export async function generateSeoJson(prompt: string): Promise<SeoJson> {
@@ -41,6 +45,10 @@ export async function generateSeoJson(prompt: string): Promise<SeoJson> {
       targetKeyword: typeof parsed.targetKeyword === 'string' ? parsed.targetKeyword : undefined,
       secondaryKeywords: Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords.map(String) : [],
       searchIntent: typeof parsed.searchIntent === 'string' ? parsed.searchIntent : undefined,
+      recommendedCategory: typeof parsed.recommendedCategory === 'string' ? parsed.recommendedCategory : undefined,
+      categoryRecommendationReason: typeof parsed.categoryRecommendationReason === 'string' ? parsed.categoryRecommendationReason : undefined,
+      seoReviewSummary: typeof parsed.seoReviewSummary === 'string' ? parsed.seoReviewSummary : undefined,
+      contentMismatchDetected: typeof parsed.contentMismatchDetected === 'string' ? parsed.contentMismatchDetected : undefined,
     };
   } catch {
     throw new Error('Could not parse AI response as JSON. Please retry.');

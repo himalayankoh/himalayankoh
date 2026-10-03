@@ -560,7 +560,7 @@ export function CatalogProductsPage() {
 
   const generateAndSaveSeo = async (p: CatalogProduct) => {
     const category = cats.find((c) => c.id === p.categoryId)?.name || p.categoryName || '';
-    const parsed = await generateSeoJson(buildProductSeoPrompt(p, category));
+    const parsed = await generateSeoJson(buildProductSeoPrompt(p, category, cats));
     const kw = Array.isArray(parsed.seoKeywords) ? parsed.seoKeywords.map(String).slice(0, 8) : [];
     // SEO writes meta only. It must never carry a slug: `canonicalSlug` maps to
     // WooCommerce's own `slug`, so sending the AI's suggested slug rewrote the
@@ -3061,23 +3061,62 @@ export function CatalogProductEditor() {
 // SEO TAB (with one-click AI generation + save)
 // ============================================================================
 
-/** Factual SEO prompt shared by the per-product tab and the list bulk run. */
-function buildProductSeoPrompt(p: CatalogProduct, category: string): string {
+function buildProductSeoPrompt(p: CatalogProduct, category: string, categories: CatalogCategory[]): string {
+  const ctx = p.seoContext || {};
+  const catNames = categories.map(c => `"${c.name}"`).join(', ');
+
   return `Write premium, honest SEO for this authentic Himalayan salt and mineral product for Himalayan Koh (a premium US artisan and mineral salt store).
-Product name: ${p.name}
+
+${ctx.productType ? `Product Type / What is this: ${ctx.productType}` : ''}
+${ctx.intendedAudience ? `Intended Audience: ${ctx.intendedAudience}` : ''}
+${ctx.primaryUse ? `Primary Use / Purpose: ${ctx.primaryUse}` : ''}
+${ctx.primaryKeyword ? `Primary Target Keyword: ${ctx.primaryKeyword}` : ''}
+${ctx.secondaryKeywords ? `Secondary Keywords: ${ctx.secondaryKeywords}` : ''}
+${ctx.confirmedFacts ? `Important Confirmed Facts: ${ctx.confirmedFacts}` : ''}
+${ctx.avoidClaims ? `Avoid / Do Not Claim: ${ctx.avoidClaims}` : ''}
+
+Product name (as currently listed): ${p.name}
 Brand: ${p.brand || 'Himalayan Koh'}
-Category: ${category || 'Himalayan Pink Salt'}
+Current Category: ${category || 'None'}
 Short description: ${p.shortDescription || ''}
 Long description: ${p.description || ''}
 
+IMPORTANT DATA PRIORITY RULE:
+The Admin-confirmed context fields above (Product Type, Audience, Facts, Avoid Claims) override any conflicting information in the product name or description.
+If the imported title/description conflicts with the context, follow the Admin context exactly.
+Example: If title says "Livestock" but Avoid Claims says "Do not mention livestock", you MUST NOT mention livestock.
+
+CATEGORY INTELLIGENCE RULE:
+Current categories: ${catNames}.
+Recommend an appropriate category from the list above. If NO existing category accurately represents the product, you may suggest a new one. Provide a short reason.
+
 Return ONLY valid JSON with EXACTLY these keys:
-{"seoTitle": "<=60 chars, factual, no fake claims", "metaDescription": "<=160 chars, factual", "focusKeyword": "one primary keyword", "seoKeywords": ["5-8 keywords"], "slug": "url-friendly-slug"}
+{
+  "seoTitle": "<=60 chars, factual, uses target keyword if possible",
+  "metaDescription": "<=160 chars, factual, uses keywords naturally",
+  "focusKeyword": "one primary keyword",
+  "seoKeywords": ["5-8 secondary keywords"],
+  "recommendedCategory": "name of recommended category",
+  "categoryRecommendationReason": "why you suggested this category",
+  "seoReviewSummary": "Internal review summary checklist: Context complete? Keywords present? Any conflicts?",
+  "contentMismatchDetected": "If product title/desc conflicts with the Admin-confirmed facts, explain it here. Otherwise empty string.",
+  "slug": "do NOT change existing slug unless missing"
+}
 No other text.`;
 }
 
 function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats: CatalogCategory[]; set: <K extends keyof CatalogProduct>(k: K, v: CatalogProduct[K]) => void; onSave?: (product?: CatalogProduct) => Promise<void> }) {
   const { notify } = useApp();
   const [busy, setBusy] = useState(false);
+  const [aiResult, setAiResult] = useState<{
+    recommendedCategory?: string;
+    categoryRecommendationReason?: string;
+    seoReviewSummary?: string;
+    contentMismatchDetected?: string;
+  } | null>(null);
+
+  const ctx = product.seoContext || {};
+  const setCtx = (k: keyof typeof ctx, v: any) => set('seoContext', { ...ctx, [k]: v });
 
   const addKeyword = (k: string) => { const v = k.trim(); if (v && !product.seoKeywords.includes(v)) set('seoKeywords', [...product.seoKeywords, v]); };
   const removeKeyword = (k: string) => set('seoKeywords', product.seoKeywords.filter((x) => x !== k));
@@ -3087,7 +3126,8 @@ function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats:
     setBusy(true);
     try {
       const category = cats.find((c) => c.id === product.categoryId)?.name || product.categoryName || '';
-      const parsed = await generateSeoJson(buildProductSeoPrompt(product, category));
+      const parsed = await generateSeoJson(buildProductSeoPrompt(product, category, cats));
+      setAiResult(parsed);
       const kw = Array.isArray(parsed.seoKeywords) ? parsed.seoKeywords.map(String).slice(0, 8) : [];
       const slug = String((parsed as any).slug || product.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 90);
       const nextKeywords = parsed.focusKeyword
@@ -3098,12 +3138,12 @@ function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats:
         seoTitle: String(parsed.seoTitle || '').trim(),
         seoDescription: String(parsed.metaDescription || '').trim(),
         seoKeywords: nextKeywords,
-        ...(slug ? { canonicalSlug: slug } : {}),
+        ...(slug && !product.canonicalSlug ? { canonicalSlug: slug } : {}), // Never automatically change existing slug
       };
       set('seoTitle', nextProduct.seoTitle);
       set('seoDescription', nextProduct.seoDescription);
       set('seoKeywords', nextProduct.seoKeywords);
-      if (slug) set('canonicalSlug', slug);
+      if (slug && !product.canonicalSlug) set('canonicalSlug', slug);
       if (saveNow && onSave) {
         await onSave(nextProduct);
         notify('SEO generated and saved');
@@ -3120,12 +3160,39 @@ function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats:
   const meta = buildProductMeta(product);
   const jsonLd = buildProductJsonLd(product);
 
+  const recommendedCatId = aiResult?.recommendedCategory 
+    ? cats.find(c => c.name.toLowerCase() === aiResult.recommendedCategory?.toLowerCase())?.id 
+    : undefined;
+
   return (
-    <div className="space-y-4">
-      <div className="bg-indigo-50 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6">
+      {/* 1. SEO Context Profile */}
+      <div className="bg-white border rounded-xl p-4 shadow-sm">
+        <div className="mb-4">
+          <h3 className="text-sm font-bold text-gray-800 flex items-center gap-1.5"><Sparkle size={15} /> SEO Context Profile</h3>
+          <p className="text-xs text-gray-500">Explicitly tell the AI WHAT the product is and WHO it is for. This overrides conflicting imported copy.</p>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div><label className={L}>Product Type / What is this?</label><input value={ctx.productType || ''} onChange={(e) => setCtx('productType', e.target.value)} className={I} placeholder="e.g. 6 lb Fine Grain Edible Himalayan Pink Salt" /></div>
+          <div><label className={L}>Intended Audience / Who is it for?</label><input value={ctx.intendedAudience || ''} onChange={(e) => setCtx('intendedAudience', e.target.value)} className={I} placeholder="e.g. Home cooks, restaurants" /></div>
+          <div><label className={L}>Primary Use / Purpose</label><input value={ctx.primaryUse || ''} onChange={(e) => setCtx('primaryUse', e.target.value)} className={I} placeholder="e.g. Cooking, seasoning" /></div>
+          <div><label className={L}>Avoid / Do Not Claim</label><input value={ctx.avoidClaims || ''} onChange={(e) => setCtx('avoidClaims', e.target.value)} className={I} placeholder="e.g. Do not mention livestock" /></div>
+          <div className="sm:col-span-2"><label className={L}>Important Confirmed Facts</label><input value={ctx.confirmedFacts || ''} onChange={(e) => setCtx('confirmedFacts', e.target.value)} className={I} placeholder="e.g. 6 lb pouch, fine grain only, edible use" /></div>
+          <div><label className={L}>Primary Target Keyword</label><input value={ctx.primaryKeyword || ''} onChange={(e) => setCtx('primaryKeyword', e.target.value)} className={I} placeholder="e.g. Himalayan pink salt 6 lb" /></div>
+          <div><label className={L}>Secondary Keywords</label><input value={ctx.secondaryKeywords || ''} onChange={(e) => setCtx('secondaryKeywords', e.target.value)} className={I} placeholder="e.g. fine grain Himalayan salt, bulk cooking salt" /></div>
+          <div className="sm:col-span-2 mt-2 flex items-center gap-2">
+            <input type="checkbox" checked={ctx.researchMode || false} onChange={(e) => setCtx('researchMode', e.target.checked)} id="researchMode" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            <label htmlFor="researchMode" className="text-sm font-medium text-gray-700">Research market keywords before generating SEO</label>
+            {ctx.researchMode && <span className="ml-2 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-200">Research unavailable — using owner context + WooCommerce data</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Generation Panel */}
+      <div className="bg-indigo-50 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3 border border-indigo-100">
         <div>
-          <p className="text-sm font-semibold text-indigo-800 flex items-center gap-1.5"><Sparkle size={15} />SEO & Meta — write nothing, let AI do it</p>
-          <p className="text-xs text-indigo-600 mt-0.5">One click generates a factual SEO title, meta description, keywords and slug from your product name AND saves the product (secure server-side — uses the first configured AI key). You can still edit everything.</p>
+          <p className="text-sm font-semibold text-indigo-800 flex items-center gap-1.5"><Sparkle size={15} />Generate SEO & Category Intelligence</p>
+          <p className="text-xs text-indigo-600 mt-0.5">Generates SEO fields matching your context profile. Slugs are never overwritten automatically.</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => generateWithAI(true)} disabled={busy || !product.name.trim()} className="btn-glow px-4 py-2 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-1.5">
@@ -3138,6 +3205,44 @@ function SeoTab({ product, cats, set, onSave }: { product: CatalogProduct; cats:
           )}
         </div>
       </div>
+
+      {/* 3. AI Intelligence & Reviews */}
+      {aiResult && (
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="bg-white border rounded-xl p-4 shadow-sm space-y-2">
+            <h3 className="text-sm font-bold text-gray-800 border-b pb-2 mb-2">Category Intelligence</h3>
+            <p className="text-xs text-gray-500"><span className="font-semibold text-gray-700">Current:</span> {cats.find(c => c.id === product.categoryId)?.name || 'None'}</p>
+            <p className="text-xs text-gray-500"><span className="font-semibold text-gray-700">Recommended:</span> {aiResult.recommendedCategory || 'None'}</p>
+            {aiResult.categoryRecommendationReason && <p className="text-xs text-gray-500 italic">"{aiResult.categoryRecommendationReason}"</p>}
+            
+            {aiResult.recommendedCategory && recommendedCatId && recommendedCatId !== product.categoryId && (
+              <div className="mt-3">
+                <button onClick={() => set('categoryId', recommendedCatId)} className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-xs font-semibold hover:bg-blue-100">
+                  Assign Recommended Category
+                </button>
+              </div>
+            )}
+            {aiResult.recommendedCategory && !recommendedCatId && (
+              <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                New category recommended. Please create "{aiResult.recommendedCategory}" in WooCommerce first.
+              </div>
+            )}
+          </div>
+          
+          <div className="bg-white border rounded-xl p-4 shadow-sm space-y-2">
+            <h3 className="text-sm font-bold text-gray-800 border-b pb-2 mb-2">SEO Quality / Review</h3>
+            {aiResult.contentMismatchDetected && (
+              <div className="p-2 bg-red-50 border border-red-200 rounded text-xs text-red-800 mb-2">
+                <strong>⚠ Content Mismatch Detected:</strong> {aiResult.contentMismatchDetected}
+              </div>
+            )}
+            <p className="text-xs text-gray-600 whitespace-pre-wrap">{aiResult.seoReviewSummary || 'No review summary provided.'}</p>
+            <p className="text-[10px] text-gray-400 mt-2">SEO generated from: Owner-confirmed product context, WooCommerce data.</p>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Output Fields */}
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2"><label className={L}>SEO title</label><input value={product.seoTitle} onChange={(e) => set('seoTitle', e.target.value)} className={I} placeholder="Auto-generated or write your own" /></div>
         <div className="sm:col-span-2"><label className={L}>Meta description</label><textarea value={product.seoDescription} onChange={(e) => set('seoDescription', e.target.value)} rows={3} className={I} placeholder="Auto-generated or write your own" /></div>
