@@ -48,9 +48,9 @@ export async function GET(request: Request) {
 
   let detail: string;
   if (geminiReady) {
-    detail = 'Image Studio is ready — edits use your Google AI Studio (Gemini) key.';
+    detail = 'Image Studio is ready — edits use your Google AI Studio (Gemini) key. Google bills that key for image models, so the image model needs quota (billing) enabled on it; a key that works for text can still be refused for images.';
   } else if (openrouterReady) {
-    detail = 'Image Studio is ready. Generation uses your OpenRouter credits; a Gemini key would remove that dependency.';
+    detail = 'Image Studio is ready. Generation uses your OpenRouter image credits; a Google AI Studio key with image quota would remove that dependency.';
   } else if (openrouterCreditShort) {
     detail = 'AI Image Studio needs credits on the existing OpenRouter account — attach a Google AI Studio (Gemini) key in AI Hub to keep editing without credits.';
   } else {
