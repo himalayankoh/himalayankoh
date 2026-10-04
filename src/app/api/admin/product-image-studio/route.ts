@@ -2,30 +2,65 @@ import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { isAllowedRequestOrigin } from '@/lib/http/originAllowlist';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { resolveAiSeoConfig } from '@/lib/ai/gemini';
+import { resolveAiSeoConfig, resolveConfigFor } from '@/lib/ai/gemini';
 import { AiAskError } from '@/lib/ai/askModel';
-import { generateProductImage, PRODUCT_IMAGE_MODEL, validateStudioImageSource } from '@/lib/ai/productImageStudio';
+import { generateProductImage, PRODUCT_IMAGE_MODEL, GEMINI_IMAGE_MODEL, validateStudioImageSource } from '@/lib/ai/productImageStudio';
 import { backendConfig } from '@/lib/backend/config';
 import { publicEnv } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Image Studio readiness.
+ *
+ * Two paths can make it work: a Google AI Studio (Gemini) key, which is charged
+ * directly, or OpenRouter image credits. This used to answer from OpenRouter
+ * alone, so an exhausted OpenRouter balance disabled the studio even when a
+ * Gemini key was available — the exact stop the owner hit. It now reports ready
+ * when either path exists and says which one it will use.
+ */
 export async function GET(request: Request) {
   const auth = await verifyAdminRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-  const config = await resolveAiSeoConfig();
-  const configured = !!config.apiKey && config.provider === 'openrouter';
-  let available = false;
-  let detail = 'Configure OpenRouter image-model access and credits in Admin Settings.';
-  if (configured) {
+
+  const [routing, gemini] = await Promise.all([resolveAiSeoConfig(), resolveConfigFor('gemini')]);
+  const geminiReady = !!gemini.apiKey;
+
+  let openrouterReady = false;
+  let openrouterCreditShort = false;
+  if (routing.provider === 'openrouter' && routing.apiKey) {
     try {
-      const response = await fetch('https://openrouter.ai/api/v1/credits', { headers: { Authorization: `Bearer ${config.apiKey}` }, signal: AbortSignal.timeout(8_000) });
+      const response = await fetch('https://openrouter.ai/api/v1/credits', {
+        headers: { Authorization: `Bearer ${routing.apiKey}` },
+        signal: AbortSignal.timeout(8_000),
+      });
       const data = await response.json() as { data?: { total_credits?: number; total_usage?: number } };
-      available = response.ok && Number(data.data?.total_credits ?? 0) - Number(data.data?.total_usage ?? 0) > 0;
-      detail = available ? 'Image Studio is ready. Generation uses your OpenRouter credits.' : response.ok ? 'AI Image Studio needs credits on the existing OpenRouter account.' : 'Image provider access could not be verified. Check the existing OpenRouter account.';
-    } catch { detail = 'Image provider availability could not be checked. Try opening Images again.'; }
+      openrouterReady = response.ok && Number(data.data?.total_credits ?? 0) - Number(data.data?.total_usage ?? 0) > 0;
+      openrouterCreditShort = response.ok && !openrouterReady;
+    } catch {
+      // Leave not-ready; the owner can retry rather than being told a wrong thing.
+    }
   }
-  return NextResponse.json({ configured, available, detail, provider: config.provider, model: PRODUCT_IMAGE_MODEL }, { headers: { 'Cache-Control': 'no-store' } });
+
+  const available = geminiReady || openrouterReady;
+  const provider = geminiReady ? 'gemini' : openrouterReady ? 'openrouter' : routing.provider;
+  const model = geminiReady ? GEMINI_IMAGE_MODEL : PRODUCT_IMAGE_MODEL;
+
+  let detail: string;
+  if (geminiReady) {
+    detail = 'Image Studio is ready — edits use your Google AI Studio (Gemini) key.';
+  } else if (openrouterReady) {
+    detail = 'Image Studio is ready. Generation uses your OpenRouter credits; a Gemini key would remove that dependency.';
+  } else if (openrouterCreditShort) {
+    detail = 'AI Image Studio needs credits on the existing OpenRouter account — attach a Google AI Studio (Gemini) key in AI Hub to keep editing without credits.';
+  } else {
+    detail = 'Attach a Google AI Studio (Gemini) key in AI Hub to enable the Image Studio.';
+  }
+
+  return NextResponse.json(
+    { configured: available, available, detail, provider, model },
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
 }
 
 export async function POST(request: Request) {
