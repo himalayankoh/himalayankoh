@@ -145,7 +145,7 @@ export function isCategoryFilterValue(value: string): boolean {
 export function productCategoryFilterKey(product: NicheCheckInput): CategoryFilterKey | null {
   const filed = (product.category ?? '').trim();
   if (filed) {
-    const shelved = nicheSectionKeyForWooCategory(filed, product.name);
+    const shelved = nicheSectionKeyForWooCategory(filed, product);
     if (shelved) return shelved;
     const slug = categorySlugFromLabel(filed);
     if (slug) return slug;

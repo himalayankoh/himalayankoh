@@ -162,14 +162,19 @@ const SHELF_BY_WOO_LABEL = new Map<string, NicheSectionKey>(
  */
 export function nicheSectionKeyForWooCategory(
   label: string | null | undefined,
-  productName = ''
+  productContext: string | NicheCheckInput = ''
 ): NicheSectionKey | null {
   if (!label) return null;
   const key = SHELF_BY_WOO_LABEL.get(label.trim().toLowerCase()) ?? null;
   // "Salt Blocks" is shared by cooking pieces and animal salt in WooCommerce.
   // Keep the latter on Salt Licks, even when the category is read before the name.
-  if (key === 'cooking-serving' && /\b(?:livestock|live\s+stock|animals?|horses?|deer|cattle)\b/i.test(productName)) {
-    return 'licks-blocks';
+  if (key === 'cooking-serving') {
+    const text = typeof productContext === 'string'
+      ? productContext
+      : `${productContext.name || ''} ${productContext.category || ''} ${productContext.description || ''} ${productContext.sku || ''}`;
+    if (/\b(?:livestock|live\s+stock|animals?|horses?|deer|cattle|bovine|equine|goats?|sheeps?|licks?|wildlife|pasture|herd)\b/i.test(text)) {
+      return 'licks-blocks';
+    }
   }
   return key;
 }

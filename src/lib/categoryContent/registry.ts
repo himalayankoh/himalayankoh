@@ -346,23 +346,104 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
     key: 'live-stock',
     productCategoryLabel: 'Live Stock',
     hero: {
-      eyebrow: 'Pasture & Stable',
-      title: 'Himalayan Pink Salt for Livestock',
-      subtitle: 'Explore our livestock salt range in bags and pouches. Compare the listed weights and grain sizes to find the right format for your farm or stable.',
+      eyebrow: 'Pasture & Livestock Minerals',
+      title: 'Himalayan Salt for Livestock',
+      subtitle:
+        'Pure, unrefined mineral rock salt in bags, pouches and loose grain — essential free-choice sodium, chloride and 84+ trace minerals for herd vitality and pasture health.',
     },
     seo: {
-      title: 'Himalayan Pink Salt for Livestock | Himalayan Koh',
-      description: 'Shop Himalayan pink salt bags and pouches in our Live Stock range. Compare product weights, grain sizes and current availability from Himalayan Koh.',
+      title: 'Himalayan Salt for Livestock — Pasture & Stable Minerals | Himalayan Koh',
+      description:
+        'Shop Himalayan pink salt for livestock in bags and pouches. Natural Khewra rock salt providing essential minerals, electrolytes, and free-choice sodium for horses and cattle.',
     },
     trustPoints: [
-      { label: 'Weights as listed', detail: 'Compare the pack size shown on each product.' },
-      { label: 'Grain options', detail: 'Choose from the grain sizes available on the product page.' },
-      { label: 'Houston distribution', detail: 'Dispatched from our Texas warehouse.' },
+      { label: '100% natural Khewra rock', detail: 'Zero chemical binders, anti-caking agents, or artificial fillers.' },
+      { label: 'Essential herd electrolytes', detail: 'Stimulates vital thirst, feed intake, and balanced mineral nutrition.' },
+      { label: 'Houston, Texas dispatch', detail: 'Stocked for fast, dependable delivery across American farms and ranches.' },
     ],
-    gallery: [],
-    guides: [],
-    articles: [],
-    pdfs: [],
+    gallery: [
+      { id: 'livestock-bag', src: IMG.rockBag, alt: 'Himalayan pink salt bags for pasture livestock', width: 600, height: 450 },
+      { id: 'livestock-bowl', src: IMG.saltBowl, alt: 'Unrefined pink rock salt crystals for animal feed supplementation', width: 600, height: 450 },
+      { id: 'livestock-pouch', src: IMG.pouch, alt: 'Resealable 6 lb livestock pink salt pouches', width: 600, height: 450 },
+    ],
+    articles: [
+      {
+        id: 'livestock-pasture-salt',
+        title: 'Salt Needs for Cattle: Practical Farm Guide',
+        excerpt: 'Managing pasture herd cation-anion balance, seasonal forage shifts, and mineral placement.',
+        image: IMG.rockBag,
+        readTime: '6 min read',
+        tag: 'Bovine',
+        href: '/resources/salt-needs-for-cattle-practical-farm-guide',
+      },
+      {
+        id: 'livestock-equine-electrolytes',
+        title: 'How Horses Use Salt and Electrolytes',
+        excerpt: 'Why equine sweat demands sodium and chloride, and how free-choice rock licks stimulate vital thirst.',
+        image: IMG.saltBowl,
+        readTime: '6 min read',
+        tag: 'Equine',
+        href: '/resources/how-horses-use-salt-and-electrolytes',
+      },
+      {
+        id: 'livestock-block-vs-loose',
+        title: 'Salt Block vs. Loose Salt for Livestock',
+        excerpt: 'How rock salt blocks compare with loose mineral salt in weather erosion and intake regulation.',
+        image: IMG.rockBag,
+        readTime: '7 min read',
+        tag: 'Pasture',
+        href: '/resources/salt-block-vs-loose-salt-for-livestock',
+      },
+    ],
+    guides: [
+      {
+        id: 'livestock-pasture-mgmt',
+        title: 'Pasture & Stall Management',
+        bullets: [
+          'Provide continuous free-choice access to clean drinking water near feeding areas',
+          'Position salt stations 100 to 300 yards from water sources to encourage grazing rotation',
+          'Elevate feed bags and bulk storage in dry barns off dirt floors',
+          'Protect loose salt troughs from seasonal precipitation to reduce leaching',
+        ],
+      },
+      {
+        id: 'livestock-seasonal-needs',
+        title: 'Seasonal Mineral Requirements',
+        bullets: [
+          'Increase salt access during high-heat months when animals lose electrolytes through sweat',
+          'Lush spring pastures are high in potassium and require extra sodium balancing',
+          'Monitor voluntary salt intake across herd transitions from dry hay to fresh pasture',
+          'Consult herd veterinarian or extension agent for tailored mineral programs',
+        ],
+      },
+      {
+        id: 'livestock-faq',
+        title: 'Livestock Salt FAQs',
+        faqs: [
+          {
+            question: 'Why do livestock need unprocessed rock salt?',
+            answer:
+              'Sodium and chloride are essential nutrients that grazing animals cannot produce internally. Unrefined Himalayan salt provides these vital electrolytes along with natural trace minerals.',
+          },
+          {
+            question: 'Is pink salt safe for all livestock species?',
+            answer:
+              'Yes, Himalayan pink salt is safe and beneficial for cattle, horses, sheep, goats, and wildlife when offered with free-choice access to clean water.',
+          },
+        ],
+      },
+    ],
+    pdfs: [
+      {
+        id: 'livestock-salt-management-guide',
+        title: 'Livestock Salt Management Guide',
+        description: 'Intake baselines, stall mounting, pasture placement, and seasonal pasture management.',
+        url: '/resources/salt-block-vs-loose-salt-for-livestock',
+        fileSize: 'Online Guide',
+        publishedAt: '2026-03-12',
+        visible: false,
+      },
+    ],
     emptyStates: {},
   },
 

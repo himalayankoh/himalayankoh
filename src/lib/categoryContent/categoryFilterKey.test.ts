@@ -236,7 +236,7 @@ describe('animal salt cannot bypass the Cooking & Serving guard through Woo fili
     const livestock = { name: 'Himalayan Pink Salt for Livestock — 6 lbs', category: 'Live Stock' };
     expect(productMatchesCategoryFilter(cooking, 'cooking-serving')).toBe(true);
     expect(productMatchesCategoryFilter(livestock, 'live-stock')).toBe(true);
-    expect(getCategoryContent('live-stock')?.hero.title).toBe('Himalayan Pink Salt for Livestock');
+    expect(getCategoryContent('live-stock')?.hero.title).toBe('Himalayan Salt for Livestock');
     expect(getCategoryContent('licks-blocks')?.hero.title).toBe('Himalayan Salt Licks & Blocks');
   });
 
@@ -246,5 +246,15 @@ describe('animal salt cannot bypass the Cooking & Serving guard through Woo fili
     expect(key).toBe('cooking-serving');
     expect(catalogue.filter((p) => productMatchesCategoryFilter(p, key))).toEqual([]);
     expect(productsCategoryTabs(catalogue).map((tab) => tab.key)).toEqual([null, 'licks-blocks']);
+  });
+
+  it('keeps salt block with animal terms in description off Cooking & Serving', () => {
+    const salt = {
+      name: 'Himalayan Salt Block 30 Lbs',
+      category: 'Salt Blocks',
+      description: 'Pasture salt block for cattle herd mineral feeding',
+    };
+    expect(productCategoryFilterKey(salt)).toBe('licks-blocks');
+    expect(productMatchesCategoryFilter(salt, 'cooking-serving')).toBe(false);
   });
 });

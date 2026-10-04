@@ -94,7 +94,7 @@ export const DEFAULT_AI_PROVIDERS: AIProvider[] = [
   },
   { id: 'openai', name: 'OpenAI', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'], defaultModel: 'gpt-4o-mini', enabled: false, isDefault: false },
   { id: 'anthropic', name: 'Anthropic Claude', models: ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6'], defaultModel: 'claude-haiku-4-5-20251001', enabled: false, isDefault: false },
-  { id: 'codex', name: 'OpenAI Codex', models: ['gpt-5-codex', 'codex-mini-latest'], defaultModel: 'gpt-5-codex', enabled: true, isDefault: false },
+  { id: 'codex', name: 'OpenAI Codex (Experimental)', models: ['gpt-5-codex', 'codex-mini-latest'], defaultModel: 'gpt-5-codex', enabled: false, isDefault: false },
 ];
 
 const PROVIDER_IDS = new Set(DEFAULT_AI_PROVIDERS.map((p) => p.id));
