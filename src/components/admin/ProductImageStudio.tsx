@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sparkle, X, UploadSimple, Images } from '@phosphor-icons/react';
 import { getFreshAccessToken } from '@/services/wordpressAdminAuth';
 import { prepareImageForUpload } from '@/lib/image-upload';
@@ -26,16 +26,29 @@ export default function ProductImageStudio({ image, productName, canAdd, onClose
   const uploadKind = useRef<ReferenceKind>('reference');
   const fileInput = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    let active = true;
-    void getFreshAccessToken().then(token => fetch('/api/admin/product-image-studio', { headers: token ? { Authorization: `Bearer ${token}` } : {} }))
-      .then(async response => {
-        const data = await response.json() as { available?: boolean; detail?: string; error?: string };
-        if (!response.ok) throw new Error(data.error || 'Image Studio status could not be read.');
-        if (active) { setConfigured(data.available === true); if (!data.available) setError(data.detail || 'Image Studio is unavailable.'); }
-      }).catch(e => { if (active) { setConfigured(false); setError(e instanceof Error ? e.message : 'Image Studio is unavailable.'); } });
-    return () => { active = false; controller.current?.abort(); };
+  /**
+   * Read the studio's readiness. Re-runnable so an owner who attaches a key in
+   * another tab can press Retry instead of closing and reopening the studio.
+   */
+  const checkReadiness = useCallback(async () => {
+    setConfigured(null);
+    try {
+      const token = await getFreshAccessToken();
+      const response = await fetch('/api/admin/product-image-studio', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const data = await response.json() as { available?: boolean; detail?: string; error?: string };
+      if (!response.ok) throw new Error(data.error || 'Image Studio status could not be read.');
+      setConfigured(data.available === true);
+      setError(data.available ? '' : (data.detail || 'Image Studio is unavailable.'));
+    } catch (e) {
+      setConfigured(false);
+      setError(e instanceof Error ? e.message : 'Image Studio is unavailable.');
+    }
   }, []);
+
+  useEffect(() => {
+    void checkReadiness();
+    return () => { controller.current?.abort(); };
+  }, [checkReadiness]);
 
   async function generate() {
     if (locked.current || !configured || !prompt.trim()) return;
@@ -100,7 +113,7 @@ export default function ProductImageStudio({ image, productName, canAdd, onClose
             </div>
             {result && <label className="flex items-center gap-2 text-xs text-admin-ink"><input type="checkbox" checked={usePreview} onChange={e => setUsePreview(e.target.checked)} />Refine the generated preview</label>}
             {configured === null && <p role="status" className="text-xs text-admin-muted">Checking AI connection…</p>}
-            {configured === false && <p className="text-xs text-admin-muted">Attach a Google AI Studio (Gemini) key in AI Hub, or add OpenRouter image credits, to enable this studio.</p>}
+            {configured === false && <p className="text-xs text-admin-muted">Attach a Google AI Studio (Gemini) key in AI Hub, or add OpenRouter image credits, to enable this studio. <button type="button" onClick={() => void checkReadiness()} className="font-semibold text-himalayan-dark underline">Retry check</button></p>}
             <button type="button" disabled={!configured || !prompt.trim() || busy || uploading} onClick={() => void generate()} className="w-full rounded-lg bg-himalayan px-4 py-2.5 text-sm font-semibold text-white hover:bg-himalayan-dark disabled:opacity-50">{busy ? 'Generating edit…' : result ? 'Generate another edit' : 'Generate preview'}</button>
             <p className="text-[11px] leading-relaxed text-admin-muted">Uses your Google AI Studio (Gemini) key, with OpenRouter credits as a fallback. Review product accuracy and label text before applying. Your original stays unchanged until you apply and save.</p>
             {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">{error}</p>}

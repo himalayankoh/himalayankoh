@@ -4090,17 +4090,27 @@ function ImageManager({ product, onProduct }: { product: CatalogProduct; onProdu
   const [uploading, setUploading] = useState(false);
   const [finding, setFinding] = useState(false);
   const [studioImageId, setStudioImageId] = useState<string | null>(null);
-  const [imageAiStatus, setImageAiStatus] = useState<{ available: boolean; detail: string } | null>(null);
-  useEffect(() => {
-    let active = true;
-    void getFreshAccessToken().then(token => fetch('/api/admin/product-image-studio', { headers: token ? { Authorization: `Bearer ${token}` } : {} }))
-      .then(async response => {
-        if (!response.ok) throw new Error('AI Image Studio availability could not be checked.');
-        const status = await response.json() as { available: boolean; detail: string };
-        if (active) setImageAiStatus(status);
-      }).catch(() => { if (active) setImageAiStatus({ available: false, detail: 'AI Image Studio availability could not be checked. Try opening Images again.' }); });
-    return () => { active = false; };
+  const [imageAiStatus, setImageAiStatus] = useState<{ available: boolean; detail: string; unknown?: boolean } | null>(null);
+  /**
+   * Ask the server whether the studio is ready.
+   *
+   * A failed check is reported as `unknown`, not as unavailable: the studio used
+   * to disappear entirely when this one request failed, which is how an owner who
+   * had just attached a key still saw no AI Image Studio button. The studio is
+   * keep reachable now, and the modal itself re-checks before it lets you generate.
+   */
+  const checkImageAiStatus = useCallback(async () => {
+    try {
+      const token = await getFreshAccessToken();
+      const response = await fetch('/api/admin/product-image-studio', { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const status = await response.json() as { available: boolean; detail: string };
+      setImageAiStatus(status);
+    } catch {
+      setImageAiStatus({ available: false, unknown: true, detail: 'AI Image Studio availability could not be checked.' });
+    }
   }, []);
+  useEffect(() => { void checkImageAiStatus(); }, [checkImageAiStatus]);
 
   /**
    * Find this product's images on the store BY NAME.
@@ -4403,7 +4413,7 @@ function ImageManager({ product, onProduct }: { product: CatalogProduct; onProdu
       )}
 
       {/* Image grid with thumbnail picker */}
-      {imageAiStatus && !imageAiStatus.available && <p role="status" className="text-xs text-admin-muted">{imageAiStatus.detail} <a href="/admin/settings" className="text-himalayan-dark underline">AI settings</a></p>}
+      {imageAiStatus && !imageAiStatus.available && <p role="status" className="text-xs text-admin-muted">{imageAiStatus.detail} <button type="button" onClick={() => void checkImageAiStatus()} className="font-semibold text-himalayan-dark underline">Retry</button> <span className="text-admin-muted/70">·</span> <a href="/admin/ai" className="text-himalayan-dark underline">AI Hub</a></p>}
       {product.images.length === 0 ? (
         <div className="text-center py-10 text-gray-400 border border-dashed rounded-xl"><ImageIcon size={28} className="mx-auto mb-2 text-gray-300" />No images yet — upload or add at least one.</div>
       ) : (
@@ -4418,7 +4428,7 @@ function ImageManager({ product, onProduct }: { product: CatalogProduct; onProdu
               {img.isPrimary && <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-blue-500 text-white text-[10px] font-bold rounded">MAIN</span>}
               <button type="button" onClick={() => remove(idx)} className="absolute top-1.5 right-1.5 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center text-sm hover:bg-red-600 shadow-md transition-colors" title="Remove image">✕</button>
 
-              {imageAiStatus?.available && <div className="border-t border-admin-line bg-himalayan-lighter px-3 py-2">
+              {(imageAiStatus?.available || imageAiStatus?.unknown) && <div className="border-t border-admin-line bg-himalayan-lighter px-3 py-2">
                 <button type="button" onClick={() => setStudioImageId(img.id)} className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-himalayan-dark hover:bg-himalayan-light"><Sparkle size={15} /> AI Image Studio</button>
               </div>}
 

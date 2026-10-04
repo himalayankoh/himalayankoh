@@ -1,11 +1,8 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { testAiSeoConnection, type AiProviderType } from '@/lib/ai/gemini';
+import { testAiSeoConnection, isCallableProvider } from '@/lib/ai/gemini';
 
 export const dynamic = 'force-dynamic';
-
-/** Providers this server can actually call. The rest have no handler here yet. */
-const SERVER_PROVIDERS: AiProviderType[] = ['openrouter', 'gemini'];
 
 export async function POST(request: Request) {
   const auth = await verifyAdminRequest(request);
@@ -26,17 +23,15 @@ export async function POST(request: Request) {
   // on. It used to ignore the request and test the routing default, so pressing
   // Test on Gemini reported OpenRouter's result. A provider with no server-side
   // handler says so instead of reporting someone else's connection.
-  if (requested && !SERVER_PROVIDERS.includes(requested as AiProviderType)) {
+  if (requested && !isCallableProvider(requested)) {
     return NextResponse.json({
       ok: false,
-      message: `${requested} is not wired server-side in this app yet — only OpenRouter and Google AI Studio can be tested.`,
+      message: `${requested} is not wired server-side in this app — it has no handler and no key store.`,
     });
   }
 
   try {
-    const provider = SERVER_PROVIDERS.includes(requested as AiProviderType)
-      ? (requested as AiProviderType)
-      : undefined;
+    const provider = isCallableProvider(requested) ? requested : undefined;
     const status = await testAiSeoConnection({ provider, model: body.model?.trim() || undefined });
     const ok = status.state === 'CONNECTED';
     return NextResponse.json({

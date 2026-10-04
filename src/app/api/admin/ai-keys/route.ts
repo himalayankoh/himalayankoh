@@ -6,15 +6,16 @@
  * failed. This is that route.
  *
  * A key is not new state: it lives in the same WordPress option the settings
- * screen writes, one category per provider (`openrouter`, `gemini`), which is
- * also what `resolveAiSeoConfig()` reads. So attaching a key here and saving it
- * on the Settings screen are the same write, and a provider the store cannot
- * answer for reports `none` rather than pretending to be configured.
+ * screen writes, one category per provider, which is also what
+ * `resolveConfigFor()` reads. So attaching a key here and saving it on the
+ * Settings screen are the same write, and a provider the store cannot answer for
+ * reports `none` rather than pretending to be configured.
  *
- * Only the providers the server can actually call are attachable. The others
- * on the screen (DeepSeek, OpenAI, Anthropic, Codex) have no server-side
- * handler in this app, so a key pasted for them could never be used — this
- * route says so instead of storing a secret nothing reads.
+ * The attachable set is derived from the server's own provider list
+ * (`PROVIDER_SPECS`), so a provider is attachable exactly when the server has a
+ * handler that can call it. This used to be a hand-written map of two
+ * (OpenRouter and Gemini), which is why a DeepSeek key returned a 400 while the
+ * card sat there inviting one.
  *
  * Secrets never leave the server: reads return a mask, never the value.
  */
@@ -22,14 +23,9 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { getSettingsForCategoryWithStatus, upsertSettings, deleteSetting } from '@/lib/settings/serverSettings';
+import { PROVIDER_SPEC_BY_ID, isCallableProvider } from '@/lib/ai/gemini';
 
 const MASKED = '••••••••';
-
-/** Providers with a server-side key store, mapped to their settings category + env fallback. */
-const ATTACHABLE_PROVIDERS: Record<string, { category: string; env: string }> = {
-  openrouter: { category: 'openrouter', env: 'OPENROUTER_API_KEY' },
-  gemini: { category: 'gemini', env: 'GEMINI_API_KEY' },
-};
 
 function maskKey(value: string): string {
   if (value.length <= 8) return MASKED;
@@ -41,18 +37,18 @@ export async function GET(request: Request) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const providers = await Promise.all(
-    Object.entries(ATTACHABLE_PROVIDERS).map(async ([id, { category, env }]) => {
-      const read = await getSettingsForCategoryWithStatus(category);
+    Object.values(PROVIDER_SPEC_BY_ID).map(async (spec) => {
+      const read = await getSettingsForCategoryWithStatus(spec.category);
       const dbKey = (read.values?.api_key || '').trim();
-      const envKey = (process.env[env] || '').trim();
+      const envKey = spec.envKeys.map((key) => (process.env[key] || '').trim()).find(Boolean) || '';
 
       if (dbKey) {
-        return { id, configured: true, source: 'attached' as const, masked: maskKey(dbKey) };
+        return { id: spec.id, configured: true, source: 'attached' as const, masked: maskKey(dbKey) };
       }
       if (envKey) {
-        return { id, configured: true, source: 'server' as const, masked: maskKey(envKey) };
+        return { id: spec.id, configured: true, source: 'server' as const, masked: maskKey(envKey) };
       }
-      return { id, configured: false, source: 'none' as const, masked: '' };
+      return { id: spec.id, configured: false, source: 'none' as const, masked: '' };
     }),
   );
 
@@ -72,20 +68,21 @@ export async function POST(request: Request) {
 
   const action = body.action;
   const provider = (body.provider || '').trim();
-  const providerDef = ATTACHABLE_PROVIDERS[provider];
 
   if (action !== 'set' && action !== 'clear') {
     return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
   }
-  if (!providerDef) {
+  if (!isCallableProvider(provider)) {
     return NextResponse.json(
-      { error: 'This provider has no server-side key store in this app. Only OpenRouter and Google AI Studio (Gemini) keys can be attached here.' },
+      { error: 'This provider has no server-side handler in this app, so a key for it could never be used. Attach a key for one of: ' + Object.values(PROVIDER_SPEC_BY_ID).map((spec) => spec.label).join(', ') + '.' },
       { status: 400 },
     );
   }
 
+  const spec = PROVIDER_SPEC_BY_ID[provider];
+
   if (action === 'clear') {
-    await deleteSetting(providerDef.category, 'api_key');
+    await deleteSetting(spec.category, 'api_key');
     return NextResponse.json({ ok: true });
   }
 
@@ -94,6 +91,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Paste the full API key first.' }, { status: 400 });
   }
 
-  await upsertSettings(providerDef.category, { api_key: key });
+  await upsertSettings(spec.category, { api_key: key });
   return NextResponse.json({ ok: true, masked: maskKey(key) });
 }

@@ -5620,7 +5620,7 @@ const providerIcons: Record<string, string> = {
         <h2 className="font-bold text-sm text-gray-700 mb-4 flex items-center gap-2">
           <Robot size={16} className="text-purple-500" /> AI Provider Configuration
         </h2>
-        <p className="text-sm text-gray-500 mb-5">Attach a key and choose a model. Keys stay server-side. Only OpenRouter and Google AI Studio run server-side today.</p>
+        <p className="text-sm text-gray-500 mb-5">Attach a key and choose a model. Every provider listed here can run server-side; the one marked <strong>Default</strong> is the one AI Import, Marketing and the console use.</p>
         {/* First-run connection status */}
         {(() => {
           const connected = aiProviders.filter(p => Boolean(serverStatus?.[p.id]?.configured || keyStatus[p.id]?.configured));
@@ -5729,6 +5729,21 @@ const providerIcons: Record<string, string> = {
               {provider.id === 'deepseek' && (
                 <p className="text-xs text-gray-400 mt-2">
                   Budget-friendly and fast. <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Get API key</a>
+                </p>
+              )}
+              {provider.id === 'openai' && (
+                <p className="text-xs text-gray-400 mt-2">
+                  Official OpenAI API key — the supported path for OpenAI models. <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Get API key</a>
+                </p>
+              )}
+              {provider.id === 'anthropic' && (
+                <p className="text-xs text-gray-400 mt-2">
+                  Anthropic Messages API (Claude). <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Get API key</a>
+                </p>
+              )}
+              {provider.id === 'codex' && (
+                <p className="text-xs text-gray-400 mt-2">
+                  Uses your ChatGPT/Codex subscription: run <code className="rounded bg-gray-100 px-1 py-0.5">codex login</code> on your computer, then paste the <code className="rounded bg-gray-100 px-1 py-0.5">tokens.access_token</code> from <code className="rounded bg-gray-100 px-1 py-0.5">~/.codex/auth.json</code>. This endpoint is not a documented public API — if Test says it could not connect, use an OpenAI API key instead.
                 </p>
               )}
             </div>

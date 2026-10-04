@@ -1,19 +1,26 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { resolveAiSeoConfig } from '@/lib/ai/gemini';
+import { chatComplete, isCallableProvider, resolveAiSeoConfig, resolveConfigFor, GeminiError, type AiSeoConfig } from '@/lib/ai/gemini';
 
 export const dynamic = 'force-dynamic';
 
-const OPENROUTER_API_ROOT = 'https://openrouter.ai/api/v1';
-const GEMINI_API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
-
+/**
+ * Text generation proxy.
+ *
+ * The console sends the provider it selected (and an optional fallback chain),
+ * and this route used to ignore both and always call the routing default — so
+ * "Make Default" and every per-provider choice were cosmetic, and a key attached
+ * for DeepSeek, OpenAI, Anthropic or Codex could never actually be used. The
+ * requested provider is honoured now, with the fallback only consulted when the
+ * primary genuinely fails.
+ */
 export async function POST(request: Request) {
   const auth = await verifyAdminRequest(request);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  let body: { prompt?: string; system?: string; provider?: string; model?: string };
+  let body: { prompt?: string; system?: string; provider?: string; model?: string; fallback?: string };
   try {
     body = await request.json();
   } catch {
@@ -25,80 +32,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
   }
 
-  const config = await resolveAiSeoConfig();
-  if (!config.apiKey) {
+  const system = (body.system || 'You are an honest, accurate assistant for Himalayan Koh. Return clean factual responses.').trim();
+
+  const primary = isCallableProvider(body.provider)
+    ? await resolveConfigFor(body.provider, body.model?.trim() || undefined)
+    : await resolveAiSeoConfig();
+
+  if (!primary.apiKey) {
     return NextResponse.json(
       { error: 'No AI provider is configured. Please configure an API key in Admin Settings.' },
-      { status: 503 }
+      { status: 503 },
     );
   }
 
-  const system = (body.system || 'You are an honest, accurate assistant for Himalayan Koh. Return clean factual responses.').trim();
-  const model = body.model || config.model;
+  const attempt = async (config: AiSeoConfig) =>
+    chatComplete(config, { user: prompt, system, maxTokens: 1500, temperature: 0.3 });
 
   try {
-    let text = '';
-    if (config.provider === 'openrouter') {
-      const res = await fetch(`${OPENROUTER_API_ROOT}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://preview.himalayankoh.com',
-          'X-Title': 'Himalayan Koh Admin AI',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: prompt },
-          ],
-          temperature: 0.3,
-          max_tokens: 1500,
-        }),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        return NextResponse.json(
-          { error: `AI provider error (HTTP ${res.status}): ${errText.slice(0, 200)}` },
-          { status: res.status }
-        );
-      }
-
-      const data = await res.json();
-      text = data?.choices?.[0]?.message?.content || '';
-    } else {
-      // Direct Gemini
-      const endpoint = `${GEMINI_API_ROOT}/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: `${system}\n\n${prompt}` }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 1500 },
-        }),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        return NextResponse.json(
-          { error: `Gemini error (HTTP ${res.status}): ${errText.slice(0, 200)}` },
-          { status: res.status }
-        );
-      }
-
-      const data = await res.json();
-      text = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') || '';
+    try {
+      const text = await attempt(primary);
+      return NextResponse.json({ text, provider: primary.provider, model: primary.model });
+    } catch (primaryError) {
+      // Only a provider the caller named as a fallback is tried, and only once —
+      // no silent loop, and the error surfaces when the fallback fails too.
+      if (!isCallableProvider(body.fallback) || body.fallback === primary.provider) throw primaryError;
+      const fallbackConfig = await resolveConfigFor(body.fallback);
+      if (!fallbackConfig.apiKey) throw primaryError;
+      const text = await attempt(fallbackConfig);
+      return NextResponse.json({ text, provider: fallbackConfig.provider, model: fallbackConfig.model });
     }
-
-    return NextResponse.json({
-      text,
-      provider: config.provider,
-      model,
-    });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'AI generation request failed';
-    return NextResponse.json({ error: msg }, { status: 502 });
+    const msg = err instanceof GeminiError ? err.message : err instanceof Error ? err.message : 'AI generation request failed';
+    const status = err instanceof GeminiError ? err.status : 502;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

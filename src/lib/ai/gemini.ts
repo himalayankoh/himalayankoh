@@ -18,12 +18,77 @@ import { findProhibitedClaims, type ProhibitedClaim } from '../products/claims';
 
 export const DEFAULT_OPENROUTER_MODEL = 'google/gemini-2.5-flash';
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
+export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+export const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+export const DEFAULT_CODEX_MODEL = 'gpt-5-codex';
 
 const OPENROUTER_API_ROOT = 'https://openrouter.ai/api/v1';
 const GEMINI_API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
+const OPENAI_API_ROOT = 'https://api.openai.com/v1';
+const DEEPSEEK_API_ROOT = 'https://api.deepseek.com';
+const ANTHROPIC_API_ROOT = 'https://api.anthropic.com/v1';
+/**
+ * The Codex backend the ChatGPT-subscription CLI signs in to. This is not a
+ * documented public API — it is the endpoint `codex login` already authorises a
+ * token for, and OpenAI may change or withdraw it. It is offered so an owner
+ * with a Codex subscription can use it, and every failure here is reported as
+ * "could not be reached / rejected" rather than papered over. The official,
+ * supported path is an OpenAI API key on the OpenAI card.
+ */
+const CODEX_API_ROOT = 'https://chatgpt.com/backend-api/codex';
 
-export type AiProviderType = 'openrouter' | 'gemini';
+/**
+ * Providers the server can actually call. `openrouter` and `gemini` are the
+ * routing default; `deepseek`, `openai` and `anthropic` are first-class text
+ * providers, and `codex` uses a ChatGPT-subscription OAuth token.
+ */
+export type AiProviderType = 'openrouter' | 'gemini' | 'deepseek' | 'openai' | 'anthropic' | 'codex';
 export type AiKeySource = 'console' | 'environment' | 'none';
+
+/** How a provider's chat request is shaped. */
+export type ProviderKind = 'openrouter' | 'gemini' | 'openai-compatible' | 'anthropic' | 'codex';
+
+export interface ProviderSpec {
+  id: AiProviderType;
+  /** Human name used in status/testing copy. */
+  label: string;
+  /** Settings category the owner's key is stored under. */
+  category: string;
+  /** process.env keys used as a fallback when nothing is stored in settings. */
+  envKeys: string[];
+  /** Optional process.env key for the model id. */
+  modelEnvKey?: string;
+  defaultModel: string;
+  kind: ProviderKind;
+  /** API root for the request shape (`kind`). */
+  apiRoot: string;
+}
+
+/**
+ * One row per callable provider — the single list the settings store, the key
+ * route, the status route and the test route all read. Adding a provider is
+ * adding a row here, not a fourth parallel map.
+ */
+export const PROVIDER_SPECS: ProviderSpec[] = [
+  { id: 'openrouter', label: 'OpenRouter', category: 'openrouter', envKeys: ['OPENROUTER_API_KEY', 'OPEN_ROUTER_API_KEY'], modelEnvKey: 'OPENROUTER_MODEL', defaultModel: DEFAULT_OPENROUTER_MODEL, kind: 'openrouter', apiRoot: OPENROUTER_API_ROOT },
+  { id: 'gemini', label: 'Google AI Studio (Gemini)', category: 'gemini', envKeys: ['GEMINI_API_KEY'], modelEnvKey: 'GEMINI_MODEL', defaultModel: DEFAULT_GEMINI_MODEL, kind: 'gemini', apiRoot: GEMINI_API_ROOT },
+  { id: 'deepseek', label: 'DeepSeek', category: 'deepseek', envKeys: ['DEEPSEEK_API_KEY'], modelEnvKey: 'DEEPSEEK_MODEL', defaultModel: DEFAULT_DEEPSEEK_MODEL, kind: 'openai-compatible', apiRoot: DEEPSEEK_API_ROOT },
+  { id: 'openai', label: 'OpenAI', category: 'openai', envKeys: ['OPENAI_API_KEY'], modelEnvKey: 'OPENAI_MODEL', defaultModel: DEFAULT_OPENAI_MODEL, kind: 'openai-compatible', apiRoot: OPENAI_API_ROOT },
+  { id: 'anthropic', label: 'Anthropic Claude', category: 'anthropic', envKeys: ['ANTHROPIC_API_KEY'], modelEnvKey: 'ANTHROPIC_MODEL', defaultModel: DEFAULT_ANTHROPIC_MODEL, kind: 'anthropic', apiRoot: ANTHROPIC_API_ROOT },
+  { id: 'codex', label: 'OpenAI Codex', category: 'codex', envKeys: ['CHATGPT_OAUTH_TOKEN', 'CODEX_AUTH_TOKEN'], modelEnvKey: 'CODEX_MODEL', defaultModel: DEFAULT_CODEX_MODEL, kind: 'codex', apiRoot: CODEX_API_ROOT },
+];
+
+export const PROVIDER_SPEC_BY_ID: Record<AiProviderType, ProviderSpec> = Object.fromEntries(
+  PROVIDER_SPECS.map((spec) => [spec.id, spec]),
+) as Record<AiProviderType, ProviderSpec>;
+
+export const AI_PROVIDER_IDS: AiProviderType[] = PROVIDER_SPECS.map((spec) => spec.id);
+
+/** True when a string names a provider the server can call. */
+export function isCallableProvider(value: unknown): value is AiProviderType {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PROVIDER_SPEC_BY_ID, value);
+}
 
 export interface AiSeoConfig {
   provider: AiProviderType;
@@ -105,25 +170,15 @@ export const resolveGeminiConfig = resolveAiSeoConfig;
  * one routing would pick.
  */
 export async function resolveConfigFor(provider: AiProviderType, modelOverride?: string): Promise<AiSeoConfig> {
-  if (provider === 'openrouter') {
-    const dbKey = (await getSetting('openrouter', 'api_key'))?.trim() || '';
-    const envKey = (process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY)?.trim() || '';
-    const dbModel = (await getSetting('openrouter', 'model'))?.trim() || '';
-    return {
-      provider: 'openrouter',
-      apiKey: dbKey || envKey,
-      model: modelOverride || dbModel || process.env.OPENROUTER_MODEL?.trim() || DEFAULT_OPENROUTER_MODEL,
-      keySource: dbKey ? 'console' : envKey ? 'environment' : 'none',
-    };
-  }
-
-  const dbKey = (await getSetting('gemini', 'api_key'))?.trim() || '';
-  const envKey = process.env.GEMINI_API_KEY?.trim() || '';
-  const dbModel = (await getSetting('gemini', 'model'))?.trim() || '';
+  const spec = PROVIDER_SPEC_BY_ID[provider] || PROVIDER_SPEC_BY_ID.openrouter;
+  const dbKey = (await getSetting(spec.category, 'api_key'))?.trim() || '';
+  const envKey = spec.envKeys.map((key) => process.env[key]?.trim() || '').find(Boolean) || '';
+  const dbModel = (await getSetting(spec.category, 'model'))?.trim() || '';
+  const envModel = spec.modelEnvKey ? process.env[spec.modelEnvKey]?.trim() || '' : '';
   return {
-    provider: 'gemini',
+    provider: spec.id,
     apiKey: dbKey || envKey,
-    model: modelOverride || dbModel || process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL,
+    model: modelOverride || dbModel || envModel || spec.defaultModel,
     keySource: dbKey ? 'console' : envKey ? 'environment' : 'none',
   };
 }
@@ -131,6 +186,40 @@ export async function resolveConfigFor(provider: AiProviderType, modelOverride?:
 /**
  * Tests connection to the configured AI provider with 0 or minimal tokens.
  */
+/**
+ * Headers the Codex backend expects. The OAuth token is the bearer credential;
+ * `originator` names the client the endpoint was built for.
+ */
+function codexHeaders(accessToken: string): Record<string, string> {
+  return {
+    'content-type': 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+    'OpenAI-Beta': 'responses=experimental',
+    originator: 'codex_cli_rs',
+  };
+}
+
+/** Map an authenticated probe's HTTP status onto the shared state vocabulary. */
+function statusFromResponse(response: Response, config: AiSeoConfig, label: string): AiSeoStatus {
+  const base = { model: config.model, provider: config.provider, keySource: config.keySource };
+  if (response.ok) {
+    return { ...base, state: 'CONNECTED', detail: `${PROVIDER_SPEC_BY_ID[config.provider].label} accepted the key. Model: "${config.model}".` };
+  }
+  if (response.status === 400 || response.status === 401 || response.status === 403) {
+    return { ...base, state: 'INVALID KEY', detail: `${PROVIDER_SPEC_BY_ID[config.provider].label} rejected the ${label === 'token' ? 'token' : 'key'}.` };
+  }
+  if (response.status === 402) {
+    return { ...base, state: 'QUOTA/RATE LIMITED', detail: `${PROVIDER_SPEC_BY_ID[config.provider].label} reports no credit for this account.` };
+  }
+  if (response.status === 404) {
+    return { ...base, state: 'MODEL UNAVAILABLE', detail: `The model "${config.model}" is not available on this ${PROVIDER_SPEC_BY_ID[config.provider].label} key.` };
+  }
+  if (response.status === 429) {
+    return { ...base, state: 'QUOTA/RATE LIMITED', detail: `${PROVIDER_SPEC_BY_ID[config.provider].label} rate limit or quota exceeded.` };
+  }
+  return { ...base, state: 'SERVER ERROR', detail: `${PROVIDER_SPEC_BY_ID[config.provider].label} responded with HTTP ${response.status}.` };
+}
+
 export async function testAiSeoConnection(
   opts: { timeoutMs?: number; provider?: AiProviderType; model?: string } = {},
 ): Promise<AiSeoStatus> {
@@ -146,7 +235,9 @@ export async function testAiSeoConnection(
       provider: config.provider,
       keySource: 'none',
       detail:
-        'No AI API key is configured. Add an OpenRouter or Gemini key in server environment or Admin Settings.',
+        PROVIDER_SPEC_BY_ID[config.provider].kind === 'codex'
+          ? 'No Codex token is configured. Paste the ChatGPT subscription token (from `codex login`) in AI Hub → OpenAI Codex, or use an OpenAI API key on the OpenAI card.'
+          : `No API key is configured for ${PROVIDER_SPEC_BY_ID[config.provider].label}. Add one in the AI Hub or the server environment.`,
     };
   }
 
@@ -154,6 +245,42 @@ export async function testAiSeoConnection(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    if (config.provider === 'deepseek' || config.provider === 'openai') {
+      // OpenAI-compatible providers: listing models is authenticated and costs no tokens.
+      const response = await fetch(`${PROVIDER_SPEC_BY_ID[config.provider].apiRoot}/models`, {
+        headers: { Authorization: `Bearer ${config.apiKey}` },
+        signal: controller.signal,
+      });
+      return statusFromResponse(response, config, 'models');
+    }
+
+    if (config.provider === 'anthropic') {
+      // A single-token message is the cheapest authenticated call Anthropic exposes.
+      const response = await fetch(`${ANTHROPIC_API_ROOT}/messages`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'content-type': 'application/json', 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: config.model, max_tokens: 1, messages: [{ role: 'user', content: 'ping' }] }),
+      });
+      return statusFromResponse(response, config, 'key');
+    }
+
+    if (config.provider === 'codex') {
+      const response = await fetch(`${CODEX_API_ROOT}/responses`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: codexHeaders(config.apiKey),
+        body: JSON.stringify({
+          model: config.model,
+          input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'ping' }] }],
+          store: false,
+          stream: false,
+          max_output_tokens: 16,
+        }),
+      });
+      return statusFromResponse(response, config, 'token');
+    }
+
     if (config.provider === 'openrouter') {
       const response = await fetch(`${OPENROUTER_API_ROOT}/auth/key`, {
         headers: { Authorization: `Bearer ${config.apiKey}` },
@@ -271,6 +398,154 @@ export async function testAiSeoConnection(
 
 /** Legacy function alias */
 export const testGeminiConnection = testAiSeoConnection;
+
+/** Turn a provider HTTP status into an error that names the provider, not its body. */
+function providerRequestError(config: AiSeoConfig, status: number): GeminiError {
+  const label = PROVIDER_SPEC_BY_ID[config.provider].label;
+  if (status === 401 || status === 403) return new GeminiError(`${label} rejected the API key.`, 401);
+  if (status === 402) return new GeminiError(`${label} has no credit for this request.`, 402);
+  if (status === 429) return new GeminiError(`${label} is rate-limiting this request. Please wait a moment.`, 429);
+  if (status === 404) return new GeminiError(`The model "${config.model}" is not available on this ${label} account.`, 404);
+  return new GeminiError(`${label} responded with HTTP ${status}.`, status);
+}
+
+/** Pull the assistant text out of a Codex `responses` payload. */
+function extractCodexText(payload: unknown): string {
+  const body = (payload || {}) as {
+    output_text?: string;
+    output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
+  };
+  if (typeof body.output_text === 'string' && body.output_text.trim()) return body.output_text.trim();
+  return (body.output ?? [])
+    .flatMap((item) => item.content ?? [])
+    .filter((part) => part.type === 'output_text' || typeof part.text === 'string')
+    .map((part) => part.text ?? '')
+    .join('')
+    .trim();
+}
+
+export interface ChatCompletionRequest {
+  user: string;
+  system?: string;
+  maxTokens?: number;
+  temperature?: number;
+  /** Ask for a JSON object response where the provider supports it. */
+  json?: boolean;
+}
+
+/**
+ * One chat completion, against whichever provider `config` names.
+ *
+ * This is the single outbound text call the server makes. It used to exist three
+ * times — once in the SEO module, once in `askModel`, once in the generate route
+ * — which is why the providers added later (DeepSeek, OpenAI, Anthropic, Codex)
+ * could be listed in the console but never actually called: each call site knew
+ * only two providers. They now differ by request shape, not by copy.
+ *
+ * Returns the assistant text, or throws a `GeminiError` carrying the mapped
+ * status. The key and the raw provider body never leave this function.
+ */
+export async function chatComplete(
+  config: AiSeoConfig,
+  request: ChatCompletionRequest,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!config.apiKey) throw new GeminiError(`No API key is configured for ${PROVIDER_SPEC_BY_ID[config.provider].label}.`, 503);
+  const spec = PROVIDER_SPEC_BY_ID[config.provider];
+  const maxTokens = request.maxTokens ?? 1000;
+  const temperature = request.temperature ?? 0.2;
+
+  if (spec.kind === 'gemini') {
+    const response = await fetch(`${GEMINI_API_ROOT}/models/${encodeURIComponent(config.model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.apiKey },
+      signal,
+      body: JSON.stringify({
+        ...(request.system ? { systemInstruction: { parts: [{ text: request.system }] } } : {}),
+        contents: [{ role: 'user', parts: [{ text: request.user }] }],
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+          ...(request.json ? { responseMimeType: 'application/json' } : {}),
+        },
+      }),
+    });
+    if (!response.ok) throw providerRequestError(config, response.status);
+    const payload = (await response.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      promptFeedback?: { blockReason?: string };
+    };
+    if (payload.promptFeedback?.blockReason) {
+      throw new GeminiError(`Gemini refused the request (${payload.promptFeedback.blockReason}).`, 422);
+    }
+    return payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('').trim() || '';
+  }
+
+  if (spec.kind === 'anthropic') {
+    const response = await fetch(`${ANTHROPIC_API_ROOT}/messages`, {
+      method: 'POST',
+      signal,
+      headers: { 'content-type': 'application/json', 'x-api-key': config.apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: maxTokens,
+        temperature,
+        ...(request.system ? { system: request.system } : {}),
+        messages: [{ role: 'user', content: request.user }],
+      }),
+    });
+    if (!response.ok) throw providerRequestError(config, response.status);
+    const payload = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+    return (payload.content ?? []).filter((block) => block.type === 'text').map((block) => block.text ?? '').join('').trim();
+  }
+
+  if (spec.kind === 'codex') {
+    const response = await fetch(`${CODEX_API_ROOT}/responses`, {
+      method: 'POST',
+      signal,
+      headers: codexHeaders(config.apiKey),
+      body: JSON.stringify({
+        model: config.model,
+        ...(request.system ? { instructions: request.system } : {}),
+        input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: request.user }] }],
+        store: false,
+        stream: false,
+        max_output_tokens: maxTokens,
+        temperature,
+      }),
+    });
+    if (!response.ok) throw providerRequestError(config, response.status);
+    return extractCodexText(await response.json());
+  }
+
+  // OpenRouter and the OpenAI-compatible providers (OpenAI, DeepSeek).
+  const response = await fetch(`${spec.apiRoot}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
+      ...(spec.kind === 'openrouter' ? { 'HTTP-Referer': 'https://preview.himalayankoh.com', 'X-Title': 'Himalayan Koh Admin' } : {}),
+    },
+    signal,
+    body: JSON.stringify({
+      model: config.model,
+      messages: [
+        ...(request.system ? [{ role: 'system', content: request.system }] : []),
+        { role: 'user', content: request.user },
+      ],
+      temperature,
+      max_tokens: maxTokens,
+      ...(request.json ? { response_format: { type: 'json_object' } } : {}),
+    }),
+  });
+  if (!response.ok) throw providerRequestError(config, response.status);
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    error?: { message?: string };
+  };
+  if (payload.error?.message) throw new GeminiError(`${spec.label} could not complete this request.`, 502);
+  return payload.choices?.[0]?.message?.content?.trim() || '';
+}
 
 export interface SeoDraftInput {
   subject: 'product' | 'category' | 'page';
@@ -430,93 +705,11 @@ export async function generateSeoDraft(
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 45_000);
 
   try {
-    let rawText = '';
-
-    if (config.provider === 'openrouter') {
-      const response = await fetch(`${OPENROUTER_API_ROOT}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://preview.himalayankoh.com',
-          'X-Title': 'Himalayan Koh Admin SEO',
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            { role: 'system', content: SYSTEM_INSTRUCTION },
-            { role: 'user', content: buildPrompt(input) },
-          ],
-          temperature: 0.2,
-          max_tokens: 1000,
-        }),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new GeminiError('AI provider rejected the API key.', 401);
-        }
-        if (response.status === 429) {
-          throw new GeminiError('AI provider rate limit reached. Please wait a moment.', 429);
-        }
-        throw new GeminiError(`AI provider responded with HTTP ${response.status}.`, response.status);
-      }
-
-      const payload = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-        error?: { message?: string };
-      };
-
-      if (payload.error?.message) {
-        throw new GeminiError(payload.error.message, 502);
-      }
-
-      rawText = payload.choices?.[0]?.message?.content?.trim() || '';
-    } else {
-      // Direct Google Gemini
-      const response = await fetch(
-        `${GEMINI_API_ROOT}/models/${encodeURIComponent(config.model)}:generateContent`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': config.apiKey,
-          },
-          signal: controller.signal,
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-            contents: [{ role: 'user', parts: [{ text: buildPrompt(input) }] }],
-            generationConfig: {
-              temperature: 0.2,
-              responseMimeType: 'application/json',
-              maxOutputTokens: 1024,
-            },
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new GeminiError('Gemini rejected the API key.', 401);
-        }
-        if (response.status === 429) {
-          throw new GeminiError('Gemini is rate-limiting this request. Please wait.', 429);
-        }
-        throw new GeminiError(`Gemini responded with HTTP ${response.status}.`, response.status);
-      }
-
-      const payload = (await response.json()) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-        promptFeedback?: { blockReason?: string };
-      };
-
-      if (payload.promptFeedback?.blockReason) {
-        throw new GeminiError(`Gemini refused the request (${payload.promptFeedback.blockReason}).`, 422);
-      }
-
-      rawText = payload.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('').trim() || '';
-    }
+    const rawText = await chatComplete(
+      config,
+      { user: buildPrompt(input), system: SYSTEM_INSTRUCTION, maxTokens: 1000, temperature: 0.2, json: true },
+      controller.signal,
+    );
 
     const parsed = extractJson(rawText);
     if (!parsed) {

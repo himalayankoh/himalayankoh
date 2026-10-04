@@ -208,6 +208,103 @@ export const SETTINGS_REGISTRY: SettingsCategory[] = [
     ],
   },
   {
+    id: 'deepseek',
+    label: 'DeepSeek — AI Text',
+    description: 'Fast, budget-friendly text generation. Attached from AI Hub → DeepSeek, and used whenever DeepSeek is the default provider.',
+    docsHref: 'https://platform.deepseek.com/api_keys',
+    fields: [
+      {
+        key: 'api_key',
+        label: 'DeepSeek API Key',
+        type: 'password',
+        placeholder: 'sk-...',
+        hint: 'Server-side only. Get it from platform.deepseek.com → API keys.',
+        envFallback: 'DEEPSEEK_API_KEY',
+      },
+      {
+        key: 'model',
+        label: 'Model (optional)',
+        type: 'text',
+        placeholder: 'deepseek-chat',
+        hint: 'Leave blank to use deepseek-chat.',
+        envFallback: 'DEEPSEEK_MODEL',
+      },
+    ],
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI — AI Text',
+    description: 'GPT text generation through the official OpenAI API. Attached from AI Hub → OpenAI, or used as the OpenAI Codex fallback.',
+    docsHref: 'https://platform.openai.com/api-keys',
+    fields: [
+      {
+        key: 'api_key',
+        label: 'OpenAI API Key',
+        type: 'password',
+        placeholder: 'sk-...',
+        hint: 'Server-side only. This is the supported OpenAI path; the Codex card is for ChatGPT-subscription tokens.',
+        envFallback: 'OPENAI_API_KEY',
+      },
+      {
+        key: 'model',
+        label: 'Model (optional)',
+        type: 'text',
+        placeholder: 'gpt-4o-mini',
+        hint: 'Leave blank to use gpt-4o-mini.',
+        envFallback: 'OPENAI_MODEL',
+      },
+    ],
+  },
+  {
+    id: 'anthropic',
+    label: 'Anthropic — AI Text',
+    description: 'Claude text generation through the Anthropic Messages API. Attached from AI Hub → Anthropic Claude.',
+    docsHref: 'https://console.anthropic.com/settings/keys',
+    fields: [
+      {
+        key: 'api_key',
+        label: 'Anthropic API Key',
+        type: 'password',
+        placeholder: 'sk-ant-...',
+        hint: 'Server-side only. Get it from console.anthropic.com → API keys.',
+        envFallback: 'ANTHROPIC_API_KEY',
+      },
+      {
+        key: 'model',
+        label: 'Model (optional)',
+        type: 'text',
+        placeholder: 'claude-haiku-4-5-20251001',
+        hint: 'Leave blank to use claude-haiku-4-5-20251001.',
+        envFallback: 'ANTHROPIC_MODEL',
+      },
+    ],
+  },
+  {
+    id: 'codex',
+    label: 'OpenAI Codex — ChatGPT subscription',
+    description:
+      'Uses a ChatGPT/Codex subscription token instead of an API key. The token is the access token written by `codex login` (~/.codex/auth.json). This endpoint is not a documented public API, so failures are reported plainly; for production text work prefer the OpenAI API key.',
+    docsHref: 'https://developers.openai.com/codex/',
+    fields: [
+      {
+        key: 'api_key',
+        label: 'ChatGPT OAuth Token',
+        type: 'password',
+        placeholder: 'eyJ...',
+        hint: 'Stored server-side only. Run `codex login` locally and copy tokens.access_token from ~/.codex/auth.json.',
+        envFallback: 'CHATGPT_OAUTH_TOKEN',
+      },
+      {
+        key: 'model',
+        label: 'Model (optional)',
+        type: 'text',
+        placeholder: 'gpt-5-codex',
+        hint: 'Leave blank to use gpt-5-codex.',
+        envFallback: 'CODEX_MODEL',
+      },
+    ],
+  },
+  {
     id: 'resend',
     label: 'Resend — Transactional Email',
     description:
