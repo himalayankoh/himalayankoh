@@ -6,7 +6,7 @@
  * change to the console's appearance lands in one file instead of in a hundred
  * `className` strings that drift.
  *
- * Copper-rose navigation, a warm porcelain canvas, softly raised surfaces,
+ * Deep brown navigation, a warm porcelain canvas, softly raised surfaces,
  * readable system typography and compact controls are shared across workspaces.
  *
  * Colours come from the `admin-*` design tokens in `app/globals.css`, so the

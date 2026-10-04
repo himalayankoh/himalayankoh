@@ -296,22 +296,22 @@ img {
   background: linear-gradient(135deg, #f9f5f1 0%, #f4efeb 65%, #f5eeeb 100%);
 }
 .hk-admin .admin-rail {
-  background: radial-gradient(ellipse at 0 0, #985c4f 0, transparent 65%),
-    linear-gradient(165deg, #925b51 0%, #7a4e46 52%, #63433f 100%);
-  box-shadow: inset -1px 0 0 rgb(255 235 220 / 25%), 5px 0 24px rgb(75 44 36 / 9%);
+  background: radial-gradient(ellipse at 0 0, #352a22 0, transparent 65%),
+    linear-gradient(165deg, #2b241f 0%, #211c18 52%, #191613 100%);
+  box-shadow: inset -1px 0 0 rgb(255 235 220 / 14%), 5px 0 24px rgb(24 18 14 / 16%);
   color: #fff3eb;
 }
 .hk-admin .admin-rail-search {
   color: #ffe8dc;
-  background: rgb(47 25 22 / 22%);
-  border: 1px solid rgb(255 228 211 / 28%);
-  box-shadow: inset 0 1px 2px rgb(53 29 24 / 12%), 0 1px 0 rgb(255 255 255 / 8%);
+  background: rgb(255 245 232 / 6%);
+  border: 1px solid rgb(255 228 211 / 20%);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 12%), 0 1px 0 rgb(255 255 255 / 5%);
 }
 .hk-admin .admin-rail-search:focus-within {
   border-color: #ffd8a9;
   box-shadow: 0 0 0 3px rgb(255 216 169 / 16%);
 }
-.hk-admin .admin-rail-nav { scrollbar-color: #c18d7c transparent; }
+.hk-admin .admin-rail-nav { scrollbar-color: #806959 transparent; }
 .hk-admin .admin-rail-link { border: 1px solid transparent; }
 .hk-admin .admin-rail-link:hover { background-color: rgb(255 243 233 / 5%); }
 .hk-admin .admin-rail-link-active {
