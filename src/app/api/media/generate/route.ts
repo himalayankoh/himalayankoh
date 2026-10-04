@@ -31,6 +31,22 @@ function buildPrompt(prompt: string): string {
   return `Create one polished commercial image for Himalayan Koh, an e-commerce store selling Himalayan pink salt and mineral salt products. Follow this instruction: ${prompt}. Do not add text overlays, watermarks, certifications, medical or animal-health claims, or logos the owner did not ask for.`;
 }
 
+/**
+ * The provider's own error text, so a refusal is actionable rather than guessed
+ * at. Only the message is taken — never a header, and never the key.
+ */
+async function providerDetail(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    const parsed = JSON.parse(text) as { error?: { message?: string } | string; message?: string };
+    const raw = typeof parsed.error === 'string' ? parsed.error : parsed.error?.message || parsed.message || text;
+    const clean = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+    return clean ? ` Provider said: "${clean}"` : '';
+  } catch {
+    return '';
+  }
+}
+
 function base64Of(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 && value.length <= Math.ceil(MAX_MEDIA_BYTES * 4 / 3) + 100 && /^[A-Za-z0-9+/]+=*$/.test(value)
     ? value
@@ -48,10 +64,11 @@ async function generateWithGemini(prompt: string, apiKey: string): Promise<{ bas
     }),
   });
   if (!response.ok) {
+    const detail = await providerDetail(response);
     if (response.status === 401 || response.status === 403) throw new Error('Gemini rejected the API key. Check the Google AI Studio key in AI Hub.');
-    if (response.status === 429) throw new Error('Gemini is rate-limiting image generation. Wait a moment and retry.');
-    if (response.status === 404) throw new Error(`The Gemini model "${GEMINI_IMAGE_MODEL}" is not available on this key.`);
-    throw new Error(`Gemini image generation failed (HTTP ${response.status}).`);
+    if (response.status === 429) throw new Error(`Gemini refused this image request (quota or rate limit for ${GEMINI_IMAGE_MODEL}).${detail}`);
+    if (response.status === 404) throw new Error(`The Gemini model "${GEMINI_IMAGE_MODEL}" is not available on this key.${detail}`);
+    throw new Error(`Gemini image generation failed (HTTP ${response.status}).${detail}`);
   }
   const payload = (await response.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { mimeType?: string; data?: string }; inline_data?: { mime_type?: string; data?: string } }> } }>;
@@ -74,9 +91,10 @@ async function generateWithOpenAI(prompt: string, apiKey: string): Promise<{ bas
     body: JSON.stringify({ model: OPENAI_IMAGE_MODEL, prompt: buildPrompt(prompt), size: '1024x1024', n: 1 }),
   });
   if (!response.ok) {
+    const detail = await providerDetail(response);
     if (response.status === 401 || response.status === 403) throw new Error('OpenAI rejected the API key. Check the OpenAI key in AI Hub.');
-    if (response.status === 429) throw new Error('OpenAI is rate-limiting image generation. Wait a moment and retry.');
-    throw new Error(`OpenAI image generation failed (HTTP ${response.status}).`);
+    if (response.status === 429) throw new Error(`OpenAI refused this image request (quota or rate limit for ${OPENAI_IMAGE_MODEL}).${detail}`);
+    throw new Error(`OpenAI image generation failed (HTTP ${response.status}).${detail}`);
   }
   const payload = (await response.json()) as { data?: Array<{ b64_json?: string }> };
   const data = base64Of(payload.data?.[0]?.b64_json);

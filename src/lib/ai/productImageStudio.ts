@@ -33,6 +33,19 @@ function buildImagePrompt(prompt: string): string {
   return `Edit the FIRST image, which is the real Himalayan Koh product photograph. Preserve the actual product, proportions and packaging unless the owner explicitly requests a label replacement. Additional references are numbered in their supplied order. Never add unsupported certifications, medical or animal-health claims. Generate one polished commercial image. Follow this owner instruction:\n${prompt}`;
 }
 
+/** The provider's own error text (never a header or the key), so a refusal is actionable. */
+async function providerDetail(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    const parsed = JSON.parse(text) as { error?: { message?: string } | string; message?: string };
+    const raw = typeof parsed.error === 'string' ? parsed.error : parsed.error?.message || parsed.message || text;
+    const clean = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+    return clean ? ` Provider said: "${clean}"` : '';
+  } catch {
+    return '';
+  }
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   const chunk = 0x8000;
@@ -78,9 +91,10 @@ async function generateWithGemini(prompt: string, sources: string[], apiKey: str
   );
 
   if (!response.ok) {
+    const detail = await providerDetail(response);
     if (response.status === 401 || response.status === 403) throw new AiAskError('Gemini rejected the image-model key. Check the Google AI Studio key in AI Hub.', 401);
-    if (response.status === 429) throw new AiAskError('Gemini is rate-limiting image generation. Wait a moment and retry.', 429);
-    throw new AiAskError(`Gemini image model could not complete the edit (HTTP ${response.status}). Your original image is unchanged.`, 502);
+    if (response.status === 429) throw new AiAskError(`Gemini refused this image request (quota or rate limit for ${GEMINI_IMAGE_MODEL}).${detail}`, 429);
+    throw new AiAskError(`Gemini image model could not complete the edit (HTTP ${response.status}).${detail} Your original image is unchanged.`, 502);
   }
 
   const payload = (await response.json()) as {
