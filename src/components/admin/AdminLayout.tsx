@@ -402,7 +402,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* Nav List */}
       {/* The workspace filter needs its label to make sense, so the mini rail
           drops it instead of showing a mystery input. */}
-      {!mini && <div className="px-3 py-3"><div className="admin-rail-search flex items-center gap-2 rounded-xl px-3"><MagnifyingGlass size={15} className="shrink-0" aria-hidden="true" /><input aria-label="Find an admin workspace" placeholder="Find a workspace…" value={railQuery} onChange={e => setRailQuery(e.target.value)} className="w-full min-w-0 min-h-10 bg-transparent text-xs text-white placeholder:text-[#F5DED5] outline-none" /></div></div>}
+      {!mini && <div className="px-3 py-3"><form role="search" aria-label="Filter admin workspaces" autoComplete="off" onSubmit={event => event.preventDefault()} className="admin-rail-search flex items-center gap-2 rounded-xl px-3"><MagnifyingGlass size={15} className="shrink-0" aria-hidden="true" /><input type="search" autoComplete="off" aria-label="Find an admin workspace" placeholder="Find a workspace…" value={railQuery} onChange={e => setRailQuery(e.target.value)} className="w-full min-w-0 min-h-10 bg-transparent text-xs text-white placeholder:text-[#F5DED5] outline-none" /></form></div>}
       <nav aria-label="Admin workspaces" className="admin-rail-nav flex-1 p-2 space-y-4 overflow-y-auto">
         {SECTIONS.map(sec => ({ ...sec, items: sec.items.filter(item => `${sec.title} ${item.label}`.toLowerCase().includes(railQuery.toLowerCase())) })).filter(sec => sec.items.length > 0).map((sec) => (
           <div key={sec.title}>
@@ -556,6 +556,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             >
               <MagnifyingGlass size={13} className="text-[#6D6258] shrink-0" />
               <input
+                type="search"
+                autoComplete="off"
                 value={searchVal}
                 onChange={(e) => setSearchVal(e.target.value)}
                 ref={searchRef} aria-label="Search admin products" placeholder="Search products…"
