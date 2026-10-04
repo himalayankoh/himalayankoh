@@ -56,10 +56,12 @@ export const DEFAULT_AI_PROVIDERS: AIProvider[] = [
     name: 'OpenRouter (Multi-Model)',
     models: [
       'google/gemini-2.5-flash',
+      'google/gemini-3.5-flash-lite',
       'google/gemini-2.5-flash-lite',
       'openrouter/free',
       'nvidia/nemotron-3-super-120b-a12b:free',
       'nvidia/nemotron-3.5-lightning:free',
+      'google/gemma-4-26b-a4b-it:free',
       'google/gemma-4-31b-it:free',
       'cohere/north-mini-code:free',
     ],
@@ -68,7 +70,28 @@ export const DEFAULT_AI_PROVIDERS: AIProvider[] = [
     isDefault: true,
   },
   { id: 'deepseek', name: 'DeepSeek (Fast & Smart)', models: ['deepseek-chat', 'deepseek-reasoner'], defaultModel: 'deepseek-chat', enabled: true, isDefault: false },
-  { id: 'gemini', name: 'Google Gemini (Flash)', models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'], defaultModel: 'gemini-2.5-flash', enabled: true, isDefault: false },
+  {
+    // Direct Google AI Studio (Gemini API). Model ids are the live
+    // `generativelanguage.googleapis.com` endpoints — 2.0/1.5 were shut down, so
+    // only current models are listed, plus the Gemma family AI Studio also serves.
+    id: 'gemini',
+    name: 'Google AI Studio (Gemini + Gemma)',
+    models: [
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-3.1-pro-preview',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-2.5-pro',
+      'gemma-4-26b-a4b-it',
+      'gemma-4-31b-it',
+      'gemma-3-27b-it',
+    ],
+    defaultModel: 'gemini-2.5-flash',
+    enabled: true,
+    isDefault: false,
+  },
   { id: 'openai', name: 'OpenAI', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'], defaultModel: 'gpt-4o-mini', enabled: false, isDefault: false },
   { id: 'anthropic', name: 'Anthropic Claude', models: ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6'], defaultModel: 'claude-haiku-4-5-20251001', enabled: false, isDefault: false },
   { id: 'codex', name: 'OpenAI Codex', models: ['gpt-5-codex', 'codex-mini-latest'], defaultModel: 'gpt-5-codex', enabled: true, isDefault: false },

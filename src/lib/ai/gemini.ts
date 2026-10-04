@@ -97,10 +97,47 @@ export async function resolveAiSeoConfig(): Promise<AiSeoConfig> {
 export const resolveGeminiConfig = resolveAiSeoConfig;
 
 /**
+ * Resolve the key + model for one specific provider.
+ *
+ * `resolveAiSeoConfig()` answers "which provider will a generation use", which is
+ * not the same question as "can this provider connect" — the AI Hub tests each
+ * provider on its own card, so it needs that provider's own key rather than the
+ * one routing would pick.
+ */
+export async function resolveConfigFor(provider: AiProviderType, modelOverride?: string): Promise<AiSeoConfig> {
+  if (provider === 'openrouter') {
+    const dbKey = (await getSetting('openrouter', 'api_key'))?.trim() || '';
+    const envKey = (process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY)?.trim() || '';
+    const dbModel = (await getSetting('openrouter', 'model'))?.trim() || '';
+    return {
+      provider: 'openrouter',
+      apiKey: dbKey || envKey,
+      model: modelOverride || dbModel || process.env.OPENROUTER_MODEL?.trim() || DEFAULT_OPENROUTER_MODEL,
+      keySource: dbKey ? 'console' : envKey ? 'environment' : 'none',
+    };
+  }
+
+  const dbKey = (await getSetting('gemini', 'api_key'))?.trim() || '';
+  const envKey = process.env.GEMINI_API_KEY?.trim() || '';
+  const dbModel = (await getSetting('gemini', 'model'))?.trim() || '';
+  return {
+    provider: 'gemini',
+    apiKey: dbKey || envKey,
+    model: modelOverride || dbModel || process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL,
+    keySource: dbKey ? 'console' : envKey ? 'environment' : 'none',
+  };
+}
+
+/**
  * Tests connection to the configured AI provider with 0 or minimal tokens.
  */
-export async function testAiSeoConnection(timeoutMs = 12_000): Promise<AiSeoStatus> {
-  const config = await resolveAiSeoConfig();
+export async function testAiSeoConnection(
+  opts: { timeoutMs?: number; provider?: AiProviderType; model?: string } = {},
+): Promise<AiSeoStatus> {
+  const timeoutMs = opts.timeoutMs ?? 12_000;
+  // Test the provider the caller names (one card, one provider), or the routing
+  // default when no provider is given — the existing no-arg callers keep working.
+  const config = opts.provider ? await resolveConfigFor(opts.provider, opts.model) : await resolveAiSeoConfig();
 
   if (!config.apiKey) {
     return {

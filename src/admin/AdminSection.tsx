@@ -5566,7 +5566,7 @@ const providerIcons: Record<string, string> = {
         </div>
         <div>
           <h1 className="text-2xl font-bold">AI Hub</h1>
-          <p className="text-sm text-gray-500">Manage AI providers, API keys, credits, and import settings</p>
+          <p className="text-sm text-gray-500">Connect a provider, pick a model, and run AI across the console.</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button onClick={() => navigate('/admin/ai-import')} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors">
@@ -5607,7 +5607,7 @@ const providerIcons: Record<string, string> = {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-purple-600">Click "Check Credits" to view your OpenRouter balance.</p>
+            <p className="text-sm text-purple-600">Check your OpenRouter balance.</p>
           )}
           <p className="text-xs text-purple-400 mt-2">
             <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="underline hover:text-purple-600">Get OpenRouter credits →</a>
@@ -5620,7 +5620,7 @@ const providerIcons: Record<string, string> = {
         <h2 className="font-bold text-sm text-gray-700 mb-4 flex items-center gap-2">
           <Robot size={16} className="text-purple-500" /> AI Provider Configuration
         </h2>
-        <p className="text-sm text-gray-500 mb-5">Add API keys and select models for each provider. The default provider is used for all AI operations.</p>
+        <p className="text-sm text-gray-500 mb-5">Attach a key and choose a model. Keys stay server-side. Only OpenRouter and Google AI Studio run server-side today.</p>
         {/* First-run connection status */}
         {(() => {
           const connected = aiProviders.filter(p => Boolean(serverStatus?.[p.id]?.configured || keyStatus[p.id]?.configured));
@@ -5630,7 +5630,7 @@ const providerIcons: Record<string, string> = {
                 <Key size={16} className="text-amber-700 mt-0.5 shrink-0" />
                 <div>
                   <p className="font-semibold text-amber-800">Nothing connected yet</p>
-                  <p className="text-amber-700">Attach your first provider key below, then press <strong>Test</strong> to verify it — keys are stored server-side and never live in this browser.</p>
+                  <p className="text-amber-700">Paste a key below and press <strong>Attach Key</strong>.</p>
                 </div>
               </div>
             );
@@ -5681,8 +5681,8 @@ const providerIcons: Record<string, string> = {
                   <div className={"flex items-center gap-2 text-xs px-3 py-2.5 rounded-xl border " + (serverStatus?.[provider.id]?.configured ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700')}>
                     {serverStatus?.[provider.id]?.configured ? <CheckCircle size={14} className="shrink-0" /> : <Warning size={14} className="shrink-0" />}
                     {serverStatus?.[provider.id]?.configured
-                      ? 'Configured on server — key is safe (env var only)'
-                      : 'No key yet — paste one above to go live now (a server env var, if set, wins)'}
+                      ? 'Configured — key stays on the server'
+                      : 'No key yet — paste one below to go live now'}
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <input
@@ -5706,7 +5706,7 @@ const providerIcons: Record<string, string> = {
                   {keyStatus[provider.id]?.source === 'attached' && (
                     <p className="text-[10px] text-gray-400 mt-1">Attached key: {keyStatus[provider.id].masked} — stored server-side only.</p>
                   )}
-                  <p className="text-[10px] text-gray-400 mt-1">Keys never live in the browser. All AI calls proxy through /api/ai/*.</p>
+                  <p className="text-[10px] text-gray-400 mt-1">Keys stay server-side; AI calls proxy through /api/ai/*.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-1">Model</label>
@@ -5718,13 +5718,12 @@ const providerIcons: Record<string, string> = {
               </div>
               {provider.id === 'openrouter' && (
                 <p className="text-xs text-gray-400 mt-2">
-                  Free models: nvidia/nemotron-3-super-120b-a12b:free (default — 262k context, general purpose), nvidia/nemotron-3.5-lightning:free (1M context, fast), google/gemma-4-31b-it:free, cohere/north-mini-code:free (coding), openrouter/free (auto-routes to whichever free model is available)
-                  <br />Paid models require credits. OpenRouter retires free model ids without notice — if a run fails with “does not offer the requested model”, pick another id here (the server also retries the provider default automatically). <a href="https://openrouter.ai/docs" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Docs</a>
+                  Free models need no credits; the Gemma models use your OpenRouter BYOK automatically. <a href="https://openrouter.ai/docs" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Docs</a>
                 </p>
               )}
               {provider.id === 'gemini' && (
                 <p className="text-xs text-gray-400 mt-2">
-                  Free tier: 1,500 requests/day. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Get API key</a>
+                  Google AI Studio key — Gemini and Gemma models. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Get API key</a>
                 </p>
               )}
               {provider.id === 'deepseek' && (
@@ -5753,7 +5752,7 @@ const providerIcons: Record<string, string> = {
             <MagicWand size={18} className="text-blue-600" />
             <h3 className="font-bold text-sm">AI Product Import</h3>
           </div>
-          <p className="text-xs text-gray-600 mb-3">Paste any product URL from AliExpress, Amazon, eBay, Etsy, Walmart, Temu — AI extracts all details.</p>
+          <p className="text-xs text-gray-600 mb-3">Paste a product URL — AI fills in the details.</p>
           <button onClick={() => navigate('/admin/ai-import')} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors">
             Launch Import →
           </button>
@@ -5763,7 +5762,7 @@ const providerIcons: Record<string, string> = {
             <Megaphone size={18} className="text-green-600" />
             <h3 className="font-bold text-sm">AI Content Generators</h3>
           </div>
-          <p className="text-xs text-gray-600 mb-3">Generate product descriptions, ad copy, emails, social posts, blog ideas with AI.</p>
+          <p className="text-xs text-gray-600 mb-3">Product copy, ads, emails, and social posts.</p>
           <button onClick={() => navigate('/admin/marketing')} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-semibold transition-colors">
             Open Marketing →
           </button>
@@ -5773,7 +5772,7 @@ const providerIcons: Record<string, string> = {
             <MagnifyingGlass size={18} className="text-blue-600" />
             <h3 className="font-bold text-sm">SEO Engine</h3>
           </div>
-          <p className="text-xs text-gray-600 mb-3">AI-powered SEO optimization: meta tags, structured data, keyword analysis, content scoring.</p>
+          <p className="text-xs text-gray-600 mb-3">Meta tags, keywords, and content scoring.</p>
           <button onClick={() => navigate('/admin/seo-engine')} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition-colors">
             Open SEO Engine →
           </button>
@@ -5783,7 +5782,7 @@ const providerIcons: Record<string, string> = {
             <Stack size={18} className="text-pink-600" />
             <h3 className="font-bold text-sm">Variant Generator</h3>
           </div>
-          <p className="text-xs text-gray-600 mb-3">AI generates product variants (colors, sizes, materials) with SKUs and pricing.</p>
+          <p className="text-xs text-gray-600 mb-3">Generate variants with SKUs and pricing.</p>
           <button onClick={() => navigate('/admin/variant-gen')} className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-semibold transition-colors">
             Open Variant Gen →
           </button>
@@ -5800,14 +5799,9 @@ const providerIcons: Record<string, string> = {
             <p className="text-sm font-bold text-green-700">scrape.do — Free Web Scraper</p>
             <p className="text-xs text-green-600 mt-0.5">1,000 free requests/month · No credit card · Permanent free tier</p>
           </div>
-          <ol className="text-xs text-green-700 space-y-1 list-decimal list-inside">
-            <li>Go to scrape.do and create a free account</li>
-            <li>Add your token as the <span className="font-mono">SCRAPE_DO_TOKEN</span> environment variable on the server (see .env.example)</li>
-            <li>Credential-backed scraping then runs through /api/fetch-page — the token never ships to the browser</li>
-          </ol>
-          <div className="p-3 bg-white/60 border border-green-200 rounded-xl text-xs text-green-800">
-            🔒 Himalayan Koh: scraping tokens are server-side only. Without a server token, URL import falls back to public proxies.
-          </div>
+          <p className="text-xs text-green-700">
+            Create a free account at scrape.do, then set <span className="font-mono">SCRAPE_DO_TOKEN</span> on the server. Without it, URL import uses public proxies. The token never ships to the browser.
+          </p>
           <div className="flex items-center gap-3">
             <button type="button" onClick={testScraping} disabled={scrapeTest.status === 'testing'}
               className="px-4 py-2 text-xs bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg font-semibold flex items-center gap-1.5 transition-colors">
