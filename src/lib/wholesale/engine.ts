@@ -163,6 +163,10 @@ export interface PalletLoad {
   layout: PalletLayout;
   merchandiseCost: number;
   assumptions: string[];
+  /** Decimal representation of pallets (e.g., 1.25) */
+  palletEquivalent: number;
+  /** Percentage of the last pallet used (0-100), 0 if none or full. */
+  partialPalletPct: number;
 }
 
 /**
@@ -197,6 +201,8 @@ export function computePalletLoad(product: WholesaleProduct, units: number): Pal
     layout,
     merchandiseCost: round(units * product.exFactoryCost, 2),
     assumptions: layout.assumptions,
+    palletEquivalent: round(fullPallets + (remainderCartons / layout.cartonsPerPallet), 2),
+    partialPalletPct: remainderCartons > 0 ? round((remainderCartons / layout.cartonsPerPallet) * 100, 1) : 0,
   };
 }
 
@@ -800,5 +806,128 @@ export function resolveSourcingLane(input: SourcingLaneInput): SourcingResolutio
     valid: true,
     note: `Delivery to ${normDest || 'United States'} sourced from ${normOrigin || 'Pakistan'}.`,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* LCL & Shipment Mode Intelligence                                    */
+/* ------------------------------------------------------------------ */
+
+import type { ShipmentMode, FreightRate, PackagingCompleteness } from './types';
+
+export interface ShipmentRecommendation {
+  mode: ShipmentMode;
+  reason: string;
+  isLclRecommended: boolean;
+}
+
+export function recommendShipmentMode(
+  load: { cargoCbm: number; cbm: number; grossWeightKg: number; pallets: number },
+  profiles: ContainerProfile[],
+  freightRates: FreightRate[] = []
+): ShipmentRecommendation {
+  // If no cargo, default to AUTO (effectively wait for input)
+  if (load.cbm === 0 && load.grossWeightKg === 0) {
+    return { mode: 'AUTO', reason: 'No cargo added yet.', isLclRecommended: false };
+  }
+
+  // Calculate fits for all available container profiles
+  const fits = profiles.map(profile => containerFit(profile, load));
+  const validFits = fits.filter(fit => fit.warnings.length === 0);
+
+  // Find LCL rates vs FCL rates
+  const lclRates = freightRates.filter(r => r.containerType === 'LCL');
+  const fclRates = freightRates.filter(r => r.containerType !== 'LCL');
+
+  const lowestLcl = lclRates.length ? Math.min(...lclRates.map(r => r.oceanFreight)) : null;
+  
+  // If economics exist, they trump physical utilization, assuming it fits in an FCL.
+  if (lowestLcl !== null && validFits.length > 0) {
+    const validFclProfiles = validFits.map(f => f.container.id);
+    const applicableFclRates = fclRates.filter(r => validFclProfiles.includes(r.containerType));
+    
+    if (applicableFclRates.length > 0) {
+      const lowestFcl = Math.min(...applicableFclRates.map(r => r.oceanFreight));
+      if (lowestLcl < lowestFcl) {
+        return {
+          mode: 'LCL',
+          reason: `LCL is economically cheaper (${lowestLcl}) than the best FCL option (${lowestFcl}).`,
+          isLclRecommended: true
+        };
+      } else {
+        // FCL is cheaper despite perhaps being underutilized
+        const cheapestFclRate = applicableFclRates.find(r => r.oceanFreight === lowestFcl);
+        return {
+          mode: cheapestFclRate!.containerType as ShipmentMode,
+          reason: `FCL (${cheapestFclRate!.containerType}) is economically cheaper (${lowestFcl}) than LCL (${lowestLcl}), despite unused physical capacity.`,
+          isLclRecommended: false
+        };
+      }
+    }
+  }
+
+  // Fallback to purely physical thresholds if no economics are available
+  // Typical LCL threshold is ~13-15 CBM or very low weight
+  if (load.cbm < 13 && load.grossWeightKg < 10000) {
+    return {
+      mode: 'LCL',
+      reason: `Shipment volume (${load.cbm} CBM) and weight are well below a full container threshold. LCL is physically recommended.`,
+      isLclRecommended: true
+    };
+  }
+
+  if (validFits.length === 0) {
+    return {
+      mode: 'AUTO', // Will be ignored by caller but indicates failure to fit
+      reason: 'Shipment is too large for any single standard container.',
+      isLclRecommended: false
+    };
+  }
+
+  // Pick the smallest container that fits
+  const sortedFits = validFits.sort((a, b) => a.container.usableCbm - b.container.usableCbm);
+  const bestFit = sortedFits[0];
+
+  return {
+    mode: bestFit.container.id as ShipmentMode,
+    reason: `${bestFit.container.name} provides the most efficient physical fit (${bestFit.volumeUtilizationPct}% volume, ${bestFit.weightUtilizationPct}% weight).`,
+    isLclRecommended: false
+  };
+}
+
+export function computeMultiContainerComparison(
+  load: { cargoCbm: number; cbm: number; grossWeightKg: number; pallets: number; packaging?: PackagingProfile },
+  profiles: ContainerProfile[]
+): ContainerFit[] {
+  return profiles.map(profile => containerFit(profile, load));
+}
+
+/* ------------------------------------------------------------------ */
+/* Packaging Completeness                                              */
+/* ------------------------------------------------------------------ */
+
+export function packagingCompleteness(profile: PackagingProfile): PackagingCompleteness {
+  const missing: string[] = [];
+  
+  if (!profile.cartonLengthCm || !profile.cartonWidthCm || !profile.cartonHeightCm) {
+    missing.push('Carton Dimensions (L/W/H)');
+  }
+  if (!profile.cartonGrossWeightKg) missing.push('Carton Gross Weight');
+  if (!profile.cartonQty) missing.push('Units per Carton');
+  if (!profile.packagedUnitWeightKg) missing.push('Packaged Unit Weight');
+  if (!profile.palletLengthCm || !profile.palletWidthCm) missing.push('Pallet Footprint (L/W)');
+  if (!profile.maxStackHeightCm) missing.push('Max Stack Height');
+  
+  // Optional but recommended for wholesale precision
+  if (!profile.unitLengthCm || !profile.unitWidthCm || !profile.unitHeightCm) {
+    missing.push('Unit Dimensions (L/W/H)');
+  }
+  
+  if (missing.length === 0) {
+    return { status: 'COMPLETE', missingFields: [] };
+  } else if (missing.length <= 2) {
+    return { status: 'NEEDS_REVIEW', missingFields: missing };
+  }
+  
+  return { status: 'INCOMPLETE', missingFields: missing };
 }
 

@@ -44,6 +44,21 @@ export interface PackagingProfile {
   cartonsPerLayer?: number;
   /** Layers per pallet. When absent it is derived from the stack height. */
   layers?: number;
+  /** Optional enrichments for LCL and completeness */
+  unitLengthCm?: number;
+  unitWidthCm?: number;
+  unitHeightCm?: number;
+  unitsPerInnerPack?: number;
+  cartonNetWeightKg?: number;
+  stackable?: boolean;
+  maxStackedPallets?: number;
+  rotationAllowed?: boolean;
+  handlingNotes?: string;
+}
+
+export interface PackagingCompleteness {
+  status: 'COMPLETE' | 'INCOMPLETE' | 'NEEDS_REVIEW';
+  missingFields: string[];
 }
 
 /** A wholesale product: a reference to a retail product plus its B2B data. */
@@ -211,6 +226,8 @@ export interface FreightRate {
   providerReference: string | null;
   notes: string | null;
 }
+
+export type ShipmentMode = 'LCL' | '20FT' | '40FT' | '40HC' | 'AUTO';
 
 /* ------------------------------------------------------------------ */
 /* Quotes                                                              */

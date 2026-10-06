@@ -245,6 +245,12 @@ export interface WholesaleCalculationResponse {
       tierMinUnits: number | null;
       merchandiseCost: number;
       assumptions: string[];
+      palletEquivalent: number;
+      partialPalletPct: number;
+      completeness: {
+        status: 'COMPLETE' | 'NEEDS_REVIEW' | 'INCOMPLETE';
+        missingFields: string[];
+      };
     }>;
     totals: {
       merchandise: number;
@@ -278,6 +284,20 @@ export interface WholesaleCalculationResponse {
     sell: { costPerUnit: number; sellPricePerUnit: number; marginPct: number; markupPct: number; grossProfitPerUnit: number } | null;
     assumptions: string[];
     warnings: string[];
+    recommendation?: {
+      mode: 'LCL' | '20FT' | '40FT' | '40HC';
+      reason: string;
+    };
+    comparisons?: Array<{
+      container: { rowId: number; id: string; name: string };
+      practicalCbmLimit: number;
+      weightUtilizationPct: number;
+      volumeUtilizationPct: number;
+      limitingFactor: 'WEIGHT' | 'VOLUME' | 'NONE';
+      remainingWeightKg: number;
+      remainingCbm: number;
+      warnings: string[];
+    }>;
     container: { rowId: number; id: string; name: string };
     costProfile: { rowId: number; id: string; name: string };
     freight: { rowId: number; provider: string; source: string; currency: string; oceanFreight: number; surcharges: Array<{ label: string; amount: number }>; validUntil: string | null } | null;

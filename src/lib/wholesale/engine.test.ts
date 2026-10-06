@@ -544,3 +544,91 @@ describe('freight rates', () => {
     expect(miss).toEqual([]);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* Phase 35 Regressions: LCL/FCL Intelligence & Completeness           */
+/* ------------------------------------------------------------------ */
+
+import { recommendShipmentMode, computeMultiContainerComparison, packagingCompleteness } from './engine';
+
+describe('LCL/FCL Intelligence (Phase 35 Regressions)', () => {
+  const smallLoad = { cargoCbm: 2.5, cbm: 2.5, grossWeightKg: 1200, pallets: 2 };
+  const largeLoad = { cargoCbm: 28, cbm: 28, grossWeightKg: 15000, pallets: 10 };
+  const baseRate = {
+    source: 'manual' as const,
+    provider: 'Forwarder A',
+    originPort: 'KAPE',
+    destinationPort: 'USNYC',
+    carrier: null,
+    currency: 'USD',
+    transitDays: 32,
+    retrievedAt: '2026-09-01T00:00:00.000Z',
+    validUntil: '2026-10-01T00:00:00.000Z',
+    providerReference: 'QA-1',
+    notes: null,
+  };
+  const freightRates = [
+    { ...baseRate, id: 'lcl-rate', containerType: 'LCL', oceanFreight: 300, surcharges: [] },
+    { ...baseRate, id: '20ft-rate', containerType: '20FT', oceanFreight: 1500, surcharges: [] },
+  ];
+
+  it('1. 1000 units 2 lb product -> correct cartons/pallets, NOT false FCL', () => {
+    // 1000 units of fine salt = 250 cartons = 4.63 pallets (5 required)
+    const load = computePalletLoad(PRODUCT, 1000);
+    expect(load.palletsRequired).toBe(5);
+    expect(load.palletEquivalent).toBe(4.63);
+    
+    // Default threshold recommendation without rates
+    const rec = recommendShipmentMode({ cargoCbm: load.cbm, cbm: load.cbm, grossWeightKg: load.grossWeightKg, pallets: load.palletsRequired }, [CONTAINER]);
+    expect(rec.mode).toBe('LCL');
+    expect(rec.isLclRecommended).toBe(true);
+  });
+
+  it('3. partial pallet', () => {
+    const load = computePalletLoad(PRODUCT, 1000); // 250 cartons, 54 per pallet = 4 full, 34 remainder
+    expect(load.fullPallets).toBe(4);
+    expect(load.palletsRequired).toBe(5);
+    expect(load.partialPalletPct).toBeCloseTo((34 / 54) * 100, 1);
+  });
+
+  it('5. LCL vs FCL economic comparison', () => {
+    const recLCL = recommendShipmentMode(smallLoad, [CONTAINER], freightRates);
+    expect(recLCL.mode).toBe('LCL');
+    expect(recLCL.isLclRecommended).toBe(true);
+    expect(recLCL.reason).toMatch(/economically cheaper/);
+
+    const heavyLoad = { cargoCbm: 15, cbm: 15, grossWeightKg: 12000, pallets: 8 };
+    const expensiveLclRates = [
+      { ...baseRate, id: 'lcl-rate', containerType: 'LCL', oceanFreight: 2000, surcharges: [] },
+      { ...baseRate, id: '20ft-rate', containerType: '20FT', oceanFreight: 1500, surcharges: [] },
+    ];
+    const recFCL = recommendShipmentMode(heavyLoad, [CONTAINER], expensiveLclRates);
+    expect(recFCL.mode).toBe('20FT');
+    expect(recFCL.isLclRecommended).toBe(false);
+    expect(recFCL.reason).toMatch(/economically cheaper.*despite unused physical capacity/);
+  });
+
+  it('6, 7, 8. multi-container comparison', () => {
+    const comparison = computeMultiContainerComparison(largeLoad, [CONTAINER, HIGH_CUBE]);
+    expect(comparison).toHaveLength(2);
+    expect(comparison[0].container.id).toBe('20FT');
+    expect(comparison[1].container.id).toBe('40HC');
+  });
+
+  it('11. missing packaging profile completeness', () => {
+    const complete = packagingCompleteness({
+      ...PACKAGING,
+      unitLengthCm: 10, unitWidthCm: 10, unitHeightCm: 10
+    });
+    expect(complete.status).toBe('COMPLETE');
+
+    const incomplete = packagingCompleteness({
+      ...PACKAGING,
+      cartonGrossWeightKg: 0,
+      maxStackHeightCm: 0
+    });
+    expect(incomplete.status).toBe('INCOMPLETE');
+    expect(incomplete.missingFields).toContain('Carton Gross Weight');
+    expect(incomplete.missingFields).toContain('Max Stack Height');
+  });
+});

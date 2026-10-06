@@ -33,12 +33,16 @@ import {
   unitsFromPallets,
   WholesaleEngineError,
   resolveSourcingLane,
+  recommendShipmentMode,
+  computeMultiContainerComparison,
+  packagingCompleteness,
   type SourcingResolution,
   type CostLine,
   type ContainerFit,
   type MixedLoad,
   type PalletLoad,
   type SellSide,
+  type ShipmentRecommendation,
 } from './engine';
 import {
   containerProfileFromRow,
@@ -66,6 +70,7 @@ import type {
   QuoteTotals,
   WholesalePriceTier,
   WholesaleProduct,
+  PackagingCompleteness,
 } from './types';
 
 /* ------------------------------------------------------------------ */
@@ -118,6 +123,7 @@ export interface ResolvedQuoteLine {
   tier: WholesalePriceTier | null;
   /** Packaging fields that fell back to the documented default, if any. */
   packagingDefaultsUsed: string[];
+  completeness: PackagingCompleteness;
 }
 
 export interface QuoteCalculation {
@@ -137,6 +143,8 @@ export interface QuoteCalculation {
   fx: FxSnapshot[];
   sell: SellSide | null;
   sourcing?: SourcingResolution;
+  recommendation?: ShipmentRecommendation;
+  comparisons?: ContainerFit[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -258,6 +266,7 @@ export function calculateQuote(data: WholesaleData, input: QuoteInput): QuoteCal
       unitCost: tier ? tier.unitPrice : entry.product.exFactoryCost,
       tier,
       packagingDefaultsUsed: entry.product.packagingDefaultsUsed,
+      completeness: packagingCompleteness(entry.product.packaging),
     };
   });
 
@@ -322,6 +331,17 @@ export function calculateQuote(data: WholesaleData, input: QuoteInput): QuoteCal
   const sellPrice = resolveSellPrice(priced.totals, input);
   const sell = sellPrice ? computeSellSide(priced.totals, sellPrice) : null;
 
+  const allContainers = data.containers;
+  const loadForComparison = {
+    cargoCbm: mixed.totals.cargoCbm,
+    cbm: mixed.totals.cbm,
+    grossWeightKg: mixed.totals.grossWeightKg,
+    pallets: mixed.totals.pallets,
+  };
+  
+  const recommendation = recommendShipmentMode(loadForComparison, allContainers, data.freightRates);
+  const comparisons = computeMultiContainerComparison(loadForComparison, allContainers);
+
   return {
     lines: resolved,
     mixed,
@@ -338,6 +358,8 @@ export function calculateQuote(data: WholesaleData, input: QuoteInput): QuoteCal
     fx,
     sell,
     sourcing,
+    recommendation,
+    comparisons,
   };
 }
 
