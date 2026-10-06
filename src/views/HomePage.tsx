@@ -6,6 +6,7 @@ import type { Product } from '@/data/products';
 import ProductCard from '@/components/ProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
 import { getCatalogProducts } from '@/lib/backend/catalogClient';
+import { selectHomeFeatured } from '@/features/catalog/homeFeatured';
 
 const saltBenefits = [
   'Naturally dense Himalayan rock salt provides essential sodium and chloride for horses, cattle, and livestock.',
@@ -54,8 +55,7 @@ export default function HomePage({ initialProducts }: HomePageProps = {}) {
     let active = true;
     getCatalogProducts().then(({ products }) => {
       if (!active) return;
-      const featured = products.filter(p => p.isFeatured);
-      setProducts((featured.length ? featured : products).slice(0, 4));
+      setProducts(selectHomeFeatured(products));
     }).catch(() => { if (active) setFailed(true); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [initialProducts]);

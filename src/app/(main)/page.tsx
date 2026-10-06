@@ -3,6 +3,7 @@ import { buildMetadata } from '@/lib/seo/metadata';
 import { DEFAULT_DESCRIPTION, DEFAULT_TITLE } from '@/lib/seo/constants';
 import { localBusinessJsonLd } from '@/lib/seo/jsonLd';
 import { getCatalogProducts } from '@/lib/backend/serverCatalog';
+import { selectHomeFeatured } from '@/features/catalog/homeFeatured';
 import type { Product } from '@/data/products';
 import JsonLd from '@/components/seo/JsonLd';
 import HomeClient from './HomeClient';
@@ -53,8 +54,9 @@ export default async function Page() {
 
   try {
     const { products } = await getCatalogProducts();
-    const marked = products.filter((product) => product.isFeatured);
-    featured = (marked.length ? marked : products).slice(0, 4);
+    // The same rule the client fallback uses, so the cards rendered here and the
+    // cards a browser would fetch cannot disagree about what the homepage shows.
+    featured = selectHomeFeatured(products);
   } catch (error) {
     console.error('Could not read the catalog for the homepage:', error);
   }
