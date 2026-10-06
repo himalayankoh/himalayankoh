@@ -4,6 +4,8 @@ import {
   getFeaturedCatalogProducts,
   lookupCatalogProduct,
 } from '@/lib/backend/serverCatalog';
+import { publicReadKey, readThroughPublicCache } from '@/lib/backend/publicReadCache';
+import { normalizeProductSlug } from '@/lib/products/slug';
 import type { CatalogResult } from '@/lib/backend/products';
 
 /**
@@ -86,7 +88,39 @@ import type { CatalogResult } from '@/lib/backend/products';
 // so its effect is on the WordPress read and nothing else.
 export const revalidate = 60;
 
+/**
+ * ## The read behind this route is cached; this response still is not
+ *
+ * Because the framework refuses to store a response for a handler that reads its
+ * own query string (see above), every request still reaches the Worker, and the
+ * only place a repeat read can be saved is *inside* the handler. That is what
+ * `lib/backend/publicReadCache.ts` does: the catalogue read itself is held for a
+ * minute with a five-minute stale window, so two visitors asking for the same
+ * shelf pay the WordPress round trip once between them instead of once each.
+ *
+ * The key is built from exactly the parameters that change the answer, each
+ * normalized the same way the read normalizes it (`perPage` defaults to 24, the
+ * page to 1, a slug through the slug normalizer), so equivalent requests share an
+ * entry and two different categories can never share one. `search` is excluded
+ * entirely: its key space is free text, and a cache an anonymous caller can fill
+ * is not one worth having.
+ *
+ * Nothing here is personalized. This route reads no cookie and no session, and
+ * every value it stores is the public projection from `serverCatalog`, so the
+ * stored body is the same bytes for every visitor. Cart, checkout, account and
+ * every admin read keep their own `no-store` and never touch this cache.
+ */
+
 const MAX_PER_PAGE = 100;
+
+/** The cache namespace for every key this route builds. */
+const READ_CACHE_NAMESPACE = 'catalog';
+
+/**
+ * The catalogue's own default page size, matched to `toProductQuery` in
+ * `lib/backend/products.ts` so the key describes the read that will happen.
+ */
+const DEFAULT_PER_PAGE = 24;
 
 /** Never stored at the edge: failures and free-text searches. */
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
@@ -124,26 +158,60 @@ export async function GET(request: NextRequest) {
     // A single product (the PDP): resolved through the same seam, so an
     // off-niche slug answers "no product" rather than an off-niche record.
     if (slug) {
+      // Keyed on the normalized slug, which is the slug the lookup will actually
+      // resolve, so `/api/catalog?slug=X` and `?slug=x` share one entry.
+      const normalized = normalizeProductSlug(slug) || slug.trim().toLowerCase();
+      const key = publicReadKey(READ_CACHE_NAMESPACE, { kind: 'slug', slug: normalized });
+
+      const lookup = await readThroughPublicCache({
+        key,
+        load: () => lookupCatalogProduct(slug),
+        // A lookup that reports a failure is answered and dropped, never stored.
+        cacheable: (value) => !value.error,
+      });
+
       // A degraded lookup is still a 200: the in-process contract reports the
       // failure in `error` and resolves no product, and the caller must not have
       // to tell the two apart by status code. `error` is a diagnostic string, not
       // a stack — it never carries credentials.
-      const lookup = await lookupCatalogProduct(slug);
       const headers = lookup.error ? NO_STORE : undefined;
       return NextResponse.json(lookup, headers ? { headers } : undefined);
     }
 
     if (params.get('featured') === '1') {
       const limit = readNumber(params.get('limit')) ?? 4;
-      const products = await getFeaturedCatalogProducts(limit);
+      const key = publicReadKey(READ_CACHE_NAMESPACE, { kind: 'featured', limit });
+      const products = await readThroughPublicCache({
+        key,
+        load: () => getFeaturedCatalogProducts(limit),
+        // The featuring is a closed set of published products; an empty answer is
+        // a real answer and is worth storing, unlike a failed one.
+        cacheable: () => true,
+      });
       return NextResponse.json({ products });
     }
 
-    const result: CatalogResult = await getCatalogProducts({
-      perPage: readNumber(params.get('perPage')),
-      page: readNumber(params.get('page')),
-      categorySlug: params.get('category') || undefined,
-      isFeatured: params.get('featured') === 'true' ? true : undefined,
+    const key = publicReadKey(READ_CACHE_NAMESPACE, {
+      kind: 'list',
+      perPage: readNumber(params.get('perPage')) ?? DEFAULT_PER_PAGE,
+      page: readNumber(params.get('page')) ?? 1,
+      category: params.get('category'),
+      featured: params.get('featured') === 'true' ? true : false,
+    });
+
+    // A degraded read is a moment of origin trouble, not a catalogue: it is
+    // answered, given the same `no-store` it had before, and deliberately not
+    // stored, so the next request can recover rather than inherit the failure.
+    const result: CatalogResult = await readThroughPublicCache({
+      key,
+      load: () =>
+        getCatalogProducts({
+          perPage: readNumber(params.get('perPage')),
+          page: readNumber(params.get('page')),
+          categorySlug: params.get('category') || undefined,
+          isFeatured: params.get('featured') === 'true' ? true : undefined,
+        }),
+      cacheable: (value) => !value.degraded,
     });
 
     return NextResponse.json(result, result.degraded ? { headers: NO_STORE } : undefined);

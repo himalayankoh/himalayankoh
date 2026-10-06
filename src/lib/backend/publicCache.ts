@@ -33,6 +33,7 @@
  */
 
 import { revalidatePath } from 'next/cache';
+import { purgePublicReadCache } from './publicReadCache';
 
 /** Purge one public path, reporting whether the cache accepted the purge. */
 function purgePath(path: string, reason: string): boolean {
@@ -66,6 +67,14 @@ function purgePath(path: string, reason: string): boolean {
  * read behind it is tagged with the route, and this purge is what clears it.
  */
 export function purgePublicCatalog(reason: string): string[] {
+  // The catalogue *read* behind `/api/catalog` is held in the Worker's own cache
+  // rather than at the edge (the route reads its query string, so the framework
+  // never stores its response — see that route's doc-comment), which means
+  // `revalidatePath` below clears the page and nothing at all clears the read.
+  // Without this call a saved price would reach `/products` immediately and the
+  // endpoint the client-rendered shelves read for up to a minute longer, which is
+  // exactly the disagreement this module exists to prevent.
+  void purgePublicReadCache();
   return ['/products', '/sitemap', '/api/catalog'].filter((path) => purgePath(path, reason));
 }
 
