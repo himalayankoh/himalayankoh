@@ -117,6 +117,22 @@ const MAX_PER_PAGE = 100;
 const READ_CACHE_NAMESPACE = 'catalog';
 
 /**
+ * The origin a stored read is keyed on.
+ *
+ * Cloudflare scopes the Workers Cache to the zone the Worker runs in, so the key
+ * has to live on an origin inside it. The origin this request arrived on is the
+ * one guaranteed to be, which is why it is taken from the request rather than
+ * assumed.
+ */
+function keyOrigin(request: NextRequest): string {
+  try {
+    return new URL(request.url).origin;
+  } catch {
+    return '';
+  }
+}
+
+/**
  * The catalogue's own default page size, matched to `toProductQuery` in
  * `lib/backend/products.ts` so the key describes the read that will happen.
  */
@@ -165,6 +181,7 @@ export async function GET(request: NextRequest) {
 
       const lookup = await readThroughPublicCache({
         key,
+        keyOrigin: keyOrigin(request),
         load: () => lookupCatalogProduct(slug),
         // A lookup that reports a failure is answered and dropped, never stored.
         cacheable: (value) => !value.error,
@@ -183,6 +200,7 @@ export async function GET(request: NextRequest) {
       const key = publicReadKey(READ_CACHE_NAMESPACE, { kind: 'featured', limit });
       const products = await readThroughPublicCache({
         key,
+        keyOrigin: keyOrigin(request),
         load: () => getFeaturedCatalogProducts(limit),
         // The featuring is a closed set of published products; an empty answer is
         // a real answer and is worth storing, unlike a failed one.
@@ -204,6 +222,7 @@ export async function GET(request: NextRequest) {
     // stored, so the next request can recover rather than inherit the failure.
     const result: CatalogResult = await readThroughPublicCache({
       key,
+      keyOrigin: keyOrigin(request),
       load: () =>
         getCatalogProducts({
           perPage: readNumber(params.get('perPage')),

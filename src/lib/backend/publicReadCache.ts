@@ -79,6 +79,8 @@
  * could not be stored is still a correct read either way.
  */
 
+import { SITE_ORIGIN } from '../site/origin';
+
 /** How long one stored read is served without asking the origin. */
 export const DEFAULT_FRESH_SECONDS = 60;
 
@@ -93,7 +95,12 @@ export const DEFAULT_FRESH_SECONDS = 60;
  */
 export const DEFAULT_STALE_SECONDS = 300;
 
-/** One stored read: the value and the moment it was stored. */
+/**
+ * One stored read.
+ *
+ * Lives in a Worker, but the key it is found by is built on the site's own origin
+ * because Cloudflare scopes the Workers Cache to the zone the Worker runs in.
+ */
 export interface HeldReadEntry<T = unknown> {
   /** Milliseconds since the epoch, as the storing isolate saw it. */
   storedAt: number;
@@ -107,15 +114,42 @@ export interface HeldReadEntry<T = unknown> {
  * against a fake clock and a fake store without a Worker runtime.
  */
 export interface HeldReadStore {
-  get(key: string): Promise<HeldReadEntry | null>;
-  put(key: string, entry: HeldReadEntry, ttlSeconds: number): Promise<void>;
+  /**
+   * `origin` is the origin a shared store keys on, so entries cannot be written
+   * outside the zone the Worker serves. A layer that has no such scope ignores it.
+   */
+  get(key: string, origin: string): Promise<HeldReadEntry | null>;
+  put(key: string, entry: HeldReadEntry, ttlSeconds: number, origin: string): Promise<void>;
 }
 
-/** A synthetic origin, so Workers Cache keys cannot collide with real requests. */
-const KEY_ORIGIN = 'https://public-read-cache.invalid/';
+/**
+ * The path every stored read is keyed under, on an origin inside the zone.
+ *
+ * Deliberately not a synthetic host. Cloudflare's Workers Cache is scoped to the
+ * zone it runs in, and a `put()` whose URL belongs to no zone is accepted and then
+ * not stored: measured on the preview deployment (2026-10-06), three never-before
+ * requested catalogue URLs all missed on the second request and hit on the third,
+ * which is the isolate's own copy answering rather than the shared one. Keys are
+ * therefore built on the incoming request's own origin.
+ */
+const KEY_PATH = '/__public-read-cache/';
 
-function keyRequest(key: string): Request {
-  return new Request(`${KEY_ORIGIN}${encodeURIComponent(key)}`, { method: 'GET' });
+/**
+ * The origin a stored read is keyed on when the caller names none.
+ *
+ * A purge has no request to take an origin from (it runs inside a write helper,
+ * deep below the route), so it uses this site's own configured origin. A read
+ * passes the origin it was actually served on. The two are the same host in a
+ * normal deployment, which is what makes a purge reach the reads it is meant to;
+ * if they ever disagree, the shared layer simply keeps serving its own entries
+ * until their short TTL expires while the isolate's copy is purged, so the worst
+ * case is a window of staleness rather than a wrong answer.
+ */
+const DEFAULT_KEY_ORIGIN = SITE_ORIGIN;
+
+/** Every stored read for one origin, keyed by the encoded cache key. */
+function keyRequest(key: string, origin: string): Request {
+  return new Request(`${origin}${KEY_PATH}${encodeURIComponent(key)}`, { method: 'GET' });
 }
 
 /**
@@ -146,8 +180,8 @@ function workersCacheStore(): HeldReadStore | null {
   if (!cache) return null;
 
   return {
-    async get(key) {
-      const hit = await cache.match(keyRequest(key));
+    async get(key, origin) {
+      const hit = await cache.match(keyRequest(key, origin));
       if (!hit) return null;
       try {
         return (await hit.json()) as HeldReadEntry;
@@ -156,7 +190,7 @@ function workersCacheStore(): HeldReadStore | null {
         return null;
       }
     },
-    async put(key, entry, ttlSeconds) {
+    async put(key, entry, ttlSeconds, origin) {
       const stored = new Response(JSON.stringify(entry), {
         headers: {
           'Content-Type': 'application/json',
@@ -165,7 +199,7 @@ function workersCacheStore(): HeldReadStore | null {
           'Cache-Control': `public, max-age=${ttlSeconds}`,
         },
       });
-      await cache.put(keyRequest(key), stored);
+      await cache.put(keyRequest(key, origin), stored);
     },
   };
 }
@@ -183,18 +217,22 @@ function layeredStore(): HeldReadStore | null {
   if (!shared) return memoryStore;
 
   return {
-    async get(key) {
+    async get(key, origin) {
       // A shared layer that throws must not take the isolate's own copy with it,
       // which is why the fall-through is guarded rather than direct.
-      const fromShared = await safely(() => shared.get(key), null, 'the shared edge cache read');
+      const fromShared = await safely(() => shared.get(key, origin), null, 'the shared edge cache read');
       if (fromShared) return fromShared;
-      return memoryStore.get(key);
+      return memoryStore.get(key, origin);
     },
-    async put(key, entry, ttlSeconds) {
+    async put(key, entry, ttlSeconds, origin) {
       // The isolate copy first, because it is the one that cannot be refused, and
       // a failure of the shared copy must not cost it.
-      await safely(() => memoryStore.put(key, entry, ttlSeconds), undefined, "the isolate's own cache write");
-      await safely(() => shared.put(key, entry, ttlSeconds), undefined, 'the shared edge cache write');
+      await safely(
+        () => memoryStore.put(key, entry, ttlSeconds, origin),
+        undefined,
+        "the isolate's own cache write"
+      );
+      await safely(() => shared.put(key, entry, ttlSeconds, origin), undefined, 'the shared edge cache write');
     },
   };
 }
@@ -295,11 +333,11 @@ function activeStore(): HeldReadStore {
  * therefore visible within {@link GENERATION_RECHECK_MS} rather than instantly,
  * which is well inside the one-minute window the storefront already documents.
  */
-async function currentGeneration(store: HeldReadStore, now: () => number): Promise<number> {
+async function currentGeneration(store: HeldReadStore, now: () => number, origin: string): Promise<number> {
   const memo = generationMemo;
   if (memo && now() - memo.checkedAt < GENERATION_RECHECK_MS) return memo.value;
 
-  const held = await safely(() => store.get(GENERATION_KEY), null);
+  const held = await safely(() => store.get(GENERATION_KEY, origin), null);
   const value = typeof held?.value === 'number' && Number.isFinite(held.value) ? held.value : 0;
   generationMemo = { value, checkedAt: now() };
   return value;
@@ -314,16 +352,19 @@ async function currentGeneration(store: HeldReadStore, now: () => number): Promi
  * expire on their own. A bump that could not be stored is not an error the caller
  * should see, since the mutation itself has already succeeded.
  */
-export async function purgePublicReadCache(store: HeldReadStore = activeStore()): Promise<void> {
+export async function purgePublicReadCache(
+  store: HeldReadStore = activeStore(),
+  origin: string = DEFAULT_KEY_ORIGIN
+): Promise<void> {
   inFlight.clear();
   memoryEntries.clear();
   generationMemo = null;
 
-  const held = await safely(() => store.get(GENERATION_KEY), null);
+  const held = await safely(() => store.get(GENERATION_KEY, origin), null);
   const next = (typeof held?.value === 'number' && Number.isFinite(held.value) ? held.value : 0) + 1;
 
   await safely(
-    () => store.put(GENERATION_KEY, { storedAt: Date.now(), value: next }, GENERATION_TTL_SECONDS),
+    () => store.put(GENERATION_KEY, { storedAt: Date.now(), value: next }, GENERATION_TTL_SECONDS, origin),
     undefined
   );
 }
@@ -342,6 +383,12 @@ export interface PublicReadOptions<T> {
   cacheable: (value: T) => boolean;
   freshSeconds?: number;
   staleSeconds?: number;
+  /**
+   * The origin a shared store keys on. Routes pass their own request origin, so a
+   * stored read is always written inside the zone the Worker serves; tests and the
+   * isolate-only fallback may leave it at the default.
+   */
+  keyOrigin?: string;
   /** Overridden by tests; the Workers Cache or the isolate map otherwise. */
   store?: HeldReadStore | null;
   /** Overridden by tests, so a window can be crossed without waiting. */
@@ -388,13 +435,14 @@ export async function readThroughPublicCache<T>(options: PublicReadOptions<T>): 
   const staleSeconds = options.staleSeconds ?? DEFAULT_STALE_SECONDS;
   const now = options.now ?? (() => Date.now());
   const store = options.store ?? activeStore();
+  const keyOrigin = options.keyOrigin ?? DEFAULT_KEY_ORIGIN;
   const background = options.background ?? ((work: Promise<unknown>) => { void work.catch(() => {}); });
 
   // Every key carries the generation, so one increment makes every stored read
   // unreachable without enumerating them.
-  const key = `${await currentGeneration(store, now)}:${options.key}`;
+  const key = `${await currentGeneration(store, now, keyOrigin)}:${options.key}`;
 
-  const held = await safely(() => store.get(key), null);
+  const held = await safely(() => store.get(key, keyOrigin), null);
 
   if (held && typeof held.storedAt === 'number') {
     const ageSeconds = (now() - held.storedAt) / 1000;
@@ -406,7 +454,10 @@ export async function readThroughPublicCache<T>(options: PublicReadOptions<T>): 
       // coalesced, so a burst of stale hits still makes one origin call.
       const refresh = loadOnce(key, options.load).then(async (value) => {
         if (!options.cacheable(value)) return value;
-        await safely(() => store.put(key, { storedAt: now(), value }, freshSeconds + staleSeconds), undefined);
+        await safely(
+          () => store.put(key, { storedAt: now(), value }, freshSeconds + staleSeconds, keyOrigin),
+          undefined
+        );
         return value;
       });
       background(refresh.catch(() => {}));
@@ -416,7 +467,10 @@ export async function readThroughPublicCache<T>(options: PublicReadOptions<T>): 
 
   const value = await loadOnce(key, options.load);
   if (options.cacheable(value)) {
-    await safely(() => store.put(key, { storedAt: now(), value }, freshSeconds + staleSeconds), undefined);
+    await safely(
+      () => store.put(key, { storedAt: now(), value }, freshSeconds + staleSeconds, keyOrigin),
+      undefined
+    );
   }
   return value;
 }
