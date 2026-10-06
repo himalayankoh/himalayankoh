@@ -58,12 +58,25 @@
  * their short TTL rather than enumerated and deleted, which is what keeps this to
  * one small entry instead of a key registry that two isolates could disagree about.
  *
- * ## Which store it uses
+ * ## Which stores it uses, and why both
  *
- * Cloudflare's Workers Cache (`caches.default`) when the runtime provides it, and a
- * per-isolate map otherwise, so a Node test or a local render behaves predictably
- * instead of throwing. `set` is best-effort in both cases: a read that could not be
- * stored is still a correct read.
+ * Two layers, read in order: Cloudflare's Workers Cache (`caches.default`), which
+ * is shared by every request that reaches the same data centre, and a small
+ * per-isolate map under it.
+ *
+ * The second layer is not a test fixture. Measured on the preview deployment
+ * (2026-10-06), the shared layer alone was not dependable: of three never-before
+ * requested catalogue URLs, one served its repeat in 0.38 s while another paid the
+ * full origin read (1.29 s) on the second call and only sped up on the third. Two
+ * requests seconds apart can be answered by different isolates, and a write to the
+ * shared layer can be refused outright in a Worker whose cache is only enabled for
+ * another entrypoint. A read that had already been computed on this isolate is
+ * therefore kept here too, so a repeat on the same isolate is always answered
+ * locally, and the shared layer is what makes it fast elsewhere.
+ *
+ * A failure to store is reported rather than swallowed: an origin shield that is
+ * silently not shielding is worse than one that says so in the log, and a read that
+ * could not be stored is still a correct read either way.
  */
 
 /** How long one stored read is served without asking the origin. */
@@ -158,6 +171,35 @@ function workersCacheStore(): HeldReadStore | null {
 }
 
 /**
+ * The shared layer over the isolate's own, read in that order.
+ *
+ * A write goes to both, and each is attempted even when the other fails, so one
+ * layer refusing a write cannot take the other down with it. Both writes are
+ * awaited: the isolate copy has to be in place before the response is sent, which
+ * is the copy the next request on this isolate will read.
+ */
+function layeredStore(): HeldReadStore | null {
+  const shared = workersCacheStore();
+  if (!shared) return memoryStore;
+
+  return {
+    async get(key) {
+      // A shared layer that throws must not take the isolate's own copy with it,
+      // which is why the fall-through is guarded rather than direct.
+      const fromShared = await safely(() => shared.get(key), null, 'the shared edge cache read');
+      if (fromShared) return fromShared;
+      return memoryStore.get(key);
+    },
+    async put(key, entry, ttlSeconds) {
+      // The isolate copy first, because it is the one that cannot be refused, and
+      // a failure of the shared copy must not cost it.
+      await safely(() => memoryStore.put(key, entry, ttlSeconds), undefined, "the isolate's own cache write");
+      await safely(() => shared.put(key, entry, ttlSeconds), undefined, 'the shared edge cache write');
+    },
+  };
+}
+
+/**
  * The per-isolate fallback.
  *
  * Bounded, because an unbounded map in a long-lived isolate is a leak: the oldest
@@ -179,11 +221,25 @@ const memoryStore: HeldReadStore = {
   },
 };
 
-/** Guarded so a refused `put` can never fail a read that already succeeded. */
-async function safely<T>(run: () => Promise<T>, fallback: T): Promise<T> {
+/**
+ * Guarded so a refused store operation can never fail a read that already
+ * succeeded, and reported once per isolate so a layer that is quietly not
+ * working is visible without turning a broken cache into a flood of logs.
+ */
+const reportedFailures = new Set<string>();
+
+async function safely<T>(run: () => Promise<T>, fallback: T, label = 'the store'): Promise<T> {
   try {
     return await run();
-  } catch {
+  } catch (error) {
+    if (!reportedFailures.has(label)) {
+      reportedFailures.add(label);
+      console.warn(
+        `[public-read-cache] ${label} failed, so public reads will not be reused: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
     return fallback;
   }
 }
@@ -229,7 +285,7 @@ const inFlight = new Map<string, Promise<unknown>>();
 
 /** The store this process should use: Workers Cache where it exists, memory otherwise. */
 function activeStore(): HeldReadStore {
-  return workersCacheStore() ?? memoryStore;
+  return layeredStore() ?? memoryStore;
 }
 
 /**
