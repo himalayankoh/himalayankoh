@@ -131,6 +131,13 @@ const PACKAGING_FIELDS: ReadonlyArray<keyof PackagingProfile> = [
   'palletTareKg',
 ];
 
+/**
+ * Unit dimensions are optional enrichments — never defaulted, and only written
+ * when the owner actually measured them (see `packagingCompleteness`, which
+ * lists them as missing until they exist).
+ */
+const UNIT_DIMENSION_FIELDS = ['unitLengthCm', 'unitWidthCm', 'unitHeightCm'] as const;
+
 /** A stored packaging blob → the engine's profile, with fallbacks named. */
 export function packagingFromJson(value: unknown): PackagingConversion {
   const raw = jsonObject(value);
@@ -161,6 +168,15 @@ export function packagingFromJson(value: unknown): PackagingConversion {
     profile.layers = Math.trunc(num(layers));
   }
 
+  // Unit dimensions are an enrichment the completeness check names, but they
+  // have no default to fall back to: kept only when the owner supplied them.
+  for (const field of UNIT_DIMENSION_FIELDS) {
+    const stored = raw[field];
+    if (stored !== undefined && stored !== null && stored !== '' && num(stored, 0) > 0) {
+      profile[field] = num(stored);
+    }
+  }
+
   return { profile, defaultsUsed };
 }
 
@@ -173,6 +189,9 @@ export function packagingToJson(profile: PackagingProfile): Record<string, numbe
   if (profile.maxPalletGrossWeightKg) out.maxPalletGrossWeightKg = profile.maxPalletGrossWeightKg;
   if (profile.cartonsPerLayer) out.cartonsPerLayer = profile.cartonsPerLayer;
   if (profile.layers) out.layers = profile.layers;
+  for (const field of UNIT_DIMENSION_FIELDS) {
+    if (profile[field]) out[field] = profile[field]!;
+  }
   return out;
 }
 

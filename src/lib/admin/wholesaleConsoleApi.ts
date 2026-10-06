@@ -322,6 +322,20 @@ export async function calculateWholesale(body: WholesaleCalculationRequest): Pro
   return send<WholesaleCalculationResponse>('/api/admin/wholesale/calculate', body);
 }
 
+/**
+ * One call to the wholesale AI assistant. The route sits behind the same admin
+ * bearer check as every other wholesale endpoint, so the panel must go through
+ * this client rather than a bare `fetch` — without the header the server answers
+ * 401 and the assistant can never run.
+ */
+export async function askWholesaleAi(body: {
+  action: string;
+  context: unknown;
+  prompt?: string;
+}): Promise<{ text: string; model: string }> {
+  return send<{ text: string; model: string }>('/api/admin/wholesale/ai', body);
+}
+
 export interface DecisionResult {
   application: WholesaleRow;
   account: WholesaleRow | null;

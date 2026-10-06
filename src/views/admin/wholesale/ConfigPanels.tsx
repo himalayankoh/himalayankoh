@@ -67,6 +67,9 @@ const PACKAGING_FIELDS: Array<{ key: string; label: string; hint?: string }> = [
   { key: 'maxPalletGrossWeightKg', label: 'Max pallet gross weight (kg)', hint: 'Optional. Leave empty when unknown — an empty box is not a ceiling of zero.' },
   { key: 'cartonsPerLayer', label: 'Cartons per layer', hint: 'Optional override; leave empty to derive from the footprint.' },
   { key: 'layers', label: 'Layers per pallet', hint: 'Optional override; leave empty to derive from the stack height.' },
+  { key: 'unitLengthCm', label: 'Unit length (cm)', hint: 'Optional, but the packaging profile is not Complete without it — the product’s own size before cartoning.' },
+  { key: 'unitWidthCm', label: 'Unit width (cm)', hint: 'Optional; leave empty when unknown.' },
+  { key: 'unitHeightCm', label: 'Unit height (cm)', hint: 'Optional; leave empty when unknown.' },
 ];
 
 interface ProductForm {
@@ -180,7 +183,15 @@ export function ProductsPanel({
       const raw = form.packaging[field.key] ?? '';
       // An empty optional box is left out entirely, so the engine's own default
       // (derive from the footprint / no ceiling) applies rather than a zero.
-      if (raw === '' && (field.key === 'maxPalletGrossWeightKg' || field.key === 'cartonsPerLayer' || field.key === 'layers')) {
+      if (
+        raw === '' &&
+        (field.key === 'maxPalletGrossWeightKg' ||
+          field.key === 'cartonsPerLayer' ||
+          field.key === 'layers' ||
+          field.key === 'unitLengthCm' ||
+          field.key === 'unitWidthCm' ||
+          field.key === 'unitHeightCm')
+      ) {
         continue;
       }
       packaging[field.key] = num(raw);

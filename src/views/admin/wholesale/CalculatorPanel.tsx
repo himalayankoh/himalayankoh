@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Calculator, Container, Plus, Save, Trash2, Sparkles } from 'lucide-react';
 import {
+  askWholesaleAi,
   calculateWholesale,
   type WholesaleCalculationResponse,
   type WholesaleRow,
@@ -120,14 +121,9 @@ function AiAssistantPanel({ context }: { context: unknown }) {
     setError('');
     setResponse(null);
     try {
-      const res = await fetch('/api/admin/wholesale/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, context, prompt: customPrompt }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to contact AI');
-      setResponse(data);
+      // Through the authenticated wholesale client: the AI route requires the
+      // admin bearer token like every other endpoint on this console.
+      setResponse(await askWholesaleAi({ action, context, prompt: customPrompt }));
       if (customPrompt) setPrompt('');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
