@@ -15,6 +15,7 @@ import {
 
 import { startNavigationProgress } from './navigationProgress';
 import { pathOnly, queryOnlyDestination } from './router/locationMatch';
+import { shouldPrefetchOnViewport } from './router/prefetchPolicy';
 
 const ROUTER_STATE_KEY = '__next_router_state';
 
@@ -188,8 +189,16 @@ type LinkProps = {
   children?: ReactNode;
 } & Omit<ComponentProps<typeof NextLink>, 'href' | 'children'>;
 
-export function Link({ to, href, replace, state, children, onClick, ...rest }: LinkProps) {
+export function Link({ to, href, replace, state, children, onClick, prefetch, ...rest }: LinkProps) {
   const destination = to ?? href ?? '/';
+
+  // A link's route used to be fetched the moment the link scrolled into view,
+  // which on this shop meant four to eight full server renders per page view,
+  // each reading WooCommerce, for pages nobody had asked for — measured at
+  // 2.8-6.6 s apiece. Commerce and private destinations now wait for a real
+  // navigation; a static page keeps Next's own behaviour. A caller that passes
+  // `prefetch` explicitly still wins, so nothing is decided behind its back.
+  const resolvedPrefetch = prefetch ?? (shouldPrefetchOnViewport(destination) ? undefined : false);
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (state) {
@@ -226,7 +235,7 @@ export function Link({ to, href, replace, state, children, onClick, ...rest }: L
   };
 
   return (
-    <NextLink href={destination} replace={replace} onClick={handleClick} {...rest}>
+    <NextLink href={destination} replace={replace} prefetch={resolvedPrefetch} onClick={handleClick} {...rest}>
       {children}
     </NextLink>
   );

@@ -16,6 +16,12 @@
  *    and is the only thing that decides what the public may see. The admin console
  *    keeps reading the raw adapters, because the owner has to *see* an off-niche
  *    product in order to archive it.
+ * 3. **What leaves is an allowlist.** Every product this module returns first
+ *    passes through `toPublicProduct` (`./publicProduct`), so a storefront render
+ *    and `/api/catalog` can only ever carry the fields a shopper may be told.
+ *    Cost, supplier, sourcing evidence and the risk and review stamps stop here.
+ *    The strip runs *after* the policies below, which need those same fields to
+ *    decide what the shop sells; stripping first would change the catalogue.
  *
  * The guard judges a product's name, its category and **its own copy**. Copy is
  * included because it is rendered, and because staging proved the case: a
@@ -27,6 +33,7 @@
 import { cache } from 'react';
 import type { Product } from '../../data/products';
 import { storefrontListingReason } from '../../features/catalog/storefrontListing';
+import { toPublicProduct, toPublicProducts } from './publicProduct';
 import { countOffNicheProducts, filterNicheProducts, isNicheProduct } from '../catalog/niche';
 import {
   readCatalogProductBySlug,
@@ -86,9 +93,15 @@ function scopeToStorefront(result: CatalogResult): CatalogResult {
   const nicheExcluded = countOffNicheProducts(result.products);
   const nicheKept = filterNicheProducts(result.products);
   const readinessWithheld = nicheKept.filter((p) => storefrontListingReason(p) !== null);
-  if (nicheExcluded === 0 && readinessWithheld.length === 0) return result;
+  // Nothing withheld: the listing is the source's, but the *fields* are not. The
+  // allowlist runs on this path too, which is the common one.
+  if (nicheExcluded === 0 && readinessWithheld.length === 0) {
+    return { ...result, products: toPublicProducts(result.products) };
+  }
 
-  const products = nicheKept.filter((p) => storefrontListingReason(p) === null);
+  // The policies above have had their answer (they read cost, supplier and the
+  // risk stamps to reach it); from here the products are public ones.
+  const products = toPublicProducts(nicheKept.filter((p) => storefrontListingReason(p) === null));
   const withheld = nicheExcluded + readinessWithheld.length;
   const warnings = [...result.warnings];
   if (nicheExcluded > 0) {
@@ -182,7 +195,14 @@ const lookupProductForRequest = cache(async (slug: string): Promise<CatalogLooku
     return { product: null, related: [], provenance: null, error: lookup.error, withheld: true };
   }
 
-  return lookup;
+  // Both the resolved product and its related list leave as public records, for
+  // the same reason the list read does: a PDP render and the `/api/catalog?slug=`
+  // answer that precedes it must carry the same, publishable, fields.
+  return {
+    ...lookup,
+    product: toPublicProduct(lookup.product),
+    related: toPublicProducts(lookup.related),
+  };
 });
 
 export async function lookupCatalogProduct(
@@ -206,9 +226,11 @@ const readFeaturedForRequest = cache(async (limit: number): Promise<Product[]> =
     isFeatured: true,
     revalidate: STOREFRONT_READ_TTL_SECONDS,
   });
-  return filterNicheProducts(products)
-    .filter((p) => storefrontListingReason(p) === null)
-    .slice(0, limit);
+  return toPublicProducts(
+    filterNicheProducts(products)
+      .filter((p) => storefrontListingReason(p) === null)
+      .slice(0, limit)
+  );
 });
 
 export async function getFeaturedCatalogProducts(limit = 4): Promise<Product[]> {

@@ -30,11 +30,27 @@ const healthCards = [
 ];
 
 
-export default function HomePage() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+interface HomePageProps {
+  /**
+   * The featured cards the server already rendered, when it could read them.
+   *
+   * Present means the markup above is already on screen, so this component
+   * renders it and issues no catalogue request of its own; the browser used to
+   * fetch the same four products again immediately after hydration, which delayed
+   * the first product photo on the shop's most-visited page. Absent means the
+   * server read failed, and the client reads for itself so the page still works.
+   */
+  initialProducts?: Product[];
+}
+
+export default function HomePage({ initialProducts }: HomePageProps = {}) {
+  const [products, setProducts] = useState<Product[]>(initialProducts ?? []);
+  const [loading, setLoading] = useState(!initialProducts);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
+    // The server already read the catalogue for this render; only a page that
+    // arrived without it has anything to fetch.
+    if (initialProducts) return;
     let active = true;
     getCatalogProducts().then(({ products }) => {
       if (!active) return;
@@ -42,7 +58,7 @@ export default function HomePage() {
       setProducts((featured.length ? featured : products).slice(0, 4));
     }).catch(() => { if (active) setFailed(true); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [initialProducts]);
   return (
     <div className="bg-warm-white">
       <section className="border-b border-himalayan-line/60 bg-cream">
@@ -77,7 +93,7 @@ export default function HomePage() {
           <Link to="/products" className="inline-flex items-center gap-2 text-sm font-semibold text-himalayan-dark py-2">View all products <ArrowRight size={16} /></Link>
         </div>
         <div aria-busy={loading} className="grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-          {loading ? Array.from({length:4},(_,i)=><SkeletonProductCard key={i}/>) : products.map((p,i)=><ProductCard key={p.id} product={p} index={i}/>)}
+          {loading ? Array.from({length:4},(_,i)=><SkeletonProductCard key={i}/>) : products.map((p,i)=><ProductCard key={p.id} product={p} index={i} priority={i === 0}/>)}
         </div>
         {!loading && !products.length && <p role="status" className="rounded-xl border border-himalayan-line p-6 text-charcoal-light">{failed ? 'Products could not be loaded right now.' : 'Explore available products in our catalogue.'} <Link to="/products" className="underline">Browse the shop</Link></p>}
       </section>
