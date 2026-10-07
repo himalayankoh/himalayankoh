@@ -291,7 +291,6 @@ export function ProductsPanel({
     if (!row) return;
     focusHandled.current = focusProductId;
     fillIn(row);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `fillIn` is rebuilt each render by design; the id is the trigger.
   }, [focusProductId, workspace.products]);
 
   async function save() {
