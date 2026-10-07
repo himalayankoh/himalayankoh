@@ -10,6 +10,7 @@ import {
   Container,
   FileText,
   History,
+  ListChecks,
   Loader2,
   Package,
   Radar,
@@ -44,6 +45,7 @@ import {
 } from './ConfigPanels';
 import { ContainerQuotePanel, PalletCalculatorPanel } from './CalculatorPanel';
 import ProfitPanel from './ProfitPanel';
+import { ReadinessPanel } from './ReadinessPanel';
 
 /**
  * The wholesale workspace — one console destination, fourteen views inside it.
@@ -71,6 +73,7 @@ import ProfitPanel from './ProfitPanel';
 
 type Tab =
   | 'overview'
+  | 'readiness'
   | 'applications'
   | 'accounts'
   | 'products'
@@ -88,6 +91,7 @@ type Tab =
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof Package }> = [
   { id: 'overview', label: 'Overview', icon: Radar },
+  { id: 'readiness', label: 'Readiness', icon: ListChecks },
   { id: 'applications', label: 'Applications', icon: Users },
   { id: 'accounts', label: 'Wholesale accounts', icon: Building2 },
   { id: 'products', label: 'Products & pricing', icon: Package },
@@ -237,6 +241,10 @@ export default function AdminWholesaleWorkspace() {
       </div>
 
       {tab === 'overview' ? <OverviewPanel overview={overview} /> : null}
+
+      {tab === 'readiness' ? (
+        <ReadinessPanel workspace={workspace} onGoTo={(id) => setTab(id as Tab)} />
+      ) : null}
 
       {tab === 'applications' ? (
         <ApplicationsPanel applications={workspace.applications} reload={reload} />
