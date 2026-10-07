@@ -230,7 +230,17 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       {
         couponCode,
         shippingMethod,
-        shippingCostOverride: useLiveShippoRates ? selectedShippoRate?.amount : undefined,
+        // With Shippo in play, delivery is priced only by a carrier, so until one answers
+        // there is no delivery amount in this sum. Handing the store's flat table in here
+        // instead is what put a charge on screen that no carrier had quoted — and, because
+        // that table is what the order would have been billed from, the two agreed on a
+        // price nobody had offered. With Shippo switched off there is no carrier to ask,
+        // so there the table is this deployment's own pricing and stays.
+        shippingCostOverride: useLiveShippoRates
+          ? selectedShippoRate?.amount
+          : shippoEnabled
+            ? 0
+            : undefined,
         taxAmountOverride: authoritativeTax ?? (serverTax ?? undefined),
         destinationState: normalizedState || undefined,
       }
@@ -952,7 +962,9 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Delivery service</h2>
                 </div>
                 {useLiveShippoRates && (
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-light">Live USPS rates</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-light">
+                    Live carrier rates
+                  </span>
                 )}
               </div>
 
@@ -1031,9 +1043,9 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   <p className="font-semibold">Delivery could not be priced for this order.</p>
                   <p className="mt-1">
-                    Carriers quote the parcels this order actually makes up, so there is no delivery charge to
-                    show until that lookup succeeds. Nothing is charged at a guessed rate — check the delivery
-                    address and try again.
+                    Carriers quote the parcels this order actually makes up, so no delivery service can be chosen
+                    until that lookup succeeds and no delivery charge has been added to your total. Check the
+                    delivery address and try again.
                   </p>
                   <button
                     type="button"
@@ -1529,7 +1541,17 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 <div className="space-y-2 border-t border-himalayan-line/60 pt-4">
                   <SummaryRow label="Subtotal" value={totals.subtotal} />
                   {totals.discountAmount > 0 && <SummaryRow label="Discount" value={-totals.discountAmount} />}
-                  <SummaryRow label="Shipping fee" value={totals.shippingCost} />
+                  {/* A single line, two truths: a priced delivery reads as a number, and an
+                      unpriced one says so rather than reading as a free delivery. */}
+                  <SummaryRow
+                    label="Delivery"
+                    value={totals.shippingCost}
+                    text={
+                      shippoEnabled && !useLiveShippoRates
+                        ? 'Priced by the carrier'
+                        : undefined
+                    }
+                  />
                   <SummaryRow label="Tax" value={totals.taxAmount} />
                   <div className="flex items-baseline justify-between border-t border-himalayan-line/60 pt-3">
                     <span className="font-bold text-charcoal">Total</span>
@@ -1618,8 +1640,9 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                     Fast delivery
                   </p>
                   <p className="mt-1 text-xs leading-5 text-charcoal-light">
-                    Free standard delivery over $50. Live USPS rates at checkout, with tracking on
-                    every parcel.
+                    {shippoEnabled
+                      ? 'Delivery is priced by the carrier from the parcels in your order, with tracking on every parcel.'
+                      : 'Free standard delivery over $50, packed and shipped from our own warehouse.'}
                   </p>
                 </div>
                 <div className="border-t border-himalayan-line/60 pt-3">
@@ -1822,12 +1845,13 @@ function buildBillingAddress(form: CheckoutForm) {
   };
 }
 
-function SummaryRow({ label, value }: { label: string; value: number }) {
+/** `text` replaces the amount for a line that has no price yet, e.g. undelivered delivery. */
+function SummaryRow({ label, value, text }: { label: string; value: number; text?: string }) {
   return (
     <div className="flex justify-between text-sm">
       <span className="text-charcoal-light">{label}</span>
-      <span className={value < 0 ? 'text-green-700' : 'text-charcoal'}>
-        {value < 0 ? '-' : ''}${Math.abs(value).toFixed(2)}
+      <span className={text ? 'text-charcoal-light' : value < 0 ? 'text-green-700' : 'text-charcoal'}>
+        {text ?? `${value < 0 ? '-' : ''}$${Math.abs(value).toFixed(2)}`}
       </span>
     </div>
   );
