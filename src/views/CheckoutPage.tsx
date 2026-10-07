@@ -31,6 +31,9 @@ import {
 import {
   calculateOrderTotals,
   supportedCoupons,
+  FREE_SHIPPING_THRESHOLD,
+  STANDARD_SHIPPING_COST,
+  EXPEDITED_SHIPPING_COST,
   type ShippingMethod,
 } from '../lib/orders/totals';
 import { ordersApi } from '../lib/orders/client';
@@ -113,6 +116,16 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [couponCode, setCouponCode] = useState('');
   /** Whether the summary's promo-code box is unfolded (the reference layout's "Enter"). */
   const [promoOpen, setPromoOpen] = useState(false);
+  /**
+   * The delivery method recorded on the order. Only a deployment without Shippo lets
+   * the customer choose it.
+   *
+   * With Shippo in play the delivery *service* is a carrier rate, which the order
+   * records separately as `shippingService`, so the method stays `standard` and its
+   * flat cost is never used — a live rate overrides it. With Shippo switched off there
+   * is no carrier to ask, `calculateOrderTotals` charges this deployment's own flat
+   * table, and the two rows that table prices are offered below.
+   */
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('standard');
   const [shippoRates, setShippoRates] = useState<ShippoRate[]>([]);
   const [selectedShippoRateId, setSelectedShippoRateId] = useState<string | null>(null);
@@ -146,6 +159,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [stripeConfigLoaded, setStripeConfigLoaded] = useState(false);
   const [shippoRuntimeEnabled, setShippoRuntimeEnabled] = useState<boolean | null>(null);
   const [shippingSelected, setShippingSelected] = useState(false);
+  /** Bumped by the retry control to re-run the rate lookup for the same address. */
+  const [ratesReloadKey, setRatesReloadKey] = useState(0);
   const [authoritativeTax, setAuthoritativeTax] = useState<number | null>(null);
   const stripePaymentRef = useRef<HTMLDivElement>(null);
   const preparingPaymentRef = useRef(false);
@@ -241,7 +256,17 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       form.billingCountry.trim()
     ))
   );
-  const shippingReadyForPayment = !shippoEnabled || useLiveShippoRates || shippoRatesAttempted;
+  /**
+   * Payment waits for a rate the customer actually picked.
+   *
+   * This used to accept `shippoRatesAttempted`, so a lookup that failed still unlocked
+   * payment and the order was charged the store's flat fallback — a price that was never
+   * offered as a choice, only highlighted as a default. Delivery is now priced from the
+   * real parcels by the carrier, so the charge has to come from a carrier rate the
+   * customer selected. With Shippo unconfigured there is no rate to pick and this
+   * deployment's own pricing stands, so that path is unchanged.
+   */
+  const shippingReadyForPayment = !shippoEnabled || useLiveShippoRates;
   const addressReady = Boolean(
     form.fullName.trim() &&
     form.addressLine1.trim() &&
@@ -446,20 +471,18 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     form.postalCode,
     form.country,
     form.email,
+    ratesReloadKey,
   ]);
 
-  // Whenever a live Shippo rate isn't in play (Shippo disabled, still
-  // loading, or fell back after an error), the flat Standard/Expedited
-  // cards render with one already visually highlighted — but that's a
-  // different flag (shippingSelected) than the auto-pick above only
-  // handles for the live-rate path. Keep it in sync with the flat-rate
-  // fallback too, so Payment doesn't stay stuck on "select a shipping
-  // method" once a real address is entered, matching what the shopper
-  // already sees selected on screen.
+  // A deployment with Shippo switched off has no carrier lookup to mark a delivery
+  // service as chosen, and `calculateOrderTotals` prices its shipping from the flat
+  // table regardless. Nothing else selects one of the two rows rendered for that
+  // case, so without this the order would carry a shipping charge the customer never
+  // picked — which is exactly what the flat pair used to auto-highlight.
   useEffect(() => {
-    if (useLiveShippoRates) return;
+    if (shippoEnabled) return;
     setShippingSelected(addressReady);
-  }, [useLiveShippoRates, addressReady]);
+  }, [shippoEnabled, addressReady]);
 
   // Collapse the address card the first time there is a complete address to show.
   // Keyed on the transition, not on `addressReady` itself: opening the form with
@@ -916,11 +939,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
             <div className="grid gap-3 xl:grid-cols-2">
 
             {/*
-              1 — Delivery service. The screenshot's first card, mapped onto the
-              real choice this shop has: which carrier service delivers it. Live
-              USPS rates come from Shippo once there is an address to price, and
-              the flat Standard/Expedited pair below is the honest fallback — the
-              same two options, the same prices, no pickup-point fiction.
+              1 — Delivery service. The choice this shop really has is which carrier
+              service delivers the order. Once there is an address to price, Shippo
+              quotes each parcel this order makes up and those quotes are the only
+              delivery prices on the page. Nothing here is priced by hand, and no
+              transit window is promised that a carrier did not give us.
             */}
             <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -935,7 +958,9 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
 
               {!showShippoPanel && !addressReady && (
                 <p className="rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3 text-sm text-charcoal-light">
-                  Add your shipping address and we&rsquo;ll price delivery with the carriers that serve it. Standard and expedited are always available.
+                  {shippoEnabled
+                    ? 'Add your shipping address and we’ll price delivery with the carriers that serve it.'
+                    : 'Add your shipping address, then choose a delivery service.'}
                 </p>
               )}
 
@@ -948,7 +973,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                     </p>
                   )}
                   {!shippoRatesLoading && shippoRatesError && (
-                    <p className="mt-1 text-amber-800">{shippoRatesError} Using standard flat rates below.</p>
+                    <p className="mt-1 text-amber-800">{shippoRatesError}</p>
                   )}
                   {!shippoRatesLoading && shippoRates.length > 0 && (
                     <div className="space-y-3">
@@ -985,19 +1010,69 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   )}
                   {!shippoRatesLoading && shippoRates.length === 0 && !shippoRatesError && shippoRatesAttempted && (
                     <p className="mt-1 text-charcoal-light">
-                      Live carrier rates are unavailable for this address — flat rates apply below.
+                      No carrier returned a rate for this address. Check it, then try again.
                     </p>
                   )}
                 </div>
               )}
 
-              {!useLiveShippoRates && (
+              {/*
+                No fixed delivery price and no fixed transit time is offered here.
+
+                This used to render two priced options — $9.95 standard at "3–7 business
+                days" and $18.95 expedited at "2–4 business days" — whenever a live rate was
+                not in play. Both the amounts and the windows were written by hand, and the
+                customer could pay against them, so the checkout charged a price no carrier
+                had quoted for a date no carrier had promised. Delivery is priced by the
+                carrier from the real parcels, so until a rate comes back there is nothing
+                honest to show but an explanation and a way to try again.
+              */}
+              {!useLiveShippoRates && shippoEnabled && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p className="font-semibold">Delivery could not be priced for this order.</p>
+                  <p className="mt-1">
+                    Carriers quote the parcels this order actually makes up, so there is no delivery charge to
+                    show until that lookup succeeds. Nothing is charged at a guessed rate — check the delivery
+                    address and try again.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setRatesReloadKey((key) => key + 1)}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
+
+              {/*
+                Shippo switched off: no carrier can be asked, and `calculateOrderTotals`
+                prices delivery from this deployment's own flat table instead. These two
+                rows show exactly the amounts that table charges — read from the same
+                constants, so a row cannot quote a different number than the order is
+                billed — which is what keeps the summary from presenting a shipping price
+                the customer was never offered.
+
+                The transit windows these used to promise ("3-7 business days", "2-4
+                business days") are gone deliberately: they were written by hand and read
+                as a delivery commitment no carrier had made. With Shippo off there is no
+                estimate to give, so none is given.
+              */}
+              {!shippoEnabled && (
                 <div className="space-y-3">
                   <ShippingOption
                     active={shippingMethod === 'standard'}
-                    title={totals.subtotal >= 50 ? 'Standard delivery (free)' : 'Standard delivery'}
-                    detail={totals.subtotal >= 50 ? 'Free on orders over $50 · 3–7 business days' : '3–7 business days'}
-                    price={totals.subtotal >= 50 ? 'Free' : '$9.95'}
+                    title="Standard delivery"
+                    detail={
+                      totals.subtotal >= FREE_SHIPPING_THRESHOLD
+                        ? 'Free on orders over $50'
+                        : 'Packed and shipped from our warehouse'
+                    }
+                    price={
+                      totals.subtotal >= FREE_SHIPPING_THRESHOLD
+                        ? 'Free'
+                        : `$${STANDARD_SHIPPING_COST.toFixed(2)}`
+                    }
                     onClick={() => {
                       setShippingMethod('standard');
                       setShippingSelected(true);
@@ -1006,8 +1081,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   <ShippingOption
                     active={shippingMethod === 'expedited'}
                     title="Expedited delivery"
-                    detail="2–4 business days"
-                    price="$18.95"
+                    detail="Faster service where the carrier offers it"
+                    price={`$${EXPEDITED_SHIPPING_COST.toFixed(2)}`}
                     onClick={() => {
                       setShippingMethod('expedited');
                       setShippingSelected(true);
@@ -1623,20 +1698,13 @@ function Field({ label, error, children }: { label: string; error?: string; chil
  * `aria-checked`/`aria-pressed`, so the dot is hidden from assistive tech rather
  * than announced as a second, wordless control.
  */
-function RadioDot({ selected }: { selected: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={`grid h-5 w-5 flex-shrink-0 place-items-center rounded-full border-2 ${
-        selected ? 'border-himalayan' : 'border-himalayan-line'
-      }`}
-    >
-      {selected && <span className="h-2.5 w-2.5 rounded-full bg-himalayan" />}
-    </span>
-  );
-}
-
-/** A delivery option as a radio row, in the shape of the reference layout. */
+/**
+ * A delivery option for a deployment priced without Shippo, as a radio row.
+ *
+ * Only ever rendered when Shippo is switched off — with live rates in play the rows
+ * are carrier quotes, not these. Neither row states a delivery window: the transit
+ * time belongs to the carrier, and without one there is nothing honest to promise.
+ */
 function ShippingOption({ active, title, detail, price, onClick }: {
   active: boolean;
   title: string;
@@ -1663,6 +1731,19 @@ function ShippingOption({ active, title, detail, price, onClick }: {
       </span>
       <span className="flex-shrink-0 font-bold text-himalayan">{price}</span>
     </button>
+  );
+}
+
+function RadioDot({ selected }: { selected: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`grid h-5 w-5 flex-shrink-0 place-items-center rounded-full border-2 ${
+        selected ? 'border-himalayan' : 'border-himalayan-line'
+      }`}
+    >
+      {selected && <span className="h-2.5 w-2.5 rounded-full bg-himalayan" />}
+    </span>
   );
 }
 
