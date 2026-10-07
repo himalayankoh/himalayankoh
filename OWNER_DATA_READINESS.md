@@ -62,10 +62,12 @@ No product has any of: `cartonQty`, `packagedUnitWeightKg`, `cartonLengthCm`, `c
 - Post-bundle-delete inventory verified: 19 products, 0 cost profiles, 25 tiers.
 - Freight: no live provider, 0 manual rates, 0 port charges.
 
-### `recommendShipmentMode` economics branch — edge case reported, no fix
+### `recommendShipmentMode` economics branch — FIXED
 
 - With `freightRates=[]`, the engine falls back to physical thresholds (LCL when `cbm < 13` and `grossWeightKg < 10000`).
-- With manual rates present, cheapest FCL is filtered by `container id/code mismatch` against `validFits` — e.g. a 20FT rate keyed `id="20FT"` can be rejected while a 40FT rate keyed `id="40FT"` passes, leaving the FCL branch with no `applicableFclRates` and silently defaulting to LCL even when economics say FCL. The physical recommendation is correct; the economic branch is unreliable when a manual rate's `containerType` does not exactly match a container `id`. Raised, no code change.
+- Previously, cheapest FCL was filtered by exact string equality between a rate's free-text `containerType` and a container profile's `id`. A rate written the way a forwarder writes it (`20' DV`, `20GP`, `40HQ`, `40' High Cube`) matched no id, so `applicableFclRates` came back empty and the branch silently fell through to the physical threshold — LCL on a small load even when FCL was cheaper.
+- **Fixed:** rates and profiles are now compared on a canonical key (`normalizeContainerKey` in `src/lib/wholesale/engine.ts` — size + high-cube, ignoring spacing, quotes, `ft`/`feet` and dry-van markers `GP`/`DV`/`standard`), matched only against containers the load actually fits in. The recommendation returns the matched profile's own `id`, not the forwarder's spelling.
+- Regression coverage: `engine.test.ts` 5b (provider wording still beats LCL), 5c (high-cube wordings resolve to `40HC`), 5d (a rate for a container the load does not fit in is still ignored), 5e (`normalizeContainerKey` equivalences). 5b and 5c were confirmed to fail against the previous exact-match logic.
 
 ---
 
