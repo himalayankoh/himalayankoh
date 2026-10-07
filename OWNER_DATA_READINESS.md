@@ -123,6 +123,13 @@ No product has any of: `cartonQty`, `packagedUnitWeightKg`, `cartonLengthCm`, `c
 - **Required fields for the first usable FCL rate:** exactly the same set, with `containerType` = `'FCL'` (or a `container id` such as `20FT`/`40FT` that matches a `container_profiles` `id`), plus at least one `container_profiles` id that the rate's `containerType` resolves to.
 - Live provider (e.g. Freightos) path: requires an `api` adapter + API key — not configured. LCL/FCL comparison is therefore **not available** right now; it is a data limitation, not a code defect.
 
+### The LCL/FCL split — FIXED
+
+- The split read the literal string `LCL`, so a rate stored the way a forwarder writes it — `lcl`, `Lcl`, ` LCL `, `L.C.L.`, `LCL freight`, `Less than Container Load` — was counted as FCL, named no container (`matchContainerProfile` → `null`), and was dropped. That left `lowestLcl` null, skipped the economics comparison entirely, and fell back to the physical threshold: a load that LCL priced cheaper could be recommended as FCL, and vice versa.
+- **Fixed:** `isLclRate` in `src/lib/wholesale/engine.ts` recognises LCL by casing/punctuation-insensitive wording, and both sides of the split use it. Container and truckload values (`20GP`, `20FT`, `40HC`, `40HQ`, `40' High Cube`, `LTL`) and blank values are **not** LCL and still travel the container-profile path.
+- Regression coverage: `engine.test.ts` 5f (LCL wordings still win on economics), 5g (`isLclRate` equivalences, including containers − and blanks → false), 5h (FCL wordings still resolve through `normalizeContainerKey` to `20FT`/`40HC`). 5f and 5h were confirmed to fail against the previous literal comparison; 5b–5e for the container fix still pass.
+- **Still a data limitation:** the freight-rate form's Container select offers only `20FT`/`40FT`/`40HC`, so an LCL rate cannot be typed in the console at all — it can only arrive from the DB or a provider API. No LCL rate exists, so the economics branch cannot be exercised end-to-end in the live console.
+
 ---
 
 ## 4. AI provider — live is 402, not PASS

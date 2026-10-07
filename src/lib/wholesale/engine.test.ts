@@ -554,6 +554,7 @@ import {
   computeMultiContainerComparison,
   packagingCompleteness,
   normalizeContainerKey,
+  isLclRate,
 } from './engine';
 
 describe('LCL/FCL Intelligence (Phase 35 Regressions)', () => {
@@ -673,6 +674,83 @@ describe('LCL/FCL Intelligence (Phase 35 Regressions)', () => {
     // A different size, and a blank, must never collapse into a matched one.
     expect(normalizeContainerKey('45HC')).toBe('45hc');
     expect(normalizeContainerKey('')).toBe('');
+  });
+
+  it("5f. an LCL rate written in the forwarder's own words is not misfiled as FCL", () => {
+    // The other half of the split: `lcl` (or `L.C.L.`, `Less than Container Load`) never
+    // equalled the literal 'LCL', so it was counted as FCL, named no container, and was
+    // dropped — leaving `lowestLcl` null. The economics comparison was skipped entirely
+    // and the load fell through to the physical threshold.
+    const load = { cargoCbm: 15, cbm: 15, grossWeightKg: 12000, pallets: 8 };
+    const rates = (containerType: string) => [
+      { ...baseRate, id: 'lcl-rate', containerType, oceanFreight: 300, surcharges: [] },
+      { ...baseRate, id: '20ft-rate', containerType: '20FT', oceanFreight: 1500, surcharges: [] },
+    ];
+
+    for (const wording of ['LCL', 'lcl', 'Lcl', 'LCL ', ' LCL ', 'L.C.L.', 'LCL freight', 'Less than Container Load']) {
+      const rec = recommendShipmentMode(load, [CONTAINER], rates(wording));
+      expect(rec.mode, wording).toBe('LCL');
+      expect(rec.isLclRecommended, wording).toBe(true);
+      expect(rec.reason, wording).toMatch(/economically cheaper/);
+    }
+
+    // Documented contrast: with the LCL rate absent altogether this load is priced
+    // physically as 20FT, which is what a misread LCL wording used to produce.
+    const fclOnly = [
+      { ...baseRate, id: '20ft-rate', containerType: '20FT', oceanFreight: 1500, surcharges: [] },
+    ];
+    expect(recommendShipmentMode(load, [CONTAINER], fclOnly).mode).toBe('20FT');
+  });
+
+  it('5g. LCL wording is recognised; container wording and blanks are not', () => {
+    for (const wording of [
+      'LCL',
+      'lcl',
+      'Lcl',
+      'LCL ',
+      ' LCL ',
+      ' L.C.L.',
+      'LCL freight',
+      'Less Than Container Load',
+      'less than a container',
+    ]) {
+      expect(isLclRate(wording), wording).toBe(true);
+    }
+    // Every FCL/container value must stay on the container-profile path: reading one as
+    // LCL would drop a real FCL rate out of the economics comparison instead.
+    for (const wording of [
+      '20GP',
+      '20FT',
+      '40HC',
+      '40HQ',
+      "40' High Cube",
+      'LTL',
+      '',
+      '  ',
+    ]) {
+      expect(isLclRate(wording), wording).toBe(false);
+    }
+  });
+
+  it('5h. an FCL value still travels the container-profile path, casing and all', () => {
+    // The earlier fix must survive this one: container wording that is not LCL is still
+    // matched to a profile by name (not dropped, not read as LCL).
+    const rates = (containerType: string) => [
+      { ...baseRate, id: 'lcl-rate', containerType: ' LCL ', oceanFreight: 3000, surcharges: [] },
+      { ...baseRate, id: 'fcl-rate', containerType, oceanFreight: 200, surcharges: [] },
+    ];
+    for (const wording of ['20FT', '20GP', "20' GP", '20 dv', '20ft']) {
+      const rec = recommendShipmentMode(smallLoad, [CONTAINER], rates(wording));
+      expect(rec.mode, wording).toBe('20FT');
+      expect(rec.isLclRecommended, wording).toBe(false);
+      expect(rec.reason, wording).toMatch(/economically cheaper.*despite unused physical capacity/);
+      expect(isLclRate(wording), wording).toBe(false);
+    }
+    for (const wording of ['40HC', '40hq', "40' High Cube"]) {
+      const rec = recommendShipmentMode(smallLoad, [CONTAINER, HIGH_CUBE], rates(wording));
+      expect(rec.mode, wording).toBe('40HC');
+      expect(isLclRate(wording), wording).toBe(false);
+    }
   });
 
   it('6, 7, 8. multi-container comparison', () => {

@@ -844,6 +844,28 @@ export function normalizeContainerKey(value: string): string {
 }
 
 /**
+ * Whether a rate is an LCL (less-than-container-load) quote.
+ *
+ * LCL is not a container, so it never reaches `matchContainerProfile`; the split below
+ * read the literal string `LCL`, and a rate stored the way a forwarder writes it
+ * (`lcl`, `L.C.L.`, `LCL freight`) was counted as FCL and then dropped for naming no
+ * container. That left `lowestLcl` null, skipped the economics comparison entirely, and
+ * fell back to the physical threshold — the same class of failure as the rate-matching
+ * bug, reached through the other side of the split.
+ *
+ * Recognises the casing, punctuation and spelled-out forms of LCL so the cheaper option
+ * stays in the comparison. Unrelated container wording, including an empty string, is
+ * not LCL.
+ */
+export function isLclRate(containerType: string): boolean {
+  const key = containerType.toLowerCase().replace(/[^a-z0-9]/g, '');
+  // `lcl`, `LCL`, `L.C.L.`, `LCL freight`, `LCL (loose)`
+  if (key.startsWith('lcl')) return true;
+  // `Less than Container Load`, `Less than a container`, `Under container load`
+  return /^(?:less|under)than(?:a)?container/.test(key);
+}
+
+/**
  * The smallest container that fits whose id or name the rate's wording refers to.
  *
  * `null` when the rate names a container this shipment cannot fit in, or names
@@ -876,9 +898,11 @@ export function recommendShipmentMode(
   const fits = profiles.map(profile => containerFit(profile, load));
   const validFits = fits.filter(fit => fit.warnings.length === 0);
 
-  // Find LCL rates vs FCL rates
-  const lclRates = freightRates.filter(r => r.containerType === 'LCL');
-  const fclRates = freightRates.filter(r => r.containerType !== 'LCL');
+  // Find LCL rates vs FCL rates. LCL is recognised by wording, not by the literal
+  // string, so a rate written `lcl` or `Less than Container Load` is not misfiled as
+  // FCL and then dropped for naming no container (see `isLclRate`).
+  const lclRates = freightRates.filter(r => isLclRate(r.containerType));
+  const fclRates = freightRates.filter(r => !isLclRate(r.containerType));
 
   const lowestLcl = lclRates.length ? Math.min(...lclRates.map(r => r.oceanFreight)) : null;
   
