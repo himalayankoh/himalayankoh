@@ -14,6 +14,7 @@ import {
   Loader2,
   Package,
   Radar,
+  Ruler,
   Ship,
   SlidersHorizontal,
   Users,
@@ -44,6 +45,7 @@ import {
   SuppliersPanel,
 } from './ConfigPanels';
 import { ContainerQuotePanel, PalletCalculatorPanel } from './CalculatorPanel';
+import { CapacityPanel } from './CapacityPanel';
 import ProfitPanel from './ProfitPanel';
 import { ReadinessPanel } from './ReadinessPanel';
 
@@ -78,6 +80,7 @@ type Tab =
   | 'accounts'
   | 'products'
   | 'pallet'
+  | 'capacity'
   | 'container'
   | 'quotes'
   | 'orders'
@@ -96,6 +99,7 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Package }> = [
   { id: 'accounts', label: 'Wholesale accounts', icon: Building2 },
   { id: 'products', label: 'Products & pricing', icon: Package },
   { id: 'pallet', label: 'Pallet calculator', icon: Boxes },
+  { id: 'capacity', label: 'Capacity planner', icon: Ruler },
   { id: 'container', label: 'Container & quote builder', icon: Container },
   { id: 'quotes', label: 'Quotations', icon: FileText },
   { id: 'orders', label: 'Orders', icon: ClipboardList },
@@ -115,6 +119,8 @@ export default function AdminWholesaleWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [focusQuoteId, setFocusQuoteId] = useState<number | null>(null);
+  /** A product the capacity planner wants the owner to fix the packaging for. */
+  const [focusProductId, setFocusProductId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -261,6 +267,7 @@ export default function AdminWholesaleWorkspace() {
             suppliers: workspace.suppliers,
           }}
           reload={reload}
+          focusProductId={focusProductId}
         />
       ) : null}
 
@@ -271,6 +278,19 @@ export default function AdminWholesaleWorkspace() {
             containerProfiles: workspace.containerProfiles,
             costProfiles: workspace.costProfiles,
             freightRates: workspace.freightRates,
+          }}
+        />
+      ) : null}
+
+      {tab === 'capacity' ? (
+        <CapacityPanel
+          workspace={{
+            products: workspace.products,
+            containerProfiles: workspace.containerProfiles,
+          }}
+          onEditPackaging={(productRowId) => {
+            setFocusProductId(productRowId);
+            setTab('products');
           }}
         />
       ) : null}

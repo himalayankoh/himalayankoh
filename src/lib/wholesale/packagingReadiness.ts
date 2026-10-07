@@ -20,6 +20,7 @@
 import { packagingFromJson } from './mapping';
 import { packagingCompleteness } from './engine';
 import { PACKAGING_FIELDS, PACKAGING_LABELS, UNIT_DIMENSION_KEYS } from './packagingFields';
+import type { PackagingProfile } from './types';
 
 export { UNIT_DIMENSION_KEYS };
 
@@ -39,11 +40,19 @@ function hasPositiveNumber(value: unknown): boolean {
 }
 
 /**
- * Reads either the stored blob or the values currently in the form — they are the same
- * shape, so a live check and a saved check cannot disagree.
+ * The same answer for a profile the caller has already resolved, with the field list
+ * `packagingFromJson` produced beside it.
+ *
+ * This is the entry point for a `WholesaleProductRecord`, whose `packagingDefaultsUsed`
+ * was computed from the *stored* blob. Reading a resolved profile as if it were untrusted
+ * input would be worse than useless: a profile full of defaults looks complete once it has
+ * been resolved, so a screen would call an estimate a measurement. The walk below is
+ * shared with `packagingReadiness` so the two can never drift.
  */
-export function packagingReadiness(raw: unknown): PackagingReadiness {
-  const { profile, defaultsUsed } = packagingFromJson(raw);
+export function packagingReadinessFrom(
+  profile: PackagingProfile,
+  defaultsUsed: readonly string[] = []
+): PackagingReadiness {
   const { status, missingFields } = packagingCompleteness(profile, defaultsUsed);
   const values = profile as unknown as Record<string, unknown>;
 
@@ -61,4 +70,13 @@ export function packagingReadiness(raw: unknown): PackagingReadiness {
     missingKeys,
     missingLabels: missingKeys.map((key) => PACKAGING_LABELS[key] ?? key),
   };
+}
+
+/**
+ * Reads either the stored blob or the values currently in the form — they are the same
+ * shape, so a live check and a saved check cannot disagree.
+ */
+export function packagingReadiness(raw: unknown): PackagingReadiness {
+  const { profile, defaultsUsed } = packagingFromJson(raw);
+  return packagingReadinessFrom(profile, defaultsUsed);
 }

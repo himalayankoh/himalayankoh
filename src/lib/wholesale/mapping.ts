@@ -48,6 +48,7 @@ import type {
   Incoterm,
   FxSnapshot,
 } from './types';
+import { isLclRate } from './engine';
 import { DEFAULT_PACKAGING_PROFILE } from './types';
 import { effectiveQuoteStatus, isQuoteExpired } from './quoteLifecycle';
 import type { WholesaleRow } from './store';
@@ -494,6 +495,26 @@ export function freightRateFromRow(row: WholesaleRow): FreightRate & { rowId: nu
   };
 }
 
+/**
+ * The container type as it is stored.
+ *
+ * LCL is canonicalised — `lcl`, `Lcl` and ` LCL ` all store as `LCL` — because LCL is
+ * not a container: it is the other half of the freight comparison, and a rate whose
+ * container type is spelled three ways in three rows is one the owner can neither
+ * filter nor trust. Detection is `isLclRate`, the same predicate the shipment
+ * recommendation uses, so what the store calls LCL and what the engine prices as LCL
+ * cannot drift apart.
+ *
+ * An FCL wording is stored as typed, only trimmed. `20' DV`, `20GP` and `40HQ` are the
+ * forwarder's own words for a box, and `normalizeContainerKey` resolves them to a
+ * profile when a calculation runs; rewriting them here would invent an id nobody quoted
+ * and throw away what the forwarder actually wrote.
+ */
+function canonicalContainerType(value: string): string {
+  const trimmed = value.trim();
+  return isLclRate(trimmed) ? 'LCL' : trimmed;
+}
+
 export function freightRateToRow(input: {
   source?: string;
   provider?: string;
@@ -517,7 +538,7 @@ export function freightRateToRow(input: {
   if (input.provider !== undefined) row.provider = input.provider;
   if (input.originPort !== undefined) row.origin_port = input.originPort;
   if (input.destinationPort !== undefined) row.destination_port = input.destinationPort;
-  if (input.containerType !== undefined) row.container_type = input.containerType;
+  if (input.containerType !== undefined) row.container_type = canonicalContainerType(input.containerType);
   if (input.carrier !== undefined) row.carrier = input.carrier ?? '';
   if (input.currency !== undefined) row.currency = input.currency;
   if (input.oceanFreight !== undefined) row.ocean_freight = input.oceanFreight;

@@ -147,12 +147,14 @@ describe('consoleReadiness', () => {
     }
   });
 
-  it('says out loud that an LCL rate cannot be typed in yet', () => {
+  it('asks for a rate that can be LCL, and no longer warns that LCL cannot be entered', () => {
+    // The freight-rate form offers LCL beside the box sizes now, so the old caveat that
+    // said an LCL rate could not be typed in from this console would be a lie.
     const freight = consoleReadiness(OWNER_STATE).requirements.find(
       (entry) => entry.key === 'freight-rates'
     );
-    expect(freight?.caveat).toMatch(/LCL/);
-    expect(freight?.caveat).toMatch(/Container list/);
+    expect(freight?.toEnter.join(' ')).toMatch(/LCL/);
+    expect(freight?.caveat).toBeUndefined();
   });
 
   it('reports a workspace with no catalogue as needing nothing to fix', () => {

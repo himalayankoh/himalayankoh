@@ -152,12 +152,10 @@ export function consoleReadiness(input: ConsoleReadinessInput): ConsoleReadiness
       toEnter: [
         'Provider or forwarder',
         'Origin port and destination port',
-        'Container — 20FT, 40FT or 40HC',
+        'Container — LCL, 20FT, 40FT or 40HC. An LCL rate is a per-shipment price, not a box',
         'Base ocean freight, and the currency it is quoted in',
         'Optional: valid-until date, transit days, the forwarder’s reference',
       ],
-      caveat:
-        'The rate form’s Container list offers only 20FT, 40FT and 40HC, so an LCL rate cannot be typed in from this console yet. Until that is added, the LCL-versus-FCL comparison cannot be exercised from a typed rate.',
     });
   }
 

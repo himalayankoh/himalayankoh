@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pencil, Plus, X } from 'lucide-react';
 import {
   removeWholesaleRecord,
@@ -232,9 +232,15 @@ const num = (value: string): number => {
 export function ProductsPanel({
   workspace,
   reload,
+  focusProductId = null,
 }: {
   workspace: { products: WholesaleRow[]; tiers: WholesaleRow[]; origins: WholesaleRow[]; suppliers: WholesaleRow[] };
   reload: () => Promise<void> | void;
+  /**
+   * Open this product's editor on arrival. The capacity screen sends the owner here when
+   * a capacity is only an estimate, so the fix is one click from the number that needs it.
+   */
+  focusProductId?: number | null;
 }) {
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
   const [form, setForm] = useState<ProductForm>(EMPTY_PRODUCT);
@@ -275,6 +281,18 @@ export function ProductsPanel({
       document.getElementById('wholesale-packaging-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
+
+  // Arriving from the capacity screen with a product to fix. Handled once per id, so
+  // leaving and returning does not fight the owner for the editor they may have closed.
+  const focusHandled = useRef<number | null>(null);
+  useEffect(() => {
+    if (!focusProductId || focusHandled.current === focusProductId) return;
+    const row = workspace.products.find((product) => rowId(product) === focusProductId);
+    if (!row) return;
+    focusHandled.current = focusProductId;
+    fillIn(row);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `fillIn` is rebuilt each render by design; the id is the trigger.
+  }, [focusProductId, workspace.products]);
 
   async function save() {
     const id = typeof editingId === 'number' ? editingId : undefined;
@@ -1168,10 +1186,16 @@ export function FreightRatesPanel({
           name: 'container_type',
           label: 'Container',
           type: 'select',
+          // LCL is offered alongside the boxes because it is the other way the ocean leg
+          // is bought, and a rate for it is stored canonically as `LCL` (see
+          // `canonicalContainerType` in `mapping.ts`) so the recommendation can compare
+          // it with an FCL rate. Its freight is a per-shipment charge rather than a
+          // per-container one.
           options: [
             { value: '20FT', label: '20ft' },
             { value: '40FT', label: '40ft' },
             { value: '40HC', label: '40ft high cube' },
+            { value: 'LCL', label: 'LCL — less than container load (per shipment)' },
           ],
         },
         { name: 'currency', label: 'Currency', type: 'text' },

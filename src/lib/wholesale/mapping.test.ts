@@ -8,11 +8,13 @@ import {
   containerProfileFromRow,
   costProfileFromRow,
   freightRateFromRow,
+  freightRateToRow,
   packagingFromJson,
   packagingToJson,
   productFromRow,
   quoteFromRow,
 } from './mapping';
+import { isLclRate } from './engine';
 import { WHOLESALE_RESOURCES } from './store';
 import { DEFAULT_PACKAGING_PROFILE } from './types';
 
@@ -188,6 +190,35 @@ describe('freight', () => {
     expect(freightRateFromRow({ id: 1, provider: 'Forwarder A', source: 'manual' }).source).toBe('manual');
     expect(freightRateFromRow({ id: 2, source: 'api' }).source).toBe('api');
     expect(freightRateFromRow({ id: 3 }).source).toBe('manual');
+  });
+
+  it('stores an LCL rate canonically however it was typed', () => {
+    // LCL is not a container, so the stored value is the engine's own word for it: the
+    // recommendation reads this column, and three spellings of one thing is three rates
+    // the owner cannot filter.
+    for (const typed of ['LCL', 'lcl', 'Lcl', ' LCL ', 'L.C.L.', 'Less than Container Load']) {
+      expect(freightRateToRow({ containerType: typed }).container_type, typed).toBe('LCL');
+    }
+  });
+
+  it('stores an FCL wording exactly as the forwarder wrote it', () => {
+    // A rate is evidence of what was quoted. `20GP` must not become a profile id here —
+    // the calculation resolves the wording to a profile at match time (`normalizeContainerKey`),
+    // and rewriting it on the way in would both invent an id nobody quoted and discard
+    // what the forwarder actually wrote.
+    for (const typed of ['20FT', '20GP', '20 DV', "20' GP", '40FT', '40HQ', "40' High Cube", '45HC']) {
+      expect(freightRateToRow({ containerType: typed }).container_type, typed).toBe(typed);
+    }
+  });
+
+  it('round-trips a stored LCL rate as one the engine recognises', () => {
+    const stored = freightRateToRow({ containerType: ' lcl ', oceanFreight: 300 });
+    const rate = freightRateFromRow({ id: 6, ...stored });
+    expect(rate.containerType).toBe('LCL');
+    // The same predicate the shipment recommendation splits on, so a stored rate cannot
+    // read as LCL to the console and as FCL to the engine.
+    expect(isLclRate(rate.containerType)).toBe(true);
+    expect(rate.oceanFreight).toBe(300);
   });
 
   it('reads surcharges back as items', () => {
