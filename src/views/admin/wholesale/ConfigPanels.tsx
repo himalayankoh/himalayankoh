@@ -33,6 +33,9 @@ import {
 /** The product editor's DOM id: what the row's pencil and the readiness worklist scroll to. */
 const PRODUCT_EDITOR_ID = 'wholesale-packaging-editor';
 
+/** The cost profile editor, which is a panel of its own rather than a `RecordPanel`. */
+const COST_EDITOR_ID = 'wholesale-cost-editor';
+
 /**
  * The configuration half of the wholesale console.
  *
@@ -864,6 +867,7 @@ export function CostProfilesPanel({
               setEditingId('new');
               setForm({ ...EMPTY_COST, charges: {} });
               writer.clear();
+              scrollToEditor(COST_EDITOR_ID);
             }}
           >
             <Plus className="w-4 h-4" />
@@ -881,7 +885,10 @@ export function CostProfilesPanel({
         {writer.error ? <Notice kind="error">{writer.error}</Notice> : null}
 
         {editingId !== null ? (
-          <div className="rounded-2xl border border-charcoal/10 bg-warm-white/50 p-5">
+          <div
+            id={COST_EDITOR_ID}
+            className="rounded-2xl border border-charcoal/10 bg-warm-white/50 p-5 scroll-mt-24"
+          >
             <h3 className="font-semibold text-charcoal mb-4">
               {typeof editingId === 'number' ? 'Edit cost profile' : 'New cost profile'}
             </h3>
@@ -1015,6 +1022,9 @@ export function CostProfilesPanel({
                     setEditingId(rowId(row));
                     setForm(costFormFrom(row));
                     writer.clear();
+                    // Same reason as the product editor: it sits above this table, so the
+                    // pencil has to bring it into view or the click looks like a no-op.
+                    scrollToEditor(COST_EDITOR_ID);
                   }}
                   className="p-1.5 rounded-lg text-charcoal-light hover:bg-charcoal/5"
                   aria-label={`Edit ${text(row.name)}`}
