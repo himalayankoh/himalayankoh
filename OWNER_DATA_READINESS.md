@@ -133,7 +133,7 @@ No product has any of: `cartonQty`, `packagedUnitWeightKg`, `cartonLengthCm`, `c
 
 ---
 
-## 5. Net/gross safety — UI warning (IMPLEMENTED — see §8 for live status)
+## 5. Net/gross safety — UI warning (IMPLEMENTED and VERIFIED in Preview — see §8)
 
 - No engine change. The engine is correct; the inconsistency is the owner having entered no packaging at all.
 - **Implemented** as a UI-only banner driven by one pure helper, `getPackagingWarning` in `src/views/admin/wholesale/packagingWarning.ts`:
@@ -196,14 +196,15 @@ Admin Settings → add a credited OpenRouter (or the configured provider) API ke
 ## 8. FINAL REPORT
 
 ```text
-PREVIEW SHA: <filled after preview deploy + browser verification>
+PREVIEW SHA (browser-verified code build): 18c8e67c9a805b9580eeffd069a5cca4db622b49
+  — the document you are reading is a later report-only commit on the same code; the Worker is redeployed from it and /api/version must equal that commit.
 
-NET/GROSS WARNING: PENDING (implemented; live preview verification pending)
-INCOMPLETE PACKAGING WARNING: PENDING (implemented; live preview verification pending)
-COMPLETE PACKAGING FALSE WARNING: PASS at unit level (helper returns null for COMPLETE); live preview fixture check pending
-PRODUCT PACKAGING SAVE/RELOAD: PASS at contract level (form offers every required field; storage round-trip is lossless — mapping.test.ts); live save/reload write not yet run
-COST PROFILE EMPTY-STATE: PASS (both calculator panels and the Cost profiles tab state that a cost profile is required for a priced quote)
-FREIGHT EMPTY-STATE: PASS (Live-rates panel names “no live freight provider”; rate provenance is MANUAL / LIVE API / FALLBACK / EXPIRED; empty state distinct from a fetched rate)
+NET/GROSS WARNING: PASS — verified live in the Preview console. A 1,000-unit line for “Himalayan Rock Salt — 45 lb” (no packaging) rendered a red banner: “Net weight exceeds gross weight — Net weight exceeds gross weight because packaging data is incomplete. Do not use this calculation for a final quote.”, at the top of the Landed cost panel (and in the load/container blocks).
+INCOMPLETE PACKAGING WARNING: PASS — same live run; the banner is the helper's `warn`/`error` state driven by `packagingCompleteness ≠ COMPLETE`.
+COMPLETE PACKAGING FALSE WARNING: PASS — verified live with a temporary COMPLETE-packaging QA product: the calculation succeeded and rendered **no** warning banner (fixture deleted). Also pinned by `packagingWarning.test.ts`.
+PRODUCT PACKAGING SAVE/RELOAD: PASS — a temporary QA product was saved with all 17 packaging fields (11 required + 3 unit dimensions + 3 optional) through the live Preview API; read back with all 17 values intact, and the edit form displayed all 17 saved values. Fixture deleted. Form field coverage is also pinned by `packagingForm.test.ts` and the mapping round-trip test.
+COST PROFILE EMPTY-STATE: PASS — verified live: with 0 cost profiles both calculator panels show “Cost profile required for a priced quote”, the Cost profiles tab shows “No cost profiles yet. A quote cannot be priced without one.”, and the engine itself refuses to price (“No cost profile with id 0…”).
+FREIGHT EMPTY-STATE: PASS — verified live: the Ocean freight tab shows “No freight configured” plus the “No live freight provider is connected…” summary; rate provenance stays MANUAL / LIVE API / FALLBACK / EXPIRED, so a typed rate is never shown as fetched.
 AI STATUS MESSAGE: PASS for routing/honesty (authenticated route reaches the provider; the panel now states the provider is configured but unavailable for billing/credit reasons). AI CAPABILITY: FAIL — provider returns HTTP 402 until the owner adds credit.
 
 TYPECHECK: PASS
