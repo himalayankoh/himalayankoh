@@ -192,6 +192,8 @@ describe('wishlistCount', () => {
 describe('readWishlistProducts', () => {
   const wooProduct = {
     id: 2493,
+    // The store's legacy spelling. The catalogue normalizes the visible name to
+    // `lb` at the backend boundary, which the assertion below proves.
     name: 'Himalayan Salt Coarse Grain — 6 lbs',
     slug: 'himalayan-salt-coarse-grain-6-lbs',
     price: '19.95',
@@ -215,7 +217,7 @@ describe('readWishlistProducts', () => {
     const product = products.get(2493);
     expect(product).toMatchObject({
       id: 2493,
-      name: 'Himalayan Salt Coarse Grain — 6 lbs',
+      name: 'Himalayan Salt Coarse Grain — 6 lb',
       price: '$19.95',
       priceMin: 19.95,
       image: 'https://cdn.test/6lbs.webp',

@@ -16,7 +16,6 @@ import { buildProductsCategoryPath } from '../lib/categoryContent';
  */
 const aboutLinks = [
   { label: 'About Himalayan Koh', to: '/about' },
-  { label: 'Quality & Sourcing', to: '/quality' },
   { label: 'Shop Products', to: '/products' },
   { label: 'Contact Us', to: '/contact' },
   { label: 'FAQs', to: '/faqs' },
@@ -218,7 +217,6 @@ export default function Footer() {
           <p>Copyright © 2026 Himalayan Koh. All rights reserved.</p>
           <div className="flex flex-wrap items-center gap-4">
             <Link prefetch={false} to="/disclaimer" className="hover:text-white/75 transition-colors">Disclaimer</Link>
-            <Link prefetch={false} to="/quality" className="hover:text-white/75 transition-colors">Quality Standards</Link>
             <Link prefetch={false} to="/privacy" className="hover:text-white/75 transition-colors">Privacy Policy</Link>
             <Link prefetch={false} to="/terms" className="hover:text-white/75 transition-colors">Terms of Service</Link>
             <Link prefetch={false} to="/shipping" className="hover:text-white/75 transition-colors">Shipping Policy</Link>

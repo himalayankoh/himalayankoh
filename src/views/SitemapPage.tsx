@@ -24,7 +24,6 @@ interface SitemapPageProps {
 const STATIC_PAGES = [
   { name: 'Home', href: '/' },
   { name: 'About Himalayan Koh', href: '/about' },
-  { name: 'Quality, Sourcing & Verification Standards', href: '/quality' },
   // { name: 'Resource Center & Guides', href: '/resources' },
   { name: 'All Products Shop', href: '/products' },
   { name: 'Visual Gallery', href: '/gallery' },

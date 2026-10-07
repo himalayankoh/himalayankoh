@@ -220,7 +220,7 @@ export default function ResourceDetailPage({ article }: ResourceDetailPageProps)
             <ArrowLeft className="w-4 h-4" /> Back to Resource Library
           </Link>
           <Link
-            href="/quality"
+            href="/about"
             className="inline-flex items-center gap-1 text-sm font-semibold text-himalayan hover:underline"
           >
             Our Quality Standards <ArrowRight className="w-4 h-4" />

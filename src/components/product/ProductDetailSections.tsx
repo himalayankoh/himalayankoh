@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, Gem, HelpCircle, Shield, Truck, UtensilsCrossed, ShieldAlert } from 'lucide-react';
+import { ChevronDown, Gem, HelpCircle, UtensilsCrossed, ShieldAlert } from 'lucide-react';
 import type { Product } from '../../data/products';
 import { getProductContent } from '../../lib/products/productContent';
 import ProductVideoSection from './ProductVideoSection';
@@ -49,47 +49,6 @@ export default function ProductDetailSections({ product }: Props) {
           ))}
         </ul>
       </section>
-
-      <div className="grid md:grid-cols-2 gap-6">
-        <section className="rounded-xl bg-white p-4 shadow-md shadow-black/5 sm:p-5 md:p-6 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <Truck size={20} className="text-himalayan" />
-              <h2 className="font-serif text-xl font-bold text-charcoal">Shipping & Delivery</h2>
-            </div>
-            <ul className="space-y-2 mb-4">
-              {content.shippingInfo.map((item) => (
-                <li key={item} className="text-sm text-charcoal-light leading-relaxed">
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="pt-3 border-t border-gray-100 flex flex-wrap gap-4 text-xs font-semibold text-himalayan">
-            <Link to="/shipping" className="hover:underline">
-              Shipping Policy →
-            </Link>
-            <Link to="/returns" className="hover:underline">
-              Return & RMA Policy →
-            </Link>
-          </div>
-        </section>
-
-        <section className="rounded-xl bg-white p-4 shadow-md shadow-black/5 sm:p-5 md:p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Shield size={20} className="text-himalayan" />
-            <h2 className="font-serif text-xl font-bold text-charcoal">Why Himalayan Koh</h2>
-          </div>
-          <ul className="space-y-4">
-            {content.trustIndicators.map((item) => (
-              <li key={item.label}>
-                <p className="font-semibold text-charcoal text-sm">{item.label}</p>
-                <p className="text-sm text-charcoal-light mt-0.5">{item.detail}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </div>
 
       {content.faqs.length > 0 && (
         <section className="rounded-xl bg-white p-4 shadow-md shadow-black/5 sm:p-5 md:p-6">
@@ -141,7 +100,7 @@ export default function ProductDetailSections({ product }: Props) {
           <Link to="/disclaimer" className="text-himalayan hover:underline">
             Product & Health Disclaimer →
           </Link>
-          <Link to="/quality" className="text-himalayan hover:underline">
+          <Link to="/about" className="text-himalayan hover:underline">
             Quality & Sourcing Standards →
           </Link>
         </div>

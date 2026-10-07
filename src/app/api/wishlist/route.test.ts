@@ -118,7 +118,7 @@ describe('GET /api/wishlist', () => {
     expect(body.items[0]).toMatchObject({
       id: 9,
       product_id: 2493,
-      product: { name: 'Himalayan Salt Coarse Grain — 6 lbs', price: '$19.95' },
+      product: { name: 'Himalayan Salt Coarse Grain — 6 lb', price: '$19.95' },
     });
   });
 

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Check, Gem, Heart, Droplets, Leaf, Timer, Utensils, ShieldCheck, MapPin, Phone, Mail, UserCheck } from 'lucide-react';
+import { Check, Gem, Heart, Droplets, Leaf, Timer, Utensils, ShieldCheck, MapPin, Phone, Mail, UserCheck, AlertTriangle } from 'lucide-react';
 import { legacyImage } from '@/lib/images/legacyAssets';
 
 /**
@@ -48,6 +48,28 @@ const benefits = [
     title: 'Kitchen & Pasture Uses',
     description: 'Food-grade crystals for culinary arts, hand-carved slabs for cooking, and dense mineral blocks for livestock herds.',
     icon: Utensils,
+  },
+];
+
+/** Customer testimonials carried over from the live HimalayanKoh.com About Us page. */
+const testimonials = [
+  {
+    quote:
+      'The Sam Houston Equestrian Center began to use Himalayan salt licks with the horses that were prone to chronic colic. After about 2 months the horses had less digestive issues. They readily consumed the salt and we are on our fourth shipment.',
+    name: 'Helen Peters, Program Director',
+    place: 'Sam Houston Equestrian Center, Houston, TX',
+  },
+  {
+    quote:
+      'My name is Darolyn Butler, and my ranch, Cypress Trails Equestrian Center, is near Humble, TX. I have a herd of 70 horses; they all work in my trail ride business and over half are also trained for endurance competition. All of the horses, considering our heat here in South Texas, need an excellent supply of salt, and I have been feeding it for about 15 months. I believe my horses are the healthier and able to thrive in this Texas heat due to this change to Himalayan Koh salt.',
+    name: 'Darolyn Butler',
+    place: 'Cypress Trails Equestrian Center, Humble, TX',
+  },
+  {
+    quote:
+      'Just wanted to let everyone know how great the Himalayan Koh team has been to work with. Not only are they very knowledgeable about all the advantages of Himalayan salt, but their products are by far the best salt blocks we have purchased for our deer ranch.',
+    name: 'James A. Brenek',
+    place: 'Conroe, TX',
   },
 ];
 
@@ -218,15 +240,15 @@ export default function AboutPage() {
               Upon maritime arrival in the United States, every batch is received at our facility in Houston, Texas. Our team conducts physical inspections for moisture barriers, granulometry consistency, and purity before packaging into sealed, food-safe containers.
             </p>
             <p className="text-white/80 text-base leading-relaxed mb-6">
-              We welcome wholesale, retail distribution, and bulk commercial inquiries. For full details on our quality-assurance framework and laboratory protocols, visit our dedicated sourcing guide.
+              We welcome wholesale, retail distribution, and bulk commercial inquiries. Our full quality-assurance framework and laboratory protocols are set out below.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
-              <Link
-                href="/quality"
+              <a
+                href="#quality-standards"
                 className="px-5 py-2.5 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-all shadow-lg shadow-himalayan/20"
               >
                 Quality & Sourcing Standards →
-              </Link>
+              </a>
               <Link
                 href="/disclaimer"
                 className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition-all"
@@ -235,6 +257,122 @@ export default function AboutPage() {
               </Link>
             </div>
           </motion.div>
+        </div>
+      </section>
+
+      {/* Quality & Sourcing Standards — folded in from the former standalone /quality
+          page so that route could be retired without losing its substance. */}
+      <section id="quality-standards" className="py-10 md:py-14 bg-white border-t border-gray-100 scroll-mt-24">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6">
+          <div className="text-center mb-8">
+            <span className="inline-block px-3 py-1 bg-himalayan-lighter text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3">
+              Quality &amp; Sourcing
+            </span>
+            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-charcoal mb-3">
+              Quality, Sourcing &amp; Verification Standards
+            </h2>
+            <p className="text-charcoal-light max-w-2xl mx-auto text-base">
+              Ethical geological extraction in Pakistan, transatlantic shipping, rigorous incoming inspection, and Houston warehouse packing protocols.
+            </p>
+          </div>
+
+          <div className="space-y-7">
+            <div>
+              <h3 className="font-serif text-xl font-bold text-charcoal mb-2">Geological Provenance &amp; Mining Ethics</h3>
+              <p className="text-charcoal-light text-sm md:text-base leading-relaxed">
+                All Himalayan pink salt distributed by Himalayan Koh originates from the Salt Range of northern Punjab, Pakistan — principally the historic Khewra mining region, in the Jhelum district. These subterranean formations are the remnants of the ancient Tethys Sea, which evaporated in the late Precambrian to early Cambrian periods more than 250 million years ago, and were then uplifted and sealed beneath hundreds of metres of protective rock — sheltering the salt from surface pollutants, microplastics and modern industrial effluent.
+              </p>
+              <p className="text-charcoal-light text-sm md:text-base leading-relaxed mt-2">
+                We work only with licensed and vetted operators who use traditional room-and-pillar extraction, which keeps the workings stable without the explosive blasting that can fracture the crystal structure. The miners and artisans who cut, carve and grade our salt work in safe, ventilated conditions and are fairly compensated.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-serif text-xl font-bold text-charcoal mb-2">Supplier Vetting &amp; Traceability</h3>
+              <ul className="list-disc list-outside pl-6 space-y-2 text-charcoal-light text-sm md:text-base">
+                <li><strong className="text-charcoal">Facility auditing:</strong> processing facilities must operate dedicated sorting areas with stainless-steel handling and optical sorting tables to prevent cross-contamination.</li>
+                <li><strong className="text-charcoal">Hygiene &amp; PPE:</strong> handlers must follow strict sanitation practices during grading, milling and bagging.</li>
+                <li><strong className="text-charcoal">Chain of custody:</strong> every container is tracked from the mine head to Port Qasim, Karachi, with verified bills of lading, customs declarations and phytosanitary clearance.</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-serif text-xl font-bold text-charcoal mb-3">Houston Receiving &amp; Quality Verification</h3>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="bg-cream p-5 rounded-2xl border border-gray-200/60">
+                  <h4 className="font-bold text-charcoal text-base mb-1">Moisture &amp; Seal Integrity</h4>
+                  <p className="text-xs text-charcoal-light leading-relaxed">Bulk bags and consumer containers are checked for transit moisture barriers. Anything showing condensation, a compromised seal or carton damage is quarantined.</p>
+                </div>
+                <div className="bg-cream p-5 rounded-2xl border border-gray-200/60">
+                  <h4 className="font-bold text-charcoal text-base mb-1">Granulometry Calibration</h4>
+                  <p className="text-xs text-charcoal-light leading-relaxed">Milled grains undergo mechanical sieve testing to verify mesh size: Fine (0.5–1.0 mm), Medium (1.0–3.0 mm) and Coarse (3.0–6.0 mm).</p>
+                </div>
+                <div className="bg-cream p-5 rounded-2xl border border-gray-200/60">
+                  <h4 className="font-bold text-charcoal text-base mb-1">Physical &amp; Visual Assay</h4>
+                  <p className="text-xs text-charcoal-light leading-relaxed">Crystals are evaluated on clean inspection surfaces under high-lumen illumination for clean translucency and absence of foreign debris.</p>
+                </div>
+                <div className="bg-cream p-5 rounded-2xl border border-gray-200/60">
+                  <h4 className="font-bold text-charcoal text-base mb-1">Structural Integrity of Blocks</h4>
+                  <p className="text-xs text-charcoal-light leading-relaxed">Solid licks and cooking blocks are inspected for compressive strength, drilled rope-hole symmetry and the absence of micro-fractures.</p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-serif text-xl font-bold text-charcoal mb-2">Packaging &amp; Climate-Controlled Storage</h3>
+              <p className="text-charcoal-light text-sm md:text-base leading-relaxed mb-2">
+                Sodium chloride is hygroscopic: it absorbs ambient moisture, and in a humid climate that means clumping, dissolution and package degradation. Our packaging holds the moisture out:
+              </p>
+              <ul className="list-disc list-outside pl-6 space-y-2 text-charcoal-light text-sm md:text-base">
+                <li><strong className="text-charcoal">Retail pouches:</strong> multi-layer barrier laminates with an airtight closure.</li>
+                <li><strong className="text-charcoal">Culinary jars:</strong> heavyweight jars sealed with tamper-evident induction liners.</li>
+                <li><strong className="text-charcoal">Commercial 45 lb bags:</strong> heavy-gauge woven sacks with an internal polyethylene liner, built for agricultural handling and freight.</li>
+                <li><strong className="text-charcoal">Pasture salt licks:</strong> weatherproof wrap around durable natural jute ropes, arriving ready for stable or paddock mounting.</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-serif text-xl font-bold text-charcoal mb-2">Understanding Natural Mineral Claims</h3>
+              <ul className="list-disc list-outside pl-6 space-y-2 text-charcoal-light text-sm md:text-base">
+                <li><strong className="text-charcoal">Predominant composition:</strong> pink Himalayan salt is primarily sodium chloride, typically 96%–98% NaCl by dry weight.</li>
+                <li><strong className="text-charcoal">Trace elements:</strong> the remaining 2%–4% is naturally occurring mineral compounds — iron oxide (which gives the rose, coral and amber colour), calcium, magnesium, potassium and trace sulfate.</li>
+                <li><strong className="text-charcoal">Parts-per-million realities:</strong> the majority of the additional elements reported by spectroscopy are present at ppm or ppb levels. They give the salt its flavour and colour; salt should not be eaten in excess to chase a mineral target.</li>
+              </ul>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-5">
+              <p className="flex items-center gap-2 text-amber-800 font-bold text-sm uppercase tracking-wide">
+                <AlertTriangle size={18} /> Lab report / COA available on request
+              </p>
+              <p className="text-sm text-amber-900 leading-relaxed mt-2">
+                We maintain documented lot tracing with our exporter network and are consolidating third-party spectroscopic results and heavy-metal screening (lead, cadmium, arsenic and mercury) into an online portal. Wholesale, feedlot and food-service partners needing lot-specific Certificates of Analysis or specification sheets should contact{' '}
+                <a href="mailto:sales@himalayankoh.com" className="underline font-semibold">sales@himalayankoh.com</a>.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials — carried over from the live HimalayanKoh.com About Us page. */}
+      <section className="py-10 md:py-14 bg-cream border-t border-gray-100">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <div className="text-center mb-8">
+            <span className="inline-block px-3 py-1 bg-himalayan-lighter text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3">
+              Testimonials
+            </span>
+            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-charcoal mb-3">What our customers say</h2>
+          </div>
+          <div className="grid md:grid-cols-3 gap-5">
+            {testimonials.map((item) => (
+              <blockquote key={item.name} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col">
+                <p className="text-sm text-charcoal-light leading-relaxed italic flex-1">&ldquo;{item.quote}&rdquo;</p>
+                <footer className="mt-4 pt-3 border-t border-gray-100">
+                  <p className="text-sm font-semibold text-charcoal">{item.name}</p>
+                  <p className="text-xs text-charcoal-light">{item.place}</p>
+                </footer>
+              </blockquote>
+            ))}
+          </div>
         </div>
       </section>
 

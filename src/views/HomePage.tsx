@@ -69,7 +69,7 @@ export default function HomePage({ initialProducts }: HomePageProps = {}) {
             <p className="mt-3 text-sm sm:text-base text-charcoal-light leading-relaxed max-w-xl">Ensure your herd is healthy and happy. Shop our convenient premium Himalayan Pink Salt products and enjoy friendly customer service from Himalayan Koh.</p>
             <div className="flex flex-wrap gap-3 mt-4">
               <Link to="/products" className="btn-hk-primary">Shop all salt <ArrowRight size={17} className="ml-2" /></Link>
-              <Link to="/quality" className="btn-hk-ghost">Quality & sourcing</Link>
+              <Link to="/about" className="btn-hk-ghost">Quality & sourcing</Link>
             </div>
             <nav aria-label="Shop by use" className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-charcoal-light">
               <Link to="/products?category=licks-blocks" className="underline underline-offset-4 hover:text-himalayan-dark">Salt licks & blocks</Link>

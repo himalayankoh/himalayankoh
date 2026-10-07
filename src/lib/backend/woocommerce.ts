@@ -23,6 +23,7 @@ import type { Product, StockStatus } from '../../data/products';
 import { collectMissingCatalogFields, priceDisplayFromRange } from '../products/price';
 import { productSlugFromName } from '../products/slug';
 import { resolveCuratedProductImages } from '../products/curatedImages';
+import { cleanProductName } from '../products/displayName';
 import { parseStoreSrcset, type ResponsiveImageSources } from '../images/responsiveImage';
 import { SEO_META_KEYS, variationPriceRange, type WooVariationLike } from '../woo/productPayload';
 import {
@@ -341,7 +342,10 @@ function buildProduct(input: {
   return {
     id: input.id,
     slug: input.slug,
-    name: input.name,
+    // The visible name only: the store's trailing brand suffix and its `lbs.`/`lb.`
+    // weight spellings are normalized here, once, for every backend source. The slug
+    // above was derived from the store row, so URLs are untouched by this.
+    name: cleanProductName(input.name, input.slug),
     price,
     priceRange: Boolean(input.priceMax),
     priceMin: input.priceMin,

@@ -20,7 +20,6 @@ import ScrollToTop from './ScrollToTop';
 const navLinks = [
   { label: 'Home', path: '/' },
   { label: 'Products', path: '/products' },
-  { label: 'Quality', path: '/quality' },
   { label: 'About Us', path: '/about' },
   { label: 'Contact', path: '/contact' },
 ];
