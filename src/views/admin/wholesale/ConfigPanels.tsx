@@ -25,9 +25,13 @@ import {
   Toggle,
   numberValue,
   rowId,
+  scrollToEditor,
   text,
   useWriter,
 } from './ui';
+
+/** The product editor's DOM id: what the row's pencil and the readiness worklist scroll to. */
+const PRODUCT_EDITOR_ID = 'wholesale-packaging-editor';
 
 /**
  * The configuration half of the wholesale console.
@@ -263,23 +267,19 @@ export function ProductsPanel({
     setEditingId('new');
     setForm({ ...EMPTY_PRODUCT, packaging: {} });
     writer.clear();
+    // Same reason as startEdit: the blank form is above the table and can open off-screen.
+    scrollToEditor(PRODUCT_EDITOR_ID);
   }
 
+  /**
+   * Open a product's editor and bring it into view. The editor sits above the table, so
+   * without the scroll the pencil looks broken to an owner working down the list.
+   */
   function startEdit(row: WholesaleRow) {
     setEditingId(rowId(row));
     setForm(productFormFrom(row));
     writer.clear();
-  }
-
-  /**
-   * Open a product from the readiness worklist. Same editor as Edit, then scrolled to
-   * it — the worklist is a queue the owner works down, so the form has to come to them.
-   */
-  function fillIn(row: WholesaleRow) {
-    startEdit(row);
-    requestAnimationFrame(() => {
-      document.getElementById('wholesale-packaging-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    scrollToEditor(PRODUCT_EDITOR_ID);
   }
 
   // Arriving from the capacity screen with a product to fix. Handled once per id, so
@@ -290,14 +290,35 @@ export function ProductsPanel({
     const row = workspace.products.find((product) => rowId(product) === focusProductId);
     if (!row) return;
     focusHandled.current = focusProductId;
-    fillIn(row);
+    startEdit(row);
   }, [focusProductId, workspace.products]);
+
+  /**
+   * The packaging values actually on screen right now, keyed by field.
+   *
+   * A controlled input only reaches React state through a real change event. A value put
+   * straight into the box — by a batch script, a browser autofill, or a paste — is visible
+   * to the owner but invisible to `form.packaging`, and saving would write it as blank,
+   * losing the work silently. Reading the boxes back at save time makes "the value in the
+   * box is the value saved" true, and is a no-op for ordinary typing, where the box and the
+   * state already agree.
+   */
+  function packagingValuesOnScreen(): Record<string, string> {
+    const editor = document.getElementById(PRODUCT_EDITOR_ID);
+    if (!editor) return {};
+    const values: Record<string, string> = {};
+    for (const input of editor.querySelectorAll<HTMLInputElement>('input[name^="packaging-"]')) {
+      values[input.name.slice('packaging-'.length)] = input.value;
+    }
+    return values;
+  }
 
   async function save() {
     const id = typeof editingId === 'number' ? editingId : undefined;
+    const onScreen = packagingValuesOnScreen();
     const packaging: Record<string, number | undefined> = {};
     for (const field of PACKAGING_FIELDS) {
-      const raw = form.packaging[field.key] ?? '';
+      const raw = onScreen[field.key] ?? form.packaging[field.key] ?? '';
       // An empty optional box is left out entirely, so the engine's own default
       // (derive from the footprint / no ceiling) applies rather than a zero.
       if (
@@ -404,7 +425,7 @@ export function ProductsPanel({
 
   return (
     <div className="space-y-6">
-      <PackagingReadinessPanel rows={workspace.products} onFill={fillIn} />
+      <PackagingReadinessPanel rows={workspace.products} onFill={startEdit} />
 
       <Panel
         title="Wholesale products"
@@ -428,7 +449,7 @@ export function ProductsPanel({
 
           {editingId !== null ? (
             <div
-              id="wholesale-packaging-editor"
+              id={PRODUCT_EDITOR_ID}
               className="rounded-2xl border border-charcoal/10 bg-warm-white/50 p-5 scroll-mt-24"
             >
               <h3 className="font-semibold text-charcoal mb-4">
@@ -516,6 +537,7 @@ export function ProductsPanel({
                   <Field key={field.key} label={field.label} hint={field.hint}>
                     <TextInput
                       type="number"
+                      name={`packaging-${field.key}`}
                       value={form.packaging[field.key] ?? ''}
                       onChange={(value) => setForm({ ...form, packaging: { ...form.packaging, [field.key]: value } })}
                     />

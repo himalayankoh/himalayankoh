@@ -18,6 +18,7 @@ import {
   Toggle,
   numberValue,
   rowId,
+  scrollToEditor,
   text,
   useWriter,
   type Column,
@@ -125,6 +126,8 @@ export default function RecordPanel({
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
   const [form, setForm] = useState<FormState>(blank);
   const writer = useWriter();
+  // One panel per resource, so the resource name is enough to address this editor.
+  const editorId = `wholesale-${resource}-editor`;
 
   const editingRow = useMemo(
     () => (typeof editingId === 'number' ? rows.find((row) => rowId(row) === editingId) ?? null : null),
@@ -135,12 +138,20 @@ export default function RecordPanel({
     setEditingId('new');
     setForm(blank);
     writer.clear();
+    // "Add" lives in the panel header, above the editor; the scroll keeps it in view when
+    // the header is the only part of the panel the owner can still see.
+    scrollToEditor(editorId);
   }
 
+  /**
+   * Open a record's editor and bring it into view — it renders above the table, so the
+   * scroll is what makes the row's pencil feel like it did something.
+   */
   function startEdit(row: Row) {
     setEditingId(rowId(row));
     setForm(formFromRow(fields, row));
     writer.clear();
+    scrollToEditor(editorId);
   }
 
   async function save() {
@@ -204,7 +215,7 @@ export default function RecordPanel({
         {writer.saved && editingId === null ? <Notice kind="success">{writer.saved}</Notice> : null}
 
         {editingId !== null ? (
-          <div className="rounded-2xl border border-charcoal/10 bg-warm-white/50 p-5">
+          <div id={editorId} className="rounded-2xl border border-charcoal/10 bg-warm-white/50 p-5 scroll-mt-24">
             <h3 className="font-semibold text-charcoal mb-4">
               {typeof editingId === 'number' ? 'Edit record' : newLabel}
             </h3>

@@ -308,6 +308,20 @@ export function Field({
 const INPUT_STYLE =
   'w-full px-3.5 py-2 rounded-xl border border-charcoal/15 bg-white text-charcoal text-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#B86452]/30 focus:border-[#B86452] hover:border-charcoal/25 disabled:bg-charcoal/5 disabled:opacity-60';
 
+/**
+ * Bring a panel's editor into view.
+ *
+ * Every panel in this console renders its editor *above* its table, so opening one from a
+ * row's pencil while the owner is scrolled down at the table looks like the click did
+ * nothing at all — the form has opened off-screen. The editor mounts on the same commit as
+ * the click, so the lookup waits one frame for it to exist.
+ */
+export function scrollToEditor(elementId: string) {
+  requestAnimationFrame(() => {
+    document.getElementById(elementId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
 export function TextInput({
   value,
   onChange,
@@ -315,6 +329,7 @@ export function TextInput({
   type = 'text',
   disabled,
   className = '',
+  name,
 }: {
   value: string | number;
   onChange: (value: string) => void;
@@ -322,6 +337,8 @@ export function TextInput({
   type?: string;
   disabled?: boolean;
   className?: string;
+  /** Lets a form address this box directly, e.g. to read a value back at save time. */
+  name?: string;
 }) {
   return (
     <input
@@ -330,6 +347,7 @@ export function TextInput({
       className={`${INPUT_STYLE} ${className}`}
       value={value}
       placeholder={placeholder}
+      name={name}
       onChange={(event) => onChange(event.target.value)}
     />
   );

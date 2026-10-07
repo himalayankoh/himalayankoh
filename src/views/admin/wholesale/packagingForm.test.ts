@@ -49,4 +49,27 @@ describe('product packaging form', () => {
     // ...and the payload actually carries the record to the write route.
     expect(source).toMatch(/const payload = \{[\s\S]*?\bpackaging,\n\s*\};/);
   });
+
+  it('saves the values that are on screen, not only the ones React was told about', () => {
+    // A controlled input only reaches React through a change event, so a value a batch
+    // script or a browser autofill writes straight into the box is visible to the owner but
+    // invisible to the form state — and Save used to persist it as blank, losing the work
+    // silently. Guard both halves of the read-back, since either one going stale turns the
+    // safety net back off without failing anything else.
+    expect(source, 'each box must be addressable').toMatch(/name=\{`packaging-\$\{field\.key\}`\}/);
+    expect(source, 'save must look for the named boxes').toContain('input[name^="packaging-"]');
+    expect(source, 'the reader must strip the same prefix').toContain("input.name.slice('packaging-'.length)");
+    expect(source, 'save must read the boxes back').toMatch(/const onScreen = packagingValuesOnScreen\(\)/);
+    expect(source, 'on-screen must win over stale state').toMatch(
+      /onScreen\[field\.key\] \?\? form\.packaging\[field\.key\]/
+    );
+  });
+
+  it('brings the editor into view when a product is opened from the table', () => {
+    // The editor renders above the table, so without the scroll the row's pencil looks
+    // broken to an owner working down the list — the form opened off-screen.
+    expect(source).toContain('scrollToEditor(PRODUCT_EDITOR_ID)');
+    expect(source).toMatch(/function startEdit\(row: WholesaleRow\)[\s\S]*?scrollToEditor\(PRODUCT_EDITOR_ID\)/);
+    expect(source, 'the editor must carry the id the scroll looks for').toMatch(/id=\{PRODUCT_EDITOR_ID\}/);
+  });
 });
