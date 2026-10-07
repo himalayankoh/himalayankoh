@@ -724,7 +724,9 @@ const DESTINATION_CHARGES: Array<{ key: string; label: string }> = [
   { key: 'destinationTerminal', label: 'Destination terminal' },
   { key: 'destinationHandling', label: 'Destination handling' },
   { key: 'destinationCustomsBroker', label: 'Customs broker' },
-  { key: 'destinationDelivery', label: 'Delivery' },
+  // Named for both jobs it does: the buyer-side delivery of an import, and the
+  // local/state freight of a lane shipped from the owner's own US stock.
+  { key: 'destinationDelivery', label: 'Delivery — US local/state freight' },
   { key: 'destinationWarehouse', label: 'Warehouse' },
   { key: 'destinationOther', label: 'Other destination charge' },
 ];
@@ -933,7 +935,9 @@ export function CostProfilesPanel({
             <h4 className="font-semibold text-charcoal mb-1">Destination charges</h4>
             <p className="text-xs text-charcoal-light mb-4">
               Shown on every quote as context. They are only inside the total when you ask for them, because they depend
-              on the buyer’s destination.
+              on the buyer’s destination. On a lane that ships from your own United States stock there is no ocean leg,
+              so the local/state freight is entered here as the delivery charge — and this is the profile to tick
+              “include destination charges” for.
             </p>
             <div className="grid sm:grid-cols-3 gap-4 mb-6">
               {DESTINATION_CHARGES.map((charge) => (
@@ -1078,11 +1082,11 @@ export function OriginsPanel({ rows, reload }: { rows: WholesaleRow[]; reload: (
     <RecordPanel
       resource="origins"
       title="Origins"
-      description="Where goods ship from: the country, the city and the load port. Freight rates are looked up by origin port, so the code here is what a lane is keyed by."
+      description="Where goods ship from: the country, the city and the load port. Freight rates are looked up by origin port, so the code here is what a lane is keyed by. An origin that is your own stock inside the United States has no foreign load port: it is a domestic lane, priced with local/state freight on the cost profile rather than an ocean rate."
       fields={[
-        { name: 'country', label: 'Country', type: 'text' },
+        { name: 'country', label: 'Country', type: 'text', hint: 'Pakistan, China, or United States for your own US stock.' },
         { name: 'city', label: 'City / region', type: 'text' },
-        { name: 'port', label: 'Load port code', type: 'text', hint: 'e.g. PKKHI, CNSHA' },
+        { name: 'port', label: 'Load port code', type: 'text', hint: 'e.g. PKKHI, CNSHA. A US stock origin has no load port — leave it blank.' },
         { name: 'currency', label: 'Currency', type: 'text' },
         { name: 'active', label: 'Active', type: 'bool' },
         { name: 'notes', label: 'Notes', type: 'textarea', wide: true },
@@ -1182,13 +1186,13 @@ export function FreightRatesPanel({
       ) : null}
       {rows.length === 0 && (!provider || !provider.ready) ? (
         <Notice kind="warn" title="No freight configured">
-          No ocean freight rate is stored and no live provider is connected, so ocean legs cannot be priced. Add a manual rate below, or connect a provider under Settings → Ocean Freight — Live Rates. A rate you type is recorded as manual and is never shown as a fetched one.
+          No ocean freight rate is stored and no live provider is connected, so ocean legs cannot be priced. Add a manual rate below, or connect a provider under Settings → Ocean Freight — Live Rates. A rate you type is recorded as manual and is never shown as a fetched one. A lane shipped from your own United States stock is not priced here at all — it has no ocean leg, so its local/state freight goes on the cost profile as the delivery charge.
         </Notice>
       ) : null}
       <RecordPanel
       resource="freight_rates"
       title="Ocean freight"
-      description="Rates per lane and container type. Source is stored, never guessed: a number you typed is 'manual' and a number a provider returned is 'api', and neither is ever presented as the other."
+      description="Rates per lane and container type. Source is stored, never guessed: a number you typed is 'manual' and a number a provider returned is 'api', and neither is ever presented as the other. Only foreign lanes appear here — a delivery shipped from your own US stock has no ocean leg and is priced with local/state freight on the cost profile."
       fields={[
         {
           name: 'source',

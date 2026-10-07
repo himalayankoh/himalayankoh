@@ -147,14 +147,31 @@ describe('consoleReadiness', () => {
     }
   });
 
-  it('asks for a rate that can be LCL, and no longer warns that LCL cannot be entered', () => {
-    // The freight-rate form offers LCL beside the box sizes now, so the old caveat that
-    // said an LCL rate could not be typed in from this console would be a lie.
+  it('asks for a rate that can be LCL, and never warns that LCL cannot be entered', () => {
+    // The freight-rate form offers LCL beside the box sizes now, so a caveat saying an LCL
+    // rate could not be typed in from this console would be a lie.
     const freight = consoleReadiness(OWNER_STATE).requirements.find(
       (entry) => entry.key === 'freight-rates'
     );
     expect(freight?.toEnter.join(' ')).toMatch(/LCL/);
-    expect(freight?.caveat).toBeUndefined();
+    expect(freight?.caveat ?? '').not.toMatch(/LCL/);
+  });
+
+  it('says a lane from the owner’s own US stock needs no ocean rate', () => {
+    // The one case where this screen is not the answer. Left unsaid it reads as an
+    // unfilled gap, and sends the owner looking for a rate that does not exist.
+    const freight = consoleReadiness(OWNER_STATE).requirements.find(
+      (entry) => entry.key === 'freight-rates'
+    );
+    expect(freight?.caveat).toMatch(/United States stock/);
+    expect(freight?.caveat).toMatch(/local\/state freight/);
+  });
+
+  it('names the local/state freight charge on the cost profile a US lane is priced with', () => {
+    const costs = consoleReadiness(OWNER_STATE).requirements.find(
+      (entry) => entry.key === 'cost-profiles'
+    );
+    expect(costs?.toEnter.join(' ')).toMatch(/local\/state freight/);
   });
 
   it('reports a workspace with no catalogue as needing nothing to fix', () => {

@@ -133,6 +133,7 @@ export function consoleReadiness(input: ConsoleReadinessInput): ConsoleReadiness
         'The currency it is quoted in',
         'The origin charges the form asks for — inland transport, stuffing, documentation, terminal, customs handling and the rest',
         "Each product's ex-factory cost under Products & pricing — a product left at zero is priced as free",
+        'For a lane shipped from your own United States stock: the local/state freight as the Delivery charge, with the profile ticked to include destination charges in the total. That lane has no ocean leg, so nothing is quoted against it here.',
       ],
     });
   }
@@ -156,6 +157,10 @@ export function consoleReadiness(input: ConsoleReadinessInput): ConsoleReadiness
         'Base ocean freight, and the currency it is quoted in',
         'Optional: valid-until date, transit days, the forwarder’s reference',
       ],
+      // A US-stock lane is the one case where this screen is not the answer, so it is
+      // said here rather than left to look like an unfilled gap.
+      caveat:
+        'Only a lane that crosses the water needs a rate here. A shipment out of your own United States stock is a domestic lane — price it with the local/state freight on the cost profile instead.',
     });
   }
 

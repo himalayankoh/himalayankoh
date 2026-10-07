@@ -760,14 +760,32 @@ export function normalizeCountry(country?: string | null): string {
 }
 
 /**
+ * The country a load port belongs to, for the lanes this business runs.
+ *
+ * Used only when the caller named no country, so it must not guess: a port code it does
+ * not recognise returns null and the lane reports only what it actually knows. `US` is in
+ * the list because goods can ship from the owner's own American stock, which makes a US
+ * lane a domestic one — no load port abroad and no ocean leg to price.
+ */
+function countryFromOriginPort(port?: string | null): string | null {
+  const code = (port ?? '').trim().toUpperCase();
+  if (code.startsWith('PK')) return 'Pakistan';
+  if (code.startsWith('CN')) return 'China';
+  if (code.startsWith('US')) return 'United States';
+  return null;
+}
+
+/**
  * Himalayan Koh Sourcing Model:
  * - Goods are sourced from Pakistan (PKKHI) and China (CNSHA) and delivered to the USA.
+ * - Goods can also ship from the owner's own United States stock. That lane is domestic:
+ *   it leaves from no foreign load port, so the local/state freight on the cost profile
+ *   is what it is priced with, not an ocean leg.
  * - UK customers are served out of Pakistan, but MUST be billed as a USA delivery.
  * - UK delivery sourced from China is rejected by the sourcing model.
  */
 export function resolveSourcingLane(input: SourcingLaneInput): SourcingResolution {
-  const originHint = input.originCountry
-    || (input.originPort?.toUpperCase().startsWith('PK') ? 'Pakistan' : input.originPort?.toUpperCase().startsWith('CN') ? 'China' : null);
+  const originHint = input.originCountry || countryFromOriginPort(input.originPort);
   const destHint = input.destinationCountry
     || (input.destinationPort?.toUpperCase().startsWith('GB') ? 'United Kingdom' : input.destinationPort?.toUpperCase().startsWith('US') ? 'United States' : null);
 
@@ -798,13 +816,20 @@ export function resolveSourcingLane(input: SourcingLaneInput): SourcingResolutio
   }
 
   // USA or other destination
+  const sourcedFromUsStock = normOrigin === 'United States';
+  const deliveredInUs = normDest === 'United States' || !normDest;
   return {
     sourcingOriginCountry: normOrigin || 'Pakistan',
     physicalDestinationCountry: normDest || 'United States',
-    billingCountry: normDest === 'United States' || !normDest ? 'United States' : normDest,
+    billingCountry: deliveredInUs ? 'United States' : normDest,
     billedAsUsDelivery: false,
     valid: true,
-    note: `Delivery to ${normDest || 'United States'} sourced from ${normOrigin || 'Pakistan'}.`,
+    // A lane that starts and ends in the United States is domestic. Saying so is the
+    // point: it tells the reader the freight is a local/state charge rather than an
+    // ocean leg, and that repeating the country twice is not a mistake.
+    note: sourcedFromUsStock && deliveredInUs
+      ? 'Domestic United States lane: shipped from the owner’s own US stock, so it is priced with local/state freight rather than an ocean leg.'
+      : `Delivery to ${normDest || 'United States'} sourced from ${normOrigin || 'Pakistan'}.`,
   };
 }
 

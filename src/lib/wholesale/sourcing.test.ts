@@ -51,6 +51,41 @@ describe('Sourcing Model & Billing Distinction', () => {
       expect(res.billedAsUsDelivery).toBe(false);
     });
 
+    it('reads a US port code as a United States origin, not a Pakistan one', () => {
+      // The owner can wholesale from their own American stock. With only a port code set
+      // the lane used to fall through to the Pakistan default, which filed a domestic US
+      // shipment as an import — and sent it looking for an ocean leg it does not have.
+      const res = resolveSourcingLane({ originPort: 'USHOU', destinationPort: 'USNYC' });
+      expect(res.sourcingOriginCountry).toBe('United States');
+      expect(res.physicalDestinationCountry).toBe('United States');
+      expect(res.valid).toBe(true);
+    });
+
+    it('allows goods sourced from the owner’s US stock to be delivered in the USA', () => {
+      const res = resolveSourcingLane({
+        originCountry: 'United States',
+        destinationCountry: 'United States',
+        destinationPort: 'USNYC',
+      });
+      expect(res.valid).toBe(true);
+      expect(res.sourcingOriginCountry).toBe('United States');
+      expect(res.physicalDestinationCountry).toBe('United States');
+      expect(res.billingCountry).toBe('United States');
+      expect(res.billedAsUsDelivery).toBe(false);
+    });
+
+    it('calls a US-to-US lane domestic and names local/state freight as its cost', () => {
+      const res = resolveSourcingLane({ originCountry: 'USA', destinationCountry: 'USA' });
+      expect(res.note).toContain('Domestic United States lane');
+      expect(res.note).toContain('local/state freight');
+    });
+
+    it('still reports an overseas lane in the usual terms', () => {
+      const res = resolveSourcingLane({ originCountry: 'Pakistan', destinationCountry: 'United States' });
+      expect(res.note).toBe('Delivery to United States sourced from Pakistan.');
+      expect(res.note).not.toContain('Domestic');
+    });
+
     it('requires UK customers to be served out of Pakistan and billed as a USA delivery', () => {
       const res = resolveSourcingLane({
         originCountry: 'Pakistan',
