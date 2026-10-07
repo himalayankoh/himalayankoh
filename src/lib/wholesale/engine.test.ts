@@ -549,7 +549,12 @@ describe('freight rates', () => {
 /* Phase 35 Regressions: LCL/FCL Intelligence & Completeness           */
 /* ------------------------------------------------------------------ */
 
-import { recommendShipmentMode, computeMultiContainerComparison, packagingCompleteness } from './engine';
+import {
+  recommendShipmentMode,
+  computeMultiContainerComparison,
+  packagingCompleteness,
+  normalizeContainerKey,
+} from './engine';
 
 describe('LCL/FCL Intelligence (Phase 35 Regressions)', () => {
   const smallLoad = { cargoCbm: 2.5, cbm: 2.5, grossWeightKg: 1200, pallets: 2 };
@@ -606,6 +611,68 @@ describe('LCL/FCL Intelligence (Phase 35 Regressions)', () => {
     expect(recFCL.mode).toBe('20FT');
     expect(recFCL.isLclRecommended).toBe(false);
     expect(recFCL.reason).toMatch(/economically cheaper.*despite unused physical capacity/);
+  });
+
+  it('5b. an FCL rate written in the forwarder\'s own words is not dropped', () => {
+    // The reported bug: a rate stored as `20' DV` / `20GP` / `40HQ` never equals a
+    // profile id, so the FCL rate was treated as absent and the engine fell back to
+    // its physical threshold — LCL on a small load — even though FCL was cheaper.
+    const rates = (containerType: string) => [
+      { ...baseRate, id: 'lcl-rate', containerType: 'LCL', oceanFreight: 300, surcharges: [] },
+      { ...baseRate, id: 'fcl-rate', containerType, oceanFreight: 200, surcharges: [] },
+    ];
+
+    const rec = recommendShipmentMode(smallLoad, [CONTAINER], rates("20' DV"));
+    expect(rec.mode).toBe('20FT');
+    expect(rec.isLclRecommended).toBe(false);
+    expect(rec.reason).toMatch(/economically cheaper.*despite unused physical capacity/);
+
+    // Every spelling a forwarder might use still resolves to the same box.
+    for (const wording of ['20GP', '20ft', '20 FT', "20' GP", '20DV']) {
+      const recommendation = recommendShipmentMode(smallLoad, [CONTAINER], rates(wording));
+      expect(recommendation.mode, wording).toBe('20FT');
+      expect(recommendation.isLclRecommended, wording).toBe(false);
+    }
+  });
+
+  it('5c. a high-cube rate matches the 40HC profile whatever the carrier calls it', () => {
+    const wording = ["40' High Cube", '40HQ', '40FT HC', '40 High Cube'];
+    for (const containerType of wording) {
+      const rec = recommendShipmentMode(smallLoad, [CONTAINER, HIGH_CUBE], [
+        { ...baseRate, id: 'lcl-rate', containerType: 'LCL', oceanFreight: 3000, surcharges: [] },
+        { ...baseRate, id: 'hc-rate', containerType, oceanFreight: 2400, surcharges: [] },
+      ]);
+      expect(rec.mode, containerType).toBe('40HC');
+      expect(rec.isLclRecommended, containerType).toBe(false);
+    }
+  });
+
+  it('5d. a rate for a container the load does not fit in is still not used', () => {
+    // 40 CBM is over the 20FT's practical limit (~29.9 CBM) and 12 pallets exceed its
+    // capacity, so its cheap rate must not win the economics comparison.
+    const fitlessLoad = { cargoCbm: 40, cbm: 40, grossWeightKg: 5000, pallets: 12 };
+    const rec = recommendShipmentMode(fitlessLoad, [CONTAINER, HIGH_CUBE], [
+      { ...baseRate, id: 'lcl-rate', containerType: 'LCL', oceanFreight: 2000, surcharges: [] },
+      { ...baseRate, id: '20ft-rate', containerType: '20FT', oceanFreight: 500, surcharges: [] },
+    ]);
+    expect(rec.mode).toBe('40HC');
+    expect(rec.reason).not.toMatch(/economically cheaper/);
+  });
+
+  it('5e. container wording collapses to one key without merging different sizes', () => {
+    const groups: Array<[string, string[]]> = [
+      ['20', ['20FT', "20'", '20 GP', '20GP', '20 DV', '20ft Standard', '20 Feet']],
+      ['40', ['40FT', "40'", '40 GP', '40ft Standard']],
+      ['40hc', ['40HC', '40HQ', "40' HC", '40 High Cube', '40FT High Cube', '40ft HC']],
+    ];
+    for (const [key, wordings] of groups) {
+      for (const wording of wordings) {
+        expect(normalizeContainerKey(wording), wording).toBe(key);
+      }
+    }
+    // A different size, and a blank, must never collapse into a matched one.
+    expect(normalizeContainerKey('45HC')).toBe('45hc');
+    expect(normalizeContainerKey('')).toBe('');
   });
 
   it('6, 7, 8. multi-container comparison', () => {

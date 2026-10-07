@@ -820,6 +820,48 @@ export interface ShipmentRecommendation {
   isLclRecommended: boolean;
 }
 
+/**
+ * A provider's own name for a container, reduced to what actually distinguishes it.
+ *
+ * Freight is quoted in the forwarder's vocabulary — `40' HC`, `40HQ`, `40FT High
+ * Cube`, `20GP`, `20' DV` — while a container profile carries this store's id
+ * (`40HC`, `20FT`). Both name the same box, so rates and profiles are compared on
+ * this key rather than on the literal strings. Comparing literally treated a real
+ * FCL rate as absent and fell back to LCL even when FCL was the cheaper option.
+ *
+ * The key keeps only the distinguishing facts: the size (20/40) and whether it is a
+ * high cube. Standard dry-van markers (GP, DV, general purpose, standard) and the
+ * unit itself (ft/feet, and any quote marks or spacing) are stripped, because they
+ * do not change which container is meant.
+ */
+export function normalizeContainerKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .replace(/feet|ft/g, '')
+    .replace(/highcube|hq/g, 'hc')
+    .replace(/generalpurpose|standard|dryvan|std|gp|dv/g, '');
+}
+
+/**
+ * The smallest container that fits whose id or name the rate's wording refers to.
+ *
+ * `null` when the rate names a container this shipment cannot fit in, or names
+ * nothing recognisable — either way it must not be used to price the load.
+ */
+function matchContainerProfile(
+  feasible: ContainerProfile[],
+  containerType: string
+): ContainerProfile | null {
+  const key = normalizeContainerKey(containerType);
+  if (!key) return null;
+  const matches = feasible.filter(
+    (profile) => normalizeContainerKey(profile.id) === key || normalizeContainerKey(profile.name) === key
+  );
+  if (matches.length === 0) return null;
+  return matches.reduce((smallest, profile) => (profile.usableCbm < smallest.usableCbm ? profile : smallest));
+}
+
 export function recommendShipmentMode(
   load: { cargoCbm: number; cbm: number; grossWeightKg: number; pallets: number },
   profiles: ContainerProfile[],
@@ -842,26 +884,36 @@ export function recommendShipmentMode(
   
   // If economics exist, they trump physical utilization, assuming it fits in an FCL.
   if (lowestLcl !== null && validFits.length > 0) {
-    const validFclProfiles = validFits.map(f => f.container.id);
-    const applicableFclRates = fclRates.filter(r => validFclProfiles.includes(r.containerType));
-    
+    // The containers this shipment physically fits in, matched against each rate by
+    // name rather than by literal string (see `normalizeContainerKey`).
+    const feasibleContainers = validFits.map((fit) => fit.container);
+    const applicableFclRates = fclRates
+      .map((rate) => ({ rate, container: matchContainerProfile(feasibleContainers, rate.containerType) }))
+      .filter(
+        (entry): entry is { rate: FreightRate; container: ContainerProfile } => entry.container !== null
+      );
+
     if (applicableFclRates.length > 0) {
-      const lowestFcl = Math.min(...applicableFclRates.map(r => r.oceanFreight));
+      // The cheapest rate among the containers this shipment actually fits in.
+      const cheapest = applicableFclRates.reduce((best, entry) =>
+        entry.rate.oceanFreight < best.rate.oceanFreight ? entry : best
+      );
+      const lowestFcl = cheapest.rate.oceanFreight;
       if (lowestLcl < lowestFcl) {
         return {
           mode: 'LCL',
           reason: `LCL is economically cheaper (${lowestLcl}) than the best FCL option (${lowestFcl}).`,
           isLclRecommended: true
         };
-      } else {
-        // FCL is cheaper despite perhaps being underutilized
-        const cheapestFclRate = applicableFclRates.find(r => r.oceanFreight === lowestFcl);
-        return {
-          mode: cheapestFclRate!.containerType as ShipmentMode,
-          reason: `FCL (${cheapestFclRate!.containerType}) is economically cheaper (${lowestFcl}) than LCL (${lowestLcl}), despite unused physical capacity.`,
-          isLclRecommended: false
-        };
       }
+      // FCL is cheaper despite perhaps being underutilized. The mode is the matched
+      // profile's own id, so the recommendation names a container this store can load
+      // rather than echoing the forwarder's spelling back as if it were an id.
+      return {
+        mode: cheapest.container.id as ShipmentMode,
+        reason: `FCL (${cheapest.container.name || cheapest.container.id}) is economically cheaper (${lowestFcl}) than LCL (${lowestLcl}), despite unused physical capacity.`,
+        isLclRecommended: false
+      };
     }
   }
 
