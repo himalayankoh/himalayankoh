@@ -11,7 +11,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(fileURLToPath(new URL('./ConfigPanels.tsx', import.meta.url)), 'utf8');
+const source =
+  readFileSync(fileURLToPath(new URL('./ConfigPanels.tsx', import.meta.url)), 'utf8') +
+  '\n' +
+  readFileSync(fileURLToPath(new URL('../../../lib/wholesale/packagingFields.ts', import.meta.url)), 'utf8');
 
 /** Every field `mapping.ts` reads for a Complete packaging profile, plus the optional enrichments. */
 const REQUIRED_KEYS = [

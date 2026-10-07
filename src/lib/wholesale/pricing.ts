@@ -266,7 +266,9 @@ export function calculateQuote(data: WholesaleData, input: QuoteInput): QuoteCal
       unitCost: tier ? tier.unitPrice : entry.product.exFactoryCost,
       tier,
       packagingDefaultsUsed: entry.product.packagingDefaultsUsed,
-      completeness: packagingCompleteness(entry.product.packaging),
+      // The fallback list is passed so a field running on a default counts as missing:
+      // without it an empty profile reads as nearly complete (see packagingCompleteness).
+      completeness: packagingCompleteness(entry.product.packaging, entry.product.packagingDefaultsUsed),
     };
   });
 

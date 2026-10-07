@@ -8,6 +8,8 @@ import {
   type WholesaleRow,
   type WholesaleWorkspace,
 } from '@/lib/admin/wholesaleConsoleApi';
+import { PACKAGING_FIELDS } from '@/lib/wholesale/packagingFields';
+import { packagingReadiness, type PackagingReadiness } from '@/lib/wholesale/packagingReadiness';
 import RecordPanel, { type FieldSpec } from './RecordPanel';
 import {
   Button,
@@ -51,26 +53,113 @@ function plain(value: unknown, digits = 2): string {
 /* Products & pricing                                                  */
 /* ------------------------------------------------------------------ */
 
-/** The packaging fields the engine reads, in the order the factory sheet lists them. */
-const PACKAGING_FIELDS: Array<{ key: string; label: string; hint?: string }> = [
-  { key: 'cartonQty', label: 'Units per carton' },
-  { key: 'packagedUnitWeightKg', label: 'Packaged unit weight (kg)' },
-  { key: 'cartonLengthCm', label: 'Carton length (cm)' },
-  { key: 'cartonWidthCm', label: 'Carton width (cm)' },
-  { key: 'cartonHeightCm', label: 'Carton height (cm)' },
-  { key: 'cartonGrossWeightKg', label: 'Carton gross weight (kg)' },
-  { key: 'palletLengthCm', label: 'Pallet length (cm)' },
-  { key: 'palletWidthCm', label: 'Pallet width (cm)' },
-  { key: 'maxStackHeightCm', label: 'Max stack height (cm)', hint: 'Including the pallet deck.' },
-  { key: 'palletDeckHeightCm', label: 'Pallet deck height (cm)' },
-  { key: 'palletTareKg', label: 'Pallet tare weight (kg)' },
-  { key: 'maxPalletGrossWeightKg', label: 'Max pallet gross weight (kg)', hint: 'Optional. Leave empty when unknown — an empty box is not a ceiling of zero.' },
-  { key: 'cartonsPerLayer', label: 'Cartons per layer', hint: 'Optional override; leave empty to derive from the footprint.' },
-  { key: 'layers', label: 'Layers per pallet', hint: 'Optional override; leave empty to derive from the stack height.' },
-  { key: 'unitLengthCm', label: 'Unit length (cm)', hint: 'Optional, but the packaging profile is not Complete without it — the product’s own size before cartoning.' },
-  { key: 'unitWidthCm', label: 'Unit width (cm)', hint: 'Optional; leave empty when unknown.' },
-  { key: 'unitHeightCm', label: 'Unit height (cm)', hint: 'Optional; leave empty when unknown.' },
-];
+function packagingStatusLabel(status: PackagingReadiness['status']): string {
+  if (status === 'COMPLETE') return 'Complete';
+  return status === 'NEEDS_REVIEW' ? 'Needs review' : 'Incomplete';
+}
+
+function packagingStatusPill(status: PackagingReadiness['status']): string {
+  if (status === 'COMPLETE') return 'bg-green-50 text-green-700 border-green-200';
+  return status === 'NEEDS_REVIEW'
+    ? 'bg-yellow-50 text-yellow-700 border-yellow-200'
+    : 'bg-red-50 text-red-700 border-red-200';
+}
+
+/**
+ * The owner's packaging worklist: one row per product that still runs on defaults,
+ * naming exactly which fields are blank and opening that product's form from the row.
+ *
+ * A worklist rather than a badge alone, because the engine deliberately keeps quoting
+ * with a default profile. The numbers are usable, they are just not the owner's — so
+ * the job is to walk the list until it is empty.
+ */
+function PackagingReadinessPanel({
+  rows,
+  onFill,
+}: {
+  rows: WholesaleRow[];
+  onFill: (row: WholesaleRow) => void;
+}) {
+  const items = useMemo(
+    () => rows.map((row) => ({ row, readiness: packagingReadiness(row.packaging) })),
+    [rows]
+  );
+  const complete = items.filter((item) => item.readiness.status === 'COMPLETE').length;
+  const outstanding = items.filter((item) => item.readiness.status !== 'COMPLETE');
+  const pct = items.length ? Math.round((complete / items.length) * 100) : 0;
+
+  return (
+    <Panel
+      title="Packaging readiness"
+      description="Every product starts on a documented default carton and pallet profile, which makes its weights and pallet counts estimates. Fill in a product's own factory figures once and it stops being an estimate everywhere it is used — in the calculator, in a quotation and in a container plan."
+    >
+      <div className="space-y-4">
+        <div>
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+            <p className="text-sm font-semibold text-charcoal">
+              {complete} of {items.length} product{items.length === 1 ? '' : 's'} complete
+            </p>
+            <p className="text-xs text-charcoal-light">
+              {outstanding.length
+                ? `${outstanding.length} still using default packaging`
+                : 'Nothing left to fill in'}
+            </p>
+          </div>
+          <div
+            className="h-2 rounded-full bg-charcoal/5 overflow-hidden"
+            role="progressbar"
+            aria-valuenow={complete}
+            aria-valuemin={0}
+            aria-valuemax={items.length}
+            aria-label="Packaging profiles complete"
+          >
+            <div
+              className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-green-500' : 'bg-himalayan'}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+
+        {outstanding.length === 0 ? (
+          <Notice kind="success" title="Packaging complete">
+            Every product has its own measured carton and pallet figures, so nothing in a quotation is an estimate
+            from a default profile.
+          </Notice>
+        ) : (
+          <ul className="space-y-2">
+            {outstanding.map(({ row, readiness }) => (
+              <li key={String(rowId(row))} className="rounded-xl border border-charcoal/10 bg-warm-white/50 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-charcoal truncate">{text(row.name)}</p>
+                    <p className="text-xs text-charcoal-light font-mono">
+                      {text(row.wholesale_sku) || 'no wholesale SKU'}
+                    </p>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${packagingStatusPill(readiness.status)}`}
+                  >
+                    {packagingStatusLabel(readiness.status)}
+                  </span>
+                </div>
+                <p className="text-xs text-charcoal-light mt-2">
+                  Missing: <span className="text-charcoal">{readiness.missingLabels.join(', ')}</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onFill(row)}
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-himalayan hover:underline"
+                >
+                  Fill in packaging →
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Panel>
+  );
+}
 
 interface ProductForm {
   woo_product_id: string;
@@ -174,6 +263,17 @@ export function ProductsPanel({
     setEditingId(rowId(row));
     setForm(productFormFrom(row));
     writer.clear();
+  }
+
+  /**
+   * Open a product from the readiness worklist. Same editor as Edit, then scrolled to
+   * it — the worklist is a queue the owner works down, so the form has to come to them.
+   */
+  function fillIn(row: WholesaleRow) {
+    startEdit(row);
+    requestAnimationFrame(() => {
+      document.getElementById('wholesale-packaging-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   async function save() {
@@ -281,8 +381,14 @@ export function ProductsPanel({
     ...workspace.suppliers.map((supplier) => ({ value: String(rowId(supplier) ?? ''), label: text(supplier.name) })),
   ];
 
+  // A live check over the values currently typed, so the profile can be seen becoming
+  // Complete while it is filled in rather than only after saving.
+  const formReadiness = editingId !== null ? packagingReadiness(form.packaging) : null;
+
   return (
     <div className="space-y-6">
+      <PackagingReadinessPanel rows={workspace.products} onFill={fillIn} />
+
       <Panel
         title="Wholesale products"
         description="The wholesale master. It references a WooCommerce product so the two sides agree on which product a line is about; the wholesale SKU, MOQ, cost, packaging and tiers are this plugin's own data and never touch the retail price."
@@ -304,7 +410,10 @@ export function ProductsPanel({
           {writer.error ? <Notice kind="error">{writer.error}</Notice> : null}
 
           {editingId !== null ? (
-            <div className="rounded-2xl border border-charcoal/10 bg-warm-white/50 p-5">
+            <div
+              id="wholesale-packaging-editor"
+              className="rounded-2xl border border-charcoal/10 bg-warm-white/50 p-5 scroll-mt-24"
+            >
               <h3 className="font-semibold text-charcoal mb-4">
                 {typeof editingId === 'number' ? 'Edit wholesale product' : 'New wholesale product'}
               </h3>
@@ -397,6 +506,24 @@ export function ProductsPanel({
                 ))}
               </div>
 
+              {formReadiness ? (
+                <div className="mt-4">
+                  {formReadiness.status === 'COMPLETE' ? (
+                    <Notice kind="success" title="Packaging complete">
+                      Every field here is filled in, so this product no longer falls back to a default carton or pallet
+                      profile. Save to keep it.
+                    </Notice>
+                  ) : (
+                    <Notice
+                      kind={formReadiness.status === 'NEEDS_REVIEW' ? 'warn' : 'info'}
+                      title={`Still missing (${formReadiness.missingKeys.length}) — profile is ${packagingStatusLabel(formReadiness.status).toLowerCase()}`}
+                    >
+                      {formReadiness.missingLabels.join(', ')}
+                    </Notice>
+                  )}
+                </div>
+              ) : null}
+
               <div className="mt-5 flex items-center gap-3">
                 <SaveButton onClick={save} busy={writer.saving} />
                 <Button variant="ghost" onClick={() => setEditingId(null)}>
@@ -430,6 +557,17 @@ export function ProductsPanel({
                   {row.active ? 'Active' : 'Inactive'}
                 </span>
               ) },
+              { key: 'packaging', label: 'Packaging', align: 'right', render: (row) => {
+                const readiness = packagingReadiness(row.packaging);
+                return (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${packagingStatusPill(readiness.status)}`}
+                    title={readiness.missingLabels.length ? `Missing: ${readiness.missingLabels.join(', ')}` : 'Measured profile'}
+                  >
+                    {packagingStatusLabel(readiness.status)}
+                  </span>
+                );
+              } },
               { key: 'actions', label: '', align: 'right', render: (row) => {
                 const id = rowId(row);
                 const tiers = tiersByProduct.get(String(id)) ?? [];

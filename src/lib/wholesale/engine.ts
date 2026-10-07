@@ -905,29 +905,68 @@ export function computeMultiContainerComparison(
 /* Packaging Completeness                                              */
 /* ------------------------------------------------------------------ */
 
-export function packagingCompleteness(profile: PackagingProfile): PackagingCompleteness {
+/**
+ * The grouped label each defaulted field belongs to, so `defaultsUsed` (which names
+ * profile fields) can be surfaced in the same vocabulary as the checks below.
+ */
+const DEFAULTED_FIELD_LABELS: Record<string, string> = {
+  cartonLengthCm: 'Carton Dimensions (L/W/H)',
+  cartonWidthCm: 'Carton Dimensions (L/W/H)',
+  cartonHeightCm: 'Carton Dimensions (L/W/H)',
+  cartonGrossWeightKg: 'Carton Gross Weight',
+  cartonQty: 'Units per Carton',
+  packagedUnitWeightKg: 'Packaged Unit Weight',
+  palletLengthCm: 'Pallet Footprint (L/W)',
+  palletWidthCm: 'Pallet Footprint (L/W)',
+  maxStackHeightCm: 'Max Stack Height',
+  palletDeckHeightCm: 'Pallet Deck Height',
+  palletTareKg: 'Pallet Tare Weight',
+};
+
+/**
+ * Whether a packaging profile is measured enough to quote from.
+ *
+ * `profile` is the engine's profile, which has a documented default behind every
+ * field. That is why `defaultsUsed` (from `packagingFromJson`) is the second
+ * argument and not a nicety: a defaulted field is a *guess*, not a measurement, so
+ * the checks below alone would call a profile with nothing entered almost complete.
+ * Passing the fallback list makes the answer match the owner's own data.
+ *
+ * Backwards compatible: called with only a profile it behaves exactly as before.
+ */
+export function packagingCompleteness(
+  profile: PackagingProfile,
+  defaultsUsed: readonly string[] = []
+): PackagingCompleteness {
   const missing: string[] = [];
-  
+  const add = (label: string) => {
+    if (!missing.includes(label)) missing.push(label);
+  };
+
   if (!profile.cartonLengthCm || !profile.cartonWidthCm || !profile.cartonHeightCm) {
-    missing.push('Carton Dimensions (L/W/H)');
+    add('Carton Dimensions (L/W/H)');
   }
-  if (!profile.cartonGrossWeightKg) missing.push('Carton Gross Weight');
-  if (!profile.cartonQty) missing.push('Units per Carton');
-  if (!profile.packagedUnitWeightKg) missing.push('Packaged Unit Weight');
-  if (!profile.palletLengthCm || !profile.palletWidthCm) missing.push('Pallet Footprint (L/W)');
-  if (!profile.maxStackHeightCm) missing.push('Max Stack Height');
-  
-  // Optional but recommended for wholesale precision
+  if (!profile.cartonGrossWeightKg) add('Carton Gross Weight');
+  if (!profile.cartonQty) add('Units per Carton');
+  if (!profile.packagedUnitWeightKg) add('Packaged Unit Weight');
+  if (!profile.palletLengthCm || !profile.palletWidthCm) add('Pallet Footprint (L/W)');
+  if (!profile.maxStackHeightCm) add('Max Stack Height');
+
+  // Every field running on a documented default is a field the owner has not yet
+  // supplied — the real reason an empty profile is not quotable.
+  for (const field of defaultsUsed) add(DEFAULTED_FIELD_LABELS[field] ?? field);
+
+  // Optional but required for a Complete profile — the product's own size.
   if (!profile.unitLengthCm || !profile.unitWidthCm || !profile.unitHeightCm) {
-    missing.push('Unit Dimensions (L/W/H)');
+    add('Unit Dimensions (L/W/H)');
   }
-  
+
   if (missing.length === 0) {
     return { status: 'COMPLETE', missingFields: [] };
   } else if (missing.length <= 2) {
     return { status: 'NEEDS_REVIEW', missingFields: missing };
   }
-  
+
   return { status: 'INCOMPLETE', missingFields: missing };
 }
 
