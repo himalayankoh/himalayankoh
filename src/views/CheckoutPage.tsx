@@ -1050,7 +1050,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   <button
                     type="button"
                     onClick={() => setRatesReloadKey((key) => key + 1)}
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                    className="mt-2 inline-flex min-h-10 items-center rounded-full border border-amber-300 bg-white px-4 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
                   >
                     Try again
                   </button>
