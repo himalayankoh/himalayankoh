@@ -385,14 +385,15 @@ export function CapacityPanel({
                 kind={verdict.verdict === 'SHORT' ? 'error' : 'success'}
                 title={
                   verdict.verdict === 'SHORT'
-                    ? `${verdict.pallets} ${verdict.pallets === 1 ? 'pallet' : 'pallets'} is not enough`
+                    ? `${verdict.pallets} ${verdict.pallets === 1 ? 'pallet is' : 'pallets are'} not enough`
                     : verdict.exact
-                      ? `${verdict.pallets} ${verdict.pallets === 1 ? 'pallet' : 'pallets'} holds it exactly`
-                      : `${verdict.pallets} ${verdict.pallets === 1 ? 'pallet' : 'pallets'} is enough`
+                      ? `${verdict.pallets} ${verdict.pallets === 1 ? 'pallet holds' : 'pallets hold'} it exactly`
+                      : `${verdict.pallets} ${verdict.pallets === 1 ? 'pallet is' : 'pallets are'} enough`
                 }
               >
-                {verdict.pallets} {verdict.pallets === 1 ? 'pallet' : 'pallets'} hold{' '}
-                {verdict.capacityUnits.toLocaleString('en-US')} units; the order is{' '}
+                {verdict.pallets} {verdict.pallets === 1 ? 'pallet' : 'pallets'}{' '}
+                {verdict.pallets === 1 ? 'holds' : 'hold'} {verdict.capacityUnits.toLocaleString('en-US')} units; the
+                order is{' '}
                 {verdict.requestedUnits.toLocaleString('en-US')}.
                 {verdict.verdict === 'SHORT'
                   ? ` Short by ${Math.abs(verdict.differenceUnits).toLocaleString('en-US')} units.`
@@ -417,7 +418,6 @@ export function CapacityPanel({
                   ['Practical volume', `${container.practicalCbmLimit} CBM`],
                   ['Gross weight', container.grossWeightKg.toLocaleString('en-US') + ' kg'],
                   ['CBM', String(container.cbm)],
-                  ['Limited by', container.limitingFactor === 'NONE' ? 'No cargo' : container.limitingFactor],
                 ]).map(([label, value]) => (
                   <div key={label} className="bg-warm-white rounded-xl p-3">
                     <p className="text-xs text-charcoal-light mb-1">{label}</p>
@@ -435,8 +435,14 @@ export function CapacityPanel({
               </Notice>
             )}
             <p className="text-xs text-charcoal-light">
-              The container verdict is the engine&apos;s own fit check, so this is the same answer a quotation gives for
-              these figures.
+              Capped by:{' '}
+              <span className="font-semibold text-charcoal">{container.cappedBy}</span>
+              {' — '}
+              {container.limitingFactor === 'NONE'
+                ? 'no cargo'
+                : `within the load, ${container.limitingFactor.toLowerCase()} binds first`}
+              . The container verdict is the engine&apos;s own fit check, so this is the same answer a quotation gives
+              for these figures.
             </p>
           </div>
         </Panel>

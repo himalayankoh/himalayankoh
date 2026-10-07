@@ -261,6 +261,15 @@ export interface ContainerCapacity {
   volumeUtilizationPct: number;
   rawVolumeUtilizationPct: number;
   limitingFactor: 'WEIGHT' | 'VOLUME' | 'NONE';
+  /**
+   * What actually stopped the capacity, in the engine's own words.
+   *
+   * `limitingFactor` describes which of weight and volume would bite first for the load
+   * *at* the capacity — which at a pallet-bound load can be volume, on a container that is
+   * only half full. The reason a capacity is what it is comes from the fit one carton
+   * past it, so that is captured here rather than left to the owner to guess.
+   */
+  cappedBy: string;
   /** The fit's own warnings, which is how the engine says why it will not fit. */
   warnings: string[];
   basis: CapacityBasis;
@@ -309,6 +318,7 @@ export function containerCapacity(
       volumeUtilizationPct: 0,
       rawVolumeUtilizationPct: 0,
       limitingFactor: 'NONE',
+      cappedBy: 'Units per carton is not set',
       warnings: ['Units per carton is not set, so a carton count cannot be worked out.'],
       basis,
     };
@@ -330,6 +340,7 @@ export function containerCapacity(
       volumeUtilizationPct: oneCarton.volumeUtilizationPct,
       rawVolumeUtilizationPct: oneCarton.rawVolumeUtilizationPct,
       limitingFactor: oneCarton.limitingFactor,
+      cappedBy: 'Not even one carton fits',
       warnings: oneCarton.warnings,
       basis,
     };
@@ -351,6 +362,15 @@ export function containerCapacity(
   const cartons = low;
   const load = computePalletLoad(product, unitsForCartons(cartons));
   const fit = fitForCartons(cartons);
+  // One carton past the capacity is what the engine objects to, so its first warning is
+  // the real reason the capacity is where it is.
+  const past = cartons < ceiling ? fitForCartons(cartons + 1) : null;
+  const cappedBy =
+    past && past.warnings.length > 0
+      ? past.warnings[0]
+      : fit.limitingFactor === 'WEIGHT'
+        ? 'The container weight ceiling'
+        : 'The practical volume ceiling';
 
   return {
     container: { id: profile.id, name: profile.name },
@@ -366,6 +386,7 @@ export function containerCapacity(
     volumeUtilizationPct: fit.volumeUtilizationPct,
     rawVolumeUtilizationPct: fit.rawVolumeUtilizationPct,
     limitingFactor: fit.limitingFactor,
+    cappedBy,
     warnings: fit.warnings,
     basis,
   };

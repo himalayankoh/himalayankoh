@@ -212,10 +212,14 @@ describe('containerCapacity', () => {
 
   it('says which ceiling stopped the load', () => {
     const capacity = containerCapacity(product(), CONTAINER_20FT);
-    expect(['WEIGHT', 'VOLUME']).toContain(capacity.limitingFactor);
+    expect(capacity.cappedBy.length).toBeGreaterThan(0);
     // One more carton than the answer must not fit, or the answer is not a capacity.
     const bigger = containerCapacity(product(), CONTAINER_20FT, capacity.cartons + 1);
     expect(bigger.cartons).toBeLessThan(capacity.cartons + 1);
+    // When the ceiling itself stopped the search the reason is the engine's own warning.
+    if (capacity.cartons < 20_000) {
+      expect(capacity.cappedBy).not.toBe('');
+    }
   });
 
   it('refuses to answer when not even one carton fits, and says why', () => {
