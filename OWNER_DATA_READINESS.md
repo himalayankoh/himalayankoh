@@ -227,6 +227,28 @@ PRODUCTION READY = YES only when real owner packaging, pricing, freight and AI c
 
 ---
 
+## 9. Owner packaging entry workflow (IMPLEMENTED and VERIFIED in Preview)
+
+The products screen (`Products & pricing`) now leads with a **Packaging readiness** worklist, so the 19 incomplete products are a queue the owner works down instead of a number in a report.
+
+- A progress bar reports *“N of 19 products complete”*; with the current live data it reads **0 of 19** (`role="progressbar"`, `aria-valuenow=0 aria-valuemax=19`).
+- One row per outstanding product, naming exactly the fields still blank (e.g. *“Missing: Units per carton, Packaged unit weight (kg), Carton length (cm), … Unit height (cm)”*) with an **Incomplete** pill.
+- **Fill in packaging →** opens that product's editor and scrolls it into view, so entry is one pass per product rather than a hunt through the table.
+- The editor shows a **live** completeness notice that updates as the owner types (*“Still missing (14) — profile is incomplete”* → *“Still missing (13) …”* → *“Packaging complete”* once every required field is filled); nothing is saved until **Save** is pressed.
+- A **Packaging** status pill on each products-table row gives the same verdict at a glance.
+
+The verdict is computed once, in the React-free `src/lib/wholesale/packagingReadiness.ts` (field list in `src/lib/wholesale/packagingFields.ts`), and shares `packagingCompleteness` + `packagingFromJson` with the pricing engine — so the worklist, the row pill, the editor notice and the calculator's completeness warning cannot tell different stories. `packagingCompleteness` gained an optional second argument (`defaultsUsed`), so a field running on a documented default now counts as *not yet entered*; the single-argument call still behaves exactly as before.
+
+Verified live on Preview (`e9756d1`, cache-busted) with a real admin session:
+
+- 19 product rows, **0 complete / 19 incomplete**, progress bar 0/19.
+- 19 **Fill in packaging →** buttons; clicking one opened *“Edit wholesale product”* with the editor scrolled into view; the live notice read *“Still missing (14) — profile is incomplete”*.
+- Typing `cartonQty = 4` moved the notice to *“Still missing (13) …”*; filling all 14 required fields moved it to *“Packaging complete”*. Form then closed with **Cancel** — nothing saved.
+- 38 **Incomplete** pills (19 in the worklist + 19 in the products table); no horizontal overflow at 390 px (`scrollWidth 390 / innerWidth 390`).
+- Unit tests: `src/lib/wholesale/packagingReadiness.test.ts` (blank → all 14 required keys, measured → none, one blank → `NEEDS_REVIEW` naming just that field, form-typed strings read identically); `packagingForm.test.ts` still covers every field key.
+
+---
+
 ## Checklist items for the owner (in order of dependency)
 
 1. **A — Packaging.** For each of the 19 products enter the 11 required carton/pallet fields (+ optional unit L/W/H) → `packagingCompleteness = COMPLETE`. This fixes net/gross.
