@@ -8,6 +8,8 @@ import {
   type WholesaleCalculationResponse,
   type WholesaleRow,
 } from '@/lib/admin/wholesaleConsoleApi';
+import { containerFit, computePalletLoad, packagingCompleteness, unitsFromPallets } from '@/lib/wholesale/engine';
+import { containerProfileFromRow, productFromRow } from '@/lib/wholesale/mapping';
 import { getPackagingWarning } from './packagingWarning';
 import {
   Button,
@@ -187,7 +189,26 @@ function AiAssistantPanel({ context }: { context: unknown }) {
  * Deliberately not the whole container builder: the question here is "how many cartons
  * and pallets is this many units, and what does the goods cost", asked before any
  * shipment planning happens.
+ *
+ * ## The pallet answer does not need a cost profile
+ *
+ * Cartons, pallets, kilos, CBM and whether the load fits a box come from the product's
+ * own packaging profile and the engine's own functions — no origin cost set is involved —
+ * so with no cost profile configured the load is computed here (by that same React-free
+ * engine, not a second set of sums) and shown as soon as a quantity is entered. Only the
+ * priced figures need a cost profile: goods cost and landed cost stay absent from this
+ * path, and a quotation still cannot be saved without one.
  */
+
+/**
+ * The load tiles, from either the priced response or a locally computed unpriced load.
+ *
+ * `merchandiseCost` is the one field the unpriced path cannot supply, so it is nullable
+ * rather than absent — the tile is dropped instead of showing a confident zero.
+ */
+type LoadTiles = Omit<WholesaleCalculationResponse['calculation']['lines'][number], 'merchandiseCost'> & {
+  merchandiseCost: number | null;
+};
 export function PalletCalculatorPanel({
   workspace,
 }: {
@@ -208,6 +229,68 @@ export function PalletCalculatorPanel({
     if (!containerId && workspace.containerProfiles.length) setContainerId(String(rowId(workspace.containerProfiles[0]) ?? ''));
     if (!costProfileId && workspace.costProfiles.length) setCostProfileId(String(rowId(workspace.costProfiles[0]) ?? ''));
   }, [products, workspace.containerProfiles, workspace.costProfiles, productId, containerId, costProfileId]);
+
+  const product = workspace.products.find((row) => String(rowId(row) ?? '') === productId);
+
+  /**
+   * The load, computed without a cost profile when there is none to use.
+   *
+   * Same engine functions the API route calls, so the tiles cannot drift from a priced
+   * calculation. Returns null whenever a cost profile exists — that path goes through the
+   * route as before — or when the inputs are not yet usable.
+   */
+  const localLoad = useMemo(() => {
+    if (workspace.costProfiles.length || !product) return null;
+    const wanted = numberValue(quantity);
+    if (wanted === null || wanted <= 0) return null;
+
+    const engineProduct = productFromRow(product);
+    const units = mode === 'units' ? Math.trunc(wanted) : unitsFromPallets(engineProduct, wanted);
+    const load = computePalletLoad(engineProduct, units);
+    const profileRow =
+      workspace.containerProfiles.find((row) => String(rowId(row) ?? '') === containerId) ??
+      workspace.containerProfiles[0];
+
+    const tiles: LoadTiles = {
+      productRowId: engineProduct.rowId,
+      name: load.name,
+      wholesaleSku: engineProduct.wholesaleSku,
+      units: load.units,
+      cartons: load.cartons,
+      pallets: load.palletsRequired,
+      palletsFull: load.fullPallets,
+      unitsOnLastPallet: load.unitsOnLastPallet,
+      unitsPerPallet: load.layout.unitsPerPallet,
+      cartonsPerPallet: load.layout.cartonsPerPallet,
+      cartonsPerLayer: load.layout.cartonsPerLayer,
+      layers: load.layout.layers,
+      weightLimited: load.layout.weightLimited,
+      netWeightKg: load.netWeightKg,
+      grossWeightKg: load.grossWeightKg,
+      cbm: load.cbm,
+      unitCost: engineProduct.exFactoryCost,
+      tierMinUnits: null,
+      merchandiseCost: null,
+      assumptions: load.assumptions,
+      palletEquivalent: load.palletEquivalent,
+      partialPalletPct: load.partialPalletPct,
+      completeness: packagingCompleteness(engineProduct.packaging),
+    };
+
+    return {
+      tiles,
+      fit: profileRow
+        ? containerFit(containerProfileFromRow(profileRow), {
+            cargoCbm: load.cargoCbm,
+            cbm: load.cbm,
+            grossWeightKg: load.grossWeightKg,
+            pallets: load.palletsRequired,
+            packaging: engineProduct.packaging,
+          })
+        : null,
+      currency: text(product.currency, 'USD'),
+    };
+  }, [workspace.costProfiles, workspace.containerProfiles, product, quantity, mode, containerId]);
 
   async function calculate() {
     setBusy(true);
@@ -239,7 +322,30 @@ export function PalletCalculatorPanel({
   }
 
   const line = result?.calculation.lines[0];
-  const packagingWarning = line ? getPackagingWarning(line) : null;
+  // The priced response when one was calculated, otherwise the locally computed load — so
+  // the owner sees cartons and pallets without first creating a cost profile.
+  const view: LoadTiles | null = line ?? localLoad?.tiles ?? null;
+  const viewFit = line && result ? result.calculation.fit : localLoad?.fit ?? null;
+  const viewCurrency = line && result ? result.calculation.currency : localLoad?.currency ?? 'USD';
+  const packagingWarning = view ? getPackagingWarning(view) : null;
+  const tiles: Array<[string, string]> = view
+    ? [
+        ['Units', view.units.toLocaleString('en-US')],
+        ['Cartons', view.cartons.toLocaleString('en-US')],
+        ['Pallets', String(view.pallets)],
+        ['Units per pallet', view.unitsPerPallet.toLocaleString('en-US')],
+        ['Cartons per pallet', String(view.cartonsPerPallet)],
+        ['Cartons per layer', `${view.cartonsPerLayer} × ${view.layers} layers`],
+        ['Net weight (kg)', view.netWeightKg.toLocaleString('en-US')],
+        ['Gross weight (kg)', view.grossWeightKg.toLocaleString('en-US')],
+        ['CBM', view.cbm.toFixed(3)],
+        // Goods cost is built from the cost profile's origin figures, which the unpriced
+        // load deliberately does not have — omit the tile rather than show a zero.
+        ...(view.merchandiseCost === null
+          ? []
+          : ([['Goods cost', money(view.merchandiseCost, viewCurrency)]] as Array<[string, string]>) ),
+      ]
+    : [];
 
   return (
     <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-6">
@@ -289,8 +395,8 @@ export function PalletCalculatorPanel({
           </Field>
 
           {workspace.costProfiles.length === 0 ? (
-            <Notice kind="warn" title="Cost profile required for a priced quote">
-              No cost profile is configured, so this calculator cannot produce a priced result. Add one under Config → Cost profiles.
+            <Notice kind="warn" title="Cost profile required for a goods and landed cost">
+              No cost profile is configured, so this calculator cannot price the goods or the shipment. Cartons, pallets, kilos and CBM are still worked out from the product's packaging profile — fill in a cost profile under Config → Cost profiles when you want the cost.
             </Notice>
           ) : null}
 
@@ -304,8 +410,8 @@ export function PalletCalculatorPanel({
       </Panel>
 
       <div className="space-y-6">
-        {line ? (
-          <Panel title={`Load — ${line.name}`}>
+        {view ? (
+          <Panel title={`Load — ${view.name}`}>
             {packagingWarning && (
               <div className="mb-4">
                 <Notice kind={packagingWarning.severity} title={packagingWarning.title}>
@@ -315,43 +421,32 @@ export function PalletCalculatorPanel({
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
-              {[
-                ['Units', line.units.toLocaleString('en-US')],
-                ['Cartons', line.cartons.toLocaleString('en-US')],
-                ['Pallets', String(line.pallets)],
-                ['Units per pallet', line.unitsPerPallet.toLocaleString('en-US')],
-                ['Cartons per pallet', String(line.cartonsPerPallet)],
-                ['Cartons per layer', `${line.cartonsPerLayer} × ${line.layers} layers`],
-                ['Net weight (kg)', line.netWeightKg.toLocaleString('en-US')],
-                ['Gross weight (kg)', line.grossWeightKg.toLocaleString('en-US')],
-                ['CBM', line.cbm.toFixed(3)],
-                ['Goods cost', money(line.merchandiseCost, result?.calculation.currency)],
-              ].map(([label, value]) => (
+              {tiles.map(([label, value]) => (
                 <div key={label} className="bg-warm-white rounded-xl p-3">
                   <p className="text-xs text-charcoal-light mb-1">{label}</p>
                   <p className="font-semibold text-charcoal">{value}</p>
                 </div>
               ))}
-              {line.partialPalletPct > 0 && (
+              {view.partialPalletPct > 0 && (
                 <div className="bg-warm-white rounded-xl p-3 col-span-full sm:col-span-1">
                   <p className="text-xs text-charcoal-light mb-1">Partial Pallet</p>
-                  <p className="font-semibold text-charcoal">{line.palletEquivalent} eq. ({line.partialPalletPct}% of last)</p>
+                  <p className="font-semibold text-charcoal">{view.palletEquivalent} eq. ({view.partialPalletPct}% of last)</p>
                 </div>
               )}
             </div>
 
-            {line.completeness && line.completeness.status !== 'COMPLETE' && (
+            {view.completeness && view.completeness.status !== 'COMPLETE' && (
               <div className="mb-4">
-                <Notice kind={line.completeness.status === 'INCOMPLETE' ? 'error' : 'warn'}>
-                  <p className="font-semibold text-sm">Packaging Profile {line.completeness.status === 'INCOMPLETE' ? 'Incomplete' : 'Needs Review'}</p>
-                  <p className="text-xs mt-1">Missing: {line.completeness.missingFields.join(', ')}</p>
+                <Notice kind={view.completeness.status === 'INCOMPLETE' ? 'error' : 'warn'}>
+                  <p className="font-semibold text-sm">Packaging Profile {view.completeness.status === 'INCOMPLETE' ? 'Incomplete' : 'Needs Review'}</p>
+                  <p className="text-xs mt-1">Missing: {view.completeness.missingFields.join(', ')}</p>
                 </Notice>
               </div>
             )}
 
-            {line.assumptions.length ? (
+            {view.assumptions.length ? (
               <ul className="space-y-2">
-                {line.assumptions.map((note) => (
+                {view.assumptions.map((note) => (
                   <li key={note} className="text-xs text-charcoal-light leading-relaxed">
                     • {note}
                   </li>
@@ -361,9 +456,9 @@ export function PalletCalculatorPanel({
           </Panel>
         ) : null}
 
-        {result ? (
+        {viewFit ? (
           <Panel title="How it sits in a container">
-            <ContainerFitSummary fit={result.calculation.fit} currency={result.calculation.currency} />
+            <ContainerFitSummary fit={viewFit} currency={viewCurrency} />
           </Panel>
         ) : null}
       </div>
