@@ -51,6 +51,18 @@ const nextConfig: NextConfig = {
         destination: '/products/himalayan-pink-edible-salt-fine-grain-pouch-6-lb',
         permanent: true,
       },
+      // The standalone Quality page was folded into About Us. The route is gone, so
+      // this permanent redirect keeps anything that already links to or indexes
+      // `/quality` resolving onto the content's new home instead of a 404.
+      //
+      // This is a router-level redirect on purpose: `next/navigation`'s
+      // `permanentRedirect()` throws on this Worker runtime (see the `/return` page),
+      // so the redirect has to happen before any page renders.
+      {
+        source: '/quality',
+        destination: '/about',
+        permanent: true,
+      },
       // The account area is one page (`/account`, opening on My Orders); the
       // routes that used to be separate screens resolve to it here, at the
       // router, before any page renders. Listed ahead of the WordPress rules so

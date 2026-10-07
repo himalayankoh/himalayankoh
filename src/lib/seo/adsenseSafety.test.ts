@@ -107,7 +107,6 @@ describe('Phase 23 — Automated AdSense & Compliance Safety Gates', () => {
     const requiredPublicPaths = [
       '/',
       '/about',
-      '/quality',
       '/resources',
       '/products',
       '/contact',
