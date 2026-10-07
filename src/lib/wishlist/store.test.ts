@@ -211,7 +211,9 @@ describe('readWishlistProducts', () => {
     const products = await readWishlistProducts([2493, 2488]);
 
     const call = stub.callsTo('/wc/v3/products')[0];
-    expect(call.query.getAll('include')).toEqual(['2493', '2488']);
+    // `include[]`, because WooCommerce reads only the last value of a repeated bare key:
+    // this read used to come back with one product for a two-item wishlist.
+    expect(call.query.getAll('include[]')).toEqual(['2493', '2488']);
     expect(call.headers.Authorization).toBe(EXPECTED_WOO_BASIC);
 
     const product = products.get(2493);

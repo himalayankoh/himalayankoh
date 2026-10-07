@@ -316,11 +316,23 @@ describe('WordPress fatal detection', () => {
 });
 
 describe('buildQueryString', () => {
-  it('drops empty values and repeats arrays', () => {
+  it('drops empty values and brackets arrays', () => {
     expect(buildQueryString({ per_page: 24, page: 1 })).toBe('?per_page=24&page=1');
     expect(buildQueryString({ a: undefined, b: null, c: '' })).toBe('');
-    expect(buildQueryString({ tag: ['a', 'b'] })).toBe('?tag=a&tag=b');
     expect(buildQueryString({})).toBe('');
+  });
+
+  it('sends an array as `key[]` so the server reads every value, not the last one', () => {
+    // Measured against the store: `/wc/v3/products?include=2721&include=2752` answers
+    // with one product because PHP keeps the last value of a repeated key, while
+    // `include[]=2721&include[]=2752` answers with both. A silently truncated filter is
+    // worse than a rejected one — the shipping read treated the missing id as an
+    // unknown product and refused to price the cart.
+    expect(buildQueryString({ include: [2721, 2752] })).toBe('?include%5B%5D=2721&include%5B%5D=2752');
+    expect(new URLSearchParams(buildQueryString({ include: [2721, 2752] })).getAll('include[]')).toEqual([
+      '2721',
+      '2752',
+    ]);
   });
 });
 

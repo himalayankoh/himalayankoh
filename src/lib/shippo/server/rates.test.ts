@@ -247,6 +247,24 @@ describe('a multi-box order reaches Shippo as one shipment per box', () => {
     expect(boxesSent().map((parcel) => parcel.weight)).not.toContain('8');
   });
 
+  it('asks the store for every product in the cart, not only the last one', async () => {
+    // The shape of this read is what a mixed cart turns on. Asked as repeated bare
+    // `include` keys, WooCommerce answers with the last id alone, and every other line
+    // reached the packer with no name, no slug and no weight — so a cart of two
+    // products could not be priced at all.
+    await fetchShippoRates({
+      toAddress: DESTINATION,
+      lineItems: [
+        { productId: '9101', quantity: 1 },
+        { productId: '9103', quantity: 1 },
+      ],
+    });
+
+    const [read] = wp.callsTo('/wc/v3/products');
+    expect(read.query.getAll('include[]')).toEqual(['9101', '9103']);
+    expect(boxesSent().map((parcel) => parcel.weight)).toEqual(['2', '30']);
+  });
+
   it('keeps the block carton and the lick cartons apart in one request', async () => {
     await fetchShippoRates({
       toAddress: DESTINATION,

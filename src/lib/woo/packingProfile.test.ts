@@ -89,7 +89,29 @@ describe('readOrderableProducts', () => {
     // Ids are sent as WooCommerce's `include` filter: without it a batch read would
     // return the whole catalog and rate parcels from the wrong products.
     const [call] = stub.callsTo('/wc/v3/products');
-    expect(call.query.get('include')).toBe('2492');
+    expect(call.query.getAll('include[]')).toEqual(['2492']);
+  });
+
+  it('asks for every id in the batch in one request', async () => {
+    // This is the request that decides whether a mixed cart can be priced at all. Sent as
+    // repeated bare keys, WooCommerce answered with only the last id, so every other
+    // product in the cart arrived with no slug, no name and no weight and the packer
+    // refused it. A two-product cart could not be quoted; a six-product one lost five.
+    useWordPress([
+      {
+        path: '/wc/v3/products',
+        body: [
+          product({ id: 2721, slug: 'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh', weight: '2' }),
+          product({ id: 2752, slug: 'himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh', weight: '30' }),
+        ],
+      },
+    ]);
+
+    const facts = await readOrderableProducts([2721, 2752]);
+
+    expect([...facts.keys()].sort()).toEqual(['2721', '2752']);
+    expect(facts.get('2721')?.weightLbs).toBe(2);
+    expect(facts.get('2752')?.weightLbs).toBe(30);
   });
 
   it('converts a kilogram weight using the store setting, not an assumption', async () => {

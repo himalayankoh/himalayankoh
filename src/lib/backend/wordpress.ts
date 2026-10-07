@@ -58,7 +58,7 @@ export type QueryValue = string | number | boolean | undefined | null | Array<st
 export const WORDPRESS_MAX_PER_PAGE = 100;
 
 export interface WordPressRequestOptions {
-  /** Query string params. Arrays become repeated keys. Undefined/null are dropped. */
+  /** Query string params. Arrays become `key[]` params. Undefined/null are dropped. */
   params?: Record<string, QueryValue>;
   /** Abort after this many ms. Defaults to backendConfig.requestTimeoutMs. */
   timeoutMs?: number;
@@ -92,13 +92,23 @@ export function toBodySnippet(body: string, maxLength = 220): string {
  * that drift. See that module for the response shape it recognises.
  */
 
-/** Serialises params the way the WordPress REST API expects. */
+/**
+ * Serialises params the way the WordPress REST API expects.
+ *
+ * An array becomes `key[]=a&key[]=b`, **not** `key=a&key=b`. WordPress reads the
+ * query through PHP, and PHP keeps only the last value of a repeated key, so the
+ * repeated form silently truncates a multi-value filter to its final value instead
+ * of failing. That is how it failed here: `/wc/v3/products?include=2721&include=2752`
+ * came back with one product, so every other product in the request was graded as an
+ * unknown product. The bracketed form is what WordPress parses back into an array,
+ * and both forms were measured against the store itself before this was changed.
+ */
 export function buildQueryString(params: Record<string, QueryValue> = {}): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === '') continue;
     if (Array.isArray(value)) {
-      for (const item of value) search.append(key, String(item));
+      for (const item of value) search.append(`${key}[]`, String(item));
     } else {
       search.append(key, String(value));
     }
