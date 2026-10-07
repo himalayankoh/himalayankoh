@@ -1,6 +1,8 @@
 # Shippo packing rules (active products)
 
-Live Shippo rates and labels use **approved box packing only**. All other products fall back to flat-rate shipping at checkout and cannot auto-create labels until a packing rule exists.
+Live Shippo rates and labels use **approved box packing only**. A product with no packing rule cannot be priced by a carrier at checkout and cannot auto-create a label until a rule exists.
+
+Both licks use the **same approved carton**, 10 × 10 × 6 inches. Only how many fit in it differs.
 
 ## Approved products
 
@@ -8,7 +10,7 @@ Live Shippo rates and labels use **approved box packing only**. All other produc
 |---------|---------------|-------------------------|-------------|
 | 2 lb licks | 6 | 10 × 10 × 6 | 2 lb |
 | 4 lb licks | 4 | 10 × 10 × 6 | 4 lb |
-| 6 lb licks | 4 | 9.5 × 9.5 × 5.5 | 6 lb |
+| 6 lb licks | 4 | 10 × 10 × 6 | 6 lb |
 | 30 lb block | 1 | 8.5 × 7.5 × 6.5 | 30 lb |
 | 3 lb fine grain pouches (incl. edible) | 6 | 10 × 10 × 6 | 3 lb |
 | 6 lb fine grain pouches (incl. edible) | 3 | 10 × 10 × 6 | 6 lb |
@@ -28,12 +30,19 @@ Products without a match (e.g. 45 lb bags, generic listings without size) **do n
 
 ## Multi-box orders
 
-Quantity is split into full boxes per rule. Example: **7 × 2 lb licks** → 2 parcels (6 + 1), both **10 × 10 × 6**, weights **12 lb** and **2 lb**.
+Quantity is split into full boxes per rule, and **every box is sent to Shippo as its own parcel**. Boxes are never summed into one heavier parcel: one 14 lb parcel is not the two boxes that actually ship, and carriers price the two differently.
+
+- **7 × 2 lb licks** → 2 parcels, both **10 × 10 × 6**: **12 lb** (6 licks) + **2 lb** (1 lick)
+- **5 × 6 lb licks** → 2 parcels, both **10 × 10 × 6**: **24 lb** (4 licks) + **6 lb** (1 lick)
+- **7 × 2 lb + 5 × 6 lb** → 4 parcels: 12 lb + 2 lb + 24 lb + 6 lb. The two products are **not** mixed into one box yet, because no mixed-box rule has been approved.
+
+Each parcel is sent with its **actual** weight and the carton's dimensions. We do not send our own dimensional-weight figure: which of actual and dimensional weight a carrier bills on is the carrier's rule, so Shippo decides the billable weight, the service, the price and the transit estimate.
 
 ## Checkout behavior
 
-- Supported cart only → live carrier rates from Shippo  
-- Unsupported product in cart → message shown, **standard flat rates** used ($9.95 / $18.95 / free over $50)  
+- Supported cart only → live carrier rates from Shippo, one rate per box, summed per service  
+- Unsupported product in cart → checkout cannot price the order and says so, and **no flat rate is substituted** for a live quote  
+- A deployment with Shippo switched off has no carrier to ask, and prices delivery from the store's own flat table ($9.95 / $18.95 / free over $50). That is the only place those amounts apply now; there are no hand-written transit windows beside them  
 - Admin label creation blocked for unsupported SKUs with a clear error  
 
 ## Adding a new SKU

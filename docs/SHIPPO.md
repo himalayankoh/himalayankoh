@@ -5,7 +5,7 @@
 1. **Checkout** — live carrier rates (USPS, UPS, etc.) when the customer enters a shipping address
 2. **Admin** — one-click shipping label creation with tracking number on `/admin/orders`
 
-Flat-rate shipping ($9.95 / $18.95 / free over $50) remains the fallback when Shippo is not configured.
+Delivery is priced by the carrier, from the boxes this order actually makes up (see [SHIPPO-PACKING.md](./SHIPPO-PACKING.md)). The store's own flat table ($9.95 / $18.95 / free over $50) applies **only** where Shippo is not configured or is switched off: it is never used alongside a live quote, and while live rates are in play checkout offers no hand-priced option and no hand-written transit window.
 
 ## Environment variables
 
@@ -55,11 +55,13 @@ Or run `supabase/migrations/008_shippo_shipping.sql` manually in the Supabase SQ
 
 Shippo parcel size and weight come from **approved packing rules** in `src/lib/shippo/packing/rules.ts` (not generic product weight). See [SHIPPO-PACKING.md](./SHIPPO-PACKING.md) for the full table.
 
-Unsupported products use flat-rate shipping at checkout and cannot auto-create Shippo labels.
+A product with no approved packing rule cannot be priced by a carrier at checkout, and cannot auto-create a Shippo label.
 
 ## Test mode
 
 Use Shippo **test** API keys (`shippo_test_...`) for development. Labels in test mode are not billable and may show sample tracking numbers.
+
+A **live** key (`shippo_live_...`) is refused in any environment that is not production (`src/lib/shippo/server/client.ts`), so `preview.himalayankoh.com` cannot fetch real rates and its checkout reports that delivery could not be priced. That guard is deliberate — it is what stops a staging click from buying real postage — so a deployment that needs quotes on the preview must be given a test key.
 
 ## Going live
 

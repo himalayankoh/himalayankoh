@@ -232,7 +232,7 @@ const content: Record<LegalPageProps['type'], { eyebrow: string; title: string; 
         title: 'Delivery Estimates & Carriers',
         intro: 'We ship small package orders via recognized domestic carriers including USPS and FedEx:',
         bullets: [
-          'Standard Ground Delivery: Typically 3 to 7 business days depending on transit distance from Houston, Texas.',
+          'Standard Ground Delivery: the transit time is the carrier’s own estimate for your destination, quoted with the rate you choose at checkout.',
           'Delivery timelines displayed during checkout or on carrier portals are estimates, not guaranteed delivery dates.',
           'Shipping charges are calculated at checkout based on total package weight, dimensions, and destination zip code.',
         ],
