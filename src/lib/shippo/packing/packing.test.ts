@@ -19,22 +19,29 @@ import { calcDimWeightLbs } from './dimWeight';
 
 const APPROVED_BOX = { lengthIn: 10, widthIn: 10, heightIn: 6 };
 
-/** The live wholesale catalogue slug for the 6 lb lick listing. */
-const LICK_6LB_CATALOGUE_SLUG = 'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh';
+/**
+ * The live catalogue's lick listing, as WooCommerce now holds it.
+ *
+ * It was filed as `HK-LFH-6lbs` weighing 6 lb while its title and slug both said 2 lb,
+ * so it packed as the heavier lick — four to a box on a 24 lb parcel for a box of 2 lb
+ * pieces. The owner confirmed it is the 2 lb lick and the product was corrected to
+ * `HK-LFH-2lbs` and 2 lb, so this slug is the 2 lb case and the packing follows it.
+ */
+const LIVE_LICK_SLUG = 'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh';
 
 const lick2 = (quantity: number): PackingLineItem => ({
   productId: 'lick-2lb',
   quantity,
-  slug: 'himalayan-salt-licks-horses',
-  name: 'Himalayan Salt Licks for Horses 2 lb',
+  slug: LIVE_LICK_SLUG,
+  name: 'Himalayan Pink Salt Licks for Horses 2 lbs',
   weightLbs: 2,
 });
 
 const lick6 = (quantity: number): PackingLineItem => ({
   productId: 'lick-6lb',
   quantity,
-  slug: LICK_6LB_CATALOGUE_SLUG,
-  name: 'Himalayan Pink Salt Licks for Horses 2 lbs',
+  slug: 'himalayan-6lb-salt-lick',
+  name: 'Himalayan Salt Lick 6 lb',
   weightLbs: 6,
 });
 
@@ -191,23 +198,27 @@ describe('quantities that are not a whole number of units', () => {
 });
 
 describe('which product gets which rule', () => {
-  it('gives the live 6 lb lick listing the 6 lb rule, by its own weight', () => {
+  it('gives the live lick listing the 2 lb rule, now that its weight says 2 lb', () => {
+    // The exact product the owner corrected, resolved the way checkout resolves it: from
+    // the name and weight WooCommerce reports. Six to a box at 2 lb a piece.
     const rule = resolvePackingRule({
-      slug: LICK_6LB_CATALOGUE_SLUG,
+      slug: LIVE_LICK_SLUG,
       name: 'Himalayan Pink Salt Licks for Horses 2 lbs',
-      weightLbs: 6,
-    });
-    expect(rule?.id).toBe('lick-6lb');
-    expect(rule?.box).toEqual(APPROVED_BOX);
-  });
-
-  it('gives a 2 lb lick the 2 lb rule', () => {
-    const rule = resolvePackingRule({
-      slug: 'himalayan-2lb-salt-lick',
-      name: 'Himalayan Salt Lick 2 lb',
       weightLbs: 2,
     });
     expect(rule?.id).toBe('lick-2lb');
+    expect(rule?.box).toEqual(APPROVED_BOX);
+    expect(rule?.unitsPerBox).toBe(6);
+  });
+
+  it('gives the 6 lb lick the 6 lb rule by its own weight', () => {
+    const rule = resolvePackingRule({
+      slug: 'himalayan-6lb-salt-lick',
+      name: 'Himalayan Salt Lick 6 lb',
+      weightLbs: 6,
+    });
+    expect(rule?.id).toBe('lick-6lb');
+    expect(rule?.unitsPerBox).toBe(4);
   });
 
   it('leaves the other catalogue sizes on the rules they already had', () => {
