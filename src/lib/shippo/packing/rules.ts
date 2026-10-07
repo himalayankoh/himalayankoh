@@ -16,8 +16,14 @@ export interface PackingRule {
   matches: (product: { slug: string; name: string }) => boolean;
 }
 
+/**
+ * The one approved standard parcel for both salt licks, as the owner specified it.
+ *
+ * The 2 lb and the 6 lb lick use the same box; only how many fit in it differs. The
+ * 6 lb lick was on a 9.5 x 9.5 x 5.5 carton at 4 per box, which is not the approved
+ * box, so its rated dimensions did not match the box that actually goes out.
+ */
 const BOX_10_10_6: BoxDimensions = { lengthIn: 10, widthIn: 10, heightIn: 6 };
-const BOX_9_5_5_5: BoxDimensions = { lengthIn: 9.5, widthIn: 9.5, heightIn: 5.5 };
 const BOX_30_BLOCK: BoxDimensions = { lengthIn: 8.5, widthIn: 7.5, heightIn: 6.5 };
 const BOX_BAG_18: BoxDimensions = { lengthIn: 10, widthIn: 10, heightIn: 8 };
 const BOX_BAG_45: BoxDimensions = { lengthIn: 12, widthIn: 10, heightIn: 8 };
@@ -130,7 +136,7 @@ export const ACTIVE_PACKING_RULES: PackingRule[] = [
     label: '6 lb licks',
     unitWeightLbs: 6,
     unitsPerBox: 4,
-    box: BOX_9_5_5_5,
+    box: BOX_10_10_6,
     matches: ({ slug, name }) => {
       const text = `${slug} ${name}`;
       return hasLb(text, 6) && hasLick(text) && !hasPouch(text) && !hasBlock(text);

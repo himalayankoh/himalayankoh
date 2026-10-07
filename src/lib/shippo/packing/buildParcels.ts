@@ -90,6 +90,28 @@ function buildProfileParcels(item: PackingLineItem, profile: ProductPackingProfi
  * or given a profile. Mixed SKUs remain in separate boxes for predictable,
  * auditable label costs; future bin-packing can safely build on `canMix`.
  */
+/**
+ * A cart line carries a whole number of units, and the packer is built on that.
+ *
+ * Both halves of this used to be wrong in silence. A negative quantity was skipped by
+ * the same branch that skips zero, so a bad line simply vanished from the parcels while
+ * the order still charged for it; and a fractional quantity was packed as itself — 1.5
+ * licks became a 3 lb box — instead of being refused. Neither is a weight problem, so
+ * neither is raised as one.
+ */
+function assertWholeUnits(item: PackingLineItem): void {
+  const label = item.name || item.slug || 'a cart item';
+  if (!Number.isFinite(item.quantity)) {
+    throw new Error(`Quantity is not a number for ${label}.`);
+  }
+  if (item.quantity < 0) {
+    throw new Error(`Quantity cannot be negative for ${label}.`);
+  }
+  if (!Number.isInteger(item.quantity)) {
+    throw new Error(`Quantity must be a whole number of units for ${label}, got ${item.quantity}.`);
+  }
+}
+
 export function buildParcelsFromPackingLineItems(items: PackingLineItem[]): ShippoParcelInput[] {
   if (items.length === 0) {
     throw new Error('At least one cart item is required for Shippo packing.');
@@ -99,7 +121,9 @@ export function buildParcelsFromPackingLineItems(items: PackingLineItem[]): Ship
   const parcels: ShippoParcelInput[] = [];
 
   for (const item of items) {
-    if (item.quantity <= 0) continue;
+    assertWholeUnits(item);
+    // Zero units is a line with nothing to ship, not a bad quantity: it adds no box.
+    if (item.quantity === 0) continue;
 
     if (item.packingProfile) {
       parcels.push(...buildProfileParcels(item, item.packingProfile));
