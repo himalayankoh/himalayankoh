@@ -23,7 +23,7 @@ import type { Product, StockStatus } from '../../data/products';
 import { collectMissingCatalogFields, priceDisplayFromRange } from '../products/price';
 import { productSlugFromName } from '../products/slug';
 import { resolveCuratedProductImages } from '../products/curatedImages';
-import { cleanProductName } from '../products/displayName';
+import { cleanProductName, normalizeWeightUnits } from '../products/displayName';
 import { parseStoreSrcset, type ResponsiveImageSources } from '../images/responsiveImage';
 import { SEO_META_KEYS, variationPriceRange, type WooVariationLike } from '../woo/productPayload';
 import {
@@ -354,15 +354,18 @@ function buildProduct(input: {
     images,
     imageResponsive: input.imageResponsive,
     category: input.category || UNCATEGORIZED_CATEGORY,
-    description: input.description || undefined,
+    // The description and SEO strings are customer-facing text too, so the same weight
+    // spelling rule applies to them. The brand suffix is deliberately NOT stripped from
+    // metadata — only from the visible name (see `cleanProductName`).
+    description: input.description ? normalizeWeightUnits(input.description) : undefined,
     inStock: isPurchasable(input.stockStatus),
     isFeatured: input.isFeatured,
     sku: input.sku,
     stockStatus: input.stockStatus,
     stockQuantity: input.stockQuantity ?? null,
     updatedAt: input.updatedAt,
-    metaTitle: input.metaTitle ?? undefined,
-    metaDescription: input.metaDescription ?? undefined,
+    metaTitle: input.metaTitle ? normalizeWeightUnits(input.metaTitle) : undefined,
+    metaDescription: input.metaDescription ? normalizeWeightUnits(input.metaDescription) : undefined,
     commerceReadiness: input.commerceReadiness ?? null,
     supplierSource: input.supplierSource ?? null,
     costPrice: input.costPrice ?? null,
