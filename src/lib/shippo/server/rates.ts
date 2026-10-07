@@ -1,7 +1,7 @@
 import { resolveShippoFromAddress } from '../config';
 import type { CheckoutShippingAddress, RatesLineItem, ShippoRate } from '../types';
 import { enrichRatesLineItems } from '../packing/enrichLineItems';
-import { buildConsolidatedParcelFromPackingLineItems, buildParcelsFromPackingLineItems } from '../packing/buildParcels';
+import { buildParcelsFromPackingLineItems } from '../packing/buildParcels';
 import { shippoAddressPayload, toShippoAddress } from './addresses';
 import { shippoRequest } from './client';
 import { shippoParcelPayload } from './parcels';
@@ -120,14 +120,13 @@ export async function fetchShippoRates(params: {
   toAddress: CheckoutShippingAddress;
   email?: string;
   lineItems: RatesLineItem[];
-  consolidateParcels?: boolean;
 }): Promise<ShippoRate[]> {
   const fromAddress = await resolveShippoFromAddress();
   const to = toShippoAddress(params.toAddress, params.email);
   const packingItems = await enrichRatesLineItems(params.lineItems);
-  const parcelInputs = params.consolidateParcels
-    ? buildConsolidatedParcelFromPackingLineItems(packingItems)
-    : buildParcelsFromPackingLineItems(packingItems);
+  // Every calculated box is rated as its own shipment. There is no way to ask for them
+  // to be merged: one parcel carrying a whole order is not what goes out.
+  const parcelInputs = buildParcelsFromPackingLineItems(packingItems);
 
   const addressFrom = shippoAddressPayload(fromAddress);
   const addressTo = shippoAddressPayload(to);
@@ -173,13 +172,11 @@ export async function fetchShippoRatesForOrder(params: {
   email: string;
   shippingAddress: CheckoutShippingAddress;
   lineItems: RatesLineItem[];
-  consolidateParcels?: boolean;
 }): Promise<ShippoRate[]> {
   return fetchShippoRates({
     toAddress: params.shippingAddress,
     email: params.email,
     lineItems: params.lineItems,
-    consolidateParcels: params.consolidateParcels,
   });
 }
 

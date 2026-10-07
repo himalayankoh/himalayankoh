@@ -17,11 +17,13 @@ export interface PackingRule {
 }
 
 /**
- * The one approved standard parcel for both salt licks, as the owner specified it.
+ * The approved parcels, as the owner specified them.
  *
  * The 2 lb and the 6 lb lick use the same box; only how many fit in it differs. The
  * 6 lb lick was on a 9.5 x 9.5 x 5.5 carton at 4 per box, which is not the approved
  * box, so its rated dimensions did not match the box that actually goes out.
+ *
+ * The 30 lb block has a carton of its own, and exactly one block goes in it.
  */
 const BOX_10_10_6: BoxDimensions = { lengthIn: 10, widthIn: 10, heightIn: 6 };
 const BOX_30_BLOCK: BoxDimensions = { lengthIn: 8.5, widthIn: 7.5, heightIn: 6.5 };
@@ -54,10 +56,16 @@ function hasJar(text: string): boolean {
 /**
  * Active Shippo packing rules — only these products get live carrier parcel math.
  * Order matters: more specific rules must appear first.
+ *
+ * The owner has approved packing for the 2 lb lick (6 to a 10 x 10 x 6 box), the 6 lb
+ * lick (4 to the same box) and the 30 lb block (1 to an 8.5 x 7.5 x 6.5 box). The other
+ * entries below are the rules these products already shipped with; none of them is a
+ * guess at an unapproved box.
  */
 /** Explicit catalog slug → packing rule id (for products without size in the title). */
 export const SLUG_PACKING_RULE_IDS: Record<string, string> = {
   'himalayan-salt-licks-horses': 'lick-2lb',
+  'himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh': 'block-30lb',
   'himalayan-6lb-trace-mineral-salt-block': 'block-6lb',
   'himalayan-2lb-round-rope-salt-lick': 'round-rope-lick-2lb',
   'himalayan-6lb-round-rope-salt-lick': 'round-rope-lick-6lb',
@@ -148,15 +156,17 @@ export const ACTIVE_PACKING_RULES: PackingRule[] = [
     unitWeightLbs: 30,
     unitsPerBox: 1,
     box: BOX_30_BLOCK,
+    // The store's own 30 lb block, by the slug it is published under. Its slug ends in
+    // `-bag-` although the product is a single 30 lb block rather than a bag of loose
+    // salt, so the word is not evidence about what ships and the rule must not read it
+    // as any: matching this listing on its name alone left it to the weight-only
+    // fallback, which resolves it only while its WooCommerce weight happens to be 30.
+    slugs: ['himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh'],
     matches: ({ slug, name }) => {
       const text = `${slug} ${name}`;
-      return (
-        hasLb(text, 30) &&
-        !hasPouch(text) &&
-        !hasJar(text) &&
-        !/\bbag\b/i.test(text) &&
-        (hasBlock(text) || /\b30\s*(-|\s)?lb\b/i.test(text))
-      );
+      // "30 lb" is the whole test: the bags that ship separately are 18 and 45 lb, and
+      // a pouch or a jar of this weight is not a block.
+      return hasLb(text, 30) && !hasPouch(text) && !hasJar(text);
     },
   },
   {

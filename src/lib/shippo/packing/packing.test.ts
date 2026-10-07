@@ -1,13 +1,19 @@
 // ============================================================================
-// Approved packing for the 2 lb and 6 lb salt licks
+// Approved packing for the 2 lb and 6 lb salt licks and the 30 lb block
 //
 // Both licks ship in the same approved parcel — 10 x 10 x 6 inches — and differ only in
-// how many fit in it: six of the 2 lb lick, four of the 6 lb lick. One box is one parcel
-// and one label, so a quantity that does not fit becomes more parcels rather than a
-// heavier box: 7 x 2 lb is 12 lb + 2 lb, never a single 14 lb parcel.
+// how many fit in it: six of the 2 lb lick, four of the 6 lb lick. The 30 lb block has a
+// carton of its own, 8.5 x 7.5 x 6.5 inches, and exactly one block goes in it.
 //
-// The weights are the owner's: a 2 lb piece weighs 2 lb and a 6 lb piece weighs 6 lb, with
-// no box tare added, because no owner-provided carton weight exists to add.
+// One box is one parcel and one label, so a quantity that does not fit becomes more
+// parcels rather than a heavier box: 7 x 2 lb is 12 lb + 2 lb, never a single 14 lb
+// parcel, and two 30 lb blocks are two parcels of 30 lb, never one of 60 lb. A cart that
+// holds more than one product is packed per product and never merged: the owner has not
+// approved a mixed-box rule, so 1 x 2 lb + 1 x 6 lb is two parcels of 2 lb and 6 lb.
+//
+// The weights are the owner's: a 2 lb piece weighs 2 lb, a 6 lb piece weighs 6 lb and a
+// 30 lb block weighs 30 lb, with no box tare added, because no owner-provided carton
+// weight exists to add.
 // ============================================================================
 import { describe, expect, it } from 'vitest';
 
@@ -43,6 +49,26 @@ const lick6 = (quantity: number): PackingLineItem => ({
   slug: 'himalayan-6lb-salt-lick',
   name: 'Himalayan Salt Lick 6 lb',
   weightLbs: 6,
+});
+
+const APPROVED_BLOCK_BOX = { lengthIn: 8.5, widthIn: 7.5, heightIn: 6.5 };
+
+/**
+ * The live catalogue's 30 lb block, as WooCommerce holds it.
+ *
+ * Slug, name and weight are the store's own (product 2752). The slug ends in `-bag-`
+ * even though the product is one 30 lb block, which is how a rule that read the word
+ * "bag" as evidence came to refuse its own listing.
+ */
+const LIVE_BLOCK_SLUG = 'himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh';
+const LIVE_BLOCK_NAME = 'Himalayan Koh 30 lb Red Rock Salt Lick for Cattle';
+
+const block30 = (quantity: number): PackingLineItem => ({
+  productId: 'block-30lb',
+  quantity,
+  slug: LIVE_BLOCK_SLUG,
+  name: LIVE_BLOCK_NAME,
+  weightLbs: 30,
 });
 
 /** The weight the carrier is actually told for each parcel, in box order. */
@@ -161,7 +187,49 @@ describe('each box is its own Shippo parcel', () => {
   });
 });
 
-describe('a mixed 2 lb and 6 lb cart stays separate', () => {
+describe('30 lb block packing', () => {
+  it('packs one to a box', () => {
+    expect(weightsOf([block30(1)])).toEqual([30]);
+  });
+
+  it('packs two blocks into two boxes, never one of 60 lb', () => {
+    expect(weightsOf([block30(2)])).toEqual([30, 30]);
+  });
+
+  it('packs every block of a larger order in its own box', () => {
+    expect(weightsOf([block30(5)])).toEqual([30, 30, 30, 30, 30]);
+  });
+
+  it('gives the block its own carton, not the lick box', () => {
+    for (const parcel of buildParcelsFromPackingLineItems([block30(2)])) {
+      expect({
+        lengthIn: parcel.lengthIn,
+        widthIn: parcel.widthIn,
+        heightIn: parcel.heightIn,
+      }).toEqual(APPROVED_BLOCK_BOX);
+    }
+
+    const payloads = buildParcelsFromPackingLineItems([block30(2)]).map(shippoParcelPayload);
+    for (const payload of payloads) {
+      expect([Number(payload.length), Number(payload.width), Number(payload.height)]).toEqual([
+        8.5, 7.5, 6.5,
+      ]);
+    }
+  });
+
+  it('tells the carrier 30 lb per box and no more', () => {
+    const payloads = buildParcelsFromPackingLineItems([block30(2)]).map(shippoParcelPayload);
+    expect(payloads.map((payload) => Number(payload.weight))).toEqual([30, 30]);
+    expect(payloads.some((payload) => Number(payload.weight) === 60)).toBe(false);
+  });
+});
+
+describe('a mixed cart is packed per product and never merged', () => {
+  it('sends one 2 lb lick and one 6 lb lick as two parcels', () => {
+    // The owner's example, at the parcel level: two boxes, one product size in each.
+    expect(weightsOf([lick2(1), lick6(1)])).toEqual([2, 6]);
+  });
+
   it('packs each side on its own rule', () => {
     // 7 x 2 lb is two boxes and 5 x 6 lb is two boxes: four parcels, one label each. Mixed
     // box optimisation needs a packing rule the owner has not approved yet.
@@ -170,6 +238,15 @@ describe('a mixed 2 lb and 6 lb cart stays separate', () => {
 
   it('keeps one box per parcel even when one side alone would fill it', () => {
     expect(weightsOf([lick2(13), lick6(9)])).toEqual([12, 12, 2, 24, 24, 6]);
+  });
+
+  it('keeps the block out of the lick boxes in a three-product cart', () => {
+    const parcels = buildParcelsFromPackingLineItems([lick2(7), lick6(5), block30(2)]);
+    expect(parcels.map((parcel) => parcel.actualWeightLbs)).toEqual([12, 2, 24, 6, 30, 30]);
+    const lickBoxes = parcels.slice(0, 4).map((parcel) => [parcel.lengthIn, parcel.widthIn, parcel.heightIn]);
+    const blockBoxes = parcels.slice(4).map((parcel) => [parcel.lengthIn, parcel.widthIn, parcel.heightIn]);
+    for (const box of lickBoxes) expect(box).toEqual([10, 10, 6]);
+    for (const box of blockBoxes) expect(box).toEqual([8.5, 7.5, 6.5]);
   });
 });
 
@@ -255,14 +332,49 @@ describe('which product gets which rule', () => {
     expect(ids.filter((id) => id === 'lick-2lb')).toHaveLength(1);
     expect(ids.filter((id) => id === 'lick-6lb')).toHaveLength(1);
   });
+
+  it('gives the store’s own 30 lb block the 30 lb rule, by its slug', () => {
+    const rule = resolvePackingRule({ slug: LIVE_BLOCK_SLUG, name: LIVE_BLOCK_NAME, weightLbs: 30 });
+    expect(rule?.id).toBe('block-30lb');
+    expect(rule?.box).toEqual(APPROVED_BLOCK_BOX);
+    expect(rule?.unitsPerBox).toBe(1);
+    expect(rule?.unitWeightLbs).toBe(30);
+  });
+
+  it('still finds the 30 lb block when its weight is missing', () => {
+    // The listing's own slug is what identifies it now. Matching on the word "block" is
+    // not enough — this product's name says "rock" and "lick" — and the old predicate
+    // rejected it because the slug contains "bag", leaving it to a weight lookup that
+    // resolves only while WooCommerce reports 30.
+    expect(resolvePackingRule({ slug: LIVE_BLOCK_SLUG, name: LIVE_BLOCK_NAME, weightLbs: null })?.id).toBe(
+      'block-30lb',
+    );
+  });
+
+  it('does not hand the 30 lb block box to a 45 lb bag', () => {
+    const rule = resolvePackingRule({
+      slug: 'bag-of-himalayan-pink-salt-for-livestock-45-lbs-himalayan-koh',
+      name: 'Bag of Himalayan Pink Salt for Livestock (45 lbs.)',
+      weightLbs: 45,
+    });
+    expect(rule?.id).toBe('bag-45lb');
+    expect(rule?.box).not.toEqual(APPROVED_BLOCK_BOX);
+  });
+
+  it('keeps the 30 lb block rule present exactly once', () => {
+    const ids = ACTIVE_PACKING_RULES.filter((rule) => rule.id === 'block-30lb');
+    expect(ids).toHaveLength(1);
+    expect(ids[0].unitsPerBox).toBe(1);
+  });
 });
 
 describe('no unit is lost and none is duplicated', () => {
-  it('ships exactly the units ordered, for both licks across the range', () => {
+  it('ships exactly the units ordered, for every approved product across the range', () => {
     for (const quantity of [1, 2, 3, 5, 6, 7, 8, 9, 12, 13, 24, 25, 100]) {
       for (const [weightPerUnit, item] of [
         [2, lick2(quantity)],
         [6, lick6(quantity)],
+        [30, block30(quantity)],
       ] as const) {
         const parcels = buildParcelsFromPackingLineItems([item]);
         const shippedPounds = parcels.reduce((sum, parcel) => sum + (parcel.actualWeightLbs ?? 0), 0);
@@ -276,5 +388,16 @@ describe('no unit is lost and none is duplicated', () => {
     expect(buildParcelsFromPackingLineItems([lick2(7)])).toHaveLength(2);
     expect(buildParcelsFromPackingLineItems([lick6(4)])).toHaveLength(1);
     expect(buildParcelsFromPackingLineItems([lick6(5)])).toHaveLength(2);
+    expect(buildParcelsFromPackingLineItems([block30(1)])).toHaveLength(1);
+    expect(buildParcelsFromPackingLineItems([block30(5)])).toHaveLength(5);
+  });
+
+  it('counts one parcel per box and carries every ordered pound exactly once', () => {
+    // 7 x 2 lb + 5 x 6 lb + 2 x 30 lb = 2 + 2 + 2 boxes. Two of those boxes are identical
+    // 30 lb blocks and that is the point: identical boxes are still two parcels.
+    const parcels = buildParcelsFromPackingLineItems([lick2(7), lick6(5), block30(2)]);
+    expect(parcels).toHaveLength(6);
+    const shippedPounds = parcels.reduce((sum, parcel) => sum + (parcel.actualWeightLbs ?? 0), 0);
+    expect(shippedPounds).toBe(7 * 2 + 5 * 6 + 2 * 30);
   });
 });

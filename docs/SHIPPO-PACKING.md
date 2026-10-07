@@ -2,7 +2,7 @@
 
 Live Shippo rates and labels use **approved box packing only**. A product with no packing rule cannot be priced by a carrier at checkout and cannot auto-create a label until a rule exists.
 
-Both licks use the **same approved carton**, 10 × 10 × 6 inches. Only how many fit in it differs.
+Both licks use the **same approved carton**, 10 × 10 × 6 inches. Only how many fit in it differs. The 30 lb block has a carton of its own.
 
 ## Approved products
 
@@ -22,9 +22,16 @@ Products are matched by **slug and name** (from the database) using rules in:
 
 `src/lib/shippo/packing/rules.ts`
 
-| `himalayan-salt-licks-horses` | 2 lb licks (default catalog listing) |
-- `himalayan-rock-salt-6lbs-pouch` → 6 lb pouch rule  
-- Names containing `2 lb` + `lick` → 2 lb lick rule  
+An exact slug in `SLUG_PACKING_RULE_IDS` wins and is the durable way to pin a listing to a rule; name patterns are the fallback for listings the store has not pinned.
+
+| Product | How it is matched |
+|---------|-------------------|
+| 2 lb licks | slug `himalayan-salt-licks-horses`, or a name with `2 lb` + `lick` |
+| 6 lb licks | a name with `6 lb` + `lick` |
+| 30 lb block | slug `himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh`, or `30 lb` that is neither a pouch nor a jar |
+| 6 lb pouches | slug `himalayan-rock-salt-6lbs-pouch`, or `6 lb` + `pouch` |
+
+The 30 lb block is pinned by slug on purpose. Its published slug ends in `-bag-` even though the product is one 30 lb block, so a rule that read the word "bag" as evidence about what ships refused its own listing and left it to the weight-only fallback — which resolves it only while its WooCommerce weight happens to read 30.
 
 Products without a match (e.g. 45 lb bags, generic listings without size) **do not** use Shippo parcel math.
 
@@ -34,7 +41,11 @@ Quantity is split into full boxes per rule, and **every box is sent to Shippo as
 
 - **7 × 2 lb licks** → 2 parcels, both **10 × 10 × 6**: **12 lb** (6 licks) + **2 lb** (1 lick)
 - **5 × 6 lb licks** → 2 parcels, both **10 × 10 × 6**: **24 lb** (4 licks) + **6 lb** (1 lick)
+- **2 × 30 lb blocks** → 2 parcels, both **8.5 × 7.5 × 6.5**: **30 lb** each, never one 60 lb parcel
+- **1 × 2 lb + 1 × 6 lb** → 2 parcels: **10 × 10 × 6** at **2 lb**, and **10 × 10 × 6** at **6 lb**
 - **7 × 2 lb + 5 × 6 lb** → 4 parcels: 12 lb + 2 lb + 24 lb + 6 lb. The two products are **not** mixed into one box yet, because no mixed-box rule has been approved.
+
+A cart holding several products is packed **per product**, and there is no option on the rate request that merges the calculated boxes into one parcel. The collapse used to be reachable through a `consolidateParcels` flag; the flag and the function behind it are gone, because a merged parcel is a different (and on a carrier's weight band, a cheaper) quote than the boxes that really ship.
 
 Each parcel is sent with its **actual** weight and the carton's dimensions. We do not send our own dimensional-weight figure: which of actual and dimensional weight a carrier bills on is the carrier's rule, so Shippo decides the billable weight, the service, the price and the transit estimate.
 

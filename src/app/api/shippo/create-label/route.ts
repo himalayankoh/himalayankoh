@@ -129,12 +129,12 @@ export async function POST(request: Request) {
     const checkoutRateId = readWooOrderMeta(order, HK_META.shippoRateId);
 
     // Each box is rated and labeled separately (USPS rejects multi-parcel
-    // shipments and boxes over 70 lbs), so no consolidation here.
+    // shipments and boxes over 70 lbs), and the rate request cannot be asked to
+    // merge the boxes into one parcel.
     const rates = await fetchShippoRatesForOrder({
       email: projected.email,
       shippingAddress,
       lineItems,
-      consolidateParcels: false,
     });
 
     if (rates.length === 0) {

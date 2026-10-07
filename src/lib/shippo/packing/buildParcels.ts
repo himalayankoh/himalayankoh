@@ -89,6 +89,12 @@ function buildProfileParcels(item: PackingLineItem, profile: ProductPackingProfi
  * products continue using the approved catalog rules until they are archived
  * or given a profile. Mixed SKUs remain in separate boxes for predictable,
  * auditable label costs; future bin-packing can safely build on `canMix`.
+ *
+ * **One box in, one parcel out, and nothing merges them.** There used to be a
+ * `consolidateParcels` option on the rate request that summed every box into a single
+ * parcel; it is gone, because the owner's rule is that each calculated box is its own
+ * parcel and no configuration may collapse them. A merged parcel is a different (and
+ * on a carrier's weight band, a cheaper) quote than the boxes that actually ship.
  */
 /**
  * A cart line carries a whole number of units, and the packer is built on that.
@@ -174,36 +180,4 @@ export function buildParcelsFromPackingLineItems(items: PackingLineItem[]): Ship
   }
 
   return parcels;
-}
-
-/** Combine multiple packing boxes into one parcel for explicit fallback use. */
-export function buildConsolidatedParcelFromPackingLineItems(
-  items: PackingLineItem[],
-): ShippoParcelInput[] {
-  const parcels = buildParcelsFromPackingLineItems(items);
-  if (parcels.length <= 1) return parcels;
-
-  const totalActualWeightLbs = roundWeightLbs(
-    parcels.reduce((sum, parcel) => sum + (parcel.actualWeightLbs ?? parcel.weightLbs), 0),
-  );
-  const lengthIn = Math.max(...parcels.map((parcel) => parcel.lengthIn ?? 10));
-  const widthIn = Math.max(...parcels.map((parcel) => parcel.widthIn ?? 10));
-  const stackedHeight = parcels.reduce((sum, parcel) => sum + (parcel.heightIn ?? 6), 0);
-  const heightIn = Math.min(12, Math.max(6, roundWeightLbs(stackedHeight)));
-
-  const dimWeightLbs = roundWeightLbs(calcDimWeightLbs(lengthIn, widthIn, heightIn));
-  const billableWeightLbs = roundWeightLbs(
-    calcBillableWeightLbs(totalActualWeightLbs, lengthIn, widthIn, heightIn),
-  );
-
-  return [
-    {
-      lengthIn,
-      widthIn,
-      heightIn,
-      weightLbs: billableWeightLbs,
-      actualWeightLbs: totalActualWeightLbs,
-      dimWeightLbs,
-    },
-  ];
 }

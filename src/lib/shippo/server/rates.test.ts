@@ -61,6 +61,14 @@ const LICK_6LB = {
   meta_data: [],
 };
 
+const BLOCK_30LB = {
+  id: 9103,
+  slug: 'qa-30lb-block',
+  name: '30 lb Himalayan Rock Salt Block',
+  weight: '30',
+  meta_data: [],
+};
+
 const DESTINATION = {
   fullName: 'QA Buyer',
   addressLine1: '1 Main St',
@@ -121,7 +129,7 @@ function shipmentResponse(boxNumber: number, weightLbs: number) {
 
 const STORE_ROUTES: WordPressStubRoute[] = [
   { path: '/wc/v3/settings/products', body: [{ id: 'woocommerce_weight_unit', value: 'lbs' }] },
-  { path: '/wc/v3/products', body: [LICK_2LB, LICK_6LB] },
+  { path: '/wc/v3/products', body: [LICK_2LB, LICK_6LB, BLOCK_30LB] },
 ];
 
 let wp: WordPressStub;
@@ -201,6 +209,66 @@ describe('a multi-box order reaches Shippo as one shipment per box', () => {
       });
     }
   });
+
+  it('sends the 30 lb block as one parcel per block, in its own carton', async () => {
+    await fetchShippoRates({
+      toAddress: DESTINATION,
+      lineItems: [{ productId: '9103', quantity: 2 }],
+    });
+
+    expect(shippo.shipments).toHaveLength(2);
+    expect(boxesSent()).toHaveLength(2);
+    for (const parcel of boxesSent()) {
+      expect(parcel).toMatchObject({
+        length: '8.5',
+        width: '7.5',
+        height: '6.5',
+        weight: '30',
+        distance_unit: 'in',
+        mass_unit: 'lb',
+      });
+    }
+    // Two blocks are two 30 lb boxes, not one 60 lb box.
+    expect(boxesSent().map((parcel) => parcel.weight)).not.toContain('60');
+  });
+
+  it('sends a mixed cart as one parcel per box, size by size', async () => {
+    // The owner's example: 1 x 2 lb + 1 x 6 lb is two parcels, never one of 8 lb.
+    await fetchShippoRates({
+      toAddress: DESTINATION,
+      lineItems: [
+        { productId: '9101', quantity: 1 },
+        { productId: '9102', quantity: 1 },
+      ],
+    });
+
+    expect(shippo.shipments).toHaveLength(2);
+    expect(boxesSent().map((parcel) => parcel.weight)).toEqual(['2', '6']);
+    expect(boxesSent().map((parcel) => parcel.weight)).not.toContain('8');
+  });
+
+  it('keeps the block carton and the lick cartons apart in one request', async () => {
+    await fetchShippoRates({
+      toAddress: DESTINATION,
+      lineItems: [
+        { productId: '9101', quantity: 7 },
+        { productId: '9102', quantity: 5 },
+        { productId: '9103', quantity: 1 },
+      ],
+    });
+
+    expect(shippo.shipments).toHaveLength(5);
+    const boxes = boxesSent().map(
+      (parcel) => `${parcel.length}x${parcel.width}x${parcel.height}@${parcel.weight}`,
+    );
+    expect(boxes).toEqual([
+      '10x10x6@12',
+      '10x10x6@2',
+      '10x10x6@24',
+      '10x10x6@6',
+      '8.5x7.5x6.5@30',
+    ]);
+  });
 });
 
 describe('the weight Shippo is given', () => {
@@ -225,6 +293,17 @@ describe('the weight Shippo is given', () => {
     });
 
     expect(boxesSent().map((parcel) => parcel.weight)).toEqual(['12', '24']);
+  });
+
+  it('is the block’s own weight on a block, and never the carton along with it', async () => {
+    await fetchShippoRates({
+      toAddress: DESTINATION,
+      lineItems: [{ productId: '9103', quantity: 1 }],
+    });
+
+    // An 8.5 x 7.5 x 6.5 carton has a DIM weight under 3 lb, so nothing should replace
+    // the 30 lb the block actually weighs.
+    expect(boxesSent().map((parcel) => parcel.weight)).toEqual(['30']);
   });
 });
 

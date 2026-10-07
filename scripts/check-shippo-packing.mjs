@@ -74,6 +74,20 @@ assert('5×6lb second box weight 6lb', lick6Split[1].weightLbs === 6);
 const block = buildParcels(2, RULES[4]);
 assert('2×30lb blocks → 2 parcels', block.length === 2);
 assert('30lb block dims', block[0].lengthIn === 8.5);
+assert('each 30lb block box weighs 30lb', block.every((p) => p.weightLbs === 30));
+assert('2×30lb blocks are never one 60lb box', !block.some((p) => p.weightLbs === 60));
+
+// Mixed cart: each product is packed on its own rule and the boxes are never merged.
+const mixed = [...buildParcels(1, RULES[1]), ...buildParcels(1, RULES[3])];
+assert('1×2lb + 1×6lb → 2 parcels', mixed.length === 2);
+assert('1×2lb + 1×6lb weights 2lb then 6lb', mixed[0].weightLbs === 2 && mixed[1].weightLbs === 6);
+assert('1×2lb + 1×6lb never becomes one 8lb box', !mixed.some((p) => p.weightLbs === 8));
+const mixedBig = [...buildParcels(7, RULES[1]), ...buildParcels(5, RULES[3])];
+assert('7×2lb + 5×6lb → 4 parcels', mixedBig.length === 4);
+assert(
+  '7×2lb + 5×6lb weights 12,2,24,6',
+  mixedBig.map((p) => p.weightLbs).join(',') === '12,2,24,6',
+);
 
 if (failed > 0) {
   console.error(`\n${failed} packing check(s) failed.`);
