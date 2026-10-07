@@ -22,7 +22,7 @@ export const ABOUT_SECTIONS: AboutSection[] = [
   {
     title: 'What we sell',
     body:
-      'Our catalog focuses on natural, unrefined Himalayan pink salt products: pure mineral salt licks on durable ropes, dense animal salt blocks for pastures and stables, cooking salt slabs, and fine culinary salts for human consumption. Every product is 100% natural with no artificial anti-caking agents.',
+      'Our catalog focuses on natural, unrefined Himalayan pink salt products: pure mineral salt licks on durable ropes, dense animal salt blocks for pastures and stables, and fine culinary salts for human consumption. Every product is 100% natural with no artificial anti-caking agents.',
   },
   {
     title: 'How we source and curate',

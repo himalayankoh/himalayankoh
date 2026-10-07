@@ -64,7 +64,7 @@ export default function HomePage({ initialProducts }: HomePageProps = {}) {
       <section className="border-b border-himalayan-line/60 bg-cream">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 lg:py-10 grid lg:grid-cols-2 gap-6 lg:gap-10 items-center">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-himalayan-dark mb-2">For your kitchen. For your herd.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-himalayan-dark mb-2">For your herd.</p>
             <h1 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-bold text-charcoal leading-tight max-w-xl">Rich All Natural Himalayan Pink Salt</h1>
             <p className="mt-3 text-sm sm:text-base text-charcoal-light leading-relaxed max-w-xl">Ensure your herd is healthy and happy. Shop our convenient premium Himalayan Pink Salt products and enjoy friendly customer service from Himalayan Koh.</p>
             <div className="flex flex-wrap gap-3 mt-4">
@@ -100,9 +100,16 @@ export default function HomePage({ initialProducts }: HomePageProps = {}) {
       <section className="bg-white border-t border-himalayan-line/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-8">
           <div className="grid lg:grid-cols-2 gap-6 lg:gap-10">
-            <div><h2 className="text-xl sm:text-2xl font-bold mb-3">From kitchen to pasture</h2><div className="space-y-3 text-charcoal-light leading-relaxed">
-              <p>Pristine pink Himalayan crystal salt has long been the premium standard for cooking. It&apos;s a favorite with top chefs and countless gourmet cooks. But livestock can also recognize and benefit from a better quality product.</p>
-              <p>Himalayan pink rock salt not only tastes its salty best, but gives cattle, horses, deer, and other animals the quality NaCl they need to stay healthy and be more productive.</p>
+            {/*
+              This used to open with a culinary pitch — "For your kitchen. For your
+              herd.", a "From kitchen to pasture" heading and a paragraph about top
+              chefs — on a page whose catalogue is licks, blocks, bags and pouches.
+              The owner asked for the kitchen marketing off the site, so the section
+              now says only what the store actually sells for. Nothing here was
+              rewritten to sell something else; the culinary half was removed.
+            */}
+            <div><h2 className="text-xl sm:text-2xl font-bold mb-3">From the Salt Range to your pasture</h2><div className="space-y-3 text-charcoal-light leading-relaxed">
+              <p>Himalayan pink rock salt gives cattle, horses, deer, and other animals the quality NaCl they need to stay healthy and be more productive.</p>
               <Link to="/about" className="inline-flex py-2 items-center gap-2 text-himalayan-dark font-semibold">About Himalayan Koh <ArrowRight size={16}/></Link>
             </div></div>
             <ul className="space-y-2.5">{saltBenefits.map(b=><li key={b} className="flex gap-3 text-sm leading-relaxed text-charcoal-light"><Check size={18} className="shrink-0 text-himalayan-green mt-0.5"/>{b}</li>)}</ul>

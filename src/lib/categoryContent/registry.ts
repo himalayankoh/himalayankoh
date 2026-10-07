@@ -9,6 +9,15 @@ import type { CategoryContentKey } from './keys';
  * a hub page unless it is a real shelf the store stocks, and retiring a shelf
  * retires its hub with it.
  *
+ * The map is **partial on purpose**: a shelf the store has no stock for gets no
+ * promotional page. `Cooking & Serving` is the one such shelf — salt blocks,
+ * plates and slabs are not in the catalogue, so the hub that sold them was a page
+ * of marketing for goods nobody could buy, and the owner asked for it to go. The
+ * shelf key survives in `nicheSections.ts`, so a product the owner later files
+ * under `Salt Blocks` still lands on a real category; it simply renders the plain
+ * grid until copy exists for it again (`resolve.ts` returns null for a key with no
+ * bundle, and the hub layout is skipped).
+ *
  * Two rules the copy follows:
  *
  *  - **Only pink salt imagery.** The legacy photographs of horses and cattle are
@@ -27,7 +36,9 @@ const IMG = {
   finePouch: '/images/products/himalayan-edible-pink-salt-fine-grain-pouch.webp',
 };
 
-export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryContentBundle> = {
+export const CATEGORY_CONTENT_REGISTRY: Partial<
+  Record<CategoryContentKey, CategoryContentBundle>
+> = {
   'edible-pink-salt': {
     key: 'edible-pink-salt',
     productCategoryLabel: 'Edible Pink Salt',
@@ -127,109 +138,6 @@ export const CATEGORY_CONTENT_REGISTRY: Record<CategoryContentKey, CategoryConte
         url: '/resources/grain-size-guide.pdf',
         fileSize: '140 KB',
         publishedAt: '2026-03-01',
-        visible: false,
-      },
-    ],
-    emptyStates: {},
-  },
-
-  'cooking-serving': {
-    key: 'cooking-serving',
-    productCategoryLabel: 'Cooking & Serving',
-    hero: {
-      eyebrow: 'Grill, chill, serve',
-      title: 'Salt Blocks & Serving Plates',
-      subtitle:
-        'Thick slabs of pink salt that hold heat in the oven, hold cold on the table, and season what rests on them.',
-    },
-    seo: {
-      title: 'Himalayan Pink Salt Blocks & Serving Plates | Himalayan Koh',
-      description:
-        'Himalayan pink salt blocks and plates for the grill, the oven and the table. Heat them, chill them, serve on them — natural salt seasoning with no additives.',
-    },
-    trustPoints: [
-      { label: 'Solid salt, not coated', detail: 'Cut from the same mineral rock as our edible grades.' },
-      { label: 'Heat and chill', detail: 'Oven, grill and freezer safe with the right handling.' },
-      { label: 'Seasoning as you serve', detail: 'A gentle salt edge rather than an instant hit.' },
-    ],
-    gallery: [
-      { id: 'block-slab', src: IMG.rockBag, alt: 'Large blocks of pink Himalayan salt packed for shipping', width: 600, height: 450 },
-      { id: 'block-bowl', src: IMG.saltBowl, alt: 'Coarse pink salt crystals from a serving block', width: 600, height: 450 },
-      { id: 'block-jar', src: IMG.jar, alt: 'Ground pink salt for finishing at the table', width: 500, height: 500 },
-      { id: 'block-pouch', src: IMG.pouch, alt: 'Pink salt pouch beside a serving block', width: 600, height: 450 },
-    ],
-    articles: [
-      {
-        id: 'block-heat',
-        title: 'Heating a Salt Block Without Cracking It',
-        excerpt: 'Why the warm-up has to be slow, and how to come back down after the cook.',
-        image: IMG.rockBag,
-        readTime: '5 min read',
-        tag: 'Technique',
-      },
-      {
-        id: 'block-chill',
-        title: 'The Cold Side: Chilling and Serving',
-        excerpt: 'Freeze the plate, shave, plate the dessert — salt on the cold side of the kitchen.',
-        image: IMG.saltBowl,
-        readTime: '4 min read',
-        tag: 'Technique',
-      },
-      {
-        id: 'block-care',
-        title: 'Cleaning and Storing Salt Blocks',
-        excerpt: 'What to wipe, what never to soak, and how to stop a block from leaching into the shelf.',
-        image: IMG.pouch,
-        readTime: '3 min read',
-        tag: 'Care',
-      },
-    ],
-    guides: [
-      {
-        id: 'block-techniques',
-        title: 'Cooking Techniques',
-        bullets: [
-          'Warm the block gradually — cold block to hot grill is how they crack',
-          'Sear on the hot block, finish off it, then scrape clean while warm',
-          'Chill for charcuterie, sushi and cold service',
-          'Use separate blocks for raw meat and for anything served raw',
-        ],
-      },
-      {
-        id: 'block-handling',
-        title: 'Handling & Care',
-        bullets: [
-          'Wipe with a damp cloth — never submerge a block in water',
-          'Let the block cool fully before cleaning',
-          'Store in a dry place; salt draws moisture from the air',
-          'Thin plates are for serving, thick slabs are for cooking',
-        ],
-      },
-      {
-        id: 'block-faq',
-        title: 'Salt Block FAQs',
-        faqs: [
-          {
-            question: 'How salty does food get?',
-            answer:
-              'It picks up a gentle salt edge, most on moist food left in contact the longest. Move it off the block when it tastes right.',
-          },
-          {
-            question: 'How many times can I reuse a block?',
-            answer:
-              'Many — years with care. Once it is badly cracked or pitted it stays a serving piece rather than a cooking surface.',
-          },
-        ],
-      },
-    ],
-    pdfs: [
-      {
-        id: 'salt-block-guide',
-        title: 'Salt Block Handling Guide',
-        description: 'Warm-up schedules, cleaning method and what to avoid.',
-        url: '/resources/salt-block-guide.pdf',
-        fileSize: '180 KB',
-        publishedAt: '2026-03-10',
         visible: false,
       },
     ],

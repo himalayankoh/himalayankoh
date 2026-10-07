@@ -46,7 +46,7 @@ const benefits = [
   },
   {
     title: 'Kitchen & Pasture Uses',
-    description: 'Food-grade crystals for culinary arts, hand-carved slabs for cooking, and dense mineral blocks for livestock herds.',
+    description: 'Food-grade crystals for the kitchen, and dense mineral blocks for livestock herds.',
     icon: Utensils,
   },
 ];
@@ -148,7 +148,7 @@ export default function AboutPage() {
                   At Himalayan Koh, we preserve this natural geological mineral in its unrefined state. We never chemically bleach, strip, or alter our salt crystals. What the rock naturally holds — essential sodium chloride balanced with trace minerals like iron, potassium, and magnesium — is exactly what reaches your home or farm.
                 </p>
                 <p>
-                  We supply salt the way chefs, ranchers, and families actually use it: fine grain for balanced culinary seasoning, medium for table grinders, coarse crystals for brining, dense hand-carved slabs for cooking, and weather-hardy blocks for equine and livestock herds.
+                  We supply salt the way chefs, ranchers, and families actually use it: fine grain for balanced culinary seasoning, medium for table grinders, coarse crystals for brining, and weather-hardy blocks for equine and livestock herds.
                 </p>
               </div>
 
