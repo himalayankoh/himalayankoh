@@ -97,6 +97,37 @@ describe('packaging', () => {
     expect(profile.cartonsPerLayer).toBe(5);
     expect(profile.layers).toBe(4);
   });
+
+  it('round-trips every field the owner packaging form offers', () => {
+    // The form writes exactly these keys (ConfigPanels PACKAGING_FIELDS / this module's
+    // PACKAGING_FIELDS + the optional enrichments). Save → reload must be lossless, or the
+    // owner re-enters data the engine then reads back as a default.
+    const full = {
+      ...DEFAULT_PACKAGING_PROFILE,
+      cartonQty: 6,
+      packagedUnitWeightKg: 12.5,
+      cartonLengthCm: 41,
+      cartonWidthCm: 31,
+      cartonHeightCm: 25,
+      cartonGrossWeightKg: 12.1,
+      palletLengthCm: 122,
+      palletWidthCm: 102,
+      maxStackHeightCm: 182,
+      palletDeckHeightCm: 15,
+      palletTareKg: 22,
+      maxPalletGrossWeightKg: 1050,
+      cartonsPerLayer: 5,
+      layers: 4,
+      unitLengthCm: 30,
+      unitWidthCm: 20,
+      unitHeightCm: 12,
+    };
+    const { profile, defaultsUsed } = packagingFromJson(packagingToJson(full));
+    expect(defaultsUsed).toEqual([]);
+    for (const [key, value] of Object.entries(full)) {
+      expect((profile as unknown as Record<string, unknown>)[key], key).toBe(value);
+    }
+  });
 });
 
 describe('products', () => {

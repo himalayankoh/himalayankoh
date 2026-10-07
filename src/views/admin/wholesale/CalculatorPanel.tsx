@@ -8,6 +8,7 @@ import {
   type WholesaleCalculationResponse,
   type WholesaleRow,
 } from '@/lib/admin/wholesaleConsoleApi';
+import { getPackagingWarning } from './packagingWarning';
 import {
   Button,
   DataTable,
@@ -155,7 +156,15 @@ function AiAssistantPanel({ context }: { context: unknown }) {
           <Button type="submit" busy={busy}><Sparkles className="w-4 h-4" /> Ask</Button>
         </form>
 
-        {error && <Notice kind="error">{error}</Notice>}
+        {error && (/credit|billing|quota|insufficient/i.test(error) ? (
+          <Notice kind="warn" title="AI provider configured but unavailable">
+            <p>The AI provider is configured and the request reached it, but it refused the request for billing/credit reasons, so no answer can be produced right now.</p>
+            <p className="mt-1 text-xs text-charcoal-light">Provider said: {error}</p>
+            <p className="mt-1 text-xs text-charcoal-light">This is a provider account issue, not a console or authentication problem.</p>
+          </Notice>
+        ) : (
+          <Notice kind="error">{error}</Notice>
+        ))}
         
         {response && (
           <div className="p-4 bg-sage-50 rounded-xl border border-sage-200">
@@ -230,6 +239,7 @@ export function PalletCalculatorPanel({
   }
 
   const line = result?.calculation.lines[0];
+  const packagingWarning = line ? getPackagingWarning(line) : null;
 
   return (
     <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-6">
@@ -278,6 +288,12 @@ export function PalletCalculatorPanel({
             />
           </Field>
 
+          {workspace.costProfiles.length === 0 ? (
+            <Notice kind="warn" title="Cost profile required for a priced quote">
+              No cost profile is configured, so this calculator cannot produce a priced result. Add one under Config → Cost profiles.
+            </Notice>
+          ) : null}
+
           {error ? <Notice kind="error">{error}</Notice> : null}
 
           <Button onClick={calculate} busy={busy}>
@@ -290,6 +306,14 @@ export function PalletCalculatorPanel({
       <div className="space-y-6">
         {line ? (
           <Panel title={`Load — ${line.name}`}>
+            {packagingWarning && (
+              <div className="mb-4">
+                <Notice kind={packagingWarning.severity} title={packagingWarning.title}>
+                  {packagingWarning.message}
+                </Notice>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
               {[
                 ['Units', line.units.toLocaleString('en-US')],
@@ -567,6 +591,8 @@ export function ContainerQuotePanel({
   }
 
   const calculation = result?.calculation;
+  const firstLine = calculation?.lines[0];
+  const firstLineWarning = firstLine ? getPackagingWarning(firstLine) : null;
   const includedLines = calculation?.costLines.filter((entry) => entry.included) ?? [];
   const contextLines = calculation?.costLines.filter((entry) => entry.beyondBasis) ?? [];
 
@@ -767,6 +793,12 @@ export function ContainerQuotePanel({
               <TextArea value={notes} onChange={setNotes} />
             </Field>
 
+            {workspace.costProfiles.length === 0 ? (
+              <Notice kind="warn" title="Cost profile required for a priced quote">
+                No cost profile is configured, so a priced quotation cannot be produced. Add one under Config → Cost profiles.
+              </Notice>
+            ) : null}
+
             {calcError ? <Notice kind="error">{calcError}</Notice> : null}
             {writer.saved ? <Notice kind="success">{writer.saved}</Notice> : null}
 
@@ -837,9 +869,20 @@ export function ContainerQuotePanel({
               <div className="mb-6 p-4 bg-brand-navy/5 border border-brand-navy/10 rounded-xl">
                 <h3 className="text-sm font-semibold text-brand-navy mb-1 flex items-center gap-2">
                   <Sparkles className="w-4 h-4" />
+                  {firstLineWarning ? (
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider ${firstLineWarning.severity === 'error' ? 'text-red-700' : 'text-amber-700'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${firstLineWarning.severity === 'error' ? 'bg-red-500' : 'bg-amber-500'}`} />
+                      {firstLineWarning.severity === 'error' ? 'Net exceeds gross' : 'Packaging incomplete'}
+                    </span>
+                  ) : null}
                   Auto / Best Fit: {calculation.recommendation.mode} Recommended
                 </h3>
                 <p className="text-xs text-charcoal-light">{calculation.recommendation.reason}</p>
+                {firstLineWarning ? (
+                  <p className={`text-[11px] mt-1 ${firstLineWarning.severity === 'error' ? 'text-red-700' : 'text-amber-700'}`}>
+                    {firstLineWarning.message}
+                  </p>
+                ) : null}
               </div>
             )}
             
@@ -862,6 +905,11 @@ export function ContainerQuotePanel({
           </Panel>
 
           <Panel title={`Landed cost — ${calculation.incoterm}`} description={`Cost profile ${calculation.costProfile.name}. Charges the basis includes are listed first; the rest are shown for context only.`}>
+            {firstLineWarning && (
+              <Notice kind={firstLineWarning.severity} className="mb-3" title={firstLineWarning.title}>
+                {firstLineWarning.message}
+              </Notice>
+            )}
             <DataTable
               columns={[
                 { key: 'label', label: 'Line', render: (line) => (

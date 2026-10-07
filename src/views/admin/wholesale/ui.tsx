@@ -422,10 +422,12 @@ export function Notice({
   kind,
   children,
   title,
+  className,
 }: {
   kind: 'error' | 'success' | 'info' | 'warn';
   children: ReactNode;
   title?: string;
+  className?: string;
 }) {
   const styles =
     kind === 'error'
@@ -446,7 +448,7 @@ export function Notice({
           : Info;
 
   return (
-    <div role={kind === 'error' ? 'alert' : 'status'} className={`flex items-start gap-3 p-4 rounded-xl border text-sm shadow-xs ${styles}`}>
+    <div role={kind === 'error' ? 'alert' : 'status'} className={`flex items-start gap-3 p-4 rounded-xl border text-sm shadow-xs ${styles} ${className ?? ''}`}>
       <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" />
       <div className="leading-relaxed flex-1">
         {title ? <p className="font-bold mb-1">{title}</p> : null}

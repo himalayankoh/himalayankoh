@@ -1003,6 +1003,11 @@ export function FreightRatesPanel({
           </p>
         </Panel>
       ) : null}
+      {rows.length === 0 && (!provider || !provider.ready) ? (
+        <Notice kind="warn" title="No freight configured">
+          No ocean freight rate is stored and no live provider is connected, so ocean legs cannot be priced. Add a manual rate below, or connect a provider under Settings → Ocean Freight — Live Rates. A rate you type is recorded as manual and is never shown as a fetched one.
+        </Notice>
+      ) : null}
       <RecordPanel
       resource="freight_rates"
       title="Ocean freight"
