@@ -52,6 +52,78 @@ export const PRODUCTION_SITE_ORIGIN = 'https://himalayankoh.com';
  */
 export const PRODUCTION_BACKEND_ORIGIN = 'https://wp.himalayankoh.com';
 
+/**
+ * The production **publishable** Stripe key, and the one production input that used
+ * to come from a developer's laptop.
+ *
+ * ## Why this is committed, and why that is not a secret leak
+ *
+ * A publishable key is not a credential. Stripe ships it to every visitor inside the
+ * page — `src/app/api/stripe/config/route.ts` serves it to the browser and
+ * `src/lib/stripe/config.ts` imports it — so it is already public in the deployed
+ * artifact, in DevTools, and in view-source. Stripe's own guidance is that it may be
+ * committed. `scripts/check-build-secrets.mjs` reflects that by treating
+ * `NEXT_PUBLIC_*` as public by intent, and `production-target.mjs` is documented as
+ * carrying no secrets.
+ *
+ * What *was* a real defect is the shape of the previous risk: the value lived only in
+ * the developer's gitignored `.env.local`, which meant
+ *
+ *   - `npm run build:production` on any other machine silently produced a bundle
+ *     with **no** publishable key, so `/api/stripe/config` reported payments as
+ *     unconfigured and the checkout rendered no card form — a payments outage that
+ *     looks exactly like a Stripe problem;
+ *   - a machine whose `.env.local` held a `pk_test_` key produced a production build
+ *     for a `pk_live_` secret key, which `src/lib/stripe/server/configStatus.ts`
+ *     exists to report as unusable.
+ *
+ * Naming the value here makes the production build reproducible and reviewable: it is
+ * the same input on the owner's machine, on CI, and on a fresh clone. It is written
+ * into `.env.production.local` by `scripts/prepare-deploy-env.mjs`, which has higher
+ * precedence than `.env.local` in both Next's and Vite's env-file order, so the
+ * developer's file cannot overwrite it. `assert-production-config.mjs` then proves it
+ * is actually inlined in the built bundle and that no `pk_test_` value is.
+ *
+ * **Rotating this key is a code change**, deliberately: a key that silently differs
+ * per machine is the failure this constant removes. The `sk_live_` secret key is
+ * still a Worker secret and is never in this repository.
+ */
+export const PRODUCTION_STRIPE_PUBLISHABLE_KEY = 'pk_live_bScMJ0xIRFCAbr3IQJM5YWfY004PNn0fn2';
+
+/**
+ * `pk_live_…`, and nothing else, for a production build.
+ *
+ * The shape check is deliberately loose about the body — Stripe has changed key
+ * lengths more than once — and strict about the prefix, because the prefix is the
+ * only part that decides whether the two halves of a Stripe configuration are in the
+ * same mode.
+ */
+export function isLiveStripePublishableKey(value) {
+  return typeof value === 'string' && /^pk_live_[A-Za-z0-9]{8,}$/.test(value.trim());
+}
+
+/**
+ * The publishable key a production build must use.
+ *
+ * `DEPLOY_STRIPE_PUBLISHABLE_KEY` overrides the committed constant, so the key can be
+ * rotated for one build without a commit — but a `pk_test_` value is refused either
+ * way, because a production bundle carrying a test key is the mismatch
+ * `configStatus.ts` reports.
+ */
+export function resolveProductionStripePublishableKey(env = process.env) {
+  const supplied = (env.DEPLOY_STRIPE_PUBLISHABLE_KEY || '').trim();
+  const value = supplied || PRODUCTION_STRIPE_PUBLISHABLE_KEY;
+  if (!isLiveStripePublishableKey(value)) {
+    const which = supplied ? 'DEPLOY_STRIPE_PUBLISHABLE_KEY' : 'PRODUCTION_STRIPE_PUBLISHABLE_KEY';
+    throw new Error(
+      `${which} is not a live Stripe publishable key. A production build must carry a pk_live_ key, ` +
+        `because the production Worker holds a pk_live_/sk_live_ pair — a pk_test_ value here ships a ` +
+        `checkout that cannot complete a live payment.`,
+    );
+  }
+  return value;
+}
+
 /** Staging's backend, used by the cutover-time route work and by the guards. */
 export const STAGING_BACKEND_ORIGIN = 'https://himalayankoh.com/staging';
 

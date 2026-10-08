@@ -626,3 +626,302 @@ sending domain, then set `EMAIL_SEND_ENABLED=true`.
 8. **`ADMIN_LOGIN_ACCOUNTS`** for the production admin console.
 9. **The 6 lb Salt Lick does not exist** — unchanged from the first pass; nothing was
    created, and the packing rule is correct but has no product.
+
+---
+
+# Third pass — 2026-10-08 (evening)
+
+Owner decisions applied in this pass: **`wp.himalayankoh.com` is the permanent backend
+hostname** and `mail.` stays free for email infrastructure; the owner supplied hosting,
+WordPress, WooCommerce, Cloudflare and repository credentials.
+
+No cutover was performed. The apex and `www` were not touched, no Worker was attached to
+any hostname, and `STRIPE_ALLOW_LIVE` is not set anywhere.
+
+## J. Credentials: where they live, and what each one actually reaches
+
+Stored in two gitignored places and nowhere else:
+
+| File | What it is |
+| --- | --- |
+| `docs/production/owner-access.local.env` | The commented, authoritative copy the owner edits when rotating. Ignored by `docs/production/*.local.*`. |
+| `.env.local` | The values merged from it, under the names the tooling and the app already read. Ignored by `.env*`. |
+
+`scripts/apply-owner-access.mjs` performs the merge, prints only variable **names** and
+whether each was added/updated/unchanged, refuses to run if `.env.local` is ever tracked
+by git, and will not overwrite a name it does not own. `git status` was checked
+afterwards: neither file is visible to git.
+
+### Measured capability, per credential
+
+Nothing below is inferred from a name or a prefix; each cell is an HTTP status from a
+real request. `—` means the request was not made.
+
+| Credential | Reach | Result |
+| --- | --- | --- |
+| GitHub token | `api.github.com/repos/himalayankoh/himalayankoh` | **200**, repo `himalayankoh/himalayankoh`, default branch `main` |
+| Cloudflare token 1 | zone / DNS read / DNS write / settings / Workers | 200 / **200** / 403 / 200 / 200 |
+| Cloudflare token 2 | (same probes) | 200 / 403 / 403 / 200 / 200 |
+| Cloudflare token 3 | (same probes) | 200 / **200** / **404** / 403 / 200 |
+
+Token 3's `404` is the interesting one: a `PUT` against a record id that does not exist
+can create nothing, and it answers **404 ("no such record") rather than 403**, which is
+what a token *permitted* to write DNS returns. So the deployment's DNS needs are covered
+— read by tokens 1 and 3, write by token 3 — and no record has to be created, because
+`wp.himalayankoh.com` already resolves.
+
+`CLOUDFLARE_API_TOKEN` is set to **token 1** (zone + DNS read + zone settings + Workers
+read), which is the superset the migration tooling asks for. The three are also kept
+individually as `CLOUDFLARE_DNS_TOKEN_1..3` so a future comparison does not have to
+re-derive this table.
+
+**These are deliberately not Worker secrets.** The storefront never edits DNS, so giving
+the running Worker a DNS-write token would be a privilege the code does not use. The
+admin email-routing pane reads `CLOUDFLARE_API_TOKEN` from the Worker environment and
+stays unavailable until the owner chooses to set a token there — that is a decision, not
+an oversight.
+
+### WordPress and cPanel: the credentials reach staging, not production
+
+| Target | Method | Result |
+| --- | --- | --- |
+| `himalayankoh.com/wp-login.php` (apex) | form login, owner's email + password | HTTP 200, **no `wordpress_logged_in_*` cookie** — login refused |
+| `himalayankoh.com/staging/wp-login.php` | same | **302 → `/staging/wp-admin/` with the cookie** — login works |
+| apex `/wc/v3/products` | owner's WooCommerce key/secret pair | **401** `woocommerce_rest_cannot_view` |
+| `/staging/wp/v3/products` | same pair | **200**, real product, real price, `instock` |
+| `himalayankoh.com:2083/login/?login_only=1` | Namecheap account username + password | **401** `{"status":0,"message":"invalid_login"}` |
+
+This is the single most consequential measurement of the pass, and it contradicts the
+assumption the owner's message carried: `/staging /wp` is **one** target, not two. The
+WordPress administrator login, the WooCommerce key pair and the WordPress application
+password all authenticate against the **`/staging` installation only**. The apex — the
+public store — accepts none of them.
+
+It is also not a case of "production needs its own copies of the same values". The two
+hosts are **separate WordPress installations with separate databases, separate key tables
+and separate catalogues**:
+
+| | apex (`himalayankoh.com`) | `/staging` |
+| --- | --- | --- |
+| `<title>` | *Himalayan Pink Salt for Livestock, Deer, Horses, Sheep* | *Himalayan Pink Salt for Livestock & Wholesale \| Himalayan Koh* |
+| Homepage bytes | 590,399 | 766,625 |
+| Store API categories | 3 — `animal feed`, `Bulk Order`, `Uncategorized` | 4 — `Edible Pink Salt`, `Live Stock`, `Salt Blocks`, `Salt Licks` |
+| Product id 2752 | **does not exist** (Store API: 404 `woocommerce_rest_product_invalid_id`) | exists — *Himalayan Koh 30 lb Red Rock Salt Lick for Cattle*, $49.95 |
+
+So a key created on `/staging` can never read the apex catalogue, and the earlier reading
+that "the backend credentials are half-configured" was wrong in a way that matters: they
+are correctly configured for the wrong installation.
+
+**The Namecheap account login is not a cPanel login.** `invalid_login` from the cPanel
+endpoint is what that produces, and it is the same outcome the previous pass measured.
+Reaching the hosting account needs a credential that is *for the hosting panel*, not for
+the Namecheap account that manages billing and DNS.
+
+### The exact access this pass did not get
+
+Either of these unblocks the remaining WordPress and backup work; the first is a
+requires-nothing credential, the second is what the hosting work needs.
+
+1. **A WordPress administrator login on the apex install** — one that reaches
+   `https://himalayankoh.com/wp-login.php`. From there: create a production WooCommerce
+   REST key pair (§2), and read `wp-content/debug.log` for the Store API fatal (§3).
+   Alternatively, create the key pair in the owner's own session and hand over just the
+   `ck_`/`cs_` values, which is less access and enough for the catalogue.
+2. **A hosting-panel login for the account at `162.0.209.25`** — a cPanel username and
+   password, or SFTP credentials, or the hosting panel the Namecheap account hands off to.
+   From there: add `wp.himalayankoh.com` as a domain alias/subdomain whose document root
+   is the WordPress installation (§1), read the PHP error log (§3), and produce the
+   database and files backups (§7).
+
+## K. The Store API fatal, narrowed further
+
+`npm run diagnose:store-products` was run against the apex (`WORDPRESS_BASE_URL=https://himalayankoh.com`).
+Verdict unchanged and now stronger: **`product-builder`**.
+
+- Sibling routes answer — `products/categories`, `products/attributes`, `products/tags`,
+  `cart`, `collection-data` all 200. The REST stack and WooCommerce are loaded.
+- The query is not the trigger — `collection-data?calculate_price_range=true` runs the same
+  product query, including price aggregation, and answers
+  `{"price_range":{"min_price":"0","max_price":"9995","currency_code":"USD"…`,
+  so the catalogue is real and priceable.
+- The **pair** that pins it down: queries matching no products (`include=99999999`,
+  `per_page=2&page=99`) return **200 `[]`**; every query matching at least one product
+  returns **500**, including `_fields=id`. The item is built before fields are filtered.
+- The legacy route `GET /wp-json/wc/store/products` returns **500 too**, so this is not one
+  route's regression but the product response pipeline in that installation.
+- `min_price: 0` is not the trigger: `min_price=0&max_price=0.01` also 500s.
+
+What would settle it is one line of `wp-content/debug.log`, which needs access 1 or 2
+above. The interim is already in place and unchanged: **the storefront reads the catalogue
+over WooCommerce REST v3**, not the Store API product routes, so fixing the fatal is not
+on the catalogue's critical path — but it *is* on the cart's, because `/wc/store/v1/cart`
+and Store API product reads share the product serializer, and an *empty* cart answers 200
+only because nothing has to be built.
+
+## L. Stripe: the build-input risk is closed
+
+Found in the second pass, fixed here. The publishable key existed **only in the
+developer's gitignored `.env.local`**, so any other machine running `npm run build:production`
+produced a bundle with no publishable key at all — `/api/stripe/config` reports payments as
+unconfigured and the checkout renders no card form — and a machine whose `.env.local` held a
+`pk_test_` key produced a production bundle carrying a test key against a live secret key.
+
+That is a build *input* problem, so it is fixed at the build input:
+
+- `scripts/production-target.mjs` now carries `PRODUCTION_STRIPE_PUBLISHABLE_KEY` — the one
+  place production facts live, documented as **public by design** (Stripe ships it to every
+  visitor; `src/app/api/stripe/config/route.ts` serves it and the client bundle embeds it;
+  Stripe's own guidance is that a publishable key may be committed, and
+  `scripts/check-build-secrets.mjs` already classifies `NEXT_PUBLIC_*` as public by intent).
+  `DEPLOY_STRIPE_PUBLISHABLE_KEY` overrides it for a rotation, and a non-`pk_live_` value is
+  refused either way.
+- `scripts/prepare-deploy-env.mjs` pins it in `.env.production.local`, which outranks
+  `.env.local` in both Next's and Vite's env-file order — so the developer's file cannot
+  override it, and its absence is a failed build rather than a silently different one.
+- `scripts/assert-production-config.mjs` proves the value is **inlined in a
+  browser-served** file and that no `pk_test_` appears anywhere in the artifact.
+- `wrangler.production.jsonc` declares it, so the deployed Worker is read back and the
+  five public variables are compared against the running deployment.
+
+The guard chain was tested in both directions, because a guard that has never refused is
+not evidence of anything:
+
+| Input | Result |
+| --- | --- |
+| normal production build | passes; *"a live key is inlined in 1 browser-served file(s) (7 in total) and no test key is present"* |
+| `DEPLOY_STRIPE_PUBLISHABLE_KEY=pk_test_…` | **refused** by `prepare-deploy-env.mjs`, exit 1 |
+| a bundle containing `pk_test_…` | **refused**: "a Stripe TEST publishable key is compiled into 1 built file(s)" |
+| a bundle with no key at all | **refused**: "the production Stripe publishable key is not in the built artifact" |
+| `.env.production.local` without the key line | **refused**: "does not pin NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" |
+
+The deployed Worker reports `publishableKeySource: "env"`, `keyStatus.publishable: "live"`
+and `mode: "test"` — the last two are consistent, not contradictory: `mode` is decided from
+the **secret** key, and the live secret key is the one thing still missing (below).
+
+## M. Protecting the temporary production Worker (was: not addressed)
+
+The pre-cutover Worker is reachable at its `*.workers.dev` name by anyone who knows it, and
+it holds **live** Shippo and Stripe keys. Two of the three money-spending routes were
+unauthenticated and unlimited:
+
+`POST /api/shippo/rates` and `POST /api/shippo/validate-address` now carry two guards,
+applied **before** any upstream call:
+
+- **Same-site browsers only.** An `Origin` that is neither this deployment nor the
+  configured site origin answers `403 Origin not allowed.` A request with *no* `Origin` is
+  still allowed, deliberately: the app's own server, `scripts/check-shippo-setup.mjs` and
+  the packing checks send none, and refusing those would break the checks that prove the
+  route works.
+- **A per-client rate limit** (20 rate requests and 30 validations per minute), keyed on
+  the address the edge recorded. `src/lib/http/clientIp.ts` prefers `cf-connecting-ip` —
+  the one header Cloudflare sets and a client cannot forge — and falls back to the first
+  `x-forwarded-for` entry, so rotating a client-supplied header cannot multiply a caller's
+  budget. It returns `unknown` rather than keying on a non-address, which shares one bucket
+  instead of handing the caller its own.
+
+`create-label` and the admin routes were already behind `verifyAdminRequest` and were not
+changed. 12 new tests cover the guards, and both behaviours that would break real traffic
+(a shopper's own origin, and a server-side call with no `Origin`) are asserted to pass.
+
+**Verified on the deployed Worker**, not only in tests:
+
+| Request | Result |
+| --- | --- |
+| `POST /api/shippo/rates` with `Origin: https://evil.example` | **403** `{"error":"Origin not allowed."}` |
+| `POST /api/shippo/rates` with `Origin: https://himalayankoh.com`, weight supplied inline | **200**, `configured: true`, **8 live carrier rates** (USPS 8.27/14.46/62.51, UPS 8.16/10.59 …) — no regression |
+
+Residual risk, stated rather than papered over: the limit is per Worker isolate, so it is a
+bound on one source rather than a global quota, and the Worker is still reachable by anyone
+who learns its hostname. The controls for that are Cloudflare Access in front of the
+`*.workers.dev` hostname, or keeping `workers_dev` disabled and attaching nothing until the
+cutover — both are owner decisions, and neither is needed for the QA this pass performed.
+
+## N. Email: measured, not asserted
+
+`scripts/check-email-delivery.mjs` (new, read-only, `npm run check:email`) resolves the
+sending domain's mail DNS over HTTPS and reports what is actually published. It never uses
+a key and never sends mail. Measured for `himalayankoh.com`:
+
+| Check | Result |
+| --- | --- |
+| SPF | **INCOMPLETE** — `v=spf1 +mx +a +ip4:162.0.209.25 +include:spf.web-hosting.com ~all` exists, and does **not** authorise Resend |
+| DKIM (Resend) | **MISSING** — no CNAME at `resend._domainkey.himalayankoh.com`, so Resend reports the domain as **not verified** and refuses to send |
+| MX | **PRESENT** — `mx{1,2,3}-hosting.jellyfish.systems`. Inbound is the **hosting provider's** mail, not Cloudflare Email Routing |
+| DMARC | **ABSENT** — advice, not a blocker |
+| `RESEND_API_KEY`, `RESEND_FROM`, `EMAIL_SEND_ENABLED`, `ADMIN_NOTIFICATION_EMAIL` | all **unset** |
+
+The MX result corrects a printed assumption: the admin email panel describes Cloudflare
+Email Routing, and the zone's real inbound path is the hosting provider's mail. The DKIM
+result is the one that matters — **a Resend key with an unverified domain sends nothing**,
+and Resend accepts the API call and rejects the message, so the failure is an empty inbox
+rather than an error anyone sees. Nothing was enabled: `EMAIL_SEND_ENABLED` stays off, so
+the deployment sends no mail and claims none.
+
+## O. The DNS export can no longer stop existing
+
+`scripts/export-production-dns.mjs` needed `Zone → DNS → Read`, and a token can lose that
+permission without anyone editing the script — the token in the environment already had,
+since the second pass's export. A rollback reference that quietly stops being producible is
+worse than none, so the script now falls back to **public resolvers over DNS-over-HTTPS**
+and records the source and what the fallback cannot see (`record ids`, `proxied`, zone
+settings) in the file itself, rather than writing a thinner file that looks the same.
+
+The snapshot it produced is more current than the API export: it contains
+**`wp.himalayankoh.com`**, which resolves to Cloudflare anycast (`104.21.79.159`,
+`172.67.146.121`) and so is proxied — the record exists and was added after the API export
+was taken.
+
+## P. The deploy path no longer depends on a file outside the repository
+
+`npm run deploy:production` and `deploy:staging` both hard-failed without
+`../.freebuff/cf-env.mjs`, a workspace helper that is neither tracked nor documented. That
+file is now gone, and the deploy had become unrunnable with no code change to blame — the
+exact failure mode the previous pass's `cf-env.mjs` cleanup caused. Both scripts now resolve
+credentials through `scripts/lib/cloudflareCredentials.mjs`: environment first (which is
+also what `wrangler` reads), then the repository's own gitignored `.env.local`, then a
+refusal that names the permissions required. Nothing is ever printed.
+
+## Q. Checks run in this pass, and one that is intermittent
+
+All green, exit 0: `npm run typecheck`, `npm run lint`, `npm run build`,
+`npm run build:production`, `npm run check:packing`, `npm run check:packing-splits`, and the
+two new test files. `npm test` on the full suite: **167 files passed, 5 skipped (172)**.
+
+**One honest caveat.** The first full-suite run reported 4 failures in 2 files as
+`Test timed out in 5000ms` (`src/lib/auth/browserSignOut.test.ts` among them). Both files
+pass in isolation — `browserSignOut.test.ts` in 1.39s — and an immediate rerun of the whole
+suite passed with no code change. So this is **load-dependent flakiness in the default 5s
+`testTimeout`**, not a regression from this pass and not a failing assertion. It is recorded
+here rather than silenced: raising a timeout or skipping the file would hide a real
+regression the next time one occurs.
+
+## R. Blocking list, corrected and current
+
+Items 1, 2, 5, 7 and 8 of the second pass's list are replaced by the measurements above.
+
+1. **A WordPress administrator login on the apex install** — or a WooCommerce REST key pair
+   created there and handed over. Unblocks the catalogue, prices and stock; the credentials
+   supplied reach `/staging` only. *(WordPress)*
+2. **A hosting-panel login for `162.0.209.25`** — cPanel or SFTP. Unblocks the `wp.` domain
+   alias, the PHP error log and both backups. *(Hosting; the Namecheap account login is not
+   it.)*
+3. **`STRIPE_SECRET_KEY` (live) on the production Worker** — `wrangler secret put`. The
+   publishable key is present and now provably pinned; the secret key is **missing**, which
+   is why `/api/stripe/config` reports `mode: "test"` and
+   `chargingBlockedReason: "No Stripe secret key…"`. Correct as-is for this stage:
+   charging is blocked, and `STRIPE_ALLOW_LIVE` is unset. *(Owner)*
+4. **Database + files backup** — needs item 2. No verified backup exists. *(Hosting)*
+5. **The Store API fatal** — needs item 1 or 2 for its one line of error log. Off the
+   catalogue's critical path; on the cart's. *(WordPress)*
+6. **Resend: DKIM record + SPF include + `RESEND_API_KEY` + `RESEND_FROM`** — measured
+   missing, with the exact list in `npm run check:email`. *(Owner)*
+7. **`ADMIN_LOGIN_ACCOUNTS`** for the production admin console. *(Owner)*
+8. **Stripe live webhook** (`whsec_`) — a cutover-time step, after the real domain. *(Owner)*
+9. **The 6 lb Salt Lick does not exist.** Unchanged; nothing was created. *(Owner)*
+10. **Zone Settings → Read** on the token kept as `CLOUDFLARE_API_TOKEN` would let the export
+    record TLS/HTTPS settings; token 1 already has it, so this is satisfied for the export
+    this pass ran. *(Informational)*
+
+`mail.himalayankoh.com` is **not** used as the production backend, per the owner's
+instruction: the committed configuration is `wp.himalayankoh.com`. `mail.` remains free for
+email infrastructure, and `wp.` still needs item 2 to serve WordPress.

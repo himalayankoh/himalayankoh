@@ -37,6 +37,12 @@ supabase/.temp/
 # Local Worker dev-server output (scripts/run-cloudflare-dev.mjs).
 .cloudflare-dev*.log
 
+# Owner-provided access details for the production migration: hosting, WordPress ad-
+# min and API tokens that are not environment variables the app reads. Stored here so
+# later sessions and the cutover do not have to ask for them again — and ignored so
+# they can never be committed.
+docs/production/*.local.*
+
 # Scratch and probe workspaces
 .freebuff/
 scratch/

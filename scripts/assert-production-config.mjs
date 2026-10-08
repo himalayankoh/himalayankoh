@@ -35,10 +35,12 @@ import {
   HOLD_UNTIL_CUTOVER_HOSTS,
   PRODUCTION_BACKEND_ORIGIN,
   PRODUCTION_SITE_ORIGIN,
+  PRODUCTION_STRIPE_PUBLISHABLE_KEY,
   PRODUCTION_WORKER_NAME,
   STAGING_BACKEND_ORIGIN,
   UNSERVED_ARTIFACT_FILES,
   parseJsonc,
+  resolveProductionStripePublishableKey,
 } from './production-target.mjs';
 
 /** Files whose contents are code, not a rendered document or payload. */
@@ -81,6 +83,12 @@ export const EXPECTED_VARS = {
   NEXT_PUBLIC_DATA_SOURCE: 'woocommerce',
   NEXT_PUBLIC_WORDPRESS_BASE_URL: PRODUCTION_BACKEND_ORIGIN,
   NEXT_PUBLIC_WOOCOMMERCE_BASE_URL: PRODUCTION_BACKEND_ORIGIN,
+  // The fifth variable, and the only one that is a third party's public key rather
+  // than this shop's own address. It belongs here for the same reason the other four
+  // do: it is inlined at build time, so a production build without it ships a
+  // checkout that cannot take a card, and `assertStripePublishableKey` below is what
+  // turns that from a discovery in production into a failed build.
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: PRODUCTION_STRIPE_PUBLISHABLE_KEY,
 };
 
 function refuse(reason) {
@@ -219,6 +227,92 @@ async function walk(dir) {
  * or `.webmanifest` that carries a URL is still checked.
  */
 export async function assertProductionArtifact(dir = join(ROOT, 'dist')) {
+  const stripe = await assertStripePublishableKey(dir);
+  const staging = await assertNoStagingValue(dir);
+  return { ...staging, stripe };
+}
+
+/**
+ * Prove the production publishable key is in the bundle, and that no test key is.
+ *
+ * Two directions, because both failures are real and they are not the same mistake:
+ *
+ *  - **A missing key** is a silent payments outage. `src/app/api/stripe/config/route.ts`
+ *    reports `configured: false`, the checkout renders no card form, and the shopper
+ *    sees an unavailable payment method rather than an error anyone is alerted to.
+ *    The build had no way to notice, because an absent `NEXT_PUBLIC_*` is not an error
+ *    to Next or Vite.
+ *  - **A `pk_test_` key** on a deployment holding a live secret key is the mismatch
+ *    `src/lib/stripe/server/configStatus.ts` names: the browser initialises Stripe.js
+ *    in test mode, the server creates a live PaymentIntent, and the two cannot
+ *    complete a payment together.
+ *
+ * The presence check reads the whole artifact rather than only the client-served
+ * files, because the key legitimately appears in both: the browser bundle embeds it
+ * and the server route serves it. Requiring it in *any* file would be satisfied by an
+ * unreferenced copy, so at least one match must be a served file — that is the one a
+ * visitor's browser can actually get.
+ */
+async function assertStripePublishableKey(dir) {
+  const expected = resolveProductionStripePublishableKey();
+  const files = await walk(dir);
+
+  let occurrences = 0;
+  let servedOccurrences = 0;
+  const testKeys = [];
+
+  for (const file of files) {
+    const rel = relative(dir, file).split('\\').join('/');
+    if (UNSERVED_ARTIFACT_FILES.has(rel)) continue;
+
+    const info = await stat(file);
+    if (info.size > 12 * 1024 * 1024) continue;
+
+    const body = await readFile(file, 'utf8').catch(() => null);
+    if (body === null || body.includes('\u0000')) continue;
+
+    if (body.includes(expected)) {
+      occurrences += 1;
+      if (SERVED_ARTIFACT_PREFIXES.some((prefix) => rel.startsWith(prefix)) || rel.endsWith('.html')) {
+        servedOccurrences += 1;
+      }
+    }
+    if (/(?:^|[^\w])pk_test_[A-Za-z0-9]{6,}/.test(body)) testKeys.push(rel);
+  }
+
+  if (testKeys.length > 0) {
+    refuse(
+      `a Stripe TEST publishable key is compiled into ${testKeys.length} built file(s)${' '}` +
+        `(${testKeys.slice(0, 5).join(', ')}${testKeys.length > 5 ? ', …' : ''}). The production Worker holds a ` +
+        `live secret key, so a test publishable key in the bundle makes card checkout unable to ` +
+        `complete. Rebuild with scripts/build-production.mjs.`,
+    );
+  }
+
+  if (occurrences === 0) {
+    refuse(
+      `the production Stripe publishable key is not in the built artifact. That build would report ` +
+        `payments as unconfigured and render no card form at checkout. It is written by ` +
+        `scripts/prepare-deploy-env.mjs — check that the build ran through ` +
+        `scripts/build-production.mjs rather than ` +
+        `\`vinext build\` directly, which skips the deploy env.`,
+    );
+  }
+  if (servedOccurrences === 0) {
+    refuse(
+      `the production Stripe publishable key appears only in files a browser cannot fetch, so the ` +
+        `checkout's client code cannot read it. Check that the value is read through a ` +
+        `NEXT_PUBLIC_ name at build time.`,
+    );
+  }
+
+  return { occurrences, servedOccurrences };
+}
+
+/** True for the directories an HTTP request can reach inside the artifact. */
+const SERVED_ARTIFACT_PREFIXES = ['client/', 'static/'];
+
+async function assertNoStagingValue(dir) {
   const files = await walk(dir);
   if (files.length === 0) {
     refuse(`no build output was found in ${relative(ROOT, dir)} — run scripts/build-production.mjs first.`);
@@ -270,6 +364,25 @@ export function assertDeployEnvFile(root = ROOT) {
         `Regenerate it with DEPLOY_SITE_ORIGIN=${PRODUCTION_SITE_ORIGIN}.`,
     );
   }
+
+  // The Stripe publishable key has to be *written* by the deploy env, not inherited
+  // from `.env.local`.
+  //
+  // This is the check that closes the real risk, and a check on the artifact alone
+  // would not: if the deploy env leaves the variable out, the build still succeeds —
+  // Next and Vite fall through to `.env.local`, which is a developer's file and may
+  // hold a `pk_test_` key or nothing at all. So "the artifact contains a live key"
+  // can be true by accident of whose laptop ran the build, while "the deploy env
+  // pins the live key" cannot.
+  const expectedKey = resolveProductionStripePublishableKey();
+  if (!body.includes(`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${expectedKey}`)) {
+    refuse(
+      `the deploy env file does not pin NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY to the production ` +
+        `publishable key. Without the line the build silently inherits whatever a developer's ` +
+        `.env.local holds. Regenerate it with scripts/prepare-deploy-env.mjs (optionally with ` +
+        `DEPLOY_STRIPE_PUBLISHABLE_KEY to rotate the key for one build).`,
+    );
+  }
   return true;
 }
 
@@ -286,6 +399,8 @@ async function main() {
     `Production config asserted: ${PRODUCTION_WORKER_NAME} -> ${PRODUCTION_SITE_ORIGIN} ` +
       `with backend ${PRODUCTION_BACKEND_ORIGIN}.\n` +
       `Scanned ${artifact.scanned} of ${artifact.files} built file(s); no staging value is compiled in.\n` +
+      `Stripe publishable key: a live key is inlined in ${artifact.stripe.servedOccurrences} browser-served ` +
+      `file(s) (${artifact.stripe.occurrences} in total) and no test key is present.\n` +
       `No route or custom domain is attached, so this Worker is reachable only at its workers.dev name.\n`,
   );
 }

@@ -26,7 +26,22 @@
  * and Vite's env-file order, and it is gitignored, so this is the one file a deploy
  * can own without touching developer settings or committing an origin.
  *
- * Writes only public values — origin, backend, commit, timestamp. Never a credential.
+ * Writes only public values — origin, backend, the Stripe publishable key, commit,
+ * timestamp. Never a secret: the Stripe **secret** key, the WooCommerce pair, the
+ * session secrets and the Shippo token are Worker secrets and are never written here.
+ *
+ * ## The Stripe publishable key, for a production build
+ *
+ * When the origin is production this file also pins
+ * `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, from `scripts/production-target.mjs` (or from
+ * `DEPLOY_STRIPE_PUBLISHABLE_KEY` when a build needs to rotate it).
+ *
+ * Unlike the origin and the backend, this variable has a fallback that would otherwise
+ * quietly take over: a developer's `.env.local`. Absent here, the build would still
+ * succeed and would ship whichever key that file happens to hold — a test key, or none.
+ * So it is pinned for a production origin and refused when it is not a `pk_live_` key.
+ * `assert-production-config.mjs` then proves the value is actually inlined in the
+ * artifact and that no `pk_test_` value is.
  *
  * ## The backend origin, for a production build
  *
@@ -52,12 +67,13 @@ import { execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PRODUCTION_SITE_ORIGIN, resolveProductionStripePublishableKey } from './production-target.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Staging is the default because the only Worker deployed today is the staging one. */
 const STAGING_ORIGIN = 'https://preview.himalayankoh.com';
-const PRODUCTION_ORIGIN = 'https://himalayankoh.com';
+const PRODUCTION_ORIGIN = PRODUCTION_SITE_ORIGIN;
 
 const origin = (process.env.DEPLOY_SITE_ORIGIN || STAGING_ORIGIN).trim().replace(/\/+$/, '');
 
@@ -89,6 +105,20 @@ if (backendOrigin) {
 const serverBackendVars = backendOrigin
   ? [`WORDPRESS_BASE_URL=${backendOrigin}`, `WOOCOMMERCE_BASE_URL=${backendOrigin}`]
   : [];
+
+// A production build must pin the Stripe publishable key in this file.
+//
+// Same inlining rule as the origin and the backend, and the same consequence if it is
+// missed: `NEXT_PUBLIC_*` cannot be corrected after the build. The difference is that
+// this variable has a *fallback* the others do not — a developer's `.env.local` — so
+// leaving it out does not fail the build, it silently succeeds with a value nobody
+// chose. That is why the key is required here for a production origin and refused here
+// if it is not a live key, rather than checked later.
+//
+// Staging deliberately does not get it: staging's backend is not production and the
+// staging Worker is where a test key belongs.
+const stripePublishableKey =
+  origin === PRODUCTION_ORIGIN ? resolveProductionStripePublishableKey(process.env) : '';
 
 const loopbackHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
 if (loopbackHosts.has(parsed.hostname.toLowerCase()) || parsed.hostname.endsWith('.localhost')) {
@@ -127,6 +157,7 @@ const body = [
         ...serverBackendVars,
       ]
     : []),
+  ...(stripePublishableKey ? [`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${stripePublishableKey}`] : []),
   `NEXT_PUBLIC_BUILD_SHA=${sha}`,
   `NEXT_PUBLIC_BUILD_TIME=${builtAt}`,
   '',
@@ -136,5 +167,6 @@ writeFileSync(join(ROOT, '.env.production.local'), body, 'utf8');
 
 process.stdout.write(
   `Deploy env written: origin=${origin}${backendOrigin ? ` backend=${backendOrigin}` : ''} ` +
+    `${stripePublishableKey ? `stripe=${stripePublishableKey.slice(0, 8)}…(${stripePublishableKey.length} chars) ` : ''}` +
     `sha=${sha.slice(0, 12)} builtAt=${builtAt}\n`,
 );

@@ -35,10 +35,15 @@
  *   - It cannot set a secret. Secrets are set once with `wrangler secret put` and
  *     survive later deploys; a deploy script that could write them would be a
  *     script that could write a wrong one.
+ *   - It does not need Zone → DNS permission. It creates no DNS record and attaches no
+ *     hostname, and the read-back only asks for Workers Scripts and the account's own
+ *     scripts list. The credentials come from the environment
+ *     (`scripts/lib/cloudflareCredentials.mjs`) rather than a workspace helper file, so
+ *     the deploy cannot be broken by a directory outside this repository.
  *   - It cannot deploy the staging Worker. The name comes from the built artifact and
  *     is asserted to be the production one.
  */
-import { execSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,9 +53,9 @@ import {
   assertProductionConfig,
   readProductionOverlay,
 } from './assert-production-config.mjs';
+import { resolveCloudflareCredentials } from './lib/cloudflareCredentials.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const CF_ENV_SCRIPT = join(ROOT, '..', '.freebuff', 'cf-env.mjs');
 const DIST_CONFIG = join(ROOT, 'dist', 'server', 'wrangler.json');
 
 const skipBuild = process.argv.includes('--skip-build');
@@ -76,18 +81,22 @@ await assertProductionArtifact();
 const preflight = spawnSync('node', ['scripts/check-build-secrets.mjs'], { cwd: ROOT, stdio: 'inherit' });
 if (preflight.status !== 0) fail('The build-output secret scan failed, so nothing was deployed.', preflight.status ?? 1);
 
-if (!existsSync(CF_ENV_SCRIPT)) {
-  fail(`cf-env.mjs was not found at ${CF_ENV_SCRIPT} — Cloudflare credentials are required to deploy.`);
+let credentials;
+try {
+  credentials = resolveCloudflareCredentials();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
 }
+const env = {
+  ...process.env,
+  CLOUDFLARE_ACCOUNT_ID: credentials.accountId,
+  CLOUDFLARE_API_TOKEN: credentials.token,
+};
 
-const cfEnvOut = execSync(`node "${CF_ENV_SCRIPT}"`, { encoding: 'utf8' });
-const env = { ...process.env };
-for (const line of cfEnvOut.split(/\r?\n/)) {
-  const m = line.match(/^export\s+([A-Z0-9_]+)=(.*)$/);
-  if (m) env[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
-}
-
-process.stdout.write(`\n[deploy:production] Deploying ${built.name} (no domain attached)\n`);
+process.stdout.write(
+  `\n[deploy:production] Deploying ${built.name} (no domain attached)\n` +
+    `[deploy:production] Cloudflare credentials from ${credentials.source}\n`,
+);
 
 const deployResult = spawnSync(
   'npx',
@@ -109,7 +118,7 @@ const deployResult = spawnSync(
 if (deployResult.error) process.stderr.write(`Spawn error: ${deployResult.error.message}\n`);
 if (deployResult.status !== 0) fail(`Deploy exited with status ${deployResult.status}.`, deployResult.status ?? 1);
 
-await verifyDeployedWorker(built, env);
+await verifyDeployedWorker(built, credentials);
 
 const checkSecrets = spawnSync('node', ['scripts/check-build-secrets.mjs'], { cwd: ROOT, stdio: 'inherit' });
 if (checkSecrets.status !== 0) fail('Post-deploy secret scan failed.', checkSecrets.status ?? 1);
@@ -130,10 +139,20 @@ process.stdout.write(
  * credentials the deploy already used.
  */
 async function verifyDeployedWorker(config, credentials) {
-  const accountId = credentials.CLOUDFLARE_ACCOUNT_ID;
-  const token = credentials.CLOUDFLARE_API_TOKEN;
-  if (!accountId || !token) {
-    fail('Could not verify the deployment: CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN are not available.');
+  const { accountId, token } = credentials;
+
+  // A token alone is enough to deploy, so an absent account id is a missing check
+  // rather than a failed deploy. Saying so is the honest outcome: the upload happened,
+  // and the claim "the deployed Worker carries the production variables" is what is
+  // now unproven. It must not be reported as verified.
+  if (!accountId) {
+    process.stderr.write(
+      `\n[deploy:production] CLOUDFLARE_ACCOUNT_ID is not set, so ${config.name} could not be read back\n` +
+        `from Cloudflare. The deploy succeeded; the check that the deployed Worker carries the\n` +
+        `production public variables did NOT run. Set CLOUDFLARE_ACCOUNT_ID and re-run with\n` +
+        `--skip-build to complete the verification.\n`,
+    );
+    return;
   }
 
   const response = await fetch(

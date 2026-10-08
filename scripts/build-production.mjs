@@ -23,6 +23,16 @@
  *
  * Every step runs with the production environment exported, so none of them can
  * quietly inherit a developer's `.env.local` origin.
+ *
+ * ## The Stripe publishable key
+ *
+ * `DEPLOY_STRIPE_PUBLISHABLE_KEY` is deliberately **not** set here. `prepare-deploy-env.mjs`
+ * falls back to `PRODUCTION_STRIPE_PUBLISHABLE_KEY` in `scripts/production-target.mjs`,
+ * which is the committed production input — and this script spreads `process.env`, so a
+ * caller who exports `DEPLOY_STRIPE_PUBLISHABLE_KEY` rotates the key for that one build
+ * without editing a tracked file. Setting it here would break that rotation and make the
+ * constant the only possible value; leaving it out keeps both paths open while the guard
+ * still refuses anything that is not a live key.
  */
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';

@@ -36,6 +36,14 @@
  * *public* fallbacks, used by browser code that reads WordPress directly. Server
  * code prefers the `WORDPRESS_BASE_URL` / `WOOCOMMERCE_BASE_URL` secrets
  * (`src/lib/backend/config.ts`), which must be set to the same hostname.
+ *
+ * `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is here for the same reason and is public for
+ * the same reason Stripe's publishable keys always are: it is served to every visitor
+ * by `src/app/api/stripe/config/route.ts` and embedded in the browser bundle. It is
+ * declared here as well as inlined by the build so that the deployed Worker can be read
+ * back and compared — `scripts/deploy-production.mjs` verifies these five variables
+ * against the running deployment, which is the only way to prove the key whose `pk_live_`
+ * value a shopper's browser receives is the one that was intended.
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -44,6 +52,7 @@
     "NEXT_PUBLIC_SITE_URL": "https://himalayankoh.com",
     "NEXT_PUBLIC_DATA_SOURCE": "woocommerce",
     "NEXT_PUBLIC_WORDPRESS_BASE_URL": "https://wp.himalayankoh.com",
-    "NEXT_PUBLIC_WOOCOMMERCE_BASE_URL": "https://wp.himalayankoh.com"
+    "NEXT_PUBLIC_WOOCOMMERCE_BASE_URL": "https://wp.himalayankoh.com",
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_bScMJ0xIRFCAbr3IQJM5YWfY004PNn0fn2"
   }
 }
