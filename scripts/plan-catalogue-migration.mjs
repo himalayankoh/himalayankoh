@@ -48,7 +48,7 @@
  * pairs are labelled "owner approval required" everywhere they appear.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readCatalogueSources } from './lib/catalogueSources.mjs';
 import { buildMigrationManifest, findWriteFlag, renderManifestMarkdown } from './lib/catalogueDiff.mjs';
@@ -90,8 +90,25 @@ function flagValue(name, fallback) {
   return fallback;
 }
 
-const OUT_JSON = join(ROOT, flagValue('--out', 'docs/production/CATALOGUE-MIGRATION-MANIFEST.json'));
-const OUT_MD = join(ROOT, flagValue('--md', 'docs/production/CATALOGUE-MIGRATION-MANIFEST.md'));
+/**
+ * A destination path, absolute or relative to the project root.
+ *
+ * `join(ROOT, value)` alone mangles any absolute path — on Windows an absolute
+ * `--out C:/somewhere/manifest.json` became `<root>/C:/somewhere/manifest.json`, and the
+ * failure surfaced as an `ENOENT` from `mkdir` naming a directory nobody typed. Writing the
+ * artefact somewhere else (a scratch path for a before/after comparison, most obviously) is
+ * a legitimate use of `--out`, so an absolute path is used as given.
+ */
+const outPath = (value) => (isAbsolute(value) ? value : join(ROOT, value));
+
+/** How a path is shown to a human: project-relative when it is inside, absolute when it is not. */
+const displayPath = (value) => {
+  const rel = relative(ROOT, value).split('\\').join('/');
+  return rel.startsWith('../') ? value.split('\\').join('/') : rel;
+};
+
+const OUT_JSON = outPath(flagValue('--out', 'docs/production/CATALOGUE-MIGRATION-MANIFEST.json'));
+const OUT_MD = outPath(flagValue('--md', 'docs/production/CATALOGUE-MIGRATION-MANIFEST.md'));
 const QUIET = argv.includes('--quiet');
 
 /* ------------------------------------------------------------------ */
@@ -104,7 +121,13 @@ const manifest = buildMigrationManifest(sources, { generatedAt: new Date().toISO
 mkdirSync(dirname(OUT_JSON), { recursive: true });
 mkdirSync(dirname(OUT_MD), { recursive: true });
 writeFileSync(OUT_JSON, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-writeFileSync(OUT_MD, renderManifestMarkdown(manifest, { jsonPath: relative(ROOT, OUT_JSON).split('\\').join('/') }), 'utf8');
+writeFileSync(
+  OUT_MD,
+  renderManifestMarkdown(manifest, {
+    jsonPath: displayPath(OUT_JSON),
+  }),
+  'utf8',
+);
 
 if (!QUIET) {
   const s = manifest.summary;
@@ -133,8 +156,8 @@ if (!QUIET) {
     for (const blocker of manifest.keying.blockers) w(`  blocker: ${blocker}`);
     w('');
   }
-  w(`  written to                   ${relative(ROOT, OUT_JSON).split('\\').join('/')}`);
-  w(`                               ${relative(ROOT, OUT_MD).split('\\').join('/')}`);
+  w(`  written to                   ${displayPath(OUT_JSON)}`);
+  w(`                               ${displayPath(OUT_MD)}`);
   w('');
   w('  Nothing was created, updated, published or deleted. Any write needs separate owner approval.');
   w('');

@@ -43,7 +43,7 @@
  * unknown.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   APEX_ORIGIN as APEX,
@@ -59,7 +59,13 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const args = process.argv.slice(2);
 const outFlag = args.indexOf('--out');
-const OUT = join(ROOT, outFlag !== -1 && args[outFlag + 1] ? args[outFlag + 1] : 'docs/production/CATALOG-COMPARISON.md');
+/**
+ * `join(ROOT, value)` alone mangles an absolute path, so writing the report to a scratch
+ * location (to diff two runs, most obviously) is refused with a confusing `ENOENT` from
+ * `mkdir` naming a directory nobody typed. An absolute `--out` is used as given.
+ */
+const outPath = (value) => (isAbsolute(value) ? value : join(ROOT, value));
+const OUT = outPath(outFlag !== -1 && args[outFlag + 1] ? args[outFlag + 1] : 'docs/production/CATALOG-COMPARISON.md');
 
 /* ------------------------------------------------------------------ */
 /* Read the sources (through the shared reader)                       */
