@@ -1132,3 +1132,116 @@ still WordPress, and the gate only closes the `*.workers.dev` QA target.
 
 Until then, the honest status of item 6 is **mitigated, not closed**: bounded, origin-checked
 and rate-limited, still reachable and still holding a live Shippo key.
+
+# Fifth pass — 2026-10-08 (later): the catalogue manifest, and the last three gates measured
+
+## T. What this pass added, and what it did **not** do
+
+Nothing was migrated. No product was created, updated or deleted; no WordPress data, DNS
+record, zone setting or route was changed. This pass produced the tooling that makes the
+catalogue decision reviewable, and measured — rather than estimated — the three gates that
+stand between the catalogue work and the cutover: the backend hostname, the origin
+certificate and the backup.
+
+| Artefact | What it is |
+| --- | --- |
+| `scripts/plan-catalogue-migration.mjs` | the strict, read-only, SKU-keyed migration dry run (`npm run plan:catalogue-migration`) |
+| `scripts/lib/catalogueSources.mjs` | the one reader for all four catalogues — now used by `compare-catalogues.mjs` too, which no longer carries its own copy |
+| `scripts/lib/catalogueDiff.mjs` | the classification rules, as pure functions, with 34 tests in `src/lib/catalog/catalogueMigrationManifest.test.ts` |
+| `docs/production/CATALOGUE-MIGRATION-MANIFEST.json` / `.md` | this run's manifest: 13 live, 7 curated, 6 served, 3 live products with no counterpart, 6 pairs needing a decision |
+| `scripts/check-production-gate.mjs` | re-runnable proof that the pre-cutover Worker is still gated and still isolated (`npm run check:production-gate`) |
+| `scripts/verify-backup.mjs` | the executable half of the backup rule (`npm run check:backup`) |
+| `docs/production/WORDPRESS-HOSTING-PREP.md` | how `wp.himalayankoh.com` is connected to the existing install, Site URL untouched |
+| `docs/production/SSL-HARDENING-PLAN.md` | Flexible → Full (strict), gated on a certificate the origin does not yet have |
+| `docs/production/BACKUP-RESTORE-VERIFICATION.md` | what a backup here is, and why every artefact that exists is not one |
+
+## U. The catalogue dry run: what it can and cannot decide
+
+**It cannot decide a single match, and it says so before it says anything else.** The live
+apex answers the configured WooCommerce pair with **HTTP 401**, so it exposes no SKU, no price
+and no stock — the catalogue is readable through public WP REST only (ids, names, slugs,
+statuses, categories, one featured image per product). With no key on the live side, a
+SKU-keyed mapping is impossible by definition, and the manifest reports that as
+`keying.blockers` rather than as an empty match list.
+
+Measured this run: 13 live published, 7 curated (6 published + 1 draft), 6 served by the
+storefront. **0 exact SKU matches** (none possible), **6 pairs suggested by name** and labelled
+*owner approval required*, **3 live products with no counterpart anywhere in the curated
+catalogue**, **1 curated product needing creation**, 0 duplicate SKUs, 0 conflicts, and **12
+comparisons refused as not comparable** (price and stock × the 6 suggested pairs).
+
+Two things worth keeping from building it. The first is that the first version reported six
+**stock differences that were not differences**: WooCommerce REST spells the status `instock`
+and the storefront's own `/api/catalog` normalises it to `in_stock`, so a raw string compare
+turned a naming difference between two of this project's own endpoints into six findings. A diff
+that cries wolf about stock is worse than no diff, because the section people must read
+carefully is the one they learn to skim. The second is that `matchBySku` now separates "has no
+SKU" from "was not found on the other side": the first is a readability fact, the second is a
+finding, and merging them would report the live catalogue as entirely unmatched on a day when
+the only thing missing was the key.
+
+The tool **has no write path**. `--apply`, `--import`, `--sync` and the rest are refused with a
+non-zero exit and an explanation, because silently ignoring a write flag is the behaviour that
+teaches an operator the flag is harmless.
+
+## V. The three gates, measured
+
+**The backend hostname.** `wp.himalayankoh.com` already has a proxied `A` record to
+`162.0.209.25` — the DNS half is done — but the name does **not** reach WordPress: `/wp-json/`
+returns **404** and `/` returns the hosting placeholder. `mail.himalayankoh.com` **does**
+(`/wp-json/` → 200 with the live REST index), which proves the pattern works on this account and
+makes it the template to copy. What remains is origin-side host mapping. **Whether `mail.` uses
+a cPanel alias or a Cloudflare Origin Rule could not be read: the rulesets API returned 403 to
+the available token, and the origin refuses non-Cloudflare source addresses with
+`403 Request forbidden by administrative rules`.** Recorded as unknown, with both panel paths
+to check, rather than guessed.
+
+**The origin certificate — the finding that blocks SSL hardening.** The visitor-facing
+certificates are fine (Cloudflare Universal SSL, TLS 1.3). The **origin** is not: a TLS
+handshake to `162.0.209.25:443` with SNI `himalayankoh.com`, and again with SNI
+`wp.himalayankoh.com`, presents a certificate for **`*.web-hosting.com`** (Sectigo DV, valid
+Jun 3 – Dec 18 2026), which Node rejects with `ERR_TLS_CERT_ALTNAME_INVALID`. The origin lists
+on 443 — it is the certificate, not the port, that blocks strict mode. So **Full (strict) is not
+available today and must not be enabled**: it would fail origin validation and serve 526s to the
+live site. The plan is written in dependency order — install a certificate the origin presents
+for this domain (AutoSSL, or a Cloudflare Origin CA certificate), prove it, *then* Full (strict),
+*then* `always_use_https`, *then* `min_tls_version` 1.2 — with the 526 rollback named. The
+`min_tls_version: 1.0` handshake test was **inconclusive** (the local openssl has TLS 1.0/1.1
+compiled out), and is reported that way rather than as a pass.
+
+**The backup: still FAIL, now with an executable rule.** No database dump and no files backup
+exist. `scripts/verify-backup.mjs` was exercised against synthetic archives to prove the verdict
+flips correctly — intact dump + files + a recorded scratch restore → PASS, exit 0; a truncated
+gzip → FAIL with `Z_BUF_ERROR` and exit 1; a database half alone → FAIL; both halves without a
+recorded restore → **NOT PASS**, because a dump nobody has restored is a hope. A logical product
+export cannot be passed to it at all.
+
+## W. The gate re-verified, and the blockers that moved
+
+`npm run check:production-gate` — **26 of 26 passed, exit 0**, on the running deployment:
+unauthenticated `GET /`, `/products`, `/blog`, `/login`, `/api/catalog`, `/api/version`,
+`/api/stripe/config` and both `POST /api/shippo/*` routes all **401**; authorized `/` **200**
+(47,973 bytes); the cookie exchange still returns `303` with `hk_preview`; a request with no
+token at all is refused; the authorized Shippo rate call returned **8 live carrier rates**;
+`/api/stripe/config` reports `configured=false` with reason *"No Stripe secret key is
+configured."*; the apex `/api/version` is **404** (WordPress, not the Worker) and
+`himalayankoh.com/wp-json/` is still the live REST API; `preview.himalayankoh.com` still serves
+6 products; the zone has **0 Worker routes** and exactly one custom domain, `preview.` → the
+staging Worker. The production Worker's 15 secrets were confirmed by name and still include no
+WooCommerce pair, no WordPress admin credential and no Stripe secret — which is why the Stripe
+and catalogue halves of it are blocked as designed rather than broken.
+
+Blocking-list changes:
+
+- Item 2 (**hosting-panel access**) now also unblocks the `wp.` vhost mapping — unless the
+  `mail.` mechanism turns out to be a Cloudflare Origin Rule, which would need only zone access.
+  Which of the two it is remains unmeasured; that is the first thing to check in the panel.
+- Item 3 (**`STRIPE_SECRET_KEY`**) is unchanged and still correct as-is: charging is blocked.
+- Item 4 (**backup**) is unchanged and still FAIL, now with a command that can only say PASS
+  when a restore has been recorded.
+- **New:** the **origin certificate** (AutoSSL or Origin CA) is a prerequisite for ANY SSL
+  hardening, and is therefore a new precondition the cutover inherits. It needs item 2, the
+  hosting panel.
+- Item 10 (DNS token) is unchanged: **the cutover's DNS edit needs token 3**, and no measured
+  token both writes DNS and reads zone settings.
+

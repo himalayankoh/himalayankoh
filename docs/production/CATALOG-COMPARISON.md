@@ -1,6 +1,6 @@
 # Catalogue comparison — live WordPress vs the storefront’s catalogue
 
-Generated 2026-10-08T19:32:42.907Z by `scripts/compare-catalogues.mjs` (read-only; every request is a GET).
+Generated 2026-10-08T20:35:54.939Z by `scripts/compare-catalogues.mjs` (read-only; every request is a GET).
 
 **This is a comparison, not a migration.** Nothing was copied, created, updated or
 deleted, and nothing in it may be acted on automatically. It exists to make the
@@ -16,7 +16,7 @@ live credentials are in place.
 | Live catalogue (price, SKU, stock) | `GET https://himalayankoh.com/wp-json/wc/v3/products` | configured WooCommerce pair | **HTTP 401 — the apex does not accept the configured pair, so price, SKU and stock are NOT readable and are shown as unknown below** |
 | Staging catalogue (full field set) | `GET https://himalayankoh.com/staging/wp-json/wc/v3/products?status=any` | configured pair | HTTP 200, 7 products |
 | Storefront (what a shopper is served today) | `GET https://preview.himalayankoh.com/api/catalog` | none | HTTP 200, 6 products, degraded: false |
-| Pre-cutover production Worker | `GET https://himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev/api/catalog` | none | HTTP 200, 0 products, degraded: true |
+| Pre-cutover production Worker | `GET https://himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev/api/catalog` | none | HTTP 401, 0 products, degraded: undefined |
 
 The live catalogue is read through WP REST because the `product` post type is
 registered `show_in_rest` on that installation. **Everything in that column is
@@ -39,19 +39,19 @@ public pages.
 
 | id | title | status | categories | image | SKU / price / stock | modified |
 | --- | --- | --- | --- | --- | --- | --- |
-| 271 | Bag of Himalayan Pink Salt for Livestock (45 lbs.) | publish | 58 | yes (media 1756) | _not readable (no live key)_ | 2026-04-13 |
-| 281 | Himalayan Pink Salt Licks for Horses | publish | 58 | yes (media 1712) | _not readable (no live key)_ | 2026-04-13 |
-| 286 | Himalayan Pink Salt Block for Deer | publish | 58 | yes (media 2043) | _not readable (no live key)_ | 2022-08-28 |
-| 291 | Himalayan Salt Rock for Cattle 18 Lbs Bag | publish | 58 | yes (media 1802) | _not readable (no live key)_ | 2024-05-16 |
-| 2185 | Himalayan Chef Himalayan Pink Salt Fine Grain, Jar-1 lbs | publish | 75 | yes (media 2186) | _not readable (no live key)_ | 2023-04-28 |
-| 2192 | Himalayan Chef Himalayan Pink Salt Coarse Grain, Jar-1 lbs | publish | 75 | yes (media 2194) | _not readable (no live key)_ | 2023-04-28 |
-| 2295 | HIMALAYAN CRYSTAL ROCK SALT LAMP IONIZER AIR PURIFIER WITH DIMMABLE CONTRO | publish | 75 | yes (media 2304) | _not readable (no live key)_ | 2023-07-24 |
-| 2321 | Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes – 6 lbs | publish | 75 | yes (media 2331) | _not readable (no live key)_ | 2023-09-02 |
-| 2352 | SALT LICKS | publish | 105 | yes (media 2105) | _not readable (no live key)_ | 2024-03-29 |
-| 2367 | HIMALAYAN SALT POUCHES | publish | 105 | yes (media 2331) | _not readable (no live key)_ | 2024-03-29 |
-| 2372 | HIMALAYAN ROCK SALT BAG 18 LBS | publish | 105 | yes (media 1716) | _not readable (no live key)_ | 2024-05-16 |
-| 2446 | Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain | publish | 75 | yes (media 2447) | _not readable (no live key)_ | 2024-08-14 |
-| 2461 | Himalayan Koh  Authentic Pure Natural Halal Unprocessed Himalayan Edible P | publish | 75 | yes (media 2462) | _not readable (no live key)_ | 2025-07-04 |
+| 271 | Bag of Himalayan Pink Salt for Livestock (45 lbs.) | publish | animal feed | yes (media 1756) | _not readable (no live key)_ | 2026-04-13 |
+| 281 | Himalayan Pink Salt Licks for Horses | publish | animal feed | yes (media 1712) | _not readable (no live key)_ | 2026-04-13 |
+| 286 | Himalayan Pink Salt Block for Deer | publish | animal feed | yes (media 2043) | _not readable (no live key)_ | 2022-08-28 |
+| 291 | Himalayan Salt Rock for Cattle 18 Lbs Bag | publish | animal feed | yes (media 1802) | _not readable (no live key)_ | 2024-05-16 |
+| 2185 | Himalayan Chef Himalayan Pink Salt Fine Grain, Jar-1 lbs | publish | Uncategorized | yes (media 2186) | _not readable (no live key)_ | 2023-04-28 |
+| 2192 | Himalayan Chef Himalayan Pink Salt Coarse Grain, Jar-1 lbs | publish | Uncategorized | yes (media 2194) | _not readable (no live key)_ | 2023-04-28 |
+| 2295 | HIMALAYAN CRYSTAL ROCK SALT LAMP IONIZER AIR PURIFIER WITH DIMMABLE CONTRO | publish | Uncategorized | yes (media 2304) | _not readable (no live key)_ | 2023-07-24 |
+| 2321 | Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes – 6 lbs | publish | Uncategorized | yes (media 2331) | _not readable (no live key)_ | 2023-09-02 |
+| 2352 | SALT LICKS | publish | Bulk Order | yes (media 2105) | _not readable (no live key)_ | 2024-03-29 |
+| 2367 | HIMALAYAN SALT POUCHES | publish | Bulk Order | yes (media 2331) | _not readable (no live key)_ | 2024-03-29 |
+| 2372 | HIMALAYAN ROCK SALT BAG 18 LBS | publish | Bulk Order | yes (media 1716) | _not readable (no live key)_ | 2024-05-16 |
+| 2446 | Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain | publish | Uncategorized | yes (media 2447) | _not readable (no live key)_ | 2024-08-14 |
+| 2461 | Himalayan Koh  Authentic Pure Natural Halal Unprocessed Himalayan Edible P | publish | Uncategorized | yes (media 2462) | _not readable (no live key)_ | 2025-07-04 |
 
 ### The live apex’s featured images, as URLs
 

@@ -1,0 +1,1061 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-08T20:55:34.471Z",
+  "dryRun": true,
+  "writesMade": false,
+  "writesAllowed": false,
+  "keying": {
+    "strategy": "sku",
+    "byDatabaseId": false,
+    "liveSkuReadable": false,
+    "curatedSkuReadable": true,
+    "skuMatchingPossible": false,
+    "blockers": [
+      "https://himalayankoh.com does not accept the configured WooCommerce key pair (HTTP 401), so the live catalogue exposes no SKU. Until it does, the live↔curated mapping cannot be decided on SKUs and every pair below is a suggestion for a human."
+    ],
+    "note": "Products are never matched by database id: the two installations are separate WordPress sites whose id spaces do not overlap."
+  },
+  "sources": [
+    {
+      "key": "live",
+      "label": "live apex WordPress catalogue (what the domain sells today)",
+      "url": "https://himalayankoh.com/wp-json/wp/v2/product?per_page=100",
+      "auth": "none — public WP REST",
+      "status": 200,
+      "count": 13,
+      "readable": {
+        "name": true,
+        "sku": false,
+        "price": false,
+        "stock": false,
+        "categories": true,
+        "images": true,
+        "modified": true
+      }
+    },
+    {
+      "key": "live-rich",
+      "label": "live apex WooCommerce fields (price, SKU, stock)",
+      "url": "https://himalayankoh.com/wp-json/wc/v3/products?per_page=100&status=any",
+      "auth": "configured WooCommerce pair",
+      "status": 401,
+      "count": 0,
+      "readable": {
+        "price": false,
+        "sku": false,
+        "stock": false
+      }
+    },
+    {
+      "key": "live-media",
+      "label": "live apex featured image URLs",
+      "url": "https://himalayankoh.com/wp-json/wp/v2/media?include=2462,2447,1716,2331,2105,2304,2194,2186,1756,2043,1712,1802&per_page=100",
+      "auth": "none — public",
+      "status": 200,
+      "count": 13,
+      "readable": {
+        "images": true
+      }
+    },
+    {
+      "key": "curated",
+      "label": "staging WooCommerce catalogue (the curated source of truth)",
+      "url": "https://himalayankoh.com/staging/wp-json/wc/v3/products?per_page=100&status=any",
+      "auth": "configured pair",
+      "status": 200,
+      "count": 7,
+      "readable": {
+        "name": true,
+        "sku": true,
+        "price": true,
+        "stock": true,
+        "categories": true,
+        "images": true,
+        "modified": true
+      }
+    },
+    {
+      "key": "served",
+      "label": "staging storefront catalogue (what a shopper is served today)",
+      "url": "https://preview.himalayankoh.com/api/catalog",
+      "auth": "none",
+      "status": 200,
+      "count": 6,
+      "degraded": false,
+      "readable": {
+        "name": true,
+        "sku": true,
+        "price": true,
+        "stock": true,
+        "categories": true,
+        "images": true,
+        "modified": true
+      }
+    },
+    {
+      "key": "preProduction",
+      "label": "pre-cutover production Worker",
+      "url": "https://himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev/api/catalog",
+      "auth": "none for the gate check, preview token for the read",
+      "status": 401,
+      "authenticatedStatus": 200,
+      "count": 0,
+      "degraded": true
+    }
+  ],
+  "coverage": {
+    "live": {
+      "total": 13,
+      "published": 13,
+      "draft": 0,
+      "withoutSku": 13
+    },
+    "curated": {
+      "total": 7,
+      "published": 6,
+      "draft": 1,
+      "withoutSku": 1
+    },
+    "served": {
+      "total": 6,
+      "published": 6,
+      "withoutSku": 0
+    }
+  },
+  "exactSkuMatches": [],
+  "possibleMatchesRequiringOwnerApproval": [
+    {
+      "curated": {
+        "id": 2728,
+        "sku": null,
+        "name": "Himalayan Salt Rock for Cattle 18 Lbs Bag - Himalayan Koh",
+        "status": "draft",
+        "price": "49.95",
+        "stock": "instock (10)",
+        "categories": [
+          "Bulk and Rock Salt"
+        ],
+        "images": 7
+      },
+      "candidates": [
+        {
+          "live": {
+            "id": 291,
+            "name": "Himalayan Salt Rock for Cattle 18 Lbs Bag",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "animal feed"
+            ],
+            "link": "https://himalayankoh.com/product/rock-of-salt/"
+          },
+          "score": 1,
+          "sharedWords": [
+            "18",
+            "bag",
+            "cattle",
+            "lbs",
+            "rock",
+            "salt"
+          ],
+          "liveWordsNotInCurated": []
+        },
+        {
+          "live": {
+            "id": 2372,
+            "name": "HIMALAYAN ROCK SALT BAG 18 LBS",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Bulk Order"
+            ],
+            "link": "https://himalayankoh.com/product/himalayan-rock-salt-bag/"
+          },
+          "score": 0.833,
+          "sharedWords": [
+            "18",
+            "bag",
+            "lbs",
+            "rock",
+            "salt"
+          ],
+          "liveWordsNotInCurated": []
+        }
+      ],
+      "decision": "owner approval required",
+      "decidedBy": "name similarity only — no SKU was available on the live side"
+    },
+    {
+      "curated": {
+        "id": 2721,
+        "sku": "HK-LFH-2lbs",
+        "name": "Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh",
+        "status": "publish",
+        "price": "19.95",
+        "stock": "instock (7)",
+        "categories": [
+          "Salt Licks"
+        ],
+        "images": 6
+      },
+      "candidates": [
+        {
+          "live": {
+            "id": 281,
+            "name": "Himalayan Pink Salt Licks for Horses",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "animal feed"
+            ],
+            "link": "https://himalayankoh.com/product/salt-licks-for-horses/"
+          },
+          "score": 0.8,
+          "sharedWords": [
+            "horses",
+            "licks",
+            "pink",
+            "salt"
+          ],
+          "liveWordsNotInCurated": []
+        },
+        {
+          "live": {
+            "id": 2352,
+            "name": "SALT LICKS",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Bulk Order"
+            ],
+            "link": "https://himalayankoh.com/product/salt-licks/"
+          },
+          "score": 0.4,
+          "sharedWords": [
+            "licks",
+            "salt"
+          ],
+          "liveWordsNotInCurated": []
+        },
+        {
+          "live": {
+            "id": 271,
+            "name": "Bag of Himalayan Pink Salt for Livestock (45 lbs.)",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "animal feed"
+            ],
+            "link": "https://himalayankoh.com/product/bag-of-salt-for-livestock-45-lbs/"
+          },
+          "score": 0.375,
+          "sharedWords": [
+            "lbs",
+            "pink",
+            "salt"
+          ],
+          "liveWordsNotInCurated": [
+            "45",
+            "bag",
+            "livestock"
+          ]
+        }
+      ],
+      "decision": "owner approval required",
+      "decidedBy": "name similarity only — no SKU was available on the live side"
+    },
+    {
+      "curated": {
+        "id": 2716,
+        "sku": "HK-LFC-45lbs",
+        "name": "Bag of Himalayan Pink Salt for Livestock (45 lbs.) - Himalayan Koh",
+        "status": "publish",
+        "price": "49.95",
+        "stock": "instock (10)",
+        "categories": [
+          "Live Stock"
+        ],
+        "images": 2
+      },
+      "candidates": [
+        {
+          "live": {
+            "id": 271,
+            "name": "Bag of Himalayan Pink Salt for Livestock (45 lbs.)",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "animal feed"
+            ],
+            "link": "https://himalayankoh.com/product/bag-of-salt-for-livestock-45-lbs/"
+          },
+          "score": 1,
+          "sharedWords": [
+            "45",
+            "bag",
+            "lbs",
+            "livestock",
+            "pink",
+            "salt"
+          ],
+          "liveWordsNotInCurated": []
+        },
+        {
+          "live": {
+            "id": 2372,
+            "name": "HIMALAYAN ROCK SALT BAG 18 LBS",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Bulk Order"
+            ],
+            "link": "https://himalayankoh.com/product/himalayan-rock-salt-bag/"
+          },
+          "score": 0.375,
+          "sharedWords": [
+            "bag",
+            "lbs",
+            "salt"
+          ],
+          "liveWordsNotInCurated": [
+            "18",
+            "rock"
+          ]
+        }
+      ],
+      "decision": "owner approval required",
+      "decidedBy": "name similarity only — no SKU was available on the live side"
+    },
+    {
+      "curated": {
+        "id": 2710,
+        "sku": "HK-ESF-6lbs",
+        "name": "Himalayan Pink Salt for Livestock - 6 lbs Fine or Coarse Grain Pouches",
+        "status": "publish",
+        "price": "19.95",
+        "stock": "instock (10)",
+        "categories": [
+          "Live Stock"
+        ],
+        "images": 4
+      },
+      "candidates": [
+        {
+          "live": {
+            "id": 2321,
+            "name": "Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes – 6 lbs",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Uncategorized"
+            ],
+            "link": "https://himalayankoh.com/product/pouches/"
+          },
+          "score": 0.6,
+          "sharedWords": [
+            "coarse",
+            "fine",
+            "grain",
+            "lbs",
+            "pouches",
+            "salt"
+          ],
+          "liveWordsNotInCurated": [
+            "rock",
+            "sizes"
+          ]
+        },
+        {
+          "live": {
+            "id": 2185,
+            "name": "Himalayan Chef Himalayan Pink Salt Fine Grain, Jar-1 lbs",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Uncategorized"
+            ],
+            "link": "https://himalayankoh.com/product/chef-himalayan-pink-salt/"
+          },
+          "score": 0.5,
+          "sharedWords": [
+            "fine",
+            "grain",
+            "lbs",
+            "pink",
+            "salt"
+          ],
+          "liveWordsNotInCurated": [
+            "chef",
+            "jar"
+          ]
+        },
+        {
+          "live": {
+            "id": 2192,
+            "name": "Himalayan Chef Himalayan Pink Salt Coarse Grain, Jar-1 lbs",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Uncategorized"
+            ],
+            "link": "https://himalayankoh.com/product/himalayan-chef-himalayan-pink-salt-coarse-grain-jar-1-lbs/"
+          },
+          "score": 0.5,
+          "sharedWords": [
+            "coarse",
+            "grain",
+            "lbs",
+            "pink",
+            "salt"
+          ],
+          "liveWordsNotInCurated": [
+            "chef",
+            "jar"
+          ]
+        }
+      ],
+      "decision": "owner approval required",
+      "decidedBy": "name similarity only — no SKU was available on the live side"
+    },
+    {
+      "curated": {
+        "id": 2704,
+        "sku": "HK-ESF-3lbs",
+        "name": "Himalayan Koh Pure Natural Himalayan Pink Salt for Livestock – Fine Grain (0.5–1mm), Unprocessed &amp; Halal",
+        "status": "publish",
+        "price": "19.95",
+        "stock": "instock (10)",
+        "categories": [
+          "Live Stock"
+        ],
+        "images": 4
+      },
+      "candidates": [
+        {
+          "live": {
+            "id": 2461,
+            "name": "Himalayan Koh  Authentic Pure Natural Halal Unprocessed Himalayan Edible Pink Cooking Salt, Fine Grain (0.5mm to 1mm)",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Uncategorized"
+            ],
+            "link": "https://himalayankoh.com/product/himalayan-koh-edible-salt-grain/"
+          },
+          "score": 0.636,
+          "sharedWords": [
+            "1mm",
+            "fine",
+            "grain",
+            "halal",
+            "pink",
+            "salt",
+            "unprocessed"
+          ],
+          "liveWordsNotInCurated": [
+            "5mm",
+            "cooking",
+            "edible"
+          ]
+        },
+        {
+          "live": {
+            "id": 2185,
+            "name": "Himalayan Chef Himalayan Pink Salt Fine Grain, Jar-1 lbs",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Uncategorized"
+            ],
+            "link": "https://himalayankoh.com/product/chef-himalayan-pink-salt/"
+          },
+          "score": 0.364,
+          "sharedWords": [
+            "fine",
+            "grain",
+            "pink",
+            "salt"
+          ],
+          "liveWordsNotInCurated": [
+            "chef",
+            "jar",
+            "lbs"
+          ]
+        }
+      ],
+      "decision": "owner approval required",
+      "decidedBy": "name similarity only — no SKU was available on the live side"
+    },
+    {
+      "curated": {
+        "id": 2653,
+        "sku": "HK-ESF-16oz",
+        "name": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+        "status": "publish",
+        "price": "9.95",
+        "stock": "instock (4)",
+        "categories": [
+          "Edible Pink Salt"
+        ],
+        "images": 3
+      },
+      "candidates": [
+        {
+          "live": {
+            "id": 2446,
+            "name": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Uncategorized"
+            ],
+            "link": "https://himalayankoh.com/product/himalayan-edible-pink-salt/"
+          },
+          "score": 1,
+          "sharedWords": [
+            "16",
+            "edible",
+            "fine",
+            "grain",
+            "jar",
+            "oz",
+            "pink",
+            "salt"
+          ],
+          "liveWordsNotInCurated": []
+        },
+        {
+          "live": {
+            "id": 2185,
+            "name": "Himalayan Chef Himalayan Pink Salt Fine Grain, Jar-1 lbs",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Uncategorized"
+            ],
+            "link": "https://himalayankoh.com/product/chef-himalayan-pink-salt/"
+          },
+          "score": 0.5,
+          "sharedWords": [
+            "fine",
+            "grain",
+            "jar",
+            "pink",
+            "salt"
+          ],
+          "liveWordsNotInCurated": [
+            "chef",
+            "lbs"
+          ]
+        },
+        {
+          "live": {
+            "id": 2461,
+            "name": "Himalayan Koh  Authentic Pure Natural Halal Unprocessed Himalayan Edible Pink Cooking Salt, Fine Grain (0.5mm to 1mm)",
+            "sku": null,
+            "status": "publish",
+            "categories": [
+              "Uncategorized"
+            ],
+            "link": "https://himalayankoh.com/product/himalayan-koh-edible-salt-grain/"
+          },
+          "score": 0.385,
+          "sharedWords": [
+            "edible",
+            "fine",
+            "grain",
+            "pink",
+            "salt"
+          ],
+          "liveWordsNotInCurated": [
+            "1mm",
+            "5mm",
+            "cooking",
+            "halal",
+            "unprocessed"
+          ]
+        }
+      ],
+      "decision": "owner approval required",
+      "decidedBy": "name similarity only — no SKU was available on the live side"
+    }
+  ],
+  "missingProductionProducts": [
+    {
+      "source": "live",
+      "id": 2367,
+      "name": "HIMALAYAN SALT POUCHES",
+      "status": "publish",
+      "sku": null,
+      "categories": [
+        "Bulk Order"
+      ],
+      "image": "https://himalayankoh.com/wp-content/uploads/2023/08/S6.jpg",
+      "modified": "2024-03-29T21:25:30",
+      "liveUrl": "https://himalayankoh.com/product/himalayan-salt-pouches/",
+      "note": "published on the live domain today and indexed by its sitemap; the cutover would drop it unless it is created or deliberately retired"
+    },
+    {
+      "source": "live",
+      "id": 2295,
+      "name": "HIMALAYAN CRYSTAL ROCK SALT LAMP IONIZER AIR PURIFIER WITH DIMMABLE CONTROL",
+      "status": "publish",
+      "sku": null,
+      "categories": [
+        "Uncategorized"
+      ],
+      "image": "https://himalayankoh.com/wp-content/uploads/2023/07/Tear-Drop.jpg",
+      "modified": "2023-07-24T18:57:50",
+      "liveUrl": "https://himalayankoh.com/product/himalayan-crystal-rock-salt-lamp-ionizer-air-purifier-with-dimmable-control/",
+      "note": "published on the live domain today and indexed by its sitemap; the cutover would drop it unless it is created or deliberately retired"
+    },
+    {
+      "source": "live",
+      "id": 286,
+      "name": "Himalayan Pink Salt Block for Deer",
+      "status": "publish",
+      "sku": null,
+      "categories": [
+        "animal feed"
+      ],
+      "image": "https://himalayankoh.com/wp-content/uploads/2017/10/WhatsApp-Image-2022-02-05-at-2.48.02-PM.jpeg",
+      "modified": "2022-08-28T06:30:44",
+      "liveUrl": "https://himalayankoh.com/product/block-of-salt/",
+      "note": "published on the live domain today and indexed by its sitemap; the cutover would drop it unless it is created or deliberately retired"
+    }
+  ],
+  "productsRequiringCreation": [
+    {
+      "source": "curated",
+      "id": 2752,
+      "sku": "HK-LB-30LBS",
+      "name": "Himalayan Koh 30 lb Red Rock Salt Lick for Cattle",
+      "status": "publish",
+      "price": "49.95",
+      "stock": "instock (10)",
+      "categories": [
+        "Salt Blocks"
+      ],
+      "images": 2,
+      "reason": "no live product shares any significant word with this name"
+    }
+  ],
+  "duplicateSkus": [],
+  "conflictingProducts": [],
+  "differences": {
+    "price": [],
+    "stock": [],
+    "images": [
+      {
+        "pair": "live↔curated",
+        "field": "images",
+        "leftId": 291,
+        "rightId": 2728,
+        "leftName": "Himalayan Salt Rock for Cattle 18 Lbs Bag",
+        "rightName": "Himalayan Salt Rock for Cattle 18 Lbs Bag - Himalayan Koh",
+        "left": "1 image(s), first https://himalayankoh.com/wp-content/uploads/2016/06/WhatsApp-Image-2021-07-28-at-4.39.51-AM.jpeg",
+        "right": "7 image(s), first https://himalayankoh.com/staging/wp-content/uploads/2026/09/WhatsApp-Image-2021-07-28-at-4.39.51-AM.jpeg",
+        "detail": "same asset host, so the differing first image is a real difference"
+      },
+      {
+        "pair": "live↔curated",
+        "field": "images",
+        "leftId": 281,
+        "rightId": 2721,
+        "leftName": "Himalayan Pink Salt Licks for Horses",
+        "rightName": "Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh",
+        "left": "1 image(s), first https://himalayankoh.com/wp-content/uploads/2021/03/horse-lick-himalayan-salt5.jpg",
+        "right": "6 image(s), first https://himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt5.jpg",
+        "detail": "same asset host, so the differing first image is a real difference"
+      },
+      {
+        "pair": "live↔curated",
+        "field": "images",
+        "leftId": 271,
+        "rightId": 2716,
+        "leftName": "Bag of Himalayan Pink Salt for Livestock (45 lbs.)",
+        "rightName": "Bag of Himalayan Pink Salt for Livestock (45 lbs.) - Himalayan Koh",
+        "left": "1 image(s), first https://himalayankoh.com/wp-content/uploads/2020/10/1.jpeg",
+        "right": "2 image(s), first https://himalayankoh.com/staging/wp-content/uploads/2026/10/5475e8cf-56b9-42bc-8882-7a990460b044.jpg",
+        "detail": "same asset host, so the differing first image is a real difference"
+      },
+      {
+        "pair": "live↔curated",
+        "field": "images",
+        "leftId": 2321,
+        "rightId": 2710,
+        "leftName": "Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes – 6 lbs",
+        "rightName": "Himalayan Pink Salt for Livestock - 6 lbs Fine or Coarse Grain Pouches",
+        "left": "1 image(s), first https://himalayankoh.com/wp-content/uploads/2023/08/S6.jpg",
+        "right": "4 image(s), first https://himalayankoh.com/staging/wp-content/uploads/2026/09/S4.jpeg",
+        "detail": "same asset host, so the differing first image is a real difference"
+      },
+      {
+        "pair": "live↔curated",
+        "field": "images",
+        "leftId": 2461,
+        "rightId": 2704,
+        "leftName": "Himalayan Koh  Authentic Pure Natural Halal Unprocessed Himalayan Edible Pink Cooking Salt, Fine Grain (0.5mm to 1mm)",
+        "rightName": "Himalayan Koh Pure Natural Himalayan Pink Salt for Livestock – Fine Grain (0.5–1mm), Unprocessed &amp; Halal",
+        "left": "1 image(s), first https://himalayankoh.com/wp-content/uploads/2025/07/6-lbs-pouche.webp",
+        "right": "4 image(s), first https://himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche-2.webp",
+        "detail": "same asset host, so the differing first image is a real difference"
+      },
+      {
+        "pair": "live↔curated",
+        "field": "images",
+        "leftId": 2446,
+        "rightId": 2653,
+        "leftName": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+        "rightName": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+        "left": "1 image(s), first https://himalayankoh.com/wp-content/uploads/2024/08/WhatsApp-Image-2024-08-02-at-11.31.07-PM.jpeg",
+        "right": "3 image(s), first https://himalayankoh.com/staging/wp-content/uploads/2026/09/7017f765-35de-4aee-b150-2022e5ef8a04-1.jpeg",
+        "detail": "same asset host, so the differing first image is a real difference"
+      },
+      {
+        "pair": "curated↔served",
+        "field": "images",
+        "leftId": 2752,
+        "rightId": 2752,
+        "leftName": "Himalayan Koh 30 lb Red Rock Salt Lick for Cattle",
+        "rightName": "Himalayan Koh 30 lb Red Rock Salt Lick for Cattle",
+        "left": "2 image(s), first https://himalayankoh.com/staging/wp-content/uploads/2026/10/5d377168-56a1-4c09-bc7a-412e46c7ba9e.webp",
+        "right": "6 image(s), first /images/products/himalayan-salt-block-30lbs-hero.webp",
+        "detail": "the two catalogues serve assets from different hosts, so the URLs are not comparable — only presence and count are"
+      },
+      {
+        "pair": "curated↔served",
+        "field": "images",
+        "leftId": 2721,
+        "rightId": 2721,
+        "leftName": "Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh",
+        "rightName": "Himalayan Pink Salt Licks for Horses 2 lb",
+        "left": "6 image(s), first https://himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt5.jpg",
+        "right": "11 image(s), first /images/products/himalayan-salt-lick-rope-hero.webp",
+        "detail": "the two catalogues serve assets from different hosts, so the URLs are not comparable — only presence and count are"
+      },
+      {
+        "pair": "curated↔served",
+        "field": "images",
+        "leftId": 2710,
+        "rightId": 2710,
+        "leftName": "Himalayan Pink Salt for Livestock - 6 lbs Fine or Coarse Grain Pouches",
+        "rightName": "Himalayan Pink Salt for Livestock - 6 lb Fine or Coarse Grain Pouches",
+        "left": "4 image(s), first https://himalayankoh.com/staging/wp-content/uploads/2026/09/S4.jpeg",
+        "right": "8 image(s), first /images/products/himalayan-rock-salt-pouch-6lbs-hero.webp",
+        "detail": "the two catalogues serve assets from different hosts, so the URLs are not comparable — only presence and count are"
+      }
+    ],
+    "categories": [
+      {
+        "pair": "live↔curated",
+        "field": "categories",
+        "leftId": 291,
+        "rightId": 2728,
+        "leftName": "Himalayan Salt Rock for Cattle 18 Lbs Bag",
+        "rightName": "Himalayan Salt Rock for Cattle 18 Lbs Bag - Himalayan Koh",
+        "left": "animal feed",
+        "right": "bulk and rock salt",
+        "detail": "only on live: animal feed; only on curated: bulk and rock salt"
+      },
+      {
+        "pair": "live↔curated",
+        "field": "categories",
+        "leftId": 281,
+        "rightId": 2721,
+        "leftName": "Himalayan Pink Salt Licks for Horses",
+        "rightName": "Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh",
+        "left": "animal feed",
+        "right": "salt licks",
+        "detail": "only on live: animal feed; only on curated: salt licks"
+      },
+      {
+        "pair": "live↔curated",
+        "field": "categories",
+        "leftId": 271,
+        "rightId": 2716,
+        "leftName": "Bag of Himalayan Pink Salt for Livestock (45 lbs.)",
+        "rightName": "Bag of Himalayan Pink Salt for Livestock (45 lbs.) - Himalayan Koh",
+        "left": "animal feed",
+        "right": "live stock",
+        "detail": "only on live: animal feed; only on curated: live stock"
+      },
+      {
+        "pair": "live↔curated",
+        "field": "categories",
+        "leftId": 2321,
+        "rightId": 2710,
+        "leftName": "Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes – 6 lbs",
+        "rightName": "Himalayan Pink Salt for Livestock - 6 lbs Fine or Coarse Grain Pouches",
+        "left": "uncategorized",
+        "right": "live stock",
+        "detail": "only on live: uncategorized; only on curated: live stock"
+      },
+      {
+        "pair": "live↔curated",
+        "field": "categories",
+        "leftId": 2461,
+        "rightId": 2704,
+        "leftName": "Himalayan Koh  Authentic Pure Natural Halal Unprocessed Himalayan Edible Pink Cooking Salt, Fine Grain (0.5mm to 1mm)",
+        "rightName": "Himalayan Koh Pure Natural Himalayan Pink Salt for Livestock – Fine Grain (0.5–1mm), Unprocessed &amp; Halal",
+        "left": "uncategorized",
+        "right": "live stock",
+        "detail": "only on live: uncategorized; only on curated: live stock"
+      },
+      {
+        "pair": "live↔curated",
+        "field": "categories",
+        "leftId": 2446,
+        "rightId": 2653,
+        "leftName": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+        "rightName": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+        "left": "uncategorized",
+        "right": "edible pink salt",
+        "detail": "only on live: uncategorized; only on curated: edible pink salt"
+      }
+    ]
+  },
+  "notComparable": [
+    {
+      "pair": "live↔curated",
+      "field": "price",
+      "leftId": 291,
+      "rightId": 2728,
+      "leftName": "Himalayan Salt Rock for Cattle 18 Lbs Bag",
+      "rightName": "Himalayan Salt Rock for Cattle 18 Lbs Bag - Himalayan Koh",
+      "reason": "live cannot report price"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "stock",
+      "leftId": 291,
+      "rightId": 2728,
+      "leftName": "Himalayan Salt Rock for Cattle 18 Lbs Bag",
+      "rightName": "Himalayan Salt Rock for Cattle 18 Lbs Bag - Himalayan Koh",
+      "reason": "live cannot report stock"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "price",
+      "leftId": 281,
+      "rightId": 2721,
+      "leftName": "Himalayan Pink Salt Licks for Horses",
+      "rightName": "Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh",
+      "reason": "live cannot report price"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "stock",
+      "leftId": 281,
+      "rightId": 2721,
+      "leftName": "Himalayan Pink Salt Licks for Horses",
+      "rightName": "Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh",
+      "reason": "live cannot report stock"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "price",
+      "leftId": 271,
+      "rightId": 2716,
+      "leftName": "Bag of Himalayan Pink Salt for Livestock (45 lbs.)",
+      "rightName": "Bag of Himalayan Pink Salt for Livestock (45 lbs.) - Himalayan Koh",
+      "reason": "live cannot report price"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "stock",
+      "leftId": 271,
+      "rightId": 2716,
+      "leftName": "Bag of Himalayan Pink Salt for Livestock (45 lbs.)",
+      "rightName": "Bag of Himalayan Pink Salt for Livestock (45 lbs.) - Himalayan Koh",
+      "reason": "live cannot report stock"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "price",
+      "leftId": 2321,
+      "rightId": 2710,
+      "leftName": "Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes – 6 lbs",
+      "rightName": "Himalayan Pink Salt for Livestock - 6 lbs Fine or Coarse Grain Pouches",
+      "reason": "live cannot report price"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "stock",
+      "leftId": 2321,
+      "rightId": 2710,
+      "leftName": "Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes – 6 lbs",
+      "rightName": "Himalayan Pink Salt for Livestock - 6 lbs Fine or Coarse Grain Pouches",
+      "reason": "live cannot report stock"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "price",
+      "leftId": 2461,
+      "rightId": 2704,
+      "leftName": "Himalayan Koh  Authentic Pure Natural Halal Unprocessed Himalayan Edible Pink Cooking Salt, Fine Grain (0.5mm to 1mm)",
+      "rightName": "Himalayan Koh Pure Natural Himalayan Pink Salt for Livestock – Fine Grain (0.5–1mm), Unprocessed &amp; Halal",
+      "reason": "live cannot report price"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "stock",
+      "leftId": 2461,
+      "rightId": 2704,
+      "leftName": "Himalayan Koh  Authentic Pure Natural Halal Unprocessed Himalayan Edible Pink Cooking Salt, Fine Grain (0.5mm to 1mm)",
+      "rightName": "Himalayan Koh Pure Natural Himalayan Pink Salt for Livestock – Fine Grain (0.5–1mm), Unprocessed &amp; Halal",
+      "reason": "live cannot report stock"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "price",
+      "leftId": 2446,
+      "rightId": 2653,
+      "leftName": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+      "rightName": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+      "reason": "live cannot report price"
+    },
+    {
+      "pair": "live↔curated",
+      "field": "stock",
+      "leftId": 2446,
+      "rightId": 2653,
+      "leftName": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+      "rightName": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+      "reason": "live cannot report stock"
+    }
+  ],
+  "categoryIdCollisions": [
+    {
+      "id": 75,
+      "leftName": "Uncategorized",
+      "rightName": "Live Stock",
+      "agreement": "DIFFERENT meaning — never copy this id"
+    },
+    {
+      "id": 105,
+      "leftName": "Bulk Order",
+      "rightName": "Bulk Order",
+      "agreement": "same meaning"
+    }
+  ],
+  "servedNotInCurated": [],
+  "curatedPublishedNotServed": [],
+  "rowsWithoutSku": {
+    "live": [
+      {
+        "source": "live",
+        "id": 2461,
+        "name": "Himalayan Koh  Authentic Pure Natural Halal Unprocessed Himalayan Edible Pink Cooking Salt, Fine Grain (0.5mm to 1mm)",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 2446,
+        "name": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 2372,
+        "name": "HIMALAYAN ROCK SALT BAG 18 LBS",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 2367,
+        "name": "HIMALAYAN SALT POUCHES",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 2352,
+        "name": "SALT LICKS",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 2321,
+        "name": "Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes – 6 lbs",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 2295,
+        "name": "HIMALAYAN CRYSTAL ROCK SALT LAMP IONIZER AIR PURIFIER WITH DIMMABLE CONTROL",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 2192,
+        "name": "Himalayan Chef Himalayan Pink Salt Coarse Grain, Jar-1 lbs",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 2185,
+        "name": "Himalayan Chef Himalayan Pink Salt Fine Grain, Jar-1 lbs",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 271,
+        "name": "Bag of Himalayan Pink Salt for Livestock (45 lbs.)",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 286,
+        "name": "Himalayan Pink Salt Block for Deer",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 281,
+        "name": "Himalayan Pink Salt Licks for Horses",
+        "status": "publish"
+      },
+      {
+        "source": "live",
+        "id": 291,
+        "name": "Himalayan Salt Rock for Cattle 18 Lbs Bag",
+        "status": "publish"
+      }
+    ],
+    "curated": [
+      {
+        "source": "curated",
+        "id": 2728,
+        "name": "Himalayan Salt Rock for Cattle 18 Lbs Bag - Himalayan Koh",
+        "status": "draft"
+      }
+    ],
+    "served": []
+  },
+  "summary": {
+    "livePublished": 13,
+    "curatedTotal": 7,
+    "servedTotal": 6,
+    "exactSkuMatches": 0,
+    "possibleMatchesRequiringOwnerApproval": 6,
+    "missingProductionProducts": 3,
+    "productsRequiringCreation": 1,
+    "duplicateSkus": 0,
+    "conflictingProducts": 0,
+    "priceDifferences": 0,
+    "stockDifferences": 0,
+    "imageDifferences": 9,
+    "categoryDifferences": 6,
+    "notComparable": 12,
+    "skuMatchingPossible": false
+  },
+  "reviewChecklist": [
+    "Confirm the backup and its verified restore first — docs/production/BACKUP-RESTORE-VERIFICATION.md, checked with `npm run check:backup`. Nothing below may begin before that is PASS.",
+    "Prove that wp.himalayankoh.com reaches the WordPress installation while its Site URL and Home URL stay on the apex (docs/production/WORDPRESS-HOSTING-PREP.md), because this manifest reads the live catalogue over the same installation.",
+    "Create a WooCommerce REST key pair on the live apex installation (read-only is enough), then re-run this manifest: the SKU, price and stock columns stop being \"not readable\" and the exact matches become decidable.",
+    "Assign a SKU to every live product that lacks one, and to any curated product that lacks one, before any import is designed.",
+    "Decide each suggested pair: is the curated product a replacement for the live product, or an addition?",
+    "Map categories by name and never by term id (see categoryIdCollisions).",
+    "Decide, product by product, what happens to each live product with no counterpart — keep published, retire with a redirect, or leave alone."
+  ]
+}

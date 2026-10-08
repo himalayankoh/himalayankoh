@@ -45,177 +45,88 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnv } from './lib/env.mjs';
 import {
-  PRODUCTION_SITE_ORIGIN,
-  PRODUCTION_WORKER_NAME,
-  STAGING_BACKEND_ORIGIN,
-  STAGING_SITE_ORIGIN,
-} from './production-target.mjs';
+  APEX_ORIGIN as APEX,
+  STAGING_BACKEND as STAGING,
+  STAGING_SITE,
+  nameSimilarity as similarity,
+  productionWorkerOrigin,
+  readCatalogueSources,
+  significantTokens as tokens,
+} from './lib/catalogueSources.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const UA = 'Mozilla/5.0 (compatible; HimalayanKoh-compare-catalogues/1.0)';
-
-loadEnv();
 
 const args = process.argv.slice(2);
 const outFlag = args.indexOf('--out');
 const OUT = join(ROOT, outFlag !== -1 && args[outFlag + 1] ? args[outFlag + 1] : 'docs/production/CATALOG-COMPARISON.md');
 
-const APEX = PRODUCTION_SITE_ORIGIN;
-const STAGING = STAGING_BACKEND_ORIGIN;
-
-/**
- * The pre-cutover Worker's own address, which is the only place it is reachable.
- *
- * Read from the environment so a future deployment does not have to be found here by hand;
- * the default is the account's real subdomain, measured. It is a public hostname — no
- * secret is involved — and it is the one a cutover will replace with the apex.
- */
-const PRODUCTION_WORKER_ORIGIN =
-  (process.env.PRODUCTION_WORKER_ORIGIN || '').trim().replace(/\/+$/, '') ||
-  `https://${PRODUCTION_WORKER_NAME}.himalayankoh-pk.workers.dev`;
-
-/** The configured pair. Used against staging always, and against the apex best-effort. */
-const PAIR = {
-  key: (process.env.WOOCOMMERCE_CONSUMER_KEY || '').trim(),
-  secret: (process.env.WOOCOMMERCE_CONSUMER_SECRET || '').trim(),
-};
-const hasPair = Boolean(PAIR.key && PAIR.secret);
-const basic = hasPair ? `Basic ${Buffer.from(`${PAIR.key}:${PAIR.secret}`).toString('base64')}` : '';
-
-async function getJson(url, { auth = false } = {}) {
-  const started = Date.now();
-  try {
-    const response = await fetch(url, {
-      headers: { 'User-Agent': UA, Accept: 'application/json', ...(auth ? { Authorization: basic } : {}) },
-      signal: AbortSignal.timeout(25_000),
-    });
-    const text = await response.text();
-    let json = null;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      /* not JSON */
-    }
-    return { url, status: response.status, json, ms: Date.now() - started };
-  } catch (error) {
-    return { url, status: 0, json: null, ms: Date.now() - started, transport: String(error?.message || error) };
-  }
-}
-
 /* ------------------------------------------------------------------ */
-/* Read the three sources                                             */
+/* Read the sources (through the shared reader)                       */
 /* ------------------------------------------------------------------ */
 
-const apexProducts = await getJson(`${APEX}/wp-json/wp/v2/product?per_page=100`);
-const apexCats = await getJson(`${APEX}/wp-json/wp/v2/product_cat?per_page=100`);
-const apexRich = hasPair ? await getJson(`${APEX}/wp-json/wc/v3/products?per_page=100&status=any`, { auth: true }) : { status: 0, json: null };
-const stagingProducts = hasPair ? await getJson(`${STAGING}/wp-json/wc/v3/products?per_page=100&status=any`, { auth: true }) : { status: 0, json: null };
-const stagingCats = hasPair ? await getJson(`${STAGING}/wp-json/wc/v3/products/categories?per_page=100`, { auth: true }) : { status: 0, json: null };
-const preview = await getJson(`${STAGING_SITE_ORIGIN}/api/catalog`);
-const production = await getJson(`${PRODUCTION_WORKER_ORIGIN}/api/catalog`);
-
-const list = (result) => (Array.isArray(result.json) ? result.json : []);
-const apexList = list(apexProducts);
-
 /**
- * Featured images on the live apex.
+ * The reads happen in `lib/catalogueSources.mjs`, which
+ * `plan-catalogue-migration.mjs` uses too.
  *
- * The product endpoint carries an attachment **id**, not a URL, so the media endpoint is
- * asked once for the ids the products actually use. Still one public GET, still read-only,
- * and it is what turns "this product has an image" into "this product's image is at …" —
- * the thing an owner needs when the live admin is not reachable.
+ * This file used to carry its own copy of every fetch, URL and row mapping. When the
+ * migration manifest needed the same four reads, the choice was one reader or two
+ * implementations that drift — and the way they drift here is expensive, because the
+ * live apex is only half readable: a second reader that forgot the pair check would
+ * print a `null` price as though it were a fact. So the reader moved out, and this file
+ * keeps only what is unique to it: the report below.
  */
-const apexMediaIds = [...new Set(apexList.map((p) => p.featured_media).filter((id) => Number.isInteger(id) && id > 0))];
-const apexMedia = apexMediaIds.length
-  ? await getJson(`${APEX}/wp-json/wp/v2/media?include=${apexMediaIds.join(',')}&per_page=100`)
-  : { url: '', status: 0, json: [] };
-const apexMediaById = new Map((Array.isArray(apexMedia.json) ? apexMedia.json : []).map((m) => [m.id, m]));
+const sources = await readCatalogueSources();
 
-const apexRichList = list(apexRich);
-const stagingList = list(stagingProducts);
-const previewList = Array.isArray(preview.json?.products) ? preview.json.products : [];
-const productionList = Array.isArray(production.json?.products) ? production.json.products : [];
+const APEX_PRODUCTS = sources.live.page;
+const APEX_CATS = sources.live.categoriesRead;
+const APEX_MEDIA = sources.live.mediaRead;
+const APEX_RICH = sources.live.rich;
+const STAGING_PRODUCTS = sources.curated.products;
+const STAGING_CATS = sources.curated.categoriesRead;
+const PREVIEW = sources.served.catalog;
+const PRODUCTION = sources.preProduction.unauth;
+const PRODUCTION_WORKER_ORIGIN = sources.preProduction.origin;
 
-const apexRichById = new Map(apexRichList.map((p) => [p.id, p]));
-const apexAcceptsPair = apexRich.status === 200;
+const hasPair = sources.hasPair;
+const apexAcceptsPair = sources.live.acceptsPair;
+
+const apexList = sources.live.rows;
+const apexRichList = Array.isArray(APEX_RICH.json) ? APEX_RICH.json : [];
+const stagingList = sources.curated.rows;
+const previewList = sources.served.rows;
+const productionList = sources.preProduction.rows;
 
 /* ------------------------------------------------------------------ */
 /* Matching                                                            */
 /* ------------------------------------------------------------------ */
 
-const STOP = new Set(['the', 'a', 'an', 'and', 'for', 'of', 'with', 'in', 'to', 'or', 'natural', 'pure', 'authentic', 'himalayan', 'koh']);
+/**
+ * The row shape this report prints.
+ *
+ * The reader's rows use `name`/`categories`/`imageUrls`; the tables below were written
+ * against `label`/`cats`/`images`. Rather than rewrite every line of the report — and
+ * risk changing prose that has already been reviewed — the two aliases are applied here,
+ * once.
+ */
+const forReport = (row) => ({
+  ...row,
+  label: row.name,
+  cats: row.categories,
+  images: row.imageUrls.length,
+});
 
-/** Significant lowercase tokens, for a deliberately crude overlap score. */
-function tokens(name) {
-  return new Set(
-    String(name || '')
-      .toLowerCase()
-      .replace(/&#8211;|&amp;/g, ' ')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .split(' ')
-      .filter((word) => word.length > 1 && !STOP.has(word)),
-  );
-}
-
-/** Jaccard overlap of significant tokens: 0 (nothing shared) to 1 (same words). */
-function similarity(a, b) {
-  const left = tokens(a);
-  const right = tokens(b);
-  if (left.size === 0 || right.size === 0) return 0;
-  let shared = 0;
-  for (const word of left) if (right.has(word)) shared += 1;
-  return shared / (left.size + right.size - shared);
-}
+const apexRows = apexList.map(forReport);
+const stagingRows = stagingList.map(forReport);
 
 /** Every apex product worth a human look for this staging product, best first. */
-function suggestionsFor(name, apexRows) {
-  return apexRows
+function suggestionsFor(name, rows) {
+  return rows
     .map((row) => ({ row, score: similarity(name, row.label) }))
     .filter((entry) => entry.score >= 0.34)
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 }
-
-/** Rows the comparison prints for each side, normalised to one shape. */
-const apexRows = apexList.map((p) => {
-  const rich = apexRichById.get(p.id);
-  return {
-    id: p.id,
-    sku: rich?.sku || null,
-    label: (p.title?.rendered || '').replace(/&#8211;/g, '–').replace(/&amp;/g, '&'),
-    rawLabel: p.title?.rendered || '',
-    status: p.status,
-    slug: p.slug,
-    link: p.link,
-    modified: p.modified,
-    cats: Array.isArray(p.product_cat) ? p.product_cat : [],
-    featuredMedia: p.featured_media ?? null,
-    image: apexMediaById.get(p.featured_media)?.source_url ?? null,
-    imageMime: apexMediaById.get(p.featured_media)?.mime_type ?? null,
-    price: rich?.price ?? null,
-    stockStatus: rich?.stock_status ?? null,
-    stockQuantity: rich?.stock_quantity ?? null,
-    images: rich?.images?.length ?? null,
-  };
-});
-
-const stagingRows = stagingList.map((p) => ({
-  id: p.id,
-  sku: p.sku || null,
-  label: p.name,
-  status: p.status,
-  slug: p.slug,
-  price: p.price ?? null,
-  regularPrice: p.regular_price ?? null,
-  stockStatus: p.stock_status ?? null,
-  stockQuantity: p.stock_quantity ?? null,
-  cats: (p.categories || []).map((c) => c.name),
-  images: (p.images || []).length,
-  imageUrls: (p.images || []).map((i) => i.src),
-  modified: p.date_modified,
-}));
 
 const apexPublished = apexRows.filter((r) => r.status === 'publish');
 const stagingPublished = stagingRows.filter((r) => r.status === 'publish');
@@ -245,12 +156,12 @@ L.push('## Sources, and how each was read');
 L.push('');
 L.push('| Source | Endpoint | Auth | Result |');
 L.push('| --- | --- | --- | --- |');
-L.push(`| Live catalogue (ids, titles, slugs, status, categories, media) | \`GET ${APEX}/wp-json/wp/v2/product?per_page=100\` | **none — public** | HTTP ${apexProducts.status}, ${apexList.length} products |`);
-L.push(`| Live catalogue (featured image URLs) | \`GET ${APEX}/wp-json/wp/v2/media?include=…\` | **none — public** | HTTP ${apexMedia.status}, ${apexMediaById.size} of ${apexMediaIds.length} media record(s) resolved |`);
-L.push(`| Live catalogue (price, SKU, stock) | \`GET ${APEX}/wp-json/wc/v3/products\` | configured WooCommerce pair | ${apexAcceptsPair ? `HTTP 200, ${apexRichList.length} products` : `**HTTP ${apexRich.status} — the apex does not accept the configured pair, so price, SKU and stock are NOT readable and are shown as unknown below**`} |`);
-L.push(`| Staging catalogue (full field set) | \`GET ${STAGING}/wp-json/wc/v3/products?status=any\` | configured pair | HTTP ${stagingProducts.status}, ${stagingList.length} products |`);
-L.push(`| Storefront (what a shopper is served today) | \`GET ${STAGING_SITE_ORIGIN}/api/catalog\` | none | HTTP ${preview.status}, ${previewList.length} products, degraded: ${preview.json?.degraded} |`);
-L.push(`| Pre-cutover production Worker | \`GET ${PRODUCTION_WORKER_ORIGIN}/api/catalog\` | none | HTTP ${production.status}, ${productionList.length} products, degraded: ${production.json?.degraded} |`);
+L.push(`| Live catalogue (ids, titles, slugs, status, categories, media) | \`GET ${APEX}/wp-json/wp/v2/product?per_page=100\` | **none — public** | HTTP ${APEX_PRODUCTS.status}, ${apexList.length} products |`);
+L.push(`| Live catalogue (featured image URLs) | \`GET ${APEX}/wp-json/wp/v2/media?include=…\` | **none — public** | HTTP ${APEX_MEDIA.status}, ${sources.live.mediaResolvedCount} of ${sources.live.mediaIdsCount} media record(s) resolved |`);
+L.push(`| Live catalogue (price, SKU, stock) | \`GET ${APEX}/wp-json/wc/v3/products\` | configured WooCommerce pair | ${apexAcceptsPair ? `HTTP 200, ${apexRichList.length} products` : `**HTTP ${APEX_RICH.status} — the apex does not accept the configured pair, so price, SKU and stock are NOT readable and are shown as unknown below**`} |`);
+L.push(`| Staging catalogue (full field set) | \`GET ${STAGING}/wp-json/wc/v3/products?status=any\` | configured pair | HTTP ${STAGING_PRODUCTS.status}, ${stagingList.length} products |`);
+L.push(`| Storefront (what a shopper is served today) | \`GET ${STAGING_SITE}/api/catalog\` | none | HTTP ${PREVIEW.status}, ${previewList.length} products, degraded: ${PREVIEW.json?.degraded} |`);
+L.push(`| Pre-cutover production Worker | \`GET ${PRODUCTION_WORKER_ORIGIN}/api/catalog\` | none | HTTP ${PRODUCTION.status}, ${productionList.length} products, degraded: ${PRODUCTION.json?.degraded} |`);
 L.push('');
 L.push('The live catalogue is read through WP REST because the `product` post type is');
 L.push('registered `show_in_rest` on that installation. **Everything in that column is');
@@ -267,7 +178,7 @@ L.push('| --- | --- | --- | --- | --- |');
 L.push(`| Products returned | ${apexList.length} | ${stagingList.length} | ${previewList.length} | ${productionList.length} |`);
 L.push(`| Published | ${apexPublished.length} | ${stagingPublished.length} | — | — |`);
 L.push(`| Draft | ${apexRows.filter((r) => r.status === 'draft').length} | ${stagingRows.filter((r) => r.status === 'draft').length} | — | — |`);
-L.push(`| Categories | ${Array.isArray(apexCats.json) ? apexCats.json.length : '?'} | ${Array.isArray(stagingCats.json) ? stagingCats.json.length : '?'} | — | — |`);
+L.push(`| Categories | ${Array.isArray(APEX_CATS.json) ? APEX_CATS.json.length : '?'} | ${Array.isArray(STAGING_CATS.json) ? STAGING_CATS.json.length : '?'} | — | — |`);
 L.push(`| Products with an image | ${apexRows.filter((r) => r.image).length} of ${apexRows.length} | ${stagingRows.filter((r) => r.images > 0).length} of ${stagingRows.length} | — | — |`);
 L.push('');
 
@@ -291,7 +202,7 @@ for (const row of apexRows.slice().sort((a, b) => a.id - b.id)) {
   L.push(`- **${row.id}** ${row.label.slice(0, 46)} — ${row.image ? `\`${row.image}\`${row.imageMime ? ` _(${row.imageMime})_` : ''}` : '_no featured image resolved_'}`);
 }
 L.push('');
-L.push(`Categories on the live apex: ${(Array.isArray(apexCats.json) ? apexCats.json : []).map((c) => `\`${c.id}\` ${c.name} (${c.count})`).join(' · ') || '_none readable_'}`);
+L.push(`Categories on the live apex: ${(Array.isArray(APEX_CATS.json) ? APEX_CATS.json : []).map((c) => `\`${c.id}\` ${c.name} (${c.count})`).join(' · ') || '_none readable_'}`);
 L.push('');
 
 L.push('## Staging — the curated catalogue the storefront serves');
@@ -302,7 +213,7 @@ for (const row of stagingRows) {
   L.push(`| ${row.id} | ${row.sku || '—'} | ${String(row.label).slice(0, 58)} | ${row.status} | ${row.price} | ${row.stockStatus}${row.stockQuantity === null ? '' : ` (${row.stockQuantity})`} | ${row.images} | ${row.cats.join(', ') || '—'} |`);
 }
 L.push('');
-L.push(`Categories on staging: ${(Array.isArray(stagingCats.json) ? stagingCats.json : []).map((c) => `\`${c.id}\` ${c.name} (${c.count})`).join(' · ') || '_none readable_'}`);
+L.push(`Categories on staging: ${(Array.isArray(STAGING_CATS.json) ? STAGING_CATS.json : []).map((c) => `\`${c.id}\` ${c.name} (${c.count})`).join(' · ') || '_none readable_'}`);
 L.push('');
 
 L.push('## Products the storefront serves that the live apex does not hold');
@@ -397,7 +308,7 @@ L.push('- **Whether a suggested pair is the same product.** Names are the only s
 L.push('  and the two catalogues name the same items differently (“Bag of Himalayan Pink Salt for');
 L.push('  Livestock (45 lbs.)” against “Himalayan Rock Salt for Livestock (45 lb)”). The similarity');
 L.push('  score is a reading aid, not an identity.');
-L.push(`- **Price, SKU and stock on the live apex.** ${apexAcceptsPair ? 'Readable in this run.' : 'Not readable in this run — WooCommerce REST returned HTTP ' + apexRich.status + ' for the configured pair, and the public pages are not a substitute for the record.'}`);
+L.push(`- **Price, SKU and stock on the live apex.** ${apexAcceptsPair ? 'Readable in this run.' : 'Not readable in this run — WooCommerce REST returned HTTP ' + APEX_RICH.status + ' for the configured pair, and the public pages are not a substitute for the record.'}`);
 L.push('- **Variations and their children.** A variable product’s variations are separate records with');
 L.push('  their own SKUs, prices and stock, and neither source here expands them.');
 L.push('- **Anything unpublished.** Only `publish` and (via WooCommerce REST) `draft` are visible;');
