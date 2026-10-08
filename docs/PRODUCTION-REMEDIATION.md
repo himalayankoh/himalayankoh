@@ -41,9 +41,9 @@ fails if the two disagree.
 | Probe | Result |
 | --- | --- |
 | `himalayankoh.com`, `www`, `preview`, `mail` A records | Cloudflare proxy addresses (`104.21.79.159`, `172.67.146.121`) |
-| `wp.himalayankoh.com`, `origin.*`, `backend.*`, `staging.*` | NXDOMAIN — they do not exist |
+| `wp.himalayankoh.com` | **now created** (see the second pass below); `origin.*`, `backend.*`, `staging.*` do not exist |
 | Origin server, reachable at `162.0.209.25` (from the zone's SPF record) with SNI/Host `himalayankoh.com` | HTTP 200, WordPress JSON |
-| The same origin with Host `wp.himalayankoh.com` | **HTTP 404** — the hosting account has no vhost for it |
+| The same origin with Host `wp.himalayankoh.com` | HTTP 200 with the **cPanel placeholder** (`/cgi-sys/defaultwebpage.cgi`, 163 bytes), and `/wp-json/` 404s — the hosting account still has no vhost for it |
 | `mail.himalayankoh.com/wp-json/` | HTTP 200 — the same WordPress, i.e. a cPanel `ServerAlias` on the main domain |
 | `WORDPRESS_BASE_URL=https://mail.himalayankoh.com npm run check:wordpress` | identical to the apex: WP core PASS, `/wc/v3/products` 401, Store API products FATAL |
 
@@ -105,6 +105,8 @@ repo, so the *curated* photography is unaffected either way.
 | The guard (config **and** artifact) | `scripts/assert-production-config.mjs` |
 | Build | `npm run build:production` |
 | Deploy | `npm run deploy:production` |
+| DNS + zone-settings export (read-only) | `scripts/export-production-dns.mjs` |
+| The `/wp-content/*` passthrough | `src/app/wp-content/[...path]/route.ts` |
 
 `vinext build` reads only the root `wrangler.jsonc` (staging), so the production
 name and variables are applied to `dist/server/wrangler.json` after the build and
@@ -151,11 +153,13 @@ environment:**
 ### Independent blocker found on the live store
 
 `https://himalayankoh.com/wp-json/wc/store/v1/products` returns **HTTP 500 with a
-WordPress PHP fatal** — the same failure the staging store has, on the live store.
-The public Store API cannot be used as a fallback for price/stock. It needs a
-server-side diagnosis (`WP_DEBUG_LOG`, then `wp-content/debug.log`; the usual cause
-is a plugin filtering Store API product output). This is a WordPress-side fix, not
-an application one.
+WordPress PHP fatal**. It is *not* the same failure the staging store has: measured
+again in the second pass, `/staging/wp-json/wc/store/v1/products` returns **200 with
+real product JSON**, so the two installs differ in data or options rather than code —
+both run WooCommerce 7.7.0 on PHP 7.4.33 behind LiteSpeed, with the same 748-route
+plugin surface and the same 24 plugins. The live route is diagnosed in detail in the
+second pass below. It needs a server-side fix; the public Store API cannot be used as
+a fallback for price/stock until it is fixed.
 
 ---
 
@@ -243,8 +247,12 @@ are set on the production Worker; **no label was purchased** during this work
 
 No verified database backup exists, and one cannot be taken from here:
 
-- the Cloudflare token cannot read DNS (`GET /zones/{id}/dns_records` → **403**), so
-  the current records cannot even be exported;
+- **superseded:** the zone's DNS is now readable *and writable* (see the second pass
+  below), and `scripts/export-production-dns.mjs` has been run. A DNS export exists at
+  `docs/production/dns-export-2026-10-08.json`. What is still missing is the database
+  and files backup, which needs hosting access; and the zone's **settings** (SSL mode,
+  Always Use HTTPS) cannot be read, because that is the separate
+  `Zone → Zone Settings → Read` permission the current token does not carry;
 - the hosting account is Namecheap/cPanel; the credentials in
   `../.freebuff/owner-secrets.local` (`NAMECHEAP_USER` / `NAMECHEAP_PASS`) were not
   used to log in or change anything, and a cPanel backup needs the server hostname,
@@ -349,3 +357,272 @@ Verified on the temporary production Worker (production build, no domain attache
 9. Only then: attach the apex and `www` to `himalayan-koh-ecommerce-prod`, purge
    the cache, run the cutover checklist in `docs/PRODUCTION-CUTOVER-PLAN.md`, and
    keep `docs/PRODUCTION-ROLLBACK.md` open.
+
+---
+
+# Second pass — 2026-10-08 (later the same day)
+
+This section supersedes anything above that it disagrees with. It records what
+changed since the first pass, what was newly measured, and what is now built.
+
+Release under test: `d5733e8` (this pass's code lands on top of it).
+Temporary production Worker: `himalayan-koh-ecommerce-prod`, version
+`5e011cb1-72d5-4403-a01f-1e68589d4978`, reachable only at
+`https://himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev`.
+The apex is still WordPress. No DNS record was changed except the one added below.
+
+## A. DNS access was granted, and what it bought
+
+The owner re-scoped the Cloudflare tokens. Measured capability, token by token:
+
+| Token | Carries | Does not carry |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN_1` | zones read, Workers scripts, Worker custom domains | DNS edit (403) |
+| `CLOUDFLARE_API_TOKEN_2` | Workers scripts + deploy (assets upload session) | DNS read (403) |
+| `CLOUDFLARE_API_TOKEN_3` | **zone read, DNS read, DNS edit** | Workers anything (403) |
+
+`../.freebuff/cf-env.mjs` now selects by capability (`dns` → token 3, `deploy` →
+token 2) instead of assuming token 1 could write DNS, and no longer fails when a
+zone-scoped token cannot see an account id.
+
+**Exported for the first time:** `npm run` → `node scripts/export-production-dns.mjs`
+wrote `docs/production/dns-export-2026-10-08.json` — all 10 records, the zone id and
+name servers, and the routing the export is preserving. Read-only.
+
+**Still not readable with this token:** the zone *settings* — `ssl`,
+`always_use_https`, `min_tls_version`, `automatic_https_rewrites`,
+`opportunistic_encryption`, `security_header`, `cache_level`, `development_mode`
+all answer `9109 / 10000 Unauthorized`. The export records them as `UNREADABLE`
+rather than omitting them, so the gap is visible. Adding
+`Zone → Zone Settings → Read` closes it; these matter at cutover because the Worker
+and the origin want different answers for SSL mode and Always Use HTTPS.
+
+## B. `wp.himalayankoh.com` now exists, and what it still needs
+
+Created (proxied `A` → `162.0.209.25`, DNS record id `7ed6361f7bca22c48397add457151552`).
+Cloudflare's Universal SSL covers it — TLS verifies clean — and the apex, `www`,
+`mail` and the MX records were not touched.
+
+It does **not** serve WordPress yet: the origin answers Host `wp.himalayankoh.com`
+with the cPanel placeholder page and 404s `/wp-json/`. No amount of DNS work fixes
+that; the hosting account needs the hostname. One owner step, either:
+
+- cPanel → Domains → create `wp.himalayankoh.com` as a subdomain (or alias) whose
+  document root is the WordPress installation; **or**
+- Cloudflare → Rules → Origin Rules → a rule for hostname `wp.himalayankoh.com`
+  that overrides the Host header to `himalayankoh.com`. This needs
+  `Zone → Origin Rules → Edit`, which the DNS token does **not** have (403), so it is
+  an owner action too.
+
+### A verified working backend host already exists
+
+The hosting account answers for `mail.himalayankoh.com` as a `ServerAlias` of the main
+domain, and it serves **the identical installation**:
+
+| Probe | Result |
+| --- | --- |
+| `/wp-json/` | 200, 1,232,486 bytes — the same 25 namespaces and 748 routes |
+| `wp-json` root `home` | `https://himalayankoh.com` |
+| `/wp-content/uploads/2022/08/logo.png` | 200, `image/png`, **8,288 bytes — byte-identical** to the apex |
+| `/wp-json/wc/store/v1/products` | 500 (the same fatal as the apex, i.e. the same install) |
+
+So a backend host that needs no hosting change is available today. It is **not** used
+as the production backend, because `NEXT_PUBLIC_WORDPRESS_BASE_URL` is also read by
+browser code (`lib/youtube/store.ts`), so the public variable and the server secret
+must be the same value — and `mail.` is a name that a future email migration could
+repoint, which would silently take the store down. It was used for verification only,
+through a local override. The decision is recorded as an owner choice in the final
+report: add the hosting alias for `wp.`, or accept `mail.` as the backend.
+
+## C. The `/wp-content/*` passthrough — implemented (was: not implemented)
+
+`src/app/wp-content/[...path]/route.ts`, with the path rules in
+`src/lib/images/wpContentPath.ts` and 15 tests in the route's `route.test.ts`.
+
+The helper is a separate module for a reason worth recording: Next.js validates a
+`route.ts`'s exports against the set of route handlers it allows, so exporting a
+helper from the route file fails the build's generated route types with
+`Property 'safeWpContentPath' is incompatible with index signature`. This is the same
+failure class as the `__resetAiStatusCache` build break fixed in `afbe60c`.
+
+What it guarantees:
+
+- the upstream is built from `backendConfig.wordpressBaseUrl` — the **configured
+  backend host**, never the origin the request arrived on. That is what makes it
+  loop-free after the cutover, and it is the same rule `production-target.mjs`
+  enforces for the build;
+- the `wp-content/` prefix is supplied by the code, not the caller, so no crafted
+  path resolves outside it; each segment is percent-encoded, so `?`, `#` and an
+  encoded `/` inside a segment cannot become structure upstream; a traversal segment
+  is refused before any request is made;
+- `redirect: 'manual'`, and a 3xx becomes a 404. Following a canonical-host bounce is
+  how a proxy acquires a loop;
+- `set-cookie` is on the response deny-list, so WordPress never gets a session onto
+  the shopping domain; request headers are limited to `if-none-match`,
+  `if-modified-since` and `range`;
+- 200/206 stream through with the upstream `content-type`/`etag`/`last-modified`/
+  `cache-control`; 304 passes straight back; a missing file is a 404 and an
+  unreachable backend is a 502 (not a 500 — it is the *backend* that failed).
+
+It deliberately does **not** proxy `/wp-json/`, `/wp-admin/` or `/wp-login.php`:
+those belong at the backend hostname, and making the shopping domain an entry point to
+the WordPress admin is a surface with no upside.
+
+**Verified end to end** through the app against the live WordPress
+(`WORDPRESS_BASE_URL` overridden to the working backend host, see §B):
+
+| Request | Result |
+| --- | --- |
+| `GET /wp-content/uploads/2022/08/logo.png` | 200, `image/png`, 8,288 bytes — `cmp` says **byte-identical** to the backend |
+| `GET /wp-content/../../wp-config.php` | 404, and no upstream request made |
+| `GET /wp-content/uploads/2022/08/logo-300x100.png` (absent) | 404 |
+
+**Verified on the deployed Worker:** `GET /wp-content/uploads/2022/08/logo.png`
+answers 404 in 9 bytes — that is *this route's own* 404, which it may only produce
+after a real fetch of `https://wp.himalayankoh.com/…` came back 404 (that host serves
+the cPanel placeholder and 404s the path). So the passthrough is live, resolves to the
+configured backend, and is blocked only by §B's hosting step.
+
+## D. The live Store API fatal — diagnosis, with the evidence
+
+Not fixed: it needs shell or file access to the hosting account, and the local
+`NAMECHEAP_USER` / `NAMECHEAP_PASS` pair **is not a cPanel login for this server**
+(`POST https://himalayankoh.com:2083/login/?login_only=1` → **HTTP 401**; the server
+is `premium164-3.web-hosting.com`). What is established, and what the owner or the
+host can act on:
+
+**It is not a route-registration problem.** `/wc/store/v1/products` appears in the
+route index, and `OPTIONS` on it returns the full 14,831-byte JSON schema.
+
+**It is not the cart or the rest of the namespace.** On the *same* install:
+`/wc/store/v1/cart` → 200; `/wc/store/v1/products/categories` → 200;
+`/wc/store/v1/products/collection-data` → 200. Only the routes that serialise a
+product fail.
+
+**It fails on serialising a product, not on querying one.** This is the sharpest
+clue and it was measured, not inferred:
+
+| Request | Status |
+| --- | --- |
+| `/wc/store/v1/products?featured=true` (no featured products) | **200, `[]`** |
+| `/wc/store/v1/products?category=0` (no such category) | **200, `[]`** |
+| `/wc/store/v1/products?per_page=1&page=9` (past the end) | **200, `[]`** |
+| `/wc/store/v1/products?per_page=1` | 500 |
+| `/wc/store/v1/products/271`, `/281`, `/286` … **every one of the 13 live ids** | 500 |
+
+An empty result set is fine and any single product is fatal, so it is not one corrupt
+product — it is code that runs per product. The response is WordPress's own fatal
+page (`text/html`, 2,653 bytes, `x-robots-tag: noindex`) with the real message
+suppressed, which means `WP_DEBUG_DISPLAY` is off and the detail went to
+`wp-content/debug.log` (if `WP_DEBUG_LOG` is on) or the account's error log.
+
+**It is not the plugin set and not the version.** Both installs return the same 748
+routes and the same 25 namespaces from the same 24 plugins and the same theme, both
+run **WooCommerce 7.7.0** on **PHP 7.4.33** behind LiteSpeed — and staging's identical
+route returns **200 with real product JSON**. The difference is therefore in that
+install's options, its per-install code (active theme `functions.php`, or anything in
+`wp-content/mu-plugins/`, which an asset scan cannot see), or its product data.
+
+### The fix, in order
+
+1. Read the actual error: cPanel → File Manager → `public_html/wp-content/debug.log`
+   (enable `WP_DEBUG_LOG` temporarily if it is absent), or the account error log in
+   cPanel → Metrics → Errors. The message names the file and line.
+2. Compare against the staging install that works: its `functions.php`, its active
+   plugin list and its `mu-plugins` directory. That is where a per-product filter that
+   fatals will be.
+3. Fix on the WordPress side and remove the debug flag. Do **not** point the storefront
+   at staging, and do not paper over it in the application: `lib/backend/woocommerce.ts`
+   already reports it honestly, and `backend/config.ts` `describeReadiness` already
+   explains the consequence to the owner.
+
+Until it is fixed, price and stock can only come from authenticated `/wc/v3` — which
+is §3's missing credential pair, not a second blocker.
+
+## E. Live Shippo rating — verified (was: never exercised)
+
+The production Worker returns **real carrier quotes**: `POST /api/shippo/rates` with a
+real destination answered **200 with 8 rate options** — USPS Ground Advantage /
+Priority Mail / Priority Mail Express and UPS Ground / Ground Saver / 3 Day Select /
+2nd Day Air, with live amounts and ETAs (e.g. one 30 lb block, Mountain View CA:
+USPS Ground Advantage **$183.88**, 4 days; UPS Ground **$79.18**, 3 days).
+
+**No label was purchased.** Only `/api/shippo/rates` was called; `/create-label` was
+not. The live `shippo_live_` token is on the Worker, and the app's own guard is why
+this had to be done there: run locally, the same request is refused with *"Live Shippo
+API keys cannot be used in staging environment"* — which is the correct behaviour and
+worth keeping.
+
+The packing rules were exercised for all four cases (2 lb ×1 and ×7, 6 lb ×1,
+30 lb ×2) and `npm run check:packing` / `check:packing-splits` both pass, including:
+2 lb and 6 lb licks share the **10×10×6** box *dimensions* while each product type is
+packed on its own rule and boxes are never merged (1×2lb + 1×6lb → 2 parcels, never
+one 8 lb box); 5×6 lb licks → 2 parcels (4 per box); 2×30 lb blocks → 2 parcels
+(**8.5×7.5×6.5**, 1 per box, never one 60 lb box); 7×2 lb + 5×6 lb → 4 parcels.
+Shippo decides billable weight, service, rate and transit time.
+
+## F. Stripe, and one build-input risk found
+
+On the production Worker: `STRIPE_ALLOW_LIVE` is **absent** (checked against the
+deployed bindings, not the config file), and `/api/stripe/config` reports
+`chargingBlockedReason: "No Stripe secret key is configured."`. Live charging is
+off, as required.
+
+The live **publishable** key is present (`pk_live_…`, `publishableKeySource: "env"`) —
+but it is **not a declared production variable**: there is no `STRIPE_*` binding on the
+Worker, so the key reaches the bundle because `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` sits
+in the developer's `.env.local` and `NEXT_PUBLIC_*` is inlined at build time.
+
+That is a real deployment risk, not a leak — a publishable key is public by design and
+the build's credential scan covers the 14 *server-side* values. But it means **a build
+on a machine without that file ships a storefront with no payment option and no failure
+anywhere to say so**. Before the cutover, `prepare-deploy-env.mjs` should write it from a
+`DEPLOY_STRIPE_PUBLISHABLE_KEY`, and the production guard should assert the artifact
+contains a `pk_live_`/`pk_test_` string. Left as a check item rather than changed here.
+
+The live **secret** key is not on the Worker, so `keyStatus.secret` is `missing`; per
+the first pass it lives in the live store's WooCommerce settings row. `settingsRead`
+reports `ok: false` for the same reason everything else does — the backend host has no
+vhost yet (§B) — so this is one thing to re-measure *after* `wp.` is aliased, not a
+separate finding.
+
+## G. SEO — verified on the deployed production Worker
+
+| Check | Result |
+| --- | --- |
+| `<link rel="canonical">` on `/` | `https://himalayankoh.com` |
+| `og:url` on `/` | `https://himalayankoh.com` |
+| `/sitemap.xml` | 15 URLs, **all** `https://himalayankoh.com` |
+| `/robots.txt` on the `*.workers.dev` host | `User-Agent: *` / `Disallow: /` |
+| `X-Robots-Tag` on the `*.workers.dev` host | `noindex, nofollow` |
+| `/quality` | 308 → `/about` |
+| apex `www` behaviour | unchanged: apex 200 (WordPress), `www` 301 → non-www |
+
+The temporary host is noindex by two independent mechanisms and no preview URL appears
+in the sitemap. No public DNS was changed.
+
+## H. Email
+
+Unchanged and correct: `/api/email/status` reports outbound
+`NOT_CONFIGURED` (`resendConfigured: false`, `sendEnabled: false`, sender
+`sales@himalayankoh.com`) and inbound `NOT_CONFIGURED` (needs
+`CLOUDFLARE_API_TOKEN` for email routing). Nothing broken is enabled; no email
+configuration was faked. Still an owner action: provide `RESEND_API_KEY` and a verified
+sending domain, then set `EMAIL_SEND_ENABLED=true`.
+
+## I. What is still blocking, in one list
+
+1. **Hosting alias for `wp.himalayankoh.com`** (or an Origin Rule) — one owner step.
+   Everything to do with reading live product data is behind it.
+2. **Live WooCommerce REST key/secret and a live WordPress application password.**
+   Not present anywhere in this environment. Without the first, the catalogue is empty
+   (verified: `/products` renders 42 KB of empty catalogue vs 83 KB on staging).
+3. **The Store API fatal** (§D) — a WordPress-side fix, or item 2 makes it moot for
+   price and stock.
+4. **Database + files backup** — needs hosting access. No verified backup exists.
+5. **Zone Settings: Read** on the token, to record the TLS/HTTPS settings in the export.
+6. **Stripe live webhook** (`whsec_`) — a cutover-time step, after the real domain.
+7. **`RESEND_API_KEY` + verified sending domain.**
+8. **`ADMIN_LOGIN_ACCOUNTS`** for the production admin console.
+9. **The 6 lb Salt Lick does not exist** — unchanged from the first pass; nothing was
+   created, and the packing rule is correct but has no product.

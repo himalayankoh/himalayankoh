@@ -1,0 +1,113 @@
+{
+  "exportedAt": "2026-10-08T16:50:11.692Z",
+  "exportedBy": "scripts/export-production-dns.mjs (read-only)",
+  "zone": {
+    "id": "1f114016cd25da9e12c584e48fbd7f96",
+    "name": "himalayankoh.com",
+    "status": "active",
+    "nameServers": [
+      "denver.ns.cloudflare.com",
+      "fish.ns.cloudflare.com"
+    ]
+  },
+  "routing": {
+    "productionSite": "https://himalayankoh.com",
+    "stagingSite": "https://preview.himalayankoh.com"
+  },
+  "settings": {
+    "ssl": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/ssl failed: 9109 Unauthorized to access requested resource",
+    "always_use_https": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/always_use_https failed: 10000 Authentication error",
+    "min_tls_version": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/min_tls_version failed: 9109 Unauthorized to access requested resource",
+    "automatic_https_rewrites": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/automatic_https_rewrites failed: 10000 Authentication error",
+    "opportunistic_encryption": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/opportunistic_encryption failed: 9109 Unauthorized to access requested resource",
+    "security_header": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/security_header failed: 9109 Unauthorized to access requested resource",
+    "cache_level": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/cache_level failed: 10000 Authentication error",
+    "development_mode": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/development_mode failed: 10000 Authentication error"
+  },
+  "recordCount": 10,
+  "records": [
+    {
+      "id": "b46cab2ca927f021bae96a9fc20f1ea3",
+      "type": "A",
+      "name": "himalayankoh.com",
+      "content": "162.0.209.25",
+      "proxied": true,
+      "ttl": 1
+    },
+    {
+      "id": "3b4f5c5651cd177c3371074ed07a2c25",
+      "type": "A",
+      "name": "mail.himalayankoh.com",
+      "content": "162.0.209.25",
+      "proxied": true,
+      "ttl": 1
+    },
+    {
+      "id": "ced23a8a6caa71ad3d90c8c8a0232cc7",
+      "type": "A",
+      "name": "webmail.himalayankoh.com",
+      "content": "162.0.209.25",
+      "proxied": true,
+      "ttl": 1
+    },
+    {
+      "id": "f87f5c7ef99730db2db797a879693a3d",
+      "type": "CNAME",
+      "name": "www.himalayankoh.com",
+      "content": "himalayankoh.com",
+      "proxied": true,
+      "ttl": 1
+    },
+    {
+      "id": "56ce41911d6f454c745afcc28201e3c4",
+      "type": "MX",
+      "name": "himalayankoh.com",
+      "content": "mx3-hosting.jellyfish.systems",
+      "proxied": false,
+      "ttl": 1,
+      "priority": 20
+    },
+    {
+      "id": "a25ee58e47f854aa12793b365d644607",
+      "type": "MX",
+      "name": "himalayankoh.com",
+      "content": "mx2-hosting.jellyfish.systems",
+      "proxied": false,
+      "ttl": 1,
+      "priority": 10
+    },
+    {
+      "id": "8ba60a47908b9e8f7c0f57498af10da5",
+      "type": "MX",
+      "name": "himalayankoh.com",
+      "content": "mx1-hosting.jellyfish.systems",
+      "proxied": false,
+      "ttl": 1,
+      "priority": 5
+    },
+    {
+      "id": "83bd5b8846ef204a2d6ec8f87c08552c",
+      "type": "TXT",
+      "name": "default._domainkey.himalayankoh.com",
+      "content": "\"v=DKIM1; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0Izyw1wLC8z5KnzZY/XpOcyTRuRw1bjQe/G2mnljuXX5yYf0NufQNNad6j7nyvBsOtu8bxPNVSvGogRLpsWNQVA8XVnAL+kuldBSQG6Y/WrgMnEYzXvzbZ85IwNs6GA6O5UmwozgLzEeHgxLHXY+74Fl5qKmRcbrJ18dtfm+g+0NcSH8ep26rFS8z772X6cGB\" \"UBaGpjVMPxcTbFQSe7oZGd+TH8uQQPtmnCXwmnlTlGswXYGKaD34syxQ0RWHSFRhJwgtlA2nSpom/zeXE6uqXXn/lWbRGwyHRJMFxbmjNgVMaE+F4CF4gT01KmGFeVGOK/dOZpbcZMk4PHnF1ADAwIDAQAB;\"",
+      "proxied": false,
+      "ttl": 1
+    },
+    {
+      "id": "021df2503fd120a9a13456121043ffdc",
+      "type": "TXT",
+      "name": "himalayankoh.com",
+      "content": "\"v=spf1 +mx +a +ip4:162.0.209.25 +include:spf.web-hosting.com ~all\"",
+      "proxied": false,
+      "ttl": 1
+    },
+    {
+      "id": "b9600890784289df3fbabaecdede9681",
+      "type": "AAAA",
+      "name": "preview.himalayankoh.com",
+      "content": "100::",
+      "proxied": true,
+      "ttl": 1
+    }
+  ]
+}
