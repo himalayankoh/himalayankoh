@@ -1,6 +1,8 @@
 {
-  "exportedAt": "2026-10-08T16:50:11.692Z",
+  "exportedAt": "2026-10-08T20:15:02.032Z",
   "exportedBy": "scripts/export-production-dns.mjs (read-only)",
+  "source": "cloudflare-api",
+  "sourceNote": "Read through the Cloudflare API.",
   "zone": {
     "id": "1f114016cd25da9e12c584e48fbd7f96",
     "name": "himalayankoh.com",
@@ -15,16 +17,24 @@
     "stagingSite": "https://preview.himalayankoh.com"
   },
   "settings": {
-    "ssl": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/ssl failed: 9109 Unauthorized to access requested resource",
-    "always_use_https": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/always_use_https failed: 10000 Authentication error",
-    "min_tls_version": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/min_tls_version failed: 9109 Unauthorized to access requested resource",
-    "automatic_https_rewrites": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/automatic_https_rewrites failed: 10000 Authentication error",
-    "opportunistic_encryption": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/opportunistic_encryption failed: 9109 Unauthorized to access requested resource",
-    "security_header": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/security_header failed: 9109 Unauthorized to access requested resource",
-    "cache_level": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/cache_level failed: 10000 Authentication error",
-    "development_mode": "UNREADABLE: GET /zones/1f114016cd25da9e12c584e48fbd7f96/settings/development_mode failed: 10000 Authentication error"
+    "ssl": "flexible",
+    "always_use_https": "off",
+    "min_tls_version": "1.0",
+    "automatic_https_rewrites": "on",
+    "opportunistic_encryption": "on",
+    "security_header": {
+      "strict_transport_security": {
+        "enabled": false,
+        "max_age": 0,
+        "include_subdomains": false,
+        "preload": false,
+        "nosniff": false
+      }
+    },
+    "cache_level": "aggressive",
+    "development_mode": "off"
   },
-  "recordCount": 10,
+  "recordCount": 11,
   "records": [
     {
       "id": "b46cab2ca927f021bae96a9fc20f1ea3",
@@ -49,6 +59,15 @@
       "content": "162.0.209.25",
       "proxied": true,
       "ttl": 1
+    },
+    {
+      "id": "7ed6361f7bca22c48397add457151552",
+      "type": "A",
+      "name": "wp.himalayankoh.com",
+      "content": "162.0.209.25",
+      "proxied": true,
+      "ttl": 1,
+      "comment": "WordPress/WooCommerce backend for the production storefront (pre-cutover)"
     },
     {
       "id": "f87f5c7ef99730db2db797a879693a3d",
@@ -109,5 +128,6 @@
       "proxied": true,
       "ttl": 1
     }
-  ]
+  ],
+  "limitations": []
 }

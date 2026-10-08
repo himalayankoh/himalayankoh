@@ -39,22 +39,36 @@ const base = (process.env.NEXT_PUBLIC_SITE_URL || `http://localhost:${port}`).re
 
 console.log(`\nTesting POST ${base}/api/shippo/rates ...`);
 
-const response = await fetch(`${base}/api/shippo/rates`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    email: 'shippo-check@example.com',
-    address: {
-      fullName: 'Test Customer',
-      addressLine1: '965 Mission St',
-      city: 'San Francisco',
-      state: 'CA',
-      postalCode: '94103',
-      country: 'US',
-    },
-    items: [{ productId: 'demo', quantity: 1, weightLbs: 2 }],
-  }),
-});
+// The variables above are checked without a server; the rate call needs one running,
+// and an unreachable port used to crash with an unhandled `AggregateError: ECONNREFUSED`
+// that named neither this check nor what to do about it. Say it plainly instead.
+let response;
+try {
+  response = await fetch(`${base}/api/shippo/rates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: 'shippo-check@example.com',
+      address: {
+        fullName: 'Test Customer',
+        addressLine1: '965 Mission St',
+        city: 'San Francisco',
+        state: 'CA',
+        postalCode: '94103',
+        country: 'US',
+      },
+      items: [{ productId: 'demo', quantity: 1, weightLbs: 2 }],
+    }),
+  });
+} catch (error) {
+  console.error(`\nFAIL  could not reach ${base} (${error?.cause?.code || error?.message || error}).`);
+  console.error('This check needs a running server for that origin. Start one, then re-run it:');
+  console.error('  npm run dev:vinext        # serves http://localhost:3001');
+  console.error('  npm run check:shippo');
+  console.error('The deployed Worker answers the same route; the live call is verified there instead');
+  console.error('(`curl -X POST <worker>/api/shippo/rates -H \'Origin: https://himalayankoh.com\' …`).');
+  process.exit(1);
+}
 
 const body = await response.json().catch(() => ({}));
 if (!response.ok) {

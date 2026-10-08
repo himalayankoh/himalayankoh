@@ -836,10 +836,11 @@ who learns its hostname. The controls for that are Cloudflare Access in front of
 `*.workers.dev` hostname, or keeping `workers_dev` disabled and attaching nothing until the
 cutover — both are owner decisions, and neither is needed for the QA this pass performed.
 
-**Fourth pass, 2026-10-08 (late): the gate was built, and it is not live yet.** See §S.
-Measured on the deployed Worker today, an anonymous `GET /` still answers **200**. So the
-paragraph above remains the truth about production: the rate limit is a bound, not access
-control, and the deployment's live Shippo secret is reachable by anyone with the URL.
+**Fourth pass, 2026-10-08 (late): the gate was built and deployed.** See §S. Measured on the
+deployed Worker *before* the deploy, an anonymous `GET /` answered **200**, and *after* it,
+**401** — as did `/products`, `/blog`, both Shippo routes and `/api/*`. So the paragraph above
+was the truth about production until this deploy and is now superseded: access control, not a
+rate limit, is what closes those routes.
 
 ## N. Email: measured, not asserted
 
@@ -875,6 +876,16 @@ The snapshot it produced is more current than the API export: it contains
 **`wp.himalayankoh.com`**, which resolves to Cloudflare anycast (`104.21.79.159`,
 `172.67.146.121`) and so is proxied — the record exists and was added after the API export
 was taken.
+
+**Fourth pass, late: the fallback was being taken for a reason that is not the one above.**
+The export ran with the *deploy* token, which cannot read `/dns_records` at all (**403**, where
+an unauthenticated-looking call also answers `10000 Authentication error`), so every run
+produced the thinner DoH file even though a DNS-capable token was sitting in `.env.local`. Run
+it as `CLOUDFLARE_API_TOKEN=$(grep '^CLOUDFLARE_API_TOKEN=' .env.local | cut -d= -f2-) npm run export:dns`
+and the API path is taken: **11 records with ids and `proxied` flags, and all eight zone
+settings readable** — which is what the committed snapshot now is. Two of those settings are
+worth flagging before the cutover: **`ssl: flexible`** (Cloudflare → origin in plain HTTP) and
+**`always_use_https: off`**.
 
 ## P. The deploy path no longer depends on a file outside the repository
 
@@ -946,9 +957,16 @@ Items 1, 2, 5, 7 and 8 of the second pass's list are replaced by the measurement
 7. **`ADMIN_LOGIN_ACCOUNTS`** for the production admin console. *(Owner)*
 8. **Stripe live webhook** (`whsec_`) — a cutover-time step, after the real domain. *(Owner)*
 9. **The 6 lb Salt Lick does not exist.** Unchanged; nothing was created. *(Owner)*
-10. **Zone Settings → Read** on the token kept as `CLOUDFLARE_API_TOKEN` would let the export
-    record TLS/HTTPS settings; token 1 already has it, so this is satisfied for the export
-    this pass ran. *(Informational)*
+10. **DNS read on the token the export actually runs with.** *(Was: "Informational", and it
+    was wrong.)* The export takes the API path only if its `CLOUDFLARE_API_TOKEN` can read
+    `/dns_records`; the **deploy** token cannot (**403**), so `npm run export:dns` with it falls
+    back to the DoH snapshot and silently loses record ids, `proxied` flags and every zone
+    setting. Measured: token 1 — DNS read 200, settings read 200, DNS **write 403**; token 3 —
+    DNS read 200, **DNS write permitted**, settings read 403; deploy token — DNS read 403,
+    settings read 200, Workers edit. So the export must be run as
+    `CLOUDFLARE_API_TOKEN=$(grep '^CLOUDFLARE_API_TOKEN=' .env.local | cut -d= -f2-) npm run export:dns`,
+    and **the cutover's DNS edit needs token 3** — no single measured token can both write DNS
+    and read zone settings. *(Owner; consequential at the cutover.)*
 
 `mail.himalayankoh.com` is **not** used as the production backend, per the owner's
 instruction: the committed configuration is `wp.himalayankoh.com`. `mail.` remains free for
@@ -956,7 +974,13 @@ email infrastructure, and `wp.` still needs item 2 to serve WordPress.
 
 # Fourth pass — 2026-10-08 (late): the pre-cutover access gate
 
-## S. The gate exists and is tested; it is not deployed, so the hole is still open
+## S. The pre-cutover access gate — built, tested, deployed
+
+**Status: DEPLOYED to `himalayan-koh-ecommerce-prod` on 2026-10-08, with the owner's approval.
+The refusals below (`200` to an anonymous caller) are the *before* measurement that justified
+the change; after the deploy the same requests answer `401`. The full after-matrix is in
+`docs/production/FINAL-GPT6-HANDOFF.md` §6.** Unless a line says otherwise, read the rest of
+this section as the design and the pre-deploy evidence.
 
 §M bounded what a caller can *spend* on the two public Shippo routes. It did not stop a
 caller, and it left the rest of a deployment holding **live** credentials open. Measured on
@@ -1074,12 +1098,13 @@ returns **0 files**, and `check-build-secrets.mjs` covers it generically because
 scanner's floor). So the secret store and the artifact are consistent with each other: the
 deploy can carry the gate and no token, and the token arrives as a Worker secret.
 
-### Activation — two commands, and neither has been run
+### Activation — the two commands that were then run
 
 The token was generated here (55 characters), stored in the gitignored `.env.local` as
 `PREVIEW_ACCESS_TOKEN` via `scripts/apply-owner-access.mjs` (the mapping was extended so it
-lands where `wrangler` and the tooling already look), and **never printed**. It is not on the
-Worker:
+lands where `wrangler` and the tooling already look), and **never printed**. It was set on the
+Worker and the deployment was uploaded with these two commands — kept here because rotation
+is the same two steps:
 
 ```
 # the value never reaches the terminal: it goes from the file into wrangler's stdin
@@ -1099,9 +1124,11 @@ secret leaves the gate open (`no token configured means no gate`) rather than lo
 out. Both orders were exercised in workerd above — the artifact was built with no token in it
 and the running Worker was given one — so the two steps are known to compose.
 
-**Nothing above is done.** The deploy is a change to the production Worker, and this pass was
-instructed to stop for owner approval before touching production routing or content. Until the
-secret and the deploy both land, the deployed Worker answers `200` to an anonymous `GET /`.
+**Both steps are now done**, with the owner's approval and only for
+`himalayan-koh-ecommerce-prod`: the secret is set (one of the Worker's 15), and the deploy
+uploaded the artifact whose `/api/version` reports `b31f47a`. The deploy script refused any
+route or custom domain, so **no public production routing changed** — `himalayankoh.com` is
+still WordPress, and the gate only closes the `*.workers.dev` QA target.
 
 Until then, the honest status of item 6 is **mitigated, not closed**: bounded, origin-checked
 and rate-limited, still reachable and still holding a live Shippo key.
