@@ -78,6 +78,9 @@ const MAPPING = [
   ['WORDPRESS_ADMIN_URL_STAGING', 'PRODUCTION_WP_ADMIN_URL_STAGING'],
   ['WORDPRESS_ADMIN_EMAIL', 'PRODUCTION_WP_ADMIN_EMAIL'],
   ['WORDPRESS_ADMIN_PASSWORD', 'PRODUCTION_WP_ADMIN_PASSWORD'],
+  // The pre-cutover access gate. Generated here rather than supplied by the owner, and
+  // mapped because `.env.local` is where the tooling and `wrangler` look for it.
+  ['PREVIEW_ACCESS_TOKEN', 'PREVIEW_ACCESS_TOKEN'],
   ['NAMECHEAP_USER', 'NAMECHEAP_USER'],
   ['NAMECHEAP_PASS', 'NAMECHEAP_PASS'],
   ['NAMECHEAP_HOSTING_ORIGIN_IP', 'NAMECHEAP_HOSTING_ORIGIN_IP'],

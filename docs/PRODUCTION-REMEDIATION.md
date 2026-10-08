@@ -836,6 +836,11 @@ who learns its hostname. The controls for that are Cloudflare Access in front of
 `*.workers.dev` hostname, or keeping `workers_dev` disabled and attaching nothing until the
 cutover — both are owner decisions, and neither is needed for the QA this pass performed.
 
+**Fourth pass, 2026-10-08 (late): the gate was built, and it is not live yet.** See §S.
+Measured on the deployed Worker today, an anonymous `GET /` still answers **200**. So the
+paragraph above remains the truth about production: the rate limit is a bound, not access
+control, and the deployment's live Shippo secret is reachable by anyone with the URL.
+
 ## N. Email: measured, not asserted
 
 `scripts/check-email-delivery.mjs` (new, read-only, `npm run check:email`) resolves the
@@ -875,17 +880,40 @@ was taken.
 
 `npm run deploy:production` and `deploy:staging` both hard-failed without
 `../.freebuff/cf-env.mjs`, a workspace helper that is neither tracked nor documented. That
-file is now gone, and the deploy had become unrunnable with no code change to blame — the
-exact failure mode the previous pass's `cf-env.mjs` cleanup caused. Both scripts now resolve
-credentials through `scripts/lib/cloudflareCredentials.mjs`: environment first (which is
-also what `wrangler` reads), then the repository's own gitignored `.env.local`, then a
-refusal that names the permissions required. Nothing is ever printed.
+helper had been deleted in the previous pass's cleanup — and the deploy became unrunnable
+with no code change to blame. **It has since been re-created by this pass's own ad-hoc API
+work** (`node .freebuff/cf-env.mjs`, used to list Worker secrets and DNS records), which is
+the point rather than a contradiction: a file outside the repository comes and goes, so the
+deploy path must not depend on it. Both scripts now resolve credentials through
+`scripts/lib/cloudflareCredentials.mjs`: environment first (which is also what `wrangler`
+reads), then the repository's own gitignored `.env.local`, then a refusal that names the
+permissions required. Nothing is ever printed. `scripts/premium-worker-status.mjs` was the
+last remaining `execFileSync('../.freebuff/cf-env.mjs')` caller and now uses the same
+resolver.
 
 ## Q. Checks run in this pass, and one that is intermittent
 
 All green, exit 0: `npm run typecheck`, `npm run lint`, `npm run build`,
 `npm run build:production`, `npm run check:packing`, `npm run check:packing-splits`, and the
 two new test files. `npm test` on the full suite: **167 files passed, 5 skipped (172)**.
+
+**Correction (fourth pass): `167 passed | 5 skipped` counts test *files*, not cases.** Both
+numbers were measured again at `bf75e8c` and in the working tree, rather than inferred:
+
+| Measure | At `bf75e8c` | This pass |
+| --- | --- | --- |
+| Test files on disk | 172 | **173** (one added, none removed) |
+| Files the runner reports | 167 passed + 5 skipped | **168 passed + 5 skipped** |
+| Declared `it(`/`test(` cases, tracked files | 1,643 | **1,658** |
+| Declared cases in the added file | — | **+18** |
+| Cases the runner *executes* | — | **1,869 passed + 19 skipped** |
+
+The sweep compared every tracked test file's declared case count at `bf75e8c` with its count
+now: **the only file that changed is `src/middleware.test.ts`, 13 → 28**, no file lost a case,
+and no file present at `bf75e8c` is missing. So nothing was accidentally excluded. The
+executed count exceeds the declared one because several suites are table-driven — that gap is
+measured, not assumed, and the 1,824 figure in earlier reports was a case count measured on an
+earlier tree, which is why it never matched a file count.
 
 **One honest caveat.** The first full-suite run reported 4 failures in 2 files as
 `Test timed out in 5000ms` (`src/lib/auth/browserSignOut.test.ts` among them). Both files
@@ -925,3 +953,155 @@ Items 1, 2, 5, 7 and 8 of the second pass's list are replaced by the measurement
 `mail.himalayankoh.com` is **not** used as the production backend, per the owner's
 instruction: the committed configuration is `wp.himalayankoh.com`. `mail.` remains free for
 email infrastructure, and `wp.` still needs item 2 to serve WordPress.
+
+# Fourth pass — 2026-10-08 (late): the pre-cutover access gate
+
+## S. The gate exists and is tested; it is not deployed, so the hole is still open
+
+§M bounded what a caller can *spend* on the two public Shippo routes. It did not stop a
+caller, and it left the rest of a deployment holding **live** credentials open. Measured on
+the deployed Worker during this pass, anonymously and with no cookie:
+
+| Request | Result |
+| --- | --- |
+| `GET https://himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev/` | **200**, 47,982 bytes of storefront |
+| `GET …/api/stripe/config` | **200**, 798 bytes |
+| `POST …/api/shippo/rates` (wrong method) | 405 — the route is there and reachable |
+
+`wrangler secret list --name himalayan-koh-ecommerce-prod` returns **14 secrets**, including
+`SHIPPO_API_KEY` and the three session secrets. Nothing about that inventory is public, but
+the Worker in front of it is.
+
+### Cloudflare Access: measured, and not available on this account
+
+Access is the right control and it cannot be used yet. A policy call answers
+`access.api.error.not_enabled`, and enabling it is a one-time dashboard action (create the
+team name, then policies can be created by API) — which is exactly what the residual-risk
+paragraph in §M reserved as an owner decision. **"Or equivalent" is therefore the only option
+that closes the hole today**, so the equivalent was built.
+
+### What was built
+
+`src/lib/http/previewAccess.ts` holds the judgement as a pure function — no request, no
+middleware, no environment — and `src/middleware.ts` enforces it on **every route except the
+build's own assets** (`matcher` widened to
+`/((?!_next/static|_next/image|favicon.ico).*)`, because the refusal page has to be able to
+load its CSS or a 401 renders blank). Three outcomes:
+
+- **A production host is never gated.** `himalayankoh.com` and `www` come from
+  `@/lib/seo/indexing` — the module that already owns that list — and are passed in, so there
+  is no second copy of it. The same build serves before and after the cutover, so gating by
+  *deployment* instead of by *host* would be a store-wide outage on the day of the switch.
+- **No token configured means no gate.** A deployment with no `PREVIEW_ACCESS_TOKEN` behaves
+  exactly as it did before, so this cannot break staging, `next dev`, or a future build.
+- **Everyone else presents the token**: `Authorization: Bearer <token>` for a script or a
+  health probe, or one visit to `/?hk_preview=<token>` which sets an `httpOnly`, `secure`,
+  `SameSite=Lax` cookie and 303-redirects to the same URL with the parameter removed — so the
+  token never sits in the address bar, in history, or in a later `Referer`. The follow-up
+  request has no parameter and carries the cookie, so the redirect cannot loop. Anything else
+  gets a **401** with `X-Robots-Tag: noindex`, `Cache-Control: no-store` and a body that names
+  no hostname, token or deployment detail.
+
+The comparison is exact string equality on the whole token; a prefix, an appended character
+and a wrong case all fail.
+
+### Tests, and one that had to be restored
+
+26 new cases: **15** in `src/lib/http/previewAccess.test.ts` (the judgement: each outcome
+above, the header/cookie shapes, exact-equality, whitespace handling) and **11** in
+`src/middleware.test.ts` (the wiring: the exchange and its cookie attributes, the 401 and its
+headers, that the gate is inert with no token, and the matcher's negative lookahead).
+
+`src/middleware.test.ts` **already existed** — it held 13 cases for the URL-normalisation
+rules — and this pass overwrote it before noticing, then restored it from `bf75e8c` and
+appended the gate section. That was verified rather than assumed: the 13 original test names
+are byte-identical to `bf75e8c`, the file now declares 24 cases, and a sweep of every test
+file shows **no file carrying fewer declared cases than it did at `bf75e8c`** (§Q).
+
+### The gate broke the build, and that was found here rather than at activation
+
+A token in `.env.local` — which is exactly where the deploy tooling needs it — made
+`npm run build` **fail**: `next build` prerenders `/_not-found` by running the middleware on
+a synthetic request, and the gate judged that request unauthenticated. It answered 401, the
+export of the page failed, and the error surfaced as `TypeError: a[d] is not a function` from
+`.next/server/webpack-runtime.js`, which names neither the gate nor the page in a way anyone
+could act on.
+
+It was isolated by measurement, not by reading: the same command, on the same tree, exits **1**
+with the token set and **0** with `PREVIEW_ACCESS_TOKEN=` empty, and it reproduced on a
+cleaned `.next`. So the gate now exempts three shapes, all of which are non-public-request
+shapes that Cloudflare cannot route to this Worker from the internet:
+
+| Shape | Why it is exempt |
+| --- | --- |
+| `NEXT_PHASE=phase-production-build` | A build is not a visitor. Process state; no request can set it. |
+| a request with **no `Host`** | How the build's own prerender arrives. `Host` is mandatory in HTTP/1.1 and Cloudflare routes on it, so a real caller cannot remove it. |
+| a **loopback** host | `next dev`. A developer holding the deploy token should not have to present it to read their own machine. |
+
+What the gate deliberately does **not** key on is Next's `x-nextjs-prerender` marker header.
+It is present on the build's request and would have been the easy fix, but any caller can
+send any header — a gate that an arbitrary header switches off is not a gate. The `Host` that
+Cloudflare requires is the signal, because it cannot be removed.
+
+Verified after the fix, with the token present: `npm run build` → **exit 0** (was 1) and
+`npm run build:production` → **exit 0**. The new tests assert all three exemptions *and* the
+case they must not degrade into — a real public host with no token is still 401.
+
+### The gate was then run in workerd, not only in tests
+
+`npm run build:production` produced the artifact, and `wrangler dev` served it — so the
+deployment path the owner would actually take was exercised end to end. The token was supplied
+to the **running** Worker as a variable, while the artifact had been built with no token value
+in it at all, which is the property activation depends on:
+
+| Request (via `wrangler dev`, port 8791) | Result |
+| --- | --- |
+| `Host: probe.local`, no credential | **401** |
+| `Host: probe.local`, `Bearer` wrong / partial token | **401** / **401** |
+| `Host: probe.local`, `Bearer` the right token | **200** |
+| `Host: probe.local`, `/api/stripe/config`, no credential | **401** |
+| `Host: probe.local`, `/api/stripe/config`, right token | **200** |
+| `Host: himalayankoh.com` and `Host: www.himalayankoh.com` | **200** — the store is never gated |
+| `Host: localhost` | **200** — the developer is not gated |
+| no `Host` header at all | **400 from workerd itself** — it refuses the request before the Worker sees it, so the exemption is unreachable from a network |
+| `/?hk_preview=<token>` | **303** to `/` with `hk_preview=…; Secure; HttpOnly; SameSite=lax; Max-Age=2592000` |
+| the same request carrying that cookie | **200**; without it, **401** |
+| the 401's own headers | `Cache-Control: no-store`, `WWW-Authenticate: Bearer`, `X-Robots-Tag: noindex, nofollow` |
+
+The value of the token never appears in `dist/` or `.next/`: `grep -rlF` over both trees
+returns **0 files**, and `check-build-secrets.mjs` covers it generically because it scans the
+*values* of every non-public variable in the env files (55 characters, so it is above the
+scanner's floor). So the secret store and the artifact are consistent with each other: the
+deploy can carry the gate and no token, and the token arrives as a Worker secret.
+
+### Activation — two commands, and neither has been run
+
+The token was generated here (55 characters), stored in the gitignored `.env.local` as
+`PREVIEW_ACCESS_TOKEN` via `scripts/apply-owner-access.mjs` (the mapping was extended so it
+lands where `wrangler` and the tooling already look), and **never printed**. It is not on the
+Worker:
+
+```
+# the value never reaches the terminal: it goes from the file into wrangler's stdin
+grep '^PREVIEW_ACCESS_TOKEN=' .env.local | sed 's/^[^=]*=//' | tr -d '\r' \
+  | npx wrangler secret put PREVIEW_ACCESS_TOKEN --name himalayan-koh-ecommerce-prod
+npm run deploy:production
+```
+
+Rotating the token is the same two commands with a new value; the `tr -d '\r'` is there
+because a CRLF `.env.local` would otherwise store a carriage return in the secret — harmless
+(the gate trims what it compares) but invisible, which is the kind of thing to not leave to
+luck.
+
+Either order is safe, which matters because it decides whether a mistake is recoverable: the
+deployed code predates the gate, so the secret alone changes nothing; and a deploy with no
+secret leaves the gate open (`no token configured means no gate`) rather than locking the owner
+out. Both orders were exercised in workerd above — the artifact was built with no token in it
+and the running Worker was given one — so the two steps are known to compose.
+
+**Nothing above is done.** The deploy is a change to the production Worker, and this pass was
+instructed to stop for owner approval before touching production routing or content. Until the
+secret and the deploy both land, the deployed Worker answers `200` to an anonymous `GET /`.
+
+Until then, the honest status of item 6 is **mitigated, not closed**: bounded, origin-checked
+and rate-limited, still reachable and still holding a live Shippo key.

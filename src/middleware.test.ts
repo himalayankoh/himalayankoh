@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { describe, expect, it } from 'vitest';
-import { middleware } from './middleware';
+import { afterEach, describe, expect, it } from 'vitest';
+import { config, middleware } from './middleware';
 
 /**
  * The edge rules, exercised on real URLs.
@@ -126,5 +126,162 @@ describe('middleware — browse query strings', () => {
   it('applies the same rule to the blog index', () => {
     expect(run('/blog?search=cows').location).toBe('https://himalayankoh.com/blog');
     expect(run('/blog?page=2').passesThrough).toBe(true);
+  });
+});
+/* ------------------------------------------------------------------ */
+/* The pre-cutover access gate                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The gate as it is actually enforced. `previewAccess.ts` owns the judgement and has its
+ * own unit tests; this section proves the middleware wires it to real requests and adds the
+ * two behaviours the judgement cannot express on its own — the cookie exchange, and leaving
+ * everything untouched when the gate is off.
+ *
+ * Every case above this section runs on a production host and no token, which is why the
+ * gate does not alter any of them. That is worth stating rather than leaving implicit: it is
+ * the property the cutover depends on.
+ */
+
+const GATE_TOKEN = 'preview-token-0123456789abcdef';
+const GATE_HOST = 'https://himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev';
+
+function gateRequest(url: string, headers: Record<string, string> = {}) {
+  // `NextRequest` does not synthesise a Host header, and the gate keys on it. A real request
+  // always carries one, so the helper supplies it rather than letting every gated case pass
+  // for the accidental reason of a missing host.
+  return new NextRequest(url, { headers: { host: new URL(url).host, ...headers } });
+}
+
+describe('middleware — the pre-cutover access gate is off where it must be', () => {
+  it('serves the storefront normally when no token is configured', () => {
+    const response = middleware(gateRequest(`${GATE_HOST}/products`));
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('does not touch an API route when no token is configured', () => {
+    const response = middleware(gateRequest(`${GATE_HOST}/api/shippo/rates`));
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+});
+
+describe('middleware — the pre-cutover access gate', () => {
+  afterEach(() => {
+    delete process.env.PREVIEW_ACCESS_TOKEN;
+    delete process.env.NEXT_PHASE;
+  });
+
+  function withToken(url: string, headers: Record<string, string> = {}) {
+    process.env.PREVIEW_ACCESS_TOKEN = GATE_TOKEN;
+    return middleware(gateRequest(url, headers));
+  }
+
+  it('refuses an unauthenticated page, and the refusal leaks nothing', async () => {
+    const response = withToken(`${GATE_HOST}/products`);
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('www-authenticate')).toBe('Bearer');
+
+    const body = await response.text();
+    expect(body).not.toContain(GATE_TOKEN);
+    expect(body).not.toContain('workers.dev');
+  });
+
+  it('refuses an unauthenticated API request too — that is where the credentials are', () => {
+    expect(withToken(`${GATE_HOST}/api/shippo/rates`).status).toBe(401);
+    expect(withToken(`${GATE_HOST}/api/version`).status).toBe(401);
+  });
+
+  it('admits a bearer token, which is what a script or a probe sends', () => {
+    const response = withToken(`${GATE_HOST}/api/version`, { authorization: `Bearer ${GATE_TOKEN}` });
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('exchanges a correct ?hk_preview= for a cookie and redirects without the parameter', () => {
+    const response = withToken(`${GATE_HOST}/products?hk_preview=${GATE_TOKEN}`);
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe(`${GATE_HOST}/products`);
+
+    const cookie = response.headers.get('set-cookie') || '';
+    expect(cookie).toContain('hk_preview=');
+    expect(cookie.toLowerCase()).toContain('httponly');
+    expect(cookie.toLowerCase()).toContain('secure');
+    expect(cookie.toLowerCase()).toContain('samesite=lax');
+  });
+
+  it('admits the cookie the exchange just set, so the browser is not asked again', () => {
+    const response = withToken(`${GATE_HOST}/products`, { cookie: `hk_preview=${GATE_TOKEN}` });
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('refuses a wrong or empty ?hk_preview= instead of redirecting on it', () => {
+    expect(withToken(`${GATE_HOST}/products?hk_preview=wrong`).status).toBe(401);
+    expect(withToken(`${GATE_HOST}/products?hk_preview=`).status).toBe(401);
+    expect(withToken(`${GATE_HOST}/products?hk_preview=${GATE_TOKEN.slice(0, -1)}`).status).toBe(401);
+  });
+
+  it('leaves the production hosts open, which is what the cutover depends on', () => {
+    for (const host of ['himalayankoh.com', 'www.himalayankoh.com']) {
+      const response = withToken(`https://${host}/products`);
+      expect(response.headers.get('x-middleware-next'), host).toBe('1');
+    }
+  });
+
+  it('keeps the URL rules working for an authenticated request', () => {
+    // The gate must not have replaced the normalisation it runs in front of.
+    const response = withToken(`${GATE_HOST}/blog/why-do-dairy-cows-need-trace-minerals`, {
+      authorization: `Bearer ${GATE_TOKEN}`,
+    });
+    expect(response.status).toBe(308);
+  });
+
+});
+
+describe('middleware — the gate stays out of the build’s and the developer’s way', () => {
+  afterEach(() => {
+    delete process.env.PREVIEW_ACCESS_TOKEN;
+    delete process.env.NEXT_PHASE;
+  });
+
+  it('is inert for a request with no host — which is how a build reaches it', () => {
+    process.env.PREVIEW_ACCESS_TOKEN = GATE_TOKEN;
+    // No `host` header at all. This is the shape `next build` uses to prerender
+    // `/_not-found` through the middleware, and gating it failed the build with an opaque
+    // webpack-runtime `TypeError` — measured, then fixed here.
+    const response = middleware(new NextRequest(`${GATE_HOST}/products`));
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('is inert during a production build, so a prerender is never gated', () => {
+    process.env.PREVIEW_ACCESS_TOKEN = GATE_TOKEN;
+    process.env.NEXT_PHASE = 'phase-production-build';
+    const response = middleware(gateRequest(`${GATE_HOST}/products`));
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('is inert on loopback, so a developer holding the deploy token can still run next dev', () => {
+    process.env.PREVIEW_ACCESS_TOKEN = GATE_TOKEN;
+    for (const url of ['http://localhost:3000/products', 'http://127.0.0.1:8787/api/version']) {
+      const response = middleware(new NextRequest(url, { headers: { host: new URL(url).host } }));
+      expect(response.headers.get('x-middleware-next'), `expected ${url} to be served`).toBe('1');
+    }
+  });
+
+  it('and yet a real public host with no token is still refused', () => {
+    // The three exemptions above must not add up to a bypass: this is the case the gate is for.
+    process.env.PREVIEW_ACCESS_TOKEN = GATE_TOKEN;
+    expect(middleware(gateRequest(`${GATE_HOST}/products`)).status).toBe(401);
+  });
+});
+
+describe('middleware — the matcher', () => {
+  it('covers every route, not only the two browse paths it used to', () => {
+    const [pattern] = config.matcher;
+    expect(pattern).toBe('/((?!_next/static|_next/image|favicon.ico).*)');
+    // The gate's own assets can never be behind the gate, or a 401 renders blank.
+    for (const asset of ['_next/static', '_next/image', 'favicon.ico']) expect(pattern).toContain(asset);
   });
 });

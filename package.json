@@ -36,6 +36,7 @@
     "check:packing-splits": "node scripts/check-packing-splits.mjs",
     "check:wordpress": "node scripts/check-wordpress-setup.mjs",
     "check:email": "node scripts/check-email-delivery.mjs",
+    "compare:catalogues": "node scripts/compare-catalogues.mjs",
     "export:dns": "node scripts/export-production-dns.mjs",
     "owner:access": "node scripts/apply-owner-access.mjs",
     "diagnose:store-products": "node scripts/diagnose-store-products-fatal.mjs",
