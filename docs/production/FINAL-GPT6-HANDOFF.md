@@ -401,6 +401,19 @@ npm test                   # 173 files: 168 passed, 5 skipped; 1,869 cases passe
 npm run build              # next build + postbuild origin/secret scans
 npm run build:production   # the Worker artifact in dist/ + every production guard
 
+# 14.0b — the security subset, run on its own (10 files, 170 cases, exit 0)
+npx vitest run \
+  src/lib/http/originAllowlist.test.ts src/lib/http/previewAccess.test.ts \
+  src/middleware.test.ts src/lib/http/clientIp.test.ts \
+  src/app/api/catalog/route.shield.test.ts src/lib/scrape/urlSafety.test.ts \
+  src/lib/auth/adminRoutes.guard.test.ts src/lib/auth/adminRoleIsServerAuthoritative.test.ts \
+  src/lib/orders/checkoutGuards.test.ts src/lib/wholesale/security.test.ts
+
+# 14.0c — no credential value in source or in a built artifact (each must print 0)
+T=$(grep '^PREVIEW_ACCESS_TOKEN=' .env.local | sed 's/^[^=]*=//' | tr -d '\r')
+git grep -lF "$T" -- . | wc -l ; grep -rlF "$T" dist .next | wc -l
+git ls-files --error-unmatch .env.local docs/production/owner-access.local.env   # must fail: untracked
+
 # 14.1 — the backend surfaces
 curl -s -o /dev/null -w '%{http_code}\n' https://himalayankoh.com/                      # 200 (WordPress)
 curl -s -o /dev/null -w '%{http_code}\n' 'https://himalayankoh.com/wp-json/wp/v2/product?per_page=1'   # 200
