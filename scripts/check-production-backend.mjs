@@ -62,6 +62,33 @@ process.stdout.write(
     `Read-only. Nothing is written to WordPress, WooCommerce, orders, customers or media.\n\n`,
 );
 
+/*
+ * Reachability preflight, and it is not belt-and-braces.
+ *
+ * `check-wordpress-setup.mjs` decides its exit code from a narrow condition —
+ * readable WordPress content but no commercial data — so a target that does not
+ * resolve at all reports every probe as UNKNOWN and still exits 0. Delegating
+ * blindly would make this script print "Production backend check" over a hostname
+ * that does not exist and return success: a green tick on the one question it was
+ * written to answer. Measured 2026-10-08, with `wp.himalayankoh.com` still NXDOMAIN.
+ */
+const preflightUrl = `${target}/wp-json/`;
+try {
+  const response = await fetch(preflightUrl, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+} catch (error) {
+  process.stderr.write(
+    `The production backend did not answer ${preflightUrl}: ${error instanceof Error ? error.message : error}\n` +
+      `Nothing else was probed, because every endpoint would report the same thing. ${target} needs its DNS ` +
+      `record and a host alias (or a Cloudflare Origin Rule) before the production storefront can read a ` +
+      `catalogue — see docs/PRODUCTION-REMEDIATION.md §1.\n`,
+  );
+  process.exit(1);
+}
+
 const result = spawnSync('node', ['scripts/check-wordpress-setup.mjs'], {
   cwd: ROOT,
   stdio: 'inherit',
