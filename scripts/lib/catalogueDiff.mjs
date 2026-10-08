@@ -808,23 +808,34 @@ export function buildMigrationManifest(sources, options = {}) {
           ]
         : []),
     ],
+    /**
+     * Coverage per source.
+     *
+     * `withoutSku` is `null` — not `0`, and not the row count — when the source cannot
+     * report SKUs at all. Counting unreadable SKUs as missing ones would have said "13 of
+     * 13 live products have no SKU" about a catalogue whose SKUs were never asked for,
+     * which is the single misreading this whole module exists to prevent.
+     */
     coverage: {
       live: {
         total: liveRows.length,
         published: livePublished.length,
         draft: liveRows.filter((row) => row.status === 'draft').length,
-        withoutSku: rowsWithoutSku(livePublished).length,
+        skuReadable: sources.live.readable.sku,
+        withoutSku: sources.live.readable.sku ? rowsWithoutSku(livePublished).length : null,
       },
       curated: {
         total: curatedRows.length,
         published: curatedRows.filter((row) => row.status === 'publish').length,
         draft: curatedRows.filter((row) => row.status === 'draft').length,
-        withoutSku: rowsWithoutSku(curatedRows).length,
+        skuReadable: sources.curated.readable.sku,
+        withoutSku: sources.curated.readable.sku ? rowsWithoutSku(curatedRows).length : null,
       },
       served: {
         total: servedRows.length,
         published: servedRows.length,
-        withoutSku: rowsWithoutSku(servedRows).length,
+        skuReadable: sources.served.readable.sku,
+        withoutSku: sources.served.readable.sku ? rowsWithoutSku(servedRows).length : null,
       },
     },
     exactSkuMatches,
@@ -842,9 +853,11 @@ export function buildMigrationManifest(sources, options = {}) {
     servedNotInCurated,
     curatedPublishedNotServed,
     rowsWithoutSku: {
-      live: rowsWithoutSku(livePublished),
-      curated: rowsWithoutSku(curatedRows),
-      served: rowsWithoutSku(servedRows),
+      // `null` means "this source cannot answer for SKU", which is a different fact from
+      // an empty list of products that are genuinely missing one.
+      live: sources.live.readable.sku ? rowsWithoutSku(livePublished) : null,
+      curated: sources.curated.readable.sku ? rowsWithoutSku(curatedRows) : null,
+      served: sources.served.readable.sku ? rowsWithoutSku(servedRows) : null,
     },
     summary: {
       livePublished: livePublished.length,
@@ -867,7 +880,7 @@ export function buildMigrationManifest(sources, options = {}) {
       'Confirm the backup and its verified restore first — docs/production/BACKUP-RESTORE-VERIFICATION.md, checked with `npm run check:backup`. Nothing below may begin before that is PASS.',
       'Prove that wp.himalayankoh.com reaches the WordPress installation while its Site URL and Home URL stay on the apex (docs/production/WORDPRESS-HOSTING-PREP.md), because this manifest reads the live catalogue over the same installation.',
       'Create a WooCommerce REST key pair on the live apex installation (read-only is enough), then re-run this manifest: the SKU, price and stock columns stop being "not readable" and the exact matches become decidable.',
-      'Assign a SKU to every live product that lacks one, and to any curated product that lacks one, before any import is designed.',
+      'Once the live SKUs are readable, assign one to every product on either side that lacks one: a missing SKU is a stop, not a match.',
       'Decide each suggested pair: is the curated product a replacement for the live product, or an addition?',
       'Map categories by name and never by term id (see categoryIdCollisions).',
       'Decide, product by product, what happens to each live product with no counterpart — keep published, retire with a redirect, or leave alone.',
@@ -948,12 +961,19 @@ export function renderManifestMarkdown(manifest, { jsonPath } = {}) {
   L.push('');
   L.push('## Coverage');
   L.push('');
+  const skuCell = (source) => (source.skuReadable ? String(source.withoutSku) : '**not readable**');
   L.push('| | Total | Published | Draft | Without a SKU |');
   L.push('| --- | --- | --- | --- | --- |');
-  L.push(`| Live apex | ${manifest.coverage.live.total} | ${manifest.coverage.live.published} | ${manifest.coverage.live.draft} | ${manifest.coverage.live.withoutSku} |`);
-  L.push(`| Curated (staging) | ${manifest.coverage.curated.total} | ${manifest.coverage.curated.published} | ${manifest.coverage.curated.draft} | ${manifest.coverage.curated.withoutSku} |`);
-  L.push(`| Served (storefront) | ${manifest.coverage.served.total} | ${manifest.coverage.served.published} | — | ${manifest.coverage.served.withoutSku} |`);
+  L.push(`| Live apex | ${manifest.coverage.live.total} | ${manifest.coverage.live.published} | ${manifest.coverage.live.draft} | ${skuCell(manifest.coverage.live)} |`);
+  L.push(`| Curated (staging) | ${manifest.coverage.curated.total} | ${manifest.coverage.curated.published} | ${manifest.coverage.curated.draft} | ${skuCell(manifest.coverage.curated)} |`);
+  L.push(`| Served (storefront) | ${manifest.coverage.served.total} | ${manifest.coverage.served.published} | — | ${skuCell(manifest.coverage.served)} |`);
   L.push('');
+  if (!manifest.coverage.live.skuReadable) {
+    L.push('**"Not readable" is not "none".** The live apex cannot be asked for SKUs at all in this');
+    L.push('run, so how many of its products have one is genuinely unknown — and it must not be');
+    L.push('reported as a catalogue that lacks them.');
+    L.push('');
+  }
 
   L.push('## 1. Exact matches (same SKU on both sides)');
   L.push('');

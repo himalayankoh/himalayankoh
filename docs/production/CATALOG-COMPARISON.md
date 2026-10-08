@@ -1,6 +1,6 @@
 # Catalogue comparison — live WordPress vs the storefront’s catalogue
 
-Generated 2026-10-08T20:35:54.939Z by `scripts/compare-catalogues.mjs` (read-only; every request is a GET).
+Generated 2026-10-08T20:58:34.615Z by `scripts/compare-catalogues.mjs` (read-only; every request is a GET).
 
 **This is a comparison, not a migration.** Nothing was copied, created, updated or
 deleted, and nothing in it may be acted on automatically. It exists to make the

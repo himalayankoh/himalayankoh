@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-08T20:55:34.471Z",
+  "generatedAt": "2026-10-08T20:57:27.377Z",
   "dryRun": true,
   "writesMade": false,
   "writesAllowed": false,
@@ -108,17 +108,20 @@
       "total": 13,
       "published": 13,
       "draft": 0,
-      "withoutSku": 13
+      "skuReadable": false,
+      "withoutSku": null
     },
     "curated": {
       "total": 7,
       "published": 6,
       "draft": 1,
+      "skuReadable": true,
       "withoutSku": 1
     },
     "served": {
       "total": 6,
       "published": 6,
+      "skuReadable": true,
       "withoutSku": 0
     }
   },
@@ -942,86 +945,7 @@
   "servedNotInCurated": [],
   "curatedPublishedNotServed": [],
   "rowsWithoutSku": {
-    "live": [
-      {
-        "source": "live",
-        "id": 2461,
-        "name": "Himalayan Koh  Authentic Pure Natural Halal Unprocessed Himalayan Edible Pink Cooking Salt, Fine Grain (0.5mm to 1mm)",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 2446,
-        "name": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 2372,
-        "name": "HIMALAYAN ROCK SALT BAG 18 LBS",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 2367,
-        "name": "HIMALAYAN SALT POUCHES",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 2352,
-        "name": "SALT LICKS",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 2321,
-        "name": "Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes – 6 lbs",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 2295,
-        "name": "HIMALAYAN CRYSTAL ROCK SALT LAMP IONIZER AIR PURIFIER WITH DIMMABLE CONTROL",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 2192,
-        "name": "Himalayan Chef Himalayan Pink Salt Coarse Grain, Jar-1 lbs",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 2185,
-        "name": "Himalayan Chef Himalayan Pink Salt Fine Grain, Jar-1 lbs",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 271,
-        "name": "Bag of Himalayan Pink Salt for Livestock (45 lbs.)",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 286,
-        "name": "Himalayan Pink Salt Block for Deer",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 281,
-        "name": "Himalayan Pink Salt Licks for Horses",
-        "status": "publish"
-      },
-      {
-        "source": "live",
-        "id": 291,
-        "name": "Himalayan Salt Rock for Cattle 18 Lbs Bag",
-        "status": "publish"
-      }
-    ],
+    "live": null,
     "curated": [
       {
         "source": "curated",
@@ -1053,7 +977,7 @@
     "Confirm the backup and its verified restore first — docs/production/BACKUP-RESTORE-VERIFICATION.md, checked with `npm run check:backup`. Nothing below may begin before that is PASS.",
     "Prove that wp.himalayankoh.com reaches the WordPress installation while its Site URL and Home URL stay on the apex (docs/production/WORDPRESS-HOSTING-PREP.md), because this manifest reads the live catalogue over the same installation.",
     "Create a WooCommerce REST key pair on the live apex installation (read-only is enough), then re-run this manifest: the SKU, price and stock columns stop being \"not readable\" and the exact matches become decidable.",
-    "Assign a SKU to every live product that lacks one, and to any curated product that lacks one, before any import is designed.",
+    "Once the live SKUs are readable, assign one to every product on either side that lacks one: a missing SKU is a stop, not a match.",
     "Decide each suggested pair: is the curated product a replacement for the live product, or an addition?",
     "Map categories by name and never by term id (see categoryIdCollisions).",
     "Decide, product by product, what happens to each live product with no counterpart — keep published, retire with a redirect, or leave alone."

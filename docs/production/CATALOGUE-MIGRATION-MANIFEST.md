@@ -1,6 +1,6 @@
 # Catalogue migration manifest (dry run)
 
-Generated 2026-10-08T20:55:34.471Z by `scripts/plan-catalogue-migration.mjs`.
+Generated 2026-10-08T20:57:27.377Z by `scripts/plan-catalogue-migration.mjs`.
 
 **Read-only dry run. Nothing was created, updated, published or deleted, and this
 tool has no write mode.** It reads four catalogues with GET requests, classifies what
@@ -47,9 +47,13 @@ Machine-readable form: `docs/production/CATALOGUE-MIGRATION-MANIFEST.json`
 
 | | Total | Published | Draft | Without a SKU |
 | --- | --- | --- | --- | --- |
-| Live apex | 13 | 13 | 0 | 13 |
+| Live apex | 13 | 13 | 0 | **not readable** |
 | Curated (staging) | 7 | 6 | 1 | 1 |
 | Served (storefront) | 6 | 6 | — | 0 |
+
+**"Not readable" is not "none".** The live apex cannot be asked for SKUs at all in this
+run, so how many of its products have one is genuinely unknown — and it must not be
+reported as a catalogue that lacks them.
 
 ## 1. Exact matches (same SKU on both sides)
 
@@ -167,7 +171,7 @@ A field one side cannot answer for is **not** evidence that the two sides agree.
 - [ ] Confirm the backup and its verified restore first — docs/production/BACKUP-RESTORE-VERIFICATION.md, checked with `npm run check:backup`. Nothing below may begin before that is PASS.
 - [ ] Prove that wp.himalayankoh.com reaches the WordPress installation while its Site URL and Home URL stay on the apex (docs/production/WORDPRESS-HOSTING-PREP.md), because this manifest reads the live catalogue over the same installation.
 - [ ] Create a WooCommerce REST key pair on the live apex installation (read-only is enough), then re-run this manifest: the SKU, price and stock columns stop being "not readable" and the exact matches become decidable.
-- [ ] Assign a SKU to every live product that lacks one, and to any curated product that lacks one, before any import is designed.
+- [ ] Once the live SKUs are readable, assign one to every product on either side that lacks one: a missing SKU is a stop, not a match.
 - [ ] Decide each suggested pair: is the curated product a replacement for the live product, or an addition?
 - [ ] Map categories by name and never by term id (see categoryIdCollisions).
 - [ ] Decide, product by product, what happens to each live product with no counterpart — keep published, retire with a redirect, or leave alone.
