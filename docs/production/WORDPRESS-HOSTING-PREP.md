@@ -95,29 +95,37 @@ serves the site.
 for hostname `wp.himalayankoh.com`, set the origin **Host** header to `himalayankoh.com`. The
 origin then sees a Host it already serves, and no hosting change is needed at all.
 
-**Which one `mail.` uses could not be determined from this environment**, and that is worth
-stating plainly rather than guessed:
+**Which one `mail.` uses is now measured, and it is (a).** A later pass read the zone's rule
+surface with a token that can read rulesets:
 
-- The Cloudflare **rulesets API returned 403** with the token available to the tooling
-  (`GET /zones/{zone_id}/rulesets` → `{"code":10000,"message":"Authentication error"}`), so no
-  Origin Rule could be listed.
-- The origin refuses to identify itself to anyone outside Cloudflare. A direct request to
+- The zone `himalayankoh.com` contains **three rulesets, all Cloudflare-managed**
+  (`http_request_sanitize` «Cloudflare Normalization Ruleset», `http_request_firewall_managed`
+  «Cloudflare Managed Free Ruleset», `ddos_l7`). There are **no custom rules of any kind** on
+  this zone: `http_request_origin`, `http_request_dynamic_redirect`, `http_request_transform`
+  and `http_request_late_transform` each answer **404 — no entrypoint ruleset in that phase**.
+- So there is **no Origin Rule for `mail.himalayankoh.com`**, and therefore the mechanism that
+  makes `mail.` reach WordPress is **hosting-side (cPanel)**, not Cloudflare-side. Option (b)
+  above is unimplemented on this zone today.
+- Creating option (b) anyway is **not available to the tooling**: a `PUT` to
+  `/zones/{zone_id}/rulesets/phases/http_request_origin/entrypoint` returns **403
+  `Authentication error`** — the DNS-scoped token that can *read* rulesets cannot *write* them.
+  **Nothing was changed** (the phase still returns 404 after the attempt), and a write would
+  need a token carrying **Zone → Config → Edit** (Rulesets write).
+- The origin still refuses to identify itself to anyone outside Cloudflare. A direct request to
   `162.0.209.25` carrying `Host: himalayankoh.com` — and one carrying `Host:
   wp.himalayankoh.com` — both return **403 `Request forbidden by administrative rules`**, a
-  server-level access rule. Because non-Cloudflare source addresses are refused this way, the
-  origin's vhost state cannot be proven from a workstation.
+  server-level access rule, so the origin's vhost state cannot be proven from a workstation.
 
-**How to find out in two minutes, without changing anything:**
+**Consequence:** `wp.` can be connected by exactly one of two routes, and both are the owner's:
 
-| To check | Where | What you are looking for |
+| Route | What it needs | Available now? |
 | --- | --- | --- |
-| Origin Rule for `mail.` | Cloudflare dashboard → the `himalayankoh.com` zone → **Rules → Origin Rules** | a rule with hostname `mail.himalayankoh.com` that overrides the Host header |
-| Hosting alias for `mail.` | cPanel for `162.0.209.25` → **Domains** (or *Subdomains*) | an entry for `mail.himalayankoh.com` whose document root is the WordPress directory |
+| **cPanel alias / subdomain** with the WordPress document root (copy what `mail.` does) | hosting-panel or SFTP access to `162.0.209.25` — the `NAMECHEAP_USER` / `NAMECHEAP_PASS` pair in `.env.local` was measured against `POST https://himalayankoh.com:2083/login/?login_only=1` and answers **HTTP 401** | **No — blocked** |
+| **Cloudflare Origin Rule** overriding the Host header for `wp.` | a Cloudflare token with **Zone → Config → Edit**; the read-only attempt returned **403** | **No — blocked** |
 
-Whichever exists for `mail.` is the cheapest thing to copy for `wp.`. If **neither** is visible
-while `mail.` still works, the mapping is somewhere else (a server-level `ServerAlias`, a
-reseller-level include, or a proxy rule) and the hosting provider should be asked directly —
-before any cutover, not during one.
+If the panel is reachable, the cheapest thing to copy for `wp.` is whatever `mail.` already has.
+If neither route can be taken, the hosting provider should be asked directly — before any
+cutover, not during one.
 
 ---
 

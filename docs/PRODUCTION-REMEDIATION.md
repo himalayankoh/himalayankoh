@@ -1245,3 +1245,170 @@ Blocking-list changes:
 - Item 10 (DNS token) is unchanged: **the cutover's DNS edit needs token 3**, and no measured
   token both writes DNS and reads zone settings.
 
+# Sixth pass — 2026-10-08 (later still): closing the blockers, or proving they are the owner's
+
+## X. Hosting access: checked, refused, and deliberately not retried
+
+The instruction for this pass was to check whether hosting access exists, and to stop rather
+than retry invalid credentials. It exists **in three places locally and works in none of
+them**, and both failures were already measured rather than assumed:
+
+| Credential | Where it lives | Measured result |
+| --- | --- | --- |
+| `NAMECHEAP_USER` / `NAMECHEAP_PASS` | `.env.local`, `../.freebuff/owner-secrets.local`, `docs/production/owner-access.local.env` | **HTTP 401** from `POST https://himalayankoh.com:2083/login/?login_only=1` — *not a cPanel login for this server* (`premium164-3.web-hosting.com`) |
+| `WP_ADMIN_USER` / `WP_ADMIN_PASS` | `../.freebuff/owner-secrets.local` | **`incorrect_password` on staging, `not_logged_in` on live** — these are not application passwords for either install |
+| `PRODUCTION_WP_ADMIN_EMAIL` / `_PASSWORD` / `_URL` | `.env.local` (mapped from the owner's access file) | present, and **not** the REST credential the app uses; `scripts/apply-owner-access.mjs` deliberately does not map a login password onto `WORDPRESS_ADMIN_APP_PASSWORD`, because that would break every admin REST call with a misleading 401 |
+| `WOOCOMMERCE_CONSUMER_KEY` / `_SECRET` | `.env.local` | the **staging** pair: `GET https://himalayankoh.com/wp-json/wc/v3/products` → **401 `woocommerce_rest_cannot_view`** (re-measured this pass) |
+
+**No credential was retried.** cPanel's brute-force protection (`cPHulk`) locks an address after
+a small number of failed authentications, and a lockout would take the *owner's* access with it —
+so a credential that has measured 401 once is a fact to report, not a thing to test again on a
+whim. The `:2083` login endpoint also has no rate-limit-free read to offer. Nothing was
+attempted beyond the single read-only Cloudflare probe described below, which changes nothing
+when it fails.
+
+### What is required, precisely
+
+| Access | Owner action | Unblocks |
+| --- | --- | --- |
+| **cPanel login for `premium164-3.web-hosting.com`** (or SFTP + phpMyAdmin for the same account) | from the Namecheap account that owns the hosting plan | the `wp.` vhost alias, the MySQL dump, the files backup, `wp-content/debug.log` for the Store API fatal, and the Account SSL/TLS pane |
+| **A WordPress administrator on the live apex** (a real user, so an application password can be issued) | wp-admin → Users → Application Passwords | a live WooCommerce REST key pair, admin/API authentication, media |
+| **`ADMIN_LOGIN_ACCOUNTS`** (the owner's real admin accounts) | owner | signing in to `/admin` on the production Worker |
+| **A Cloudflare token with Zone → Config → Edit** | Cloudflare dashboard → My Profile → API Tokens | *optionally* the Origin Rule path to `wp.`, instead of cPanel |
+| **Backup evidence or the panel** | see `docs/production/BACKUP-RESTORE-VERIFICATION.md` §4.5 | the backup item, which is still **FAIL** |
+
+## Y. New measurement: this Cloudflare zone has no custom rules at all
+
+Read with `CLOUDFLARE_DNS_TOKEN_1` (which *can* read rulesets; the deploy token cannot):
+
+```
+GET /zones/1f114016cd25da9e12c584e48fbd7f96/rulesets           → 200, 3 rulesets
+  http_request_sanitize          Cloudflare Normalization Ruleset   (managed)
+  http_request_firewall_managed  Cloudflare Managed Free Ruleset    (managed)
+  ddos_l7                        DDoS L7 ruleset                    (managed)
+GET /zones/…/rulesets/phases/http_request_origin/entrypoint    → 404 (no such phase entrypoint)
+GET /zones/…/rulesets/phases/http_request_dynamic_redirect/…   → 404
+GET /zones/…/rulesets/phases/http_request_transform/…          → 404
+GET /zones/…/rulesets/phases/http_request_late_transform/…     → 404
+```
+
+Two consequences, both of which close something this project had recorded as unknown:
+
+1. **There is no Origin Rule on this zone**, so `mail.himalayankoh.com`'s ability to reach
+   WordPress is **hosting-side (cPanel)**, not Cloudflare-side. `docs/production/WORDPRESS-HOSTING-PREP.md`
+   §2.3 has been updated from "cannot be determined" to this measurement.
+2. **The Origin Rule route to `wp.` is available in principle but not to this tooling**: a `PUT`
+   to the `http_request_origin` entrypoint returned **403 `Authentication error`**. Nothing was
+   created — the phase still returns 404 afterwards, which is the check that the refusal changed
+   nothing — and the write needs **Zone → Config → Edit**.
+
+## Z. The Store API fault, re-measured (and why it is not the critical path)
+
+Measured again on the live apex, with no credentials:
+
+| Request | Status |
+| --- | --- |
+| `/wp-json/wc/store/v1/products` | **500** — WordPress's own fatal page, 2,653 bytes, message suppressed |
+| `/wp-json/wc/store/v1/cart` | 200 |
+| `/wp-json/wc/store/v1/products/categories` | 200 |
+| `/wp-json/wc/store/v1/products/collection-data` | 200 |
+| `/wp-json/wc/v3/products` (staging pair) | 401 `woocommerce_rest_cannot_view` |
+
+The earlier pass's diagnosis stands and is now the whole of what can be established from
+outside: it fails **per product**, not per query (an empty result set returns 200 `[]`, any one
+of the 13 product ids returns 500), the route and its schema are registered, and the staging
+install runs the same WooCommerce 7.7.0 on the same PHP 7.4.33 with the same plugin surface and
+returns 200 on the identical route. So the cause is in that install's options, its per-install
+code (active theme `functions.php`, or `wp-content/mu-plugins/`), or its product data.
+
+**The message that names the file and line is in `wp-content/debug.log` or cPanel → Metrics →
+Errors, and reading it needs the hosting access in §X.** No fix was attempted: this pass's own
+instruction was to apply fixes only after a verified backup exists, and none does.
+
+**Why this is not the critical path:** the storefront reaches the catalogue by
+`/wc/v3` first, then the Store API, then the WordPress core product endpoint. A live WooCommerce
+pair (§X) makes the Store API a fallback rather than the source of truth for price, stock and
+SKU. It stays a real defect — it is what makes an *unauthenticated* read of the live catalogue
+impossible — but it is not the thing standing between here and the catalogue.
+
+## AA. Temporary-production QA: what could be verified, and a cutover blocker it exposed
+
+With the access token, against the deployed `himalayan-koh-ecommerce-prod` Worker:
+
+| Check | Result |
+| --- | --- |
+| `/` | 200, 47,973 bytes |
+| `/products`, `/checkout`, `/admin`, `/wholesale` | 200 (35.5 KB / 34.0 KB / 72.5 KB), all render |
+| `/cart` | 307 (empty cart redirect) |
+| `/api/catalog` | 200, **0 products**, `degraded: true`, 4 warnings naming the missing keys |
+| `/api/cart` | **400 — “The store’s cart returned HTTP 404 (/wc/store/v1/cart)”** ← the backend hostname |
+| `/api/auth/session` | 200 `{authenticated: false}` |
+| `/api/stripe/config` | 200, `configured: false`, `pk_live_` served, no secret |
+| `POST /api/shippo/rates` (authorized) | 200 with **8 live carrier rates**; unauthenticated 401 |
+| Product prices, stock, real catalogue, checkout with a payment form, customer sessions against the live backend | **not verifiable — the backend and the live key pair are both missing** |
+
+The `/api/cart` failure is the clearest possible statement of the dependency chain:
+**the production Worker's backend is `https://wp.himalayankoh.com`, which returns 404**, so every
+store read that is not the cached catalogue fails. Connecting `wp.` (§X) is therefore the single
+change that starts the cart, sessions and the WordPress fallback working; the live WooCommerce
+pair is the one that then makes price, stock and SKU real.
+
+**A cutover blocker found while checking product images.** The storefront's served catalogue
+carries **34 image references, of which 21 are absolute apex URLs under
+`/staging/wp-content/uploads/…`** (`HK-LB-30LBS` alone points at two of them). Measured:
+
+| Request | Status | Meaning |
+| --- | --- | --- |
+| `https://himalayankoh.com/staging/wp-content/uploads/…webp` | **200, image/webp, 138 KB** | today the apex is WordPress, so the browser gets the file |
+| `https://preview.himalayankoh.com/staging/wp-content/uploads/…webp` | **404** | the Worker has no `/staging/*` route |
+| `https://preview.himalayankoh.com/wp-content/uploads/…jpeg` | **404** | the passthrough resolves `/wp-content/*` against *its own* backend (`…/staging`), where that file does not exist |
+
+The Worker's media passthrough (`src/app/wp-content/[...path]/route.ts`) answers only paths under
+`/wp-content/`, resolving them against the configured backend. **So the moment the apex is the
+Worker, those 21 references become requests to the Worker for a path it does not serve, and they
+404** — product galleries and order-line images would break at cutover. This is not a catalogue
+difference and not an SSL problem; it is a media-hosting dependency that has to be resolved
+before the domain moves, by re-hosting those uploads under the apex's own
+`/wp-content/uploads/` (preferred: it is media migration, not rewrite), or by teaching the
+passthrough to resolve `/staging/wp-content/*`, or by keeping the `/staging` mount alive
+independently of the apex.
+
+**Mobile**, measured on the working storefront at a 390×844 viewport rather than asserted: no
+horizontal overflow (`scrollWidth` 382 ≤ 390), viewport meta `width=device-width, initial-scale=1`,
+8 product cards and real prices rendered. A screenshot could not be captured in this environment
+(the preview webview produced no frames), so the mobile check here is measurement, not a visual
+review.
+
+## AB. Verification battery, re-run on this tree
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0, **0 errors** |
+| `npm run lint` | exit 0 (pre-existing `<img>` warnings only) |
+| `npm test` | exit 0 — 169 files passed / 5 skipped, **1,903 tests passed**, 19 skipped |
+| security subset (10 files) | exit 0 — **170 cases** |
+| `npm run check:packing` | exit 0 |
+| `npm run check:packing-splits` | exit 0 |
+| `npm run build:production` | exit 0 — overlay asserted, no staging value, live `pk_live_` inlined, no route/custom domain, no server credential in `dist/` |
+| `npm run check:production-gate` | 26/26 passed, exit 0 (previous pass, deployment unchanged since) |
+
+**No code defect was found in this pass, and no code was changed to make a check pass.** The
+only source-tree change is documentation.
+
+## AC. Where the migration stands after this pass
+
+Nothing was migrated, no product, order, customer or WordPress record was written, no routing or
+zone setting was changed, and the Origin Rule attempt was refused before it could change
+anything. **The five blockers are now all measured, and four of them are the same two missing
+credentials:**
+
+1. **Hosting access** (§X) — blocks the backup, the `wp.` alias, the Store API fix and the SSL
+   certificate. Nothing else can proceed past this one.
+2. **A live WordPress administrator + live WooCommerce key pair** (§X) — blocks the catalogue,
+   price, stock and SKU, and the production Worker's cart.
+3. **The origin certificate** (`docs/production/SSL-HARDENING-PLAN.md`) — blocks Full (strict),
+   HTTPS enforcement and TLS 1.2, and needs item 1.
+4. **The `/staging` media dependency** (§AA, new) — blocks a clean cutover of the product
+   imagery, and should be resolved before the domain moves.
+5. **The Store API fatal** (§Z) — a real defect, off the critical path once item 2 exists, and
+   diagnosable only with item 1.
