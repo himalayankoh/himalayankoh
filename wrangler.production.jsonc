@@ -1,0 +1,49 @@
+/**
+ * The production Worker, declared separately from the staging `wrangler.jsonc`.
+ *
+ * ## Why this is an overlay rather than a second `wrangler.jsonc`
+ *
+ * `vinext build` reads exactly one config from the project root — `wrangler.jsonc`
+ * or `wrangler.json` — and derives `dist/server/wrangler.json` from it. It has no
+ * flag for a second one, and `next.config`/`vite.config` do not select it either.
+ * So the build always starts from the staging file, and
+ * `scripts/apply-production-config.mjs` overwrites the name and variables in the
+ * build output before anything is deployed. `scripts/assert-production-config.mjs`
+ * then reads the result back and refuses it unless every value below is present and
+ * correct — a guard on the artifact, not on this file, because the artifact is what
+ * gets deployed.
+ *
+ * This file is still the declaration a human reads, and the build fails if it
+ * disagrees with `scripts/production-target.mjs`, which is the value the rest of the
+ * tooling uses. Change both, or change neither.
+ *
+ * ## What is deliberately absent
+ *
+ * - **No `routes`, no `custom_domain`.** Attaching `himalayankoh.com` or
+ *   `www.himalayankoh.com` here would move real customer traffic onto this Worker
+ *   the moment it is deployed. The apex stays on WordPress until the owner approves
+ *   the cutover; until then this Worker is reachable only at its `*.workers.dev`
+ *   name. The guard refuses any config that names either host.
+ * - **No secrets.** Everything under `vars` is world-readable from the deployment.
+ *   The WooCommerce keys, session secrets, Shippo key and Stripe keys are set with
+ *   `wrangler secret put` on the production Worker.
+ * - **No `NEXT_PUBLIC_SITE_URL` override at runtime that disagrees with the build.**
+ *   `NEXT_PUBLIC_*` is inlined when the bundle is built, so the build is given these
+ *   same values by `scripts/build-production.mjs`; they are repeated here so a
+ *   runtime read of `process.env` agrees with what was compiled in.
+ *
+ * `NEXT_PUBLIC_WORDPRESS_BASE_URL` / `NEXT_PUBLIC_WOOCOMMERCE_BASE_URL` are the
+ * *public* fallbacks, used by browser code that reads WordPress directly. Server
+ * code prefers the `WORDPRESS_BASE_URL` / `WOOCOMMERCE_BASE_URL` secrets
+ * (`src/lib/backend/config.ts`), which must be set to the same hostname.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "himalayan-koh-ecommerce-prod",
+  "vars": {
+    "NEXT_PUBLIC_SITE_URL": "https://himalayankoh.com",
+    "NEXT_PUBLIC_DATA_SOURCE": "woocommerce",
+    "NEXT_PUBLIC_WORDPRESS_BASE_URL": "https://wp.himalayankoh.com",
+    "NEXT_PUBLIC_WOOCOMMERCE_BASE_URL": "https://wp.himalayankoh.com"
+  }
+}

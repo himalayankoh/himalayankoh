@@ -45,6 +45,9 @@
     "start:vinext": "wrangler dev --config dist/server/wrangler.json",
     "deploy:vinext": "vinext-cloudflare deploy --config dist/server/wrangler.json && node scripts/check-build-secrets.mjs",
     "deploy:staging": "node scripts/deploy-staging.mjs",
+    "build:production": "node scripts/build-production.mjs",
+    "deploy:production": "node scripts/deploy-production.mjs",
+    "check:production-backend": "node scripts/check-production-backend.mjs",
     "pack:plugins": "node scripts/pack-plugins.mjs",
     "verify:wordpress": "node scripts/verify-wordpress-writes.mjs"
   },

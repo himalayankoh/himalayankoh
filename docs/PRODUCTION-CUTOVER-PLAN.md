@@ -2,6 +2,18 @@
 
 Status: **plan only, nothing production-facing has been changed.**
 
+> **Correction (2026-10-08): the backend below must NOT be `https://himalayankoh.com`.**
+> Step 1 in this document sets the production backend to the apex, which is the
+> storefront's own origin — the Worker would call itself for every read once the
+> domain is attached. The production backend is a separate hostname,
+> `https://wp.himalayankoh.com`; see `docs/PRODUCTION-REMEDIATION.md` §1 for the
+> measurements, the owner actions it needs and the `/wp-content/*` requirement. The
+> rest of this plan — the freeze, the secrets, the deploy-to-`workers.dev`-first
+> order and the verification list — still holds, and the deploy path it asks for in
+> Step 1 now exists (`wrangler.production.jsonc`, `scripts/assert-production-config.mjs`,
+> `npm run build:production`, `npm run deploy:production`). Rollback:
+> `docs/PRODUCTION-ROLLBACK.md`.
+
 Staging today is `https://preview.himalayankoh.com`, served by the Worker
 `himalayan-koh-ecommerce`, reading the **staging** WordPress/WooCommerce at
 `https://himalayankoh.com/staging`.

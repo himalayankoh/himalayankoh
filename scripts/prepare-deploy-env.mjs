@@ -26,7 +26,19 @@
  * and Vite's env-file order, and it is gitignored, so this is the one file a deploy
  * can own without touching developer settings or committing an origin.
  *
- * Writes only public values — origin, commit, timestamp. Never a credential.
+ * Writes only public values — origin, backend, commit, timestamp. Never a credential.
+ *
+ * ## The backend origin, for a production build
+ *
+ * Pass `DEPLOY_BACKEND_ORIGIN` to have this file also pin the two public backend
+ * variables (`NEXT_PUBLIC_WORDPRESS_BASE_URL`, `NEXT_PUBLIC_WOOCOMMERCE_BASE_URL`).
+ *
+ * Production needs it because of the same inlining rule as the site origin: a
+ * production build that leaves the backend to `.env.local` ships the *staging*
+ * backend to the production domain, and `NEXT_PUBLIC_*` cannot be corrected after
+ * the fact. Staging deliberately does not pass it — its backend comes from
+ * `.env.local` and is asserted by `assert-staging-config.mjs`, so the staging build
+ * is byte-for-byte what it was before this option existed.
  *
  * ## What it no longer writes
  *
@@ -56,6 +68,27 @@ try {
   process.stderr.write(`DEPLOY_SITE_ORIGIN is not a URL: ${origin}\n`);
   process.exit(1);
 }
+
+const backendOrigin = (process.env.DEPLOY_BACKEND_ORIGIN || '').trim().replace(/\/+$/, '');
+if (backendOrigin) {
+  try {
+    parsed = new URL(backendOrigin);
+  } catch {
+    process.stderr.write(`DEPLOY_BACKEND_ORIGIN is not a URL: ${backendOrigin}\n`);
+    process.exit(1);
+  }
+}
+
+// The *server-side* backend variable has to be overridden too, and it is the one
+// that bites. `WORDPRESS_BASE_URL` is not a `NEXT_PUBLIC_` name, so it is never
+// inlined for the browser — but it wins over the public one for every server read
+// (`src/lib/backend/config.ts`), including the reads the *build* performs when it
+// prerenders routes. Left in `.env.local` it pointed the production build's
+// prerender at the staging store, which baked staging image URLs into the
+// prerendered HTML — the exact leak `assert-production-config.mjs` refuses.
+const serverBackendVars = backendOrigin
+  ? [`WORDPRESS_BASE_URL=${backendOrigin}`, `WOOCOMMERCE_BASE_URL=${backendOrigin}`]
+  : [];
 
 const loopbackHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
 if (loopbackHosts.has(parsed.hostname.toLowerCase()) || parsed.hostname.endsWith('.localhost')) {
@@ -87,6 +120,13 @@ const body = [
   '# Regenerate with: npm run build:deploy',
   '',
   `NEXT_PUBLIC_SITE_URL=${origin}`,
+  ...(backendOrigin
+    ? [
+        `NEXT_PUBLIC_WORDPRESS_BASE_URL=${backendOrigin}`,
+        `NEXT_PUBLIC_WOOCOMMERCE_BASE_URL=${backendOrigin}`,
+        ...serverBackendVars,
+      ]
+    : []),
   `NEXT_PUBLIC_BUILD_SHA=${sha}`,
   `NEXT_PUBLIC_BUILD_TIME=${builtAt}`,
   '',
@@ -95,5 +135,6 @@ const body = [
 writeFileSync(join(ROOT, '.env.production.local'), body, 'utf8');
 
 process.stdout.write(
-  `Deploy env written: origin=${origin} sha=${sha.slice(0, 12)} builtAt=${builtAt}\n`,
+  `Deploy env written: origin=${origin}${backendOrigin ? ` backend=${backendOrigin}` : ''} ` +
+    `sha=${sha.slice(0, 12)} builtAt=${builtAt}\n`,
 );
