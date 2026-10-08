@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   CURATED_PRODUCT_IMAGES,
-  UNPUBLISHABLE_PRODUCT_IMAGES,
+  UNPUBLISHABLE_PRODUCT_IMAGE_KEYS,
   curatedProductImages,
   resolveCuratedProductImages,
-  unpublishableProductImages,
+  unpublishableProductImageKeys,
 } from './curatedImages';
 
 describe('Curated product images for salt blocks and licks', () => {
@@ -102,7 +102,35 @@ describe('Curated product images for the livestock rock salt pouch', () => {
 
   it('resolves the same overlays by SKU, case-insensitively', () => {
     expect(curatedProductImages('some-other-slug', 'hk-esf-6lbs')).toHaveLength(4);
-    expect(unpublishableProductImages('some-other-slug', 'HK-ESF-6lbs')).toEqual([STORE_SCREENSHOT]);
+    expect(unpublishableProductImageKeys('some-other-slug', 'HK-ESF-6lbs')).toEqual([
+      'rock-salt-label-6lbs',
+    ]);
+  });
+
+  it('withholds the screenshot whichever host the store serves it from', () => {
+    // The rule is about the *file*, not about a hostname. It used to be stored as
+    // the staging URL, so the moment the storefront read the live store the same
+    // image arrived under a different origin and the shop screenshot became
+    // publishable again.
+    const live = 'https://himalayankoh.com/wp-content/uploads/2026/10/rock-salt-label-6lbs.jpg';
+    const backend = 'https://wp.himalayankoh.com/wp-content/uploads/2026/10/rock-salt-label-6lbs.jpg';
+    const resized =
+      'https://himalayankoh.com/wp-content/uploads/2026/10/rock-salt-label-6lbs-600x450.jpg?ver=2';
+
+    const resolved = resolveCuratedProductImages(SLUG, 'HK-ESF-6lbs', [
+      STORE_SCREENSHOT,
+      live,
+      backend,
+      resized,
+      ...STORE_GENUINE,
+    ]);
+
+    // 4 curated shots, then the two genuine store images that are not the screenshot.
+    expect(resolved).toHaveLength(6);
+    for (const withheld of [STORE_SCREENSHOT, live, backend, resized]) {
+      expect(resolved, withheld).not.toContain(withheld);
+    }
+    expect(resolved.slice(4)).toEqual(STORE_GENUINE);
   });
 
   it('drops only the named store image, leaving every other one alone', () => {
@@ -117,7 +145,7 @@ describe('Curated product images for the livestock rock salt pouch', () => {
   });
 
   it('keys every unpublishable entry to a product, not to an image alone', () => {
-    for (const [key, hidden] of Object.entries(UNPUBLISHABLE_PRODUCT_IMAGES)) {
+    for (const [key, hidden] of Object.entries(UNPUBLISHABLE_PRODUCT_IMAGE_KEYS)) {
       expect(hidden.length, key).toBeGreaterThan(0);
       expect(CURATED_PRODUCT_IMAGES[key], key).toBeDefined();
     }

@@ -10,6 +10,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * does not touch the store again, and a failed read is not remembered.
  */
 
+/**
+ * The cache itself lives in `@/lib/ai/statusCache`: a test-only helper exported
+ * from a `route.ts` fails `npm run build`, because Next.js type-checks a route
+ * file's exports against the set of things a route may export.
+ */
 let resolveCalls = 0;
 /** Set to make the settings read fail, for the not-remembered-failure case. */
 let resolutionFails = false;
@@ -30,10 +35,11 @@ vi.mock('@/lib/ai/gemini', () => ({
   },
 }));
 
-const { GET, AI_STATUS_TTL_MS, __resetAiStatusCache } = await import('./route');
+const { GET } = await import('./route');
+const { AI_STATUS_TTL_MS, __resetAiStatusCacheForTests } = await import('@/lib/ai/statusCache');
 
 beforeEach(() => {
-  __resetAiStatusCache();
+  __resetAiStatusCacheForTests();
   resolveCalls = 0;
   resolutionFails = false;
 });
