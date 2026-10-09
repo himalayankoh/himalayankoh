@@ -9,6 +9,7 @@ import { useCart } from '../store/cartStore';
 import { useAuthContext } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { wishlistApi } from '../lib/wishlist/client';
+import { ORDERING_ENABLED } from '../lib/storefront/ordering';
 import {
   CARD_IMAGE_SIZES,
   dropResponsiveCandidates,
@@ -53,7 +54,11 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
   // free. The backend reports `priceMin: null` for exactly this case.
   const priceKnown = isPriceKnown(product);
   const maxQuantity = typeof product.stockQuantity === 'number' ? Math.max(0, product.stockQuantity) : null;
-  const canBuy = priceKnown && product.inStock && (maxQuantity === null || maxQuantity > 0);
+  // A catalogue-only deployment offers no purchase at all, so the card must not render a
+  // cart control it cannot honour. `ORDERING_ENABLED` is the build-time mirror of the
+  // pause the server enforces (`lib/storefront/ordering.ts`), which is why a product
+  // that is genuinely in stock and priced still shows no Add to Cart here.
+  const canBuy = ORDERING_ENABLED && priceKnown && product.inStock && (maxQuantity === null || maxQuantity > 0);
 
   const [isAdding, setIsAdding] = useState(false);
 
@@ -211,8 +216,10 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
           </select>
         )}
 
-        {/* Quantity + Add to Cart */}
+        {/* Quantity + Add to Cart — omitted entirely while ordering is paused: a stepper
+            next to a disabled button still reads as a shop that takes orders. */}
         <div className="flex flex-wrap items-center gap-2 mt-auto">
+          {ORDERING_ENABLED && (
           <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
             <button
               aria-label={`Decrease quantity for ${product.name}`}
@@ -234,6 +241,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
               +
             </button>
           </div>
+          )}
           <motion.button
             whileHover={priceKnown && !isAdding ? { scale: 1.02 } : undefined}
             whileTap={priceKnown && !isAdding ? { scale: 0.98 } : undefined}
@@ -248,7 +256,15 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
             }`}
           >
             {isAdding ? <Loader2 size={16} className="animate-spin" /> : <ShoppingCart size={16} />}
-            {isAdding ? 'Adding…' : (addedToCart ? 'Added!' : !canBuy ? (product.stockStatus === 'out_of_stock' ? 'Out of stock' : 'Unavailable') : 'Add to Cart')}
+            {!ORDERING_ENABLED
+              ? 'Ordering unavailable'
+              : isAdding
+                ? 'Adding…'
+                : addedToCart
+                  ? 'Added!'
+                  : !canBuy
+                    ? (product.stockStatus === 'out_of_stock' ? 'Out of stock' : 'Unavailable')
+                    : 'Add to Cart'}
           </motion.button>
         </div>
       </div>

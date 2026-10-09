@@ -110,6 +110,17 @@ export const PRODUCTION_STRIPE_PUBLISHABLE_KEY = 'pk_live_bScMJ0xIRFCAbr3IQJM5YW
 export const PRODUCTION_ORDERS_PAUSED = 'true';
 
 /**
+ * The same fact in the one form a browser bundle can read (`NEXT_PUBLIC_ORDERS_PAUSED`).
+ *
+ * Derived rather than written out a second time: the server refuses an order from the
+ * runtime variable and the product pages hide the cart control from this one, and if the
+ * two could disagree the shop would advertise a purchase its own routes would reject.
+ * `scripts/assert-production-config.mjs` requires both names in the deployed variable set
+ * and checks each against these constants.
+ */
+export const PRODUCTION_ORDERS_PAUSED_PUBLIC = PRODUCTION_ORDERS_PAUSED;
+
+/**
  * `pk_live_…`, and nothing else, for a production build.
  *
  * The shape check is deliberately loose about the body — Stripe has changed key

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ORDERS_PAUSED_ENV_KEY,
   ORDERS_PAUSED_MESSAGE,
+  ORDERS_PAUSED_PUBLIC_ENV_KEY,
   isOrderingPaused,
   orderingState,
   resolveOrderingState,
@@ -64,9 +65,35 @@ describe('production launches in catalogue-only mode', () => {
   const read = (relative: string) =>
     readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
 
-  it('declares the pause in the production overlay', () => {
+  it('declares the pause in the production overlay, in both forms', () => {
     const overlay = read('../../../wrangler.production.jsonc');
     expect(overlay).toMatch(/"STOREFRONT_ORDERS_PAUSED"\s*:\s*"true"/);
+    // The browser's copy: a mismatch would show a cart control to a shopper whose order
+    // the routes refuse.
+    expect(overlay).toMatch(/"NEXT_PUBLIC_ORDERS_PAUSED"\s*:\s*"true"/);
+    expect(ORDERS_PAUSED_PUBLIC_ENV_KEY).toBe('NEXT_PUBLIC_ORDERS_PAUSED');
+  });
+
+  it('inlines the browser’s copy into a production build from the same constant', () => {
+    const prepare = read('../../../scripts/prepare-deploy-env.mjs');
+    expect(prepare).toMatch(/PRODUCTION_ORDERS_PAUSED_PUBLIC/);
+    expect(prepare).toMatch(/NEXT_PUBLIC_ORDERS_PAUSED=\$\{ordersPausedPublic\}/);
+  });
+
+  it('renders no purchase control on the surfaces a shopper buys from', () => {
+    // The screens are client components on prerendered pages, so the pause reaches them as
+    // the inlined constant; these are the two that render the cart control, and the
+    // wishlist and quick view reuse the card.
+    for (const file of ['../../components/ProductCard.tsx', '../../components/ProductDetailView.tsx']) {
+      const source = read(file);
+      expect(source, file).toMatch(/ORDERING_ENABLED/);
+    }
+    const card = read('../../components/ProductCard.tsx');
+    expect(card).toMatch(/const canBuy = ORDERING_ENABLED &&/);
+    expect(card).toMatch(/\{ORDERING_ENABLED && \(/);
+    const detail = read('../../components/ProductDetailView.tsx');
+    expect(detail).toMatch(/!ORDERING_ENABLED\s*\?\s*'Ordering unavailable'/);
+    expect(detail).toMatch(/ORDERS_PAUSED_MESSAGE/);
   });
 
   it('keeps the pause in the set of variables the guard accepts, and nothing else', () => {

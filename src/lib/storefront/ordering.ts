@@ -39,6 +39,35 @@
 export const ORDERS_PAUSED_ENV_KEY = 'STOREFRONT_ORDERS_PAUSED';
 
 /**
+ * The same fact, for the browser bundle — inlined at build time by its `NEXT_PUBLIC_` name.
+ *
+ * The runtime variable above is what the server enforces, and it is enough to stop an
+ * order. It is not enough to stop the shop *advertising* one: every product card and
+ * product page renders a quantity stepper and an "Add to Cart" button, so a deployment
+ * refusing every order would still look like a shop that takes them. A disabled button
+ * with no reason is the other half of the same failure.
+ *
+ * A public build-time constant rather than a fetch, for the same reason the launch mode
+ * is a declaration: the controls are rendered by client components on prerendered pages,
+ * and one inlined boolean reaches all of them — home, listing, product page, wishlist,
+ * quick view — with no request and no prop threaded through five components that could
+ * each be forgotten. The two variables are asserted equal by
+ * `scripts/assert-production-config.mjs`, so the screen and the refusal cannot disagree.
+ *
+ * Read as a literal member expression: Next and Vite only inline `process.env.X` written
+ * out in full.
+ */
+export const ORDERS_PAUSED_PUBLIC_ENV_KEY = 'NEXT_PUBLIC_ORDERS_PAUSED';
+
+/**
+ * May this build's screens offer a purchase?
+ *
+ * Named as the positive because that is how every call site reads: a card asks whether it
+ * may offer the cart, and the answer is `false` on a catalogue-only deployment.
+ */
+export const ORDERING_ENABLED = process.env.NEXT_PUBLIC_ORDERS_PAUSED !== 'true';
+
+/**
  * What a customer is told while ordering is paused.
  *
  * Names a way to actually buy rather than only saying no: the shop is a real business

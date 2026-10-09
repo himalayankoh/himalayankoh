@@ -11,6 +11,7 @@ import { useCart } from '../store/cartStore';
 import { useAuthContext } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { wishlistApi } from '../lib/wishlist/client';
+import { ORDERING_ENABLED, ORDERS_PAUSED_MESSAGE } from '../lib/storefront/ordering';
 import ProductImageGallery from './ProductImageGallery';
 import {
   buildProductsCategoryPath,
@@ -92,15 +93,20 @@ export default function ProductDetailView({
     )
   );
 
-  const addToCartLabel = isAdding
-    ? 'Adding…'
-    : addedToCart
-      ? 'Added to Cart!'
-      : needsOption
-        ? 'Choose an option'
-        : selectedOutOfStock
-          ? 'Out of stock'
-          : 'Add to Cart';
+  // The pause outranks stock and price: on a catalogue-only deployment there is no
+  // purchase to offer at all, and saying "Choose an option" or "Add to Cart" beside a
+  // disabled button would advertise exactly what the deployment refuses.
+  const addToCartLabel = !ORDERING_ENABLED
+    ? 'Ordering unavailable'
+    : isAdding
+      ? 'Adding…'
+      : addedToCart
+        ? 'Added to Cart!'
+        : needsOption
+          ? 'Choose an option'
+          : selectedOutOfStock
+            ? 'Out of stock'
+            : 'Add to Cart';
 
   // Tracked units are a ceiling, not a suggestion: a customer cannot order past
   // what the warehouse reports. No count means no ceiling, because inventing one
@@ -271,6 +277,14 @@ export default function ProductDetailView({
             </p>
           )}
 
+          {/* A paused deployment says so where the price and the buy button are, and says
+              how to order instead. Without this the page shows a price, a disabled button
+              and no reason — which reads as a broken product rather than as a shop that is
+              not taking online orders yet. */}
+          {!ORDERING_ENABLED && (
+            <p className="text-sm font-semibold text-charcoal/70 mb-4">{ORDERS_PAUSED_MESSAGE}</p>
+          )}
+
           {/* Only an explicit out-of-stock report is shown. A source that
               cannot report stock at all (stockStatus 'unknown') must not be
               described as out of stock — that is a claim we did not receive. */}
@@ -379,7 +393,7 @@ export default function ProductDetailView({
               whileHover={!isAdding ? { scale: 1.02 } : undefined}
               whileTap={!isAdding ? { scale: 0.98 } : undefined}
               onClick={handleAddToCart}
-              disabled={!product.inStock || !priceKnown || isAdding || needsOption || selectedOutOfStock}
+              disabled={!ORDERING_ENABLED || !product.inStock || !priceKnown || isAdding || needsOption || selectedOutOfStock}
               aria-live="polite"
               aria-busy={isAdding}
               className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${

@@ -54,6 +54,12 @@
  * `scripts/assert-production-config.mjs` refuses any build whose variables lost it:
  * ordering cannot be enabled by deleting a line, only by writing 'false' where a
  * reviewer reads it, after the Stripe webhook has been verified end to end.
+ *
+ * `NEXT_PUBLIC_ORDERS_PAUSED` is the same fact for the browser, and it must say the same
+ * thing: the runtime variable is what the server refuses an order from, while this one is
+ * inlined into the product cards and pages that render the cart control, so a mismatch
+ * would show an "Add to Cart" button to a shopper whose order the routes would reject.
+ * Both are pinned to `PRODUCTION_ORDERS_PAUSED` in `scripts/production-target.mjs`.
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -64,6 +70,7 @@
     "NEXT_PUBLIC_WORDPRESS_BASE_URL": "https://wp.himalayankoh.com",
     "NEXT_PUBLIC_WOOCOMMERCE_BASE_URL": "https://wp.himalayankoh.com",
     "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_bScMJ0xIRFCAbr3IQJM5YWfY004PNn0fn2",
-    "STOREFRONT_ORDERS_PAUSED": "true"
+    "STOREFRONT_ORDERS_PAUSED": "true",
+    "NEXT_PUBLIC_ORDERS_PAUSED": "true"
   }
 }

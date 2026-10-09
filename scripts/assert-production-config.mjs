@@ -39,6 +39,7 @@ import {
   HOLD_UNTIL_CUTOVER_HOSTS,
   PRODUCTION_BACKEND_ORIGIN,
   PRODUCTION_ORDERS_PAUSED,
+  PRODUCTION_ORDERS_PAUSED_PUBLIC,
   PRODUCTION_SITE_ORIGIN,
   PRODUCTION_STRIPE_PUBLISHABLE_KEY,
   PRODUCTION_WORKER_NAME,
@@ -100,12 +101,17 @@ export const EXPECTED_VARS = {
   // checkout that cannot take a card, and `assertStripePublishableKey` below is what
   // turns that from a discovery in production into a failed build.
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: PRODUCTION_STRIPE_PUBLISHABLE_KEY,
-  // The launch mode, and not a public value at all: this one is read on the server,
-  // where it decides whether the storefront may write an order. It is asserted here
-  // for the opposite reason to the four above — not because it must reach the browser,
-  // but because a production deployment that lost it would accept orders it has no
-  // way to complete. See `src/lib/storefront/ordering.ts`.
+  // The launch mode, in both of the forms that decide it, and neither of them is a
+  // public value like the four above.
+  //
+  // `STOREFRONT_ORDERS_PAUSED` is read on the server, where it decides whether the
+  // storefront may write an order. `NEXT_PUBLIC_ORDERS_PAUSED` is inlined into the
+  // bundle, where it decides whether a product card renders a cart control at all.
+  // Asserting both — each against the same constant in `production-target.mjs` — is what
+  // keeps the screen and the refusal from disagreeing, and what makes the pause
+  // impossible to lose from a production build. See `src/lib/storefront/ordering.ts`.
   STOREFRONT_ORDERS_PAUSED: PRODUCTION_ORDERS_PAUSED,
+  NEXT_PUBLIC_ORDERS_PAUSED: PRODUCTION_ORDERS_PAUSED_PUBLIC,
 };
 
 function refuse(reason) {

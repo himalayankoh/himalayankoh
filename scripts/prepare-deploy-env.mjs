@@ -67,7 +67,11 @@ import { execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PRODUCTION_SITE_ORIGIN, resolveProductionStripePublishableKey } from './production-target.mjs';
+import {
+  PRODUCTION_ORDERS_PAUSED_PUBLIC,
+  PRODUCTION_SITE_ORIGIN,
+  resolveProductionStripePublishableKey,
+} from './production-target.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -120,6 +124,16 @@ const serverBackendVars = backendOrigin
 const stripePublishableKey =
   origin === PRODUCTION_ORIGIN ? resolveProductionStripePublishableKey(process.env) : '';
 
+// The launch mode, inlined into the bundle.
+//
+// `publicEnv` in a client component is read at build time, so a production build that
+// left this to a developer's `.env.local` would render Add to Cart buttons on a deployment
+// whose routes refuse every order — the one mismatch the catalogue-only launch exists to
+// prevent. Written for a production origin only; staging deliberately keeps ordering on so
+// the cart and checkout can be exercised there.
+const ordersPausedPublic =
+  origin === PRODUCTION_ORIGIN ? PRODUCTION_ORDERS_PAUSED_PUBLIC : '';
+
 const loopbackHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']);
 if (loopbackHosts.has(parsed.hostname.toLowerCase()) || parsed.hostname.endsWith('.localhost')) {
   process.stderr.write(
@@ -158,6 +172,7 @@ const body = [
       ]
     : []),
   ...(stripePublishableKey ? [`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${stripePublishableKey}`] : []),
+  ...(ordersPausedPublic ? [`NEXT_PUBLIC_ORDERS_PAUSED=${ordersPausedPublic}`] : []),
   `NEXT_PUBLIC_BUILD_SHA=${sha}`,
   `NEXT_PUBLIC_BUILD_TIME=${builtAt}`,
   '',
@@ -168,5 +183,6 @@ writeFileSync(join(ROOT, '.env.production.local'), body, 'utf8');
 process.stdout.write(
   `Deploy env written: origin=${origin}${backendOrigin ? ` backend=${backendOrigin}` : ''} ` +
     `${stripePublishableKey ? `stripe=${stripePublishableKey.slice(0, 8)}…(${stripePublishableKey.length} chars) ` : ''}` +
+    `${ordersPausedPublic ? `ordersPaused=${ordersPausedPublic} ` : ''}` +
     `sha=${sha.slice(0, 12)} builtAt=${builtAt}\n`,
 );
