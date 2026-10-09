@@ -1,0 +1,132 @@
+BACKUP AND RESTORE EVIDENCE — 2026-10-09
+=================================================================
+Recorded for docs/production/BACKUP-RESTORE-VERIFICATION.md §4 and §8.
+Held outside the hosting account, on the owner's machine, at:
+  C:\Users\basco\Downloads\hk\hk-backups\2026-10-08\
+No database content, customer record, credential or wp-config secret is
+reproduced in this file — identification, hashes and counts only.
+
+
+§1  WHAT WAS TAKEN
+-----------------------------------------------------------------
+  database dump        himaljpz_dbigyg59kmwnws.sql.gz          5,479,610 bytes
+  wp-config.php        wp-config.php                               3,694 bytes
+  wp-content files     wp-content-theme-plugin-files.tar.gz  285,394,041 bytes
+  uploads              wp-content-uploads.tar.gz            2,730,202,043 bytes
+  manifest             SHA256SUMS.txt
+  dump completed by the server at          2026-10-08 18:07:20
+  server that produced the dump            11.4.13-MariaDB-cll-lve-log
+
+§2  INTEGRITY (recomputed against SHA256SUMS.txt, 2026-10-09)
+-----------------------------------------------------------------
+  sha256 wp-content-uploads.tar.gz            MATCH
+         ee5f4896f25fc56c4abf0e6adf72340afe2304a4f41cef1680e99ae94e6dd78d
+  sha256 wp-content-theme-plugin-files.tar.gz MATCH
+         0c3fc1d0f7bb185ee4ff8ac4aa536c33da4b2880af3bb8cd11430b124b8dc5bc
+  sha256 wp-config.php                        MATCH
+         cf47bb166db4b79e3c8a5f704db18d4a7f2f311f111f721aa847affb2782ea9b
+  sha256 himaljpz_dbigyg59kmwnws.sql.gz       MATCH
+         b4e5c7df2553128e40016b78189b4b1ea52d76f74aa1851d724544c2965e53cc
+  gzip -t on the dump                         OK — archive not truncated
+  tar -tzf on both archives                   OK — both list and extract cleanly
+  dump statement census                       320 DROP TABLE IF EXISTS
+                                              320 CREATE TABLE
+                                              257 INSERT INTO
+  dump trailer                                "-- Dump completed on 2026-10-08 18:07:20"
+                                              — the writer reached its own end
+
+
+§3  IS THIS THE RIGHT DATABASE? (the "wrong database" failure mode)
+-----------------------------------------------------------------
+  The account holds three WordPress prefixes in one database, so the first
+  table in the dump (`afk_commentmeta`) is NOT evidence of what it contains.
+  The backed-up wp-config.php states `$table_prefix = 'wp_'`, and the dump
+  on that prefix holds:
+    wp_posts                      588      wp_users      2707
+    wp_options option 'siteurl'   https://himalayankoh.com
+    wp_options option 'home'      https://himalayankoh.com
+    wp_options option 'blogname'  Himalayan Koh
+  i.e. the LIVE APEX install, not the co-located `stg_` (167 tables) or the
+  abandoned `afk_` install (14 tables, blogname "My WordPress", 0 products).
+
+
+§4  THE SCRATCH RESTORE  (the proof, §4.5)
+-----------------------------------------------------------------
+  SCRATCH RESTORE
+    target:                isolated local MariaDB 11.4.13 on 127.0.0.1:33107
+                           (exact version match to the dump's server), datadir
+                           under .freebuff/tmp/mariadb/data — a disposable
+                           scratch instance. Nothing on the hosting account
+                           was touched; the live database was never written.
+    database restored:     hk_restore_check
+    command:               gunzip -c himaljpz_dbigyg59kmwnws.sql.gz | mysql
+                             --protocol=tcp -h 127.0.0.1 -P 33107 hk_restore_check
+    import exit status:    0
+    import elapsed:        26 s
+    SQL errors:            none (stderr contained only the client's
+                           --ssl-verify-server-cert warning)
+    tables in the dump:    320
+    tables in the restore: 320        <- counts match
+
+  ROW COUNTS, RESTORED COPY (the tables this restore is judged on)
+    wp_posts            588
+    wp_users           2707
+    published products   13
+    product_variation    33   (28 publish, 5 private)
+    attachments         273
+    shop_order posts     14   (all wc-completed)
+    orders in HPOS:      none — the installation is post-based
+                         (wp_wc_orders does not exist), so the order half of
+                         the dump is in wp_posts, and it is present
+
+  THE PUBLISHED PRODUCTS SURVIVED, BY NAME AND ID
+    271, 281, 286, 291, 2185, 2192, 2295, 2321, 2352, 2367, 2372, 2446, 2461
+  These are the same 13 IDs the live WooCommerce Store API serves over
+  https://wp.himalayankoh.com, so the restored copy agrees with the source
+  on the set that matters most.
+
+  PRODUCT IMAGERY SURVIVED, INCLUDING THE FILES
+    All 13 published products carry a _thumbnail_id, and every one of those
+    13 attachment files is present in wp-content-uploads.tar.gz:
+      271 -> 2020/10/1.jpeg                     281 -> 2021/03/horse-lick-himalayan-salt5.jpg
+      286 -> 2017/10/WhatsApp-Image-...jpeg     291 -> 2016/06/WhatsApp-Image-...jpeg
+      2185 -> 2023/04/Himalayan-Chef-...jpg     2192 -> 2023/04/Himalayan-Chef-...jpg
+      2295 -> 2023/07/Tear-Drop.jpg             2321 -> 2023/08/S6.jpg
+      2352 -> 2022/04/lick-4.jpg                2367 -> 2023/08/S6.jpg
+      2372 -> 2021/03/himalayan-salt-lump-cattle4.jpg
+      2446 -> 2024/08/WhatsApp-Image-...jpeg    2461 -> 2025/07/6-lbs-pouche.webp
+
+  THE FILES ARCHIVES ARE REAL, NOT EMPTY
+    uploads:      10,556 entries — 8,276 jpeg, 749 png, 57 webp, spanning
+                  uploads/2016/06 through uploads/2026/10. (An empty uploads
+                  tree, the quota-exhaustion failure mode, looks like ~3
+                  entries; this is not that.)
+    wp-content:   33,718 entries — 53 plugins including woocommerce,
+                  litespeed-cache, contact-form-7, revslider, js_composer and
+                  himalayan-koh; the active theme themes/farmagrico (302 files)
+                  and themes/farmagrico-child; and mu-plugins/sso.php,
+                  hk-performance-optimizations.php, hk-staging-account.php,
+                  update-manager.php, spotaware-promo-banner.php.
+
+  §4.5 PASS CONDITION: every line above is filled in, the import ran to
+  completion with no error, the table count matches the source, and the
+  published product set matches the live catalogue by ID and by name.
+  BACKUP VERDICT: PASS — a restorable copy of the live database and the
+  live files exists outside the hosting account.
+
+
+§5  LIMITS OF THIS RECORD
+-----------------------------------------------------------------
+  1. Row counts are the restored copy's, not a side-by-side count taken from
+     the live database in the same minute. The live database was deliberately
+     not queried table-by-table: that needs either cPanel or a WordPress SQL
+     path, and neither was available without the owner's browser session at
+     the time. The comparison that was possible — the 13-product set, by ID
+     and name, against the live Store API — was made and agrees.
+  2. This is a snapshot of the state on 2026-10-08 18:07. Any product edit,
+     order or upload after that moment is not in it. Re-take and re-verify
+     after a catalogue import or the cutover itself
+     (docs/production/BACKUP-RESTORE-VERIFICATION.md §4.6).
+  3. The scratch instance is disposable and is not backed by a service. What
+     it proves is that these bytes restore into a real MariaDB of the same
+     version, with the live catalogue intact.

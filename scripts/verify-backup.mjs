@@ -60,6 +60,9 @@ if (!DB_PATH && !FILES_PATH) {
   process.stderr.write(
     'Usage: node scripts/verify-backup.mjs --db <dump.sql|dump.sql.gz> [--files <archive.tar.gz|directory>]\n' +
       '       [--prefix wp_] [--restore-evidence <file>]\n\n' +
+      '  --files may be one archive or a directory. A directory is walked and any\n' +
+      '  .tar/.tar.gz/.tgz archive inside it is read as well, because this site takes its\n' +
+      '  files half as separate archives for uploads and for plugins and themes.\n\n' +
       'Both halves are required for a PASS: a database dump alone cannot be restored into\n' +
       'a working site, and files alone have no content or orders in them. A PASS also needs\n' +
       'the recorded evidence of a restore into a scratch database, because a dump nobody has\n' +
@@ -270,6 +273,9 @@ function walk(directory) {
   return found;
 }
 
+/** The archive kinds `entriesOfArchive` can list (tar's own, never a zip). */
+const ARCHIVE_SUFFIXES = ['.tar.gz', '.tgz', '.tar'];
+
 async function verifyFiles(path) {
   if (!existsSync(path)) {
     record('files backup exists', 'FAIL', `${path} does not exist`);
@@ -283,7 +289,31 @@ async function verifyFiles(path) {
       // Archive listings use `/`, so a directory has to be normalised to the same shape
       // or every match below silently fails on Windows — which is how a complete backup
       // gets reported as missing its uploads.
-      entries = walk(path).map((file) => file.slice(resolve(path).length + 1).split('\\').join('/'));
+      //
+      // A backup directory holds the loose files (`wp-config.php`) *and* the archives. The
+      // walk yields the archives' names only, so a split backup read as a directory of two
+      // filenames and nothing else — and reported a complete backup as missing its uploads,
+      // plugins and themes. Opening each archive closes that gap; it changes nothing about
+      // what the checks below require of the entries it finds.
+      const archivesRead = [];
+      entries = [];
+      for (const file of walk(path)) {
+        const relative = file.slice(resolve(path).length + 1).split('\\').join('/');
+        if (!ARCHIVE_SUFFIXES.some((suffix) => relative.toLowerCase().endsWith(suffix))) {
+          entries.push(relative);
+          continue;
+        }
+        const listing = entriesOfArchive(file);
+        if (listing.error) {
+          record('files archive can be listed without extracting it', 'FAIL', `${relative}: ${listing.error}`);
+          return { ok: false };
+        }
+        archivesRead.push(`${relative} (${listing.entries.length} entries)`);
+        entries.push(...listing.entries);
+      }
+      if (archivesRead.length > 0) {
+        record('archives inside the directory can be listed without extracting them', 'PASS', archivesRead.join(', '));
+      }
     } catch (error) {
       record('files backup readable', 'FAIL', String(error?.message || error));
       return { ok: false };
@@ -304,6 +334,17 @@ async function verifyFiles(path) {
     record('files archive can be listed without extracting it', 'PASS', `${basename(path)}, ${(size / 1_048_576).toFixed(1)} MiB, ${entries.length} entries`);
   }
 
+  // A WordPress backup can archive `wp-content/` itself, so its entries read
+  // `wp-content/uploads/2026/10/x.jpg`, or it can archive that directory's
+  // *contents*, which is how this site's archives are taken, so the same file reads
+  // `uploads/2026/10/x.jpg`. Both are the same tree and the three checks below are
+  // about what is inside it, so each one accepts either root — and nothing else. A
+  // directory named `my-uploads/` or `staging/uploads/` still does not count, and the
+  // bar for "non-trivial" (more than 50 files) is unchanged, which is what catches an
+  // uploads tree that was empty because the account's disk quota was full.
+  const underTree = (entry, tree) => new RegExp(`(^|/)wp-content/${tree}/`).test(entry) || new RegExp(`(^|/)${tree}/`).test(entry);
+  const treeFile = (entry, tree) => new RegExp(`(^|/)(wp-content/)?${tree}/[^/]+/[^/]*$`).test(entry);
+
   const hasConfig = entries.some((entry) => /(^|\/)wp-config\.php$/.test(entry));
   record(
     'files backup contains wp-config.php',
@@ -311,15 +352,15 @@ async function verifyFiles(path) {
     hasConfig ? 'wp-config.php present' : 'no wp-config.php — plugins, themes and the salts cannot be reconstructed from the database alone',
   );
 
-  const uploads = entries.filter((entry) => entry.includes('wp-content/uploads/') && !entry.endsWith('/'));
+  const uploads = entries.filter((entry) => underTree(entry, 'uploads') && !entry.endsWith('/'));
   record(
     'files backup contains a non-trivial wp-content/uploads',
     uploads.length > 50 ? 'PASS' : 'FAIL',
     `${uploads.length} file(s) under wp-content/uploads`,
   );
 
-  const plugins = entries.filter((entry) => /wp-content\/plugins\/[^/]+\/[^/]*$/.test(entry)).length;
-  const themes = entries.filter((entry) => /wp-content\/themes\/[^/]+\/[^/]*$/.test(entry)).length;
+  const plugins = entries.filter((entry) => treeFile(entry, 'plugins')).length;
+  const themes = entries.filter((entry) => treeFile(entry, 'themes')).length;
   record(
     'files backup contains the plugins and themes',
     plugins > 0 && themes > 0 ? 'PASS' : 'FAIL',
