@@ -230,12 +230,89 @@ an `hc_js_gate` cookie in JavaScript and reloads. curl does not run the script, 
 reads the gate as the plugin list. It is not a permissions problem, and it did not block anything
 here — it is why the plugin state in item 2 was settled by the REST namespace index instead.
 
+### 6. The owner's console login was never deployed — FIXED
+
+The app has two admin sign-in sources (`src/lib/auth/adminAccounts.ts` and
+`src/lib/auth/wordpressAdminAuth.ts`), and the production Worker had only the second:
+`ADMIN_LOGIN_ACCOUNTS` exists in `.env.local` (one entry, `admin@himalayankoh.com`) and was
+**absent from the Worker**, so `areAdminAccountsConfigured()` was false there and
+`POST /api/auth/admin/login` could not succeed however correct the password was. The route's own
+configuration report is the proof it was missing, and that it is not now:
+
+```
+before: GET /api/auth/admin/login -> loginAccountsConfigured: false
+        POST                    -> 401 "Wrong WordPress username or application password."
+after:  GET /api/auth/admin/login -> {"configured":true,"signingConfigured":true,
+                                      "loginAccountsConfigured":true,"wordpressConfigured":true}
+        POST                    -> 200, admin session issued for "Salman Bashir"
+        GET /api/admin/catalog, /api/admin/orders with that session -> 200
+```
+
+Note what the first `POST` message proves: it is the message the route returns when
+`areAdminAccountsConfigured()` is **false**, so the credential was never the problem. A Cloudflare
+secret set through the API also takes a few seconds to reach every edge — the first check after the
+write still drew the old answer, and the same request a minute later issued a session. Retest before
+concluding a new secret is wrong.
+
+Set by `.freebuff/set-admin-login-accounts.mjs --push`, which hashes the password from the ignored
+owner file and reports only whether the stored digest still matches. The password is unchanged; only
+the variable was ever missing.
+
+### 7. The WordPress admin is unreachable at the apex — OPEN (owner action)
+
+WordPress's `siteurl` is `https://himalayankoh.com` and, by the cutover's design, was deliberately
+not changed. So WordPress builds its own login and admin URLs from the apex — which the Worker now
+owns, and which has no route for them:
+
+| Path | `himalayankoh.com` (Worker) | `wp.himalayankoh.com` (WordPress) |
+| --- | --- | --- |
+| `/wp-login.php` | **404** | 200 |
+| `/wp-admin/` | **308 → /wp-admin → 404** | 200 |
+| `/wp-admin/admin-ajax.php` | **404** | 200 |
+| `/wp-json/` | 308 → 404 | 200 |
+
+So a browser that opens `wp.himalayankoh.com/wp-admin/` is redirected by WordPress
+(`auth_redirect()` → `wp_login_url()` → the apex) onto the Worker's 404 page — which is what the
+owner saw, with the storefront's shopper login modal opening over it. The `/wp-content` relay
+documents the decision explicitly: `/wp-json/`, `/wp-admin/` and `/wp-login.php` are not forwarded,
+"because there is no reason to make the shopping domain an entry point to the WordPress admin". That
+is sound while WordPress's own URLs point at its own hostname; after the cutover they do not.
+
+**Workaround, available now:** log in at `https://wp.himalayankoh.com/wp-login.php` and, because
+WordPress's post-login redirect lands on the apex, navigate to `https://wp.himalayankoh.com/wp-admin/`
+directly. The session cookie is host-only for the `wp.` host, so it works there.
+
+**Proper fix, not yet decided:** either relay the admin surface through the Worker (a new public
+proxy surface, and the reason the current relay refuses it), or filter WordPress's `login_url` /
+`admin_url` to the backend host with a small mu-plugin. Both are reversible; neither was taken
+without the owner, because the first widens what the shopping domain proxies and the second changes
+WordPress's own address handling.
+
+### 8. The WordPress login credentials on file are stale — OWNER ACTION
+
+Three stored sources were tried against the two accounts the install actually has
+(`saltcms`, `ayazbashir` — both confirmed to *exist*, because WordPress answers "the password you
+entered for the username X is incorrect" only for a real user), and none authenticated:
+
+- `PRODUCTION_WP_ADMIN_EMAIL` in `.env.local` is a gmail.com address that is not a user on the
+  install ("Unknown email address. Check again or try your username.").
+- `WP_ADMIN_PASS` in both owner secret files is a staging-era password.
+- `admin@himalayankoh.com` — the address the owner supplied for the *console* login — is also not a
+  WordPress user (`/wp-json/wp/v2/users` returns only `ayazbashir` and `saltcms`).
+
+Attempts were capped at four deliberately: more against a live login tests the host's lockout policy
+rather than the password. Consequence: **items 2 and 3 cannot be completed** — installing the
+storefront plugin and minting a production application password both need wp-admin access — until a
+working WordPress administrator password exists.
+
 ### Still open after the cutover
 
 - **The hosting renewal** (owner action): `Stellar Plus` for `himalayankoh.com` expires
   **Oct 17, 2026**, auto-renew not set. The storefront keeps working without it, but the WordPress
   backend, `wp-admin`, the WooCommerce API and the legacy callback do not.
-- **The storefront plugin and the production application password** (items 2 and 3 above).
+- **The storefront plugin and the production application password** (items 2 and 3 above), blocked on
+a working WordPress administrator password (item 8).
+- **The WordPress admin's address after the cutover** (item 7).
 - **`scripts/check-production-gate.mjs` now fails by design** — it asserts that no Worker route and
   no custom domain serve the apex, which was the pre-cutover condition this document recorded.
 - **The new Stripe endpoint and live checkout** are deliberately not configured.

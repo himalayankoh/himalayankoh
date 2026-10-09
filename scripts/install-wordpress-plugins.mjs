@@ -84,7 +84,8 @@ const escapeConf = (value) => String(value).replace(/\\/g, '\\\\').replace(/"/g,
 function curl(args) {
   return execFileSync(
     'curl',
-    ['-sS', '--max-time', '90', '-A', UA, '-b', JAR, '-c', JAR, ...args],
+    // hc_js_gate is what the host's gate page sets before reloading (see JS_GATE).
+    ['-sS', '--max-time', '90', '-A', UA, '-b', JAR, '-c', JAR, '-H', 'Cookie: hc_js_gate=1', ...args],
     { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
   );
 }
@@ -100,6 +101,17 @@ function curl(args) {
  * the way the page itself asks to be retried is the whole fix: nothing here bypasses
  * anything, it just stops hammering.
  */
+/**
+ * The host's other gate, met on `wp.himalayankoh.com`.
+ *
+ * `/wp-admin/plugins.php` answers with a ~745-byte "Checking your browser…" page whose
+ * own script sets an `hc_js_gate` cookie and reloads after 300ms. A browser never sees
+ * it twice; curl does not run the script, so without the cookie it reads that page as
+ * the plugin list, finds no `data-plugin` rows, and reports "cannot read the plugin
+ * list" — which reads like a permissions problem and is not one. The cookie is sent on
+ * every request below, and the page is also retried if it appears anyway.
+ */
+const JS_GATE = /Checking your browser/i;
 const INTERSTITIAL = /One moment, please|<title>\s*Loader\s*<\/title>/i;
 const RETRY_WAIT_MS = 7000;
 const MAX_TRIES = 6;
@@ -111,11 +123,14 @@ function curlPage(url, { attempts = MAX_TRIES } = {}) {
   let body = '';
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     body = curl([url]);
-    if (!INTERSTITIAL.test(body)) return body;
-    if (attempt < attempts) {
-      console.log(`    rate limited (attempt ${attempt}/${attempts}) — waiting ${RETRY_WAIT_MS / 1000}s`);
-      sleep(RETRY_WAIT_MS);
+    if (INTERSTITIAL.test(body) || JS_GATE.test(body)) {
+      if (attempt < attempts) {
+        console.log(`    rate limited or gated (attempt ${attempt}/${attempts}) — waiting ${RETRY_WAIT_MS / 1000}s`);
+        sleep(RETRY_WAIT_MS);
+      }
+      continue;
     }
+    return body;
   }
   return body;
 }
