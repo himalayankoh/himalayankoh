@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ORDERS_PAUSED_MESSAGE } from '@/lib/storefront/ordering';
 
 /**
  * What the PaymentIntent route is allowed to charge.
@@ -15,6 +16,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const state = {
+  configReads: 0,
+  cartReads: 0,
+  reservations: 0,
   cartItems: [{ id: 1, quantity: 1 }] as unknown[],
   recordedIntentId: null as string | null,
   recordedIntentStatus: 'requires_payment_method',
@@ -36,7 +40,7 @@ const stripeCalls = {
 };
 
 vi.mock('@/lib/stripe/server/stripe', () => ({
-  stripeConfigError: async () => null,
+  stripeConfigError: async () => { state.configReads++; return null; },
   getStripeMode: async () => 'test',
   getStripeClient: async () => ({
     paymentIntents: {
@@ -71,9 +75,9 @@ vi.mock('@/lib/auth/customerRequest', () => ({ optionalCustomerRequest: async ()
 
 vi.mock('@/lib/orders/serverCreateOrder', () => ({
   cartFingerprint: () => 'fp_1',
-  loadCartForCheckout: async () => ({ cart_items: state.cartItems }),
+  loadCartForCheckout: async () => { state.cartReads++; return { cart_items: state.cartItems }; },
   validateCheckoutCartItems: () => undefined,
-  reserveOrderForCheckout: async () => ({ raw: { ...state.order } }),
+  reserveOrderForCheckout: async () => { state.reservations++; return { raw: { ...state.order } }; },
 }));
 
 vi.mock('@/lib/woo/orders', () => ({
@@ -112,6 +116,10 @@ function request(payload = body()) {
 
 describe('POST /api/stripe/create-payment-intent', () => {
   beforeEach(() => {
+    vi.stubEnv('STOREFRONT_ORDERS_PAUSED', 'false');
+    state.configReads = 0;
+    state.cartReads = 0;
+    state.reservations = 0;
     state.cartItems = [{ id: 1, quantity: 1 }];
     state.recordedIntentId = null;
     state.recordedIntentStatus = 'requires_payment_method';
@@ -127,6 +135,24 @@ describe('POST /api/stripe/create-payment-intent', () => {
     stripeCalls.create = [];
     stripeCalls.createOptions = [];
     stripeCalls.retrieve = [];
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([body(), '{'])('refuses paused ordering before payment configuration, cart reads or reservations', async (payload) => {
+    vi.stubEnv('STOREFRONT_ORDERS_PAUSED', 'true');
+    vi.stubEnv('STRIPE_ALLOW_LIVE', 'true');
+    vi.stubEnv('STRIPE_TEST_MODE_ONLY', 'false');
+
+    const response = await POST(request(payload));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: ORDERS_PAUSED_MESSAGE });
+    expect(state.configReads).toBe(0);
+    expect(state.cartReads).toBe(0);
+    expect(state.reservations).toBe(0);
+    expect(stripeCalls.create).toEqual([]);
+    expect(stripeCalls.retrieve).toEqual([]);
   });
 
   it("charges the order total WooCommerce saved, not a total sent by the browser", async () => {

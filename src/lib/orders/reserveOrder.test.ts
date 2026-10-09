@@ -30,6 +30,7 @@ vi.mock('@/lib/shippo/config', () => ({
 }));
 
 import { reserveOrderForCheckout } from './serverCreateOrder';
+import { ORDERS_PAUSED_MESSAGE } from '@/lib/storefront/ordering';
 
 const realFetch = globalThis.fetch;
 
@@ -67,14 +68,26 @@ const createdOrder = {
 };
 
 beforeEach(() => {
+  vi.stubEnv('STOREFRONT_ORDERS_PAUSED', 'false');
   globalThis.fetch = realFetch;
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   globalThis.fetch = realFetch;
 });
 
 describe('reserveOrderForCheckout', () => {
+  it('refuses paused reservations before any WordPress request', async () => {
+    vi.stubEnv('STOREFRONT_ORDERS_PAUSED', 'true');
+    const stub = useWordPress([]);
+
+    await expect(reserveOrderForCheckout(orderData, { customerId: 41, cartToken: 'cart-abc' }))
+      .rejects.toThrow(ORDERS_PAUSED_MESSAGE);
+    expect(stub.callsTo('/wc/v3/orders', 'GET')).toHaveLength(0);
+    expect(stub.callsTo('/wc/v3/orders', 'POST')).toHaveLength(0);
+  });
+
   it('creates the store order once, carrying the cart fingerprint and the session customer', async () => {
     const stub = useWordPress([
       { path: '/wc/v3/orders', method: 'GET', body: [] },

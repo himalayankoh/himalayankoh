@@ -33,6 +33,7 @@ import { NextResponse } from 'next/server';
 import { getStripeClient, getStripeMode, stripeConfigError } from '@/lib/stripe/server/stripe';
 import { validateCreatePaymentIntentBody } from '@/lib/stripe/server/validation';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { ORDERS_PAUSED_MESSAGE, isOrderingPaused } from '@/lib/storefront/ordering';
 import { readCartSession } from '@/lib/cart/cookies';
 import { optionalCustomerRequest } from '@/lib/auth/customerRequest';
 import {
@@ -56,6 +57,10 @@ const REUSABLE_INTENT_STATES = new Set([
 ]);
 
 export async function POST(request: Request) {
+  if (isOrderingPaused()) {
+    return NextResponse.json({ error: ORDERS_PAUSED_MESSAGE }, { status: 503 });
+  }
+
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
   const rl = checkRateLimit(`payment:${ip}`, { limit: 5, windowMs: 60_000 });
   if (!rl.allowed) return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });

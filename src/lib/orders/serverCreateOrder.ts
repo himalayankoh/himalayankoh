@@ -13,6 +13,7 @@ import { resolveShippoConfigError } from '@/lib/shippo/config';
 import { fetchShippoRatesForOrder, pickRateForShippingMethod } from '@/lib/shippo/server/rates';
 import type { CheckoutShippingAddress, RatesLineItem } from '@/lib/shippo/types';
 import { checkoutInputFingerprint } from '@/lib/woo/checkoutPricing';
+import { ORDERS_PAUSED_MESSAGE, isOrderingPaused } from '@/lib/storefront/ordering';
 
 /**
  * Authoritative server-side shipping cost. The client-supplied
@@ -279,6 +280,10 @@ export async function reserveOrderForCheckout(
   data: CreateOrderData,
   options: ReserveOrderOptions
 ): Promise<ReservedOrder> {
+  if (isOrderingPaused()) {
+    throw new Error(ORDERS_PAUSED_MESSAGE);
+  }
+
   const cart = await loadCartForCheckout(options.cartToken);
 
   if (!cart || !cart.cart_items?.length) {
