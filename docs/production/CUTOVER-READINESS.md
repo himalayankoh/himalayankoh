@@ -13,7 +13,7 @@ DNS change.
 | Deployed Worker | `himalayan-koh-ecommerce-prod`, version `1cca2a70-7597-486b-97b5-3afc319d194a` |
 | Deployed build stamp | `/api/version` → `{"sha":"c10ca502a3ec6fdd2546bb91df1a79e58eb72c44","builtAt":"2026-10-09T10:18:57Z"}` |
 | Reachable at | `himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev`, `preview.himalayankoh.com` (both behind the preview gate) |
-| Deployed Worker, after the post-cutover fixes | version `cb430b83-e419-42df-8aec-aad71d057be6`, rebuilt and redeployed from the commit that carries them (`/api/version` reads back that `sha`, which is the invariant this document defines) |
+| Deployed Worker, after the post-cutover fixes | version `a9387d48-3885-4ec7-b520-81b643293b43`, built from commit `28fbb3e119ea40c092e33da940d9fcc6da66b134` — `/api/version` reads back that `sha`, which is the invariant this document defines |
 | Attached to `himalayankoh.com` | **Pre-cutover: no.** Two Worker routes were added later the same day (see "The cutover, executed"). |
 
 The invariant is *the deployed artifact matches a committed revision*, and the way to read it is
