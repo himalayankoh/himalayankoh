@@ -71,8 +71,16 @@ export default function HomePage({ initialProducts }: HomePageProps = {}) {
               <Link to="/products" className="btn-hk-primary">Shop all salt <ArrowRight size={17} className="ml-2" /></Link>
               <Link to="/about" className="btn-hk-ghost">Quality & sourcing</Link>
             </div>
+            {/*
+              The two shelves the live catalogue actually fills. This row used to
+              offer "Salt licks & blocks", pointing at `licks-blocks` — a shelf the
+              live install holds no product for, so the link opened an empty grid
+              under a real heading. The owner's `animal feed` category is the
+              livestock range, which is the Live Stock shelf; see `NICHE_SECTIONS`.
+              The shelf returns to this row as soon as a product is filed under it.
+            */}
             <nav aria-label="Shop by use" className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-charcoal-light">
-              <Link to="/products?category=licks-blocks" className="underline underline-offset-4 hover:text-himalayan-dark">Salt licks & blocks</Link>
+              <Link to="/products?category=live-stock" className="underline underline-offset-4 hover:text-himalayan-dark">Salt for livestock</Link>
               <Link to="/products?category=edible-pink-salt" className="underline underline-offset-4 hover:text-himalayan-dark">Edible pink salt</Link>
             </nav>
           </div>

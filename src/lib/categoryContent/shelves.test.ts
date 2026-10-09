@@ -258,6 +258,17 @@ describe('navigation that must never advertise a filter the taxonomy does not ha
     expect(declared.filter((key) => !live.has(key))).toEqual([]);
   });
 
+  it('gives the homepage no shelf key the taxonomy does not have', () => {
+    // Same guard for the homepage's "Shop by use" row, which names its shelves in
+    // literal hrefs rather than through `buildProductsCategoryPath`.
+    const home = readFileSync(fileURLToPath(new URL('../../views/HomePage.tsx', import.meta.url)), 'utf8');
+    const declared = [...home.matchAll(/category=([a-z0-9-]+)/g)].map((m) => m[1]);
+    expect(declared.length).toBeGreaterThan(0);
+
+    const live = new Set<string>(shelves.map((s) => s.key));
+    expect(declared.filter((key) => !live.has(key))).toEqual([]);
+  });
+
   it('keeps the lamps shelf in the taxonomy, so its hub copy is still reachable', () => {
     // Recorded rather than asserted away: `lamps-decor` is a real shelf with real hub
     // content, and it is empty because the owner withheld the lamp/ionizer product
@@ -266,5 +277,58 @@ describe('navigation that must never advertise a filter the taxonomy does not ha
     // an old link. Whether the shelf should leave the taxonomy is the owner's call, so
     // this test pins the current, deliberate shape instead of pretending it is gone.
     expect(normalizeCategoryQueryValue('lamps-decor')).toBe('lamps-decor');
+  });
+});
+
+/**
+ * The live catalogue's own filing, pinned.
+ *
+ * These are the five records the live WooCommerce install can sell, with the
+ * category names the store reports verbatim (read from its REST API on
+ * 2026-10-09): `animal feed` for the 45 lb bag for livestock, the licks for horses
+ * and the 18 lb rock for cattle, and WooCommerce's default `Uncategorized` bucket
+ * for the 16 oz jar and the 6 lb pouches. That filing is the whole point of this
+ * suite's placement rule, and before the join existed none of it reached a shelf:
+ * every one of these products was offered under a pill carrying a raw WooCommerce
+ * category name, while `Live Stock` and `Edible Pink Salt` — the two shelves the
+ * homepage and the footer link to — rendered empty grids.
+ */
+describe("the live catalogue's own categories reach the shelf the store means", () => {
+  const liveCatalogue = [
+    product('Bag of Himalayan Pink Salt for Livestock (45 lbs.)', ['animal feed']),
+    product('Himalayan Pink Salt Licks for Horses', ['animal feed']),
+    product('Himalayan Salt Rock for Cattle 18 Lbs Bag', ['animal feed']),
+    product('Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes - 6 lbs', ['Uncategorized']),
+    product('Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain', ['Uncategorized']),
+  ];
+
+  it('files the owner\u2019s animal feed category onto the Live Stock shelf', () => {
+    for (const item of liveCatalogue.slice(0, 3)) {
+      expect(productCategoryFilterKey(item)).toBe('live-stock');
+    }
+    expect(resolveAvailableCategoryKey('live-stock', liveCatalogue)).toBe('live-stock');
+  });
+
+  it('reads the default bucket as no filing rather than as a shelf of its own', () => {
+    // It arrives spelled exactly like a category the owner named, so only an
+    // explicit rule keeps it from becoming a pill reading "Uncategorized".
+    expect(liveCatalogue.map((item) => productCategoryFilterKey(item))).not.toContain('uncategorized');
+    expect(liveCatalogue.map((item) => productCategoryFilterKey(item))).not.toContain('Uncategorized');
+    expect(resolveAvailableCategoryKey('uncategorized', liveCatalogue)).toBeNull();
+  });
+
+  it('shelves the unfiled edible records on Edible Pink Salt', () => {
+    expect(productCategoryFilterKey(liveCatalogue[3])).toBe('edible-pink-salt');
+    expect(productCategoryFilterKey(liveCatalogue[4])).toBe('edible-pink-salt');
+  });
+
+  it('offers a filter only where products are filed behind it', () => {
+    const tabs = productsCategoryTabs(liveCatalogue);
+    expect(tabs.map((tab) => tab.label)).toEqual(['All', 'Edible Pink Salt', 'Live Stock']);
+
+    for (const tab of tabs) {
+      const shown = liveCatalogue.filter((item) => productMatchesCategoryFilter(item, tab.key));
+      expect(shown.length).toBeGreaterThan(0);
+    }
   });
 });

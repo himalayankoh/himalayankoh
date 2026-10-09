@@ -1,5 +1,6 @@
 import {
   NICHE_SECTIONS,
+  isUnfiledWooCategory,
   nicheSection,
   nicheSectionKeyFor,
   nicheSectionKeyForWooCategory,
@@ -135,8 +136,11 @@ export function isCategoryFilterValue(value: string): boolean {
  * 2. any other named category becomes its own filter, keyed by the slug of the
  *    category name — this is what lets a brand-new category appear without a code
  *    change;
- * 3. a product with no category falls back to the shelf its name implies, so an
- *    uncategorised record is still reachable rather than only under "All".
+ * 3. a product with no category — including one still sitting in WooCommerce's
+ *    default `Uncategorized` bucket, which is a way of saying "not filed" rather
+ *    than a category the owner chose — falls back to the shelf its name implies, so
+ *    an uncategorised record is still reachable rather than only under "All", and no
+ *    pill ever offers a bucket as if it were a shelf.
  *
  * The owner's filing outranks the name heuristic here on purpose: the filter row
  * is the shop's categories, and a shopper picking one expects the products the
@@ -144,7 +148,10 @@ export function isCategoryFilterValue(value: string): boolean {
  */
 export function productCategoryFilterKey(product: NicheCheckInput): CategoryFilterKey | null {
   const filed = (product.category ?? '').trim();
-  if (filed) {
+  // The default bucket is not a filing, so it never becomes a filter of its own:
+  // a product the owner has not filed falls through to the name rule below rather
+  // than to a pill reading `Uncategorized`. See `isUnfiledWooCategory`.
+  if (!isUnfiledWooCategory(filed)) {
     const shelved = nicheSectionKeyForWooCategory(filed, product);
     if (shelved) return shelved;
     const slug = categorySlugFromLabel(filed);

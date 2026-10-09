@@ -122,7 +122,14 @@ export const NICHE_SECTIONS: readonly NicheSection[] = [
     label: 'Live Stock',
     description: 'Himalayan pink salt bags and pouches filed in the livestock range.',
     visibleInStorefront: true,
-    wooCategoryLabels: ['Live Stock', 'Livestock'],
+    // `Animal Feed` is the live install's own name for this range (WooCommerce
+    // category 58), and it is the category the store's three sellable livestock
+    // records are actually filed under — the 45 lb bag for livestock, the licks for
+    // horses and the 18 lb rock for cattle. Without it the owner's own filing matched
+    // no shelf and those products surfaced under a pill carrying the raw WooCommerce
+    // name (`animal feed`) with no shelf copy, while this shelf — the one the
+    // homepage and the footer linked to — stayed empty.
+    wooCategoryLabels: ['Live Stock', 'Livestock', 'Animal Feed'],
   },
   {
     key: 'lamps-decor',
@@ -151,6 +158,26 @@ const SHELF_BY_WOO_LABEL = new Map<string, NicheSectionKey>(
     )
   )
 );
+
+/**
+ * The category WooCommerce creates for a product nobody has filed, spelled the ways
+ * an install spells it. It is a bucket, never a shelf.
+ *
+ * WooCommerce 8.x still files a product under `Uncategorized` (id 75 on this
+ * install) when the owner has not chosen a category, so the value arrives on a read
+ * looking exactly like a category the owner did name. It is not one: treating it as
+ * a filing is what put two of the owner's sellable products — the 16 oz jar and the
+ * 6 lb pouches, both edible pink salt — behind a pill reading `Uncategorized` while
+ * the Edible Pink Salt shelf, which the homepage and the footer link to, stayed
+ * empty. Reading it as "no filing" hands those products to the name rule, which
+ * shelves each one where its own title says it belongs.
+ */
+const UNFILED_WOO_CATEGORY_LABELS = new Set(['uncategorized', 'uncategorised']);
+
+export function isUnfiledWooCategory(label: string | null | undefined): boolean {
+  if (!label) return false;
+  return UNFILED_WOO_CATEGORY_LABELS.has(label.trim().toLowerCase());
+}
 
 /**
  * The shelf a product is filed on by its WooCommerce category, or `null`.

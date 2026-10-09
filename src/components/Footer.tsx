@@ -26,13 +26,23 @@ const aboutLinks = [
  *
  * Each link is the shelf's own hub URL (`/products?category=<key>`), built from
  * `lib/catalog/niche.ts` through `categoryContent` rather than written out here,
- * so a shelf key can never drift from the filter the grid reads. A shelf with no
- * products yet is simply not linked — the navigation only advertises what the
- * shop can actually show.
+ * so a shelf key can never drift from the filter the grid reads —
+ * `lib/categoryContent/shelves.test.ts` walks these calls and checks every key
+ * against the taxonomy.
+ *
+ * The two shelves listed are the ones the live catalogue actually fills: the
+ * owner's own `animal feed` category is the livestock range (that name joins the
+ * Live Stock shelf in `NICHE_SECTIONS`), and the two edible records — the 16 oz jar
+ * and the 6 lb pouches — reach Edible Pink Salt. A shelf with nothing filed under
+ * it is deliberately not linked: this list used to offer `Salt Licks`, which the
+ * live catalogue holds no product for, and the link opened a filter that rendered
+ * an empty grid. It belongs back here the moment the owner files a product under
+ * `Salt Licks` in WooCommerce — which also puts the pill back on /products, with no
+ * code change at all.
  */
 const productLinks = [
+  { label: 'Live Stock', to: buildProductsCategoryPath('live-stock') },
   { label: 'Edible Pink Salt', to: buildProductsCategoryPath('edible-pink-salt') },
-  { label: 'Salt Licks', to: buildProductsCategoryPath('licks-blocks') },
 ];
 
 export default function Footer() {
