@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { offNicheTerm } from '@/lib/catalog/niche';
+import { backendConfig } from '@/lib/backend/config';
 import { isCategoryFilterValue } from '@/lib/categoryContent/keys';
+import {
+  LEGACY_CALLBACK_HEADERS_TO_DROP,
+  legacyWooCallback,
+} from '@/lib/http/legacyWooCallback';
 import {
   PREVIEW_COOKIE,
   PREVIEW_QUERY_PARAM,
@@ -150,6 +155,131 @@ function enforcePreviewAccess(request: NextRequest): NextResponse | null {
   );
 }
 
+/**
+ * The legacy WooCommerce callback bridge.
+ *
+ * The live install's payment gateway is configured with a webhook URL on the apex
+ * (`https://himalayankoh.com/?wc-api=wc_stripe`), and that URL lives in a payment
+ * provider's dashboard — not in this repository and not something a deploy can edit.
+ * Before the cutover it reaches WordPress, because WordPress *is* the apex. After it,
+ * the same request reaches this Worker, where an unrecognised query string on `/` is a
+ * homepage render: the provider would get a 200 for an HTML page and the live shop would
+ * quietly stop being told about its payments. So the request is relayed to the backend
+ * verbatim instead — method, query, headers and, above all, the body **byte for byte**,
+ * because the gateway verifies its own signature over those exact bytes and a re-encoded
+ * body verifies as a forgery.
+ *
+ * Four properties make this safe to leave in the build:
+ *
+ * 1. **It is a callback surface, not a proxy.** See `@/lib/http/legacyWooCallback` for
+ *    what matches; `/wp-json/`, `/wp-admin/` and every other WordPress path stay at the
+ *    backend hostname.
+ * 2. **The target is configuration, never the request.** The upstream is built from
+ *    `backendConfig.wordpressBaseUrl`, and a backend that resolves to the origin this
+ *    request arrived on is refused outright — the loop this project has designed against
+ *    everywhere (`wp-content` route, `scripts/production-target.mjs`).
+ * 3. **The access gate still runs first.** On the pre-cutover deployment the bridge is
+ *    behind the same token as everything else, so it is not a door that opens before the
+ *    cutover. On the production host the gate does not apply, which is the state the
+ *    bridge is for.
+ * 4. **It does nothing at all while the apex is WordPress,** because no request carrying
+ *    `?wc-api=` reaches this Worker until the cutover attaches the domain.
+ *
+ * The caller's `cookie` header is deliberately dropped (`LEGACY_CALLBACK_HEADERS_TO_DROP`):
+ * the callback authenticates with the gateway's signature, not with a session, so
+ * forwarding one would let a stale `wp-admin` cookie reach the backend through the
+ * shopping domain.
+ */
+const LEGACY_CALLBACK_TIMEOUT_MS = 20_000;
+/** A webhook body is kilobytes. Anything larger is not one, and is not buffered. */
+const LEGACY_CALLBACK_MAX_BODY_BYTES = 1_048_576;
+
+function callbackRefusal(reason: string, status = 502): NextResponse {
+  return new NextResponse(reason, {
+    status,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
+}
+
+async function forwardLegacyWooCallback(request: NextRequest): Promise<NextResponse> {
+  const backend = backendConfig.wordpressBaseUrl;
+  if (!backend) {
+    // No backend configured: this deployment has no legacy install to relay to.
+    return callbackRefusal('The store backend is not configured.', 503);
+  }
+
+  // Concatenated, not resolved: the backend may live under a path (`…/staging`), and a
+  // resolved absolute path would drop that prefix and relay the callback to the wrong
+  // install. Same rule as the `/wp-content/` route.
+  let target: URL;
+  try {
+    target = new URL(`${backend.replace(/\/+$/, '')}${request.nextUrl.pathname}${request.nextUrl.search}`);
+  } catch {
+    return callbackRefusal('The store backend is not a usable origin.');
+  }
+
+  // Loop safety: the storefront must never use its own public origin as a backend.
+  const arrival = request.headers.get('host')?.split(':')[0]?.toLowerCase() ?? '';
+  if (arrival && target.host.toLowerCase() === arrival) {
+    console.error('Refusing to relay a legacy callback to this deployment’s own origin.');
+    return callbackRefusal('Refused: the backend is this site.');
+  }
+
+  const headers = new Headers(request.headers);
+  for (const name of LEGACY_CALLBACK_HEADERS_TO_DROP) headers.delete(name);
+
+  // The body is read whole so the backend verifies the same bytes the provider signed.
+  // `content-length` and `accept-encoding` are recomputed by the relay (see the drop list).
+  let body: ArrayBuffer | undefined;
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    const buffered = await request.arrayBuffer();
+    if (buffered.byteLength > LEGACY_CALLBACK_MAX_BODY_BYTES) {
+      return callbackRefusal('Payload too large for this relay.', 413);
+    }
+    body = buffered;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LEGACY_CALLBACK_TIMEOUT_MS);
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(target.toString(), {
+      method: request.method,
+      headers,
+      body,
+      signal: controller.signal,
+      // Not followed: a redirect here can only be a canonical-host bounce back to the
+      // apex, which is this deployment — following it is how a relay acquires a loop.
+      redirect: 'manual',
+      cache: 'no-store',
+    });
+  } catch (error) {
+    console.error('Legacy WooCommerce callback relay failed:', String(error).slice(0, 200));
+    return callbackRefusal('The store backend did not respond.');
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const responseHeaders = new Headers();
+  const contentType = upstream.headers.get('content-type');
+  if (contentType) responseHeaders.set('content-type', contentType);
+  responseHeaders.set('cache-control', 'no-store');
+  // A 3xx that points back at the apex would hand the caller a loop, so the location is
+  // dropped rather than passed on. The status is preserved either way: a redirect from
+  // the backend is not something this relay should turn into a success.
+  const location = upstream.headers.get('location');
+  if (location && !/^https?:\/\/[^/]*/i.test(location)) responseHeaders.set('location', location);
+
+  if (!upstream.ok) {
+    console.warn(
+      `Legacy WooCommerce callback relayed to the backend: ${request.method} ${target.pathname} -> ${upstream.status}`,
+    );
+  }
+
+  return new NextResponse(upstream.body, { status: upstream.status, headers: responseHeaders });
+}
+
 /** Routes whose trailing segment is user-supplied, and where a refused URL lands. */
 const CONTENT_ROUTES: ReadonlyArray<{ pattern: RegExp; fallback: string }> = [
   { pattern: /^\/blog\/([^/]+)\/?$/, fallback: '/blog' },
@@ -206,12 +336,19 @@ function retireOffNicheContentUrl(request: NextRequest, pathname: string): NextR
   return null;
 }
 
-export function middleware(request: NextRequest): NextResponse {
+export async function middleware(request: NextRequest): Promise<NextResponse> {
   // --- 0. The pre-cutover access gate ----------------------------------------
   const gated = enforcePreviewAccess(request);
   if (gated) return gated;
 
   const { pathname, searchParams } = request.nextUrl;
+
+  // --- 0b. The legacy WooCommerce callback surface ---------------------------
+  // Relayed before any URL normalisation: this request is not a page of this shop, and
+  // the rules below would rewrite or refuse its query string as if it were.
+  if (legacyWooCallback(pathname, searchParams).forward) {
+    return forwardLegacyWooCallback(request);
+  }
 
   // --- 1. Content URLs that name something the shop does not sell ------------
   const retired = retireOffNicheContentUrl(request, pathname);

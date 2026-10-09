@@ -7,6 +7,7 @@ import {
   type NicheCheckInput,
   type NicheSectionKey,
 } from '../catalog/nicheSections';
+import { storedShelfKeyForProduct } from './storedFiling';
 
 /**
  * The shop's public taxonomy: which shelves exist, what they are called, and
@@ -138,9 +139,11 @@ export function isCategoryFilterValue(value: string): boolean {
  *    change;
  * 3. a product with no category — including one still sitting in WooCommerce's
  *    default `Uncategorized` bucket, which is a way of saying "not filed" rather
- *    than a category the owner chose — falls back to the shelf its name implies, so
- *    an uncategorised record is still reachable rather than only under "All", and no
- *    pill ever offers a bucket as if it were a shelf.
+ *    than a category the owner chose — falls to the shelf recorded for that *record*
+ *    (`storedFiling.ts`), and only then to the shelf its name implies; so an
+ *    uncategorised record is still reachable rather than only under "All", no pill
+ *    ever offers a bucket as if it were a shelf, and a record whose title reads as
+ *    the wrong shelf is filed by its identity instead of by its words.
  *
  * The owner's filing outranks the name heuristic here on purpose: the filter row
  * is the shop's categories, and a shopper picking one expects the products the
@@ -149,15 +152,19 @@ export function isCategoryFilterValue(value: string): boolean {
 export function productCategoryFilterKey(product: NicheCheckInput): CategoryFilterKey | null {
   const filed = (product.category ?? '').trim();
   // The default bucket is not a filing, so it never becomes a filter of its own:
-  // a product the owner has not filed falls through to the name rule below rather
-  // than to a pill reading `Uncategorized`. See `isUnfiledWooCategory`.
+  // a product the owner has not filed falls through to the recorded filing below
+  // rather than to a pill reading `Uncategorized`. See `isUnfiledWooCategory`.
   if (!isUnfiledWooCategory(filed)) {
     const shelved = nicheSectionKeyForWooCategory(filed, product);
     if (shelved) return shelved;
     const slug = categorySlugFromLabel(filed);
     if (slug) return slug;
   }
-  return productShelfKey(product);
+  // The store said nothing, so the shelf is decided by the record itself before the
+  // name rule gets a guess at it: `storedFiling.ts` files the launch records WooCommerce
+  // never filed, by id. That is what keeps the livestock pouches off the edible shelf —
+  // their title reads as edible salt, and only the record's own identity answers it.
+  return storedShelfKeyForProduct(product) ?? productShelfKey(product);
 }
 
 /** The label a filter shows: the shelf's own label, or the category name the owner wrote. */

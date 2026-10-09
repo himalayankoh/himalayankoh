@@ -8,6 +8,7 @@ import {
   CATEGORY_FILTER_TABS,
   CATEGORY_QUERY_PARAM,
   buildProductsCategoryPath,
+  categoryFilterLabelForProduct,
   categoryKeyFromFilterLabel,
   filterLabelFromKey,
   normalizeCategoryQueryValue,
@@ -283,24 +284,44 @@ describe('navigation that must never advertise a filter the taxonomy does not ha
 /**
  * The live catalogue's own filing, pinned.
  *
- * These are the five records the live WooCommerce install can sell, with the
- * category names the store reports verbatim (read from its REST API on
- * 2026-10-09): `animal feed` for the 45 lb bag for livestock, the licks for horses
- * and the 18 lb rock for cattle, and WooCommerce's default `Uncategorized` bucket
- * for the 16 oz jar and the 6 lb pouches. That filing is the whole point of this
- * suite's placement rule, and before the join existed none of it reached a shelf:
- * every one of these products was offered under a pill carrying a raw WooCommerce
- * category name, while `Live Stock` and `Edible Pink Salt` — the two shelves the
- * homepage and the footer link to — rendered empty grids.
+ * These are the five records the launch catalogue can sell, with the store's own
+ * product ids, titles and category names verbatim (read from the deployed
+ * `/api/catalog` on 2026-10-09): `animal feed` for the 45 lb bag for livestock, the
+ * licks for horses and the 18 lb rock for cattle, and WooCommerce's default
+ * `Uncategorized` bucket for the 16 oz edible jar and the 6 lb livestock pouches.
+ *
+ * That filing is the whole point of this suite's placement rule, and before the join
+ * existed none of it reached a shelf: every one of these products was offered under a
+ * pill carrying a raw WooCommerce category name, while `Live Stock` and `Edible Pink
+ * Salt` — the two shelves the homepage and the footer link to — rendered empty grids.
+ *
+ * The two unfiled records are the harder half, and the ids are the whole reason the
+ * expectations below are what they are: the pouches' title reads as edible salt, so
+ * only the record's own identity files it on the livestock shelf.
  */
 describe("the live catalogue's own categories reach the shelf the store means", () => {
+  /** One record, as the catalogue read reports it. Ids are the store's own. */
+  function live(id: number, name: string, category: string) {
+    return {
+      id,
+      name,
+      category,
+      categories: [category],
+      sku: '',
+      description: '',
+    } as unknown as Parameters<typeof productMatchesCategoryFilter>[0];
+  }
+
   const liveCatalogue = [
-    product('Bag of Himalayan Pink Salt for Livestock (45 lbs.)', ['animal feed']),
-    product('Himalayan Pink Salt Licks for Horses', ['animal feed']),
-    product('Himalayan Salt Rock for Cattle 18 Lbs Bag', ['animal feed']),
-    product('Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes - 6 lbs', ['Uncategorized']),
-    product('Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain', ['Uncategorized']),
+    live(271, 'Bag of Himalayan Pink Salt for Livestock (45 lb)', 'animal feed'),
+    live(281, 'Himalayan Pink Salt Licks for Horses', 'animal feed'),
+    live(291, 'Himalayan Salt Rock for Cattle 18 lb Bag', 'animal feed'),
+    live(2321, 'Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes - 6 lb', 'Uncategorized'),
+    live(2446, 'Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain', 'Uncategorized'),
   ];
+
+  const pouches = liveCatalogue[3];
+  const jar = liveCatalogue[4];
 
   it('files the owner\u2019s animal feed category onto the Live Stock shelf', () => {
     for (const item of liveCatalogue.slice(0, 3)) {
@@ -317,9 +338,22 @@ describe("the live catalogue's own categories reach the shelf the store means", 
     expect(resolveAvailableCategoryKey('uncategorized', liveCatalogue)).toBeNull();
   });
 
-  it('shelves the unfiled edible records on Edible Pink Salt', () => {
-    expect(productCategoryFilterKey(liveCatalogue[3])).toBe('edible-pink-salt');
-    expect(productCategoryFilterKey(liveCatalogue[4])).toBe('edible-pink-salt');
+  it('files the unfiled records by the record, not by the words in the title', () => {
+    // The pouches are livestock salt whose title says "pouches"; the name rule reads
+    // that as edible salt, which is how an animal product reached the edible shelf.
+    expect(productCategoryFilterKey(pouches)).toBe('live-stock');
+    expect(categoryFilterLabelForProduct(pouches, 'live-stock')).toBe('Live Stock');
+    expect(buildProductsCategoryPath('live-stock')).toBe('/products?category=live-stock');
+
+    expect(productCategoryFilterKey(jar)).toBe('edible-pink-salt');
+    expect(categoryFilterLabelForProduct(jar, 'edible-pink-salt')).toBe('Edible Pink Salt');
+  });
+
+  it('puts each record on exactly one shelf, and never on the other one\u2019s', () => {
+    expect(productMatchesCategoryFilter(pouches, 'live-stock')).toBe(true);
+    expect(productMatchesCategoryFilter(pouches, 'edible-pink-salt')).toBe(false);
+    expect(productMatchesCategoryFilter(jar, 'edible-pink-salt')).toBe(true);
+    expect(productMatchesCategoryFilter(jar, 'live-stock')).toBe(false);
   });
 
   it('offers a filter only where products are filed behind it', () => {
@@ -330,5 +364,18 @@ describe("the live catalogue's own categories reach the shelf the store means", 
       const shown = liveCatalogue.filter((item) => productMatchesCategoryFilter(item, tab.key));
       expect(shown.length).toBeGreaterThan(0);
     }
+  });
+
+  it('says one category on a product page, and says the shelf it is filed on', () => {
+    // The crumb and the eyebrow are the two statements a product page makes about its
+    // category; a page that reads `Live Stock` in the crumb and `animal feed` above the
+    // title is telling the shopper two different things about one record.
+    const detail = readFileSync(
+      fileURLToPath(new URL('../../components/ProductDetailView.tsx', import.meta.url)),
+      'utf8'
+    );
+    expect(detail).toMatch(
+      /const eyebrowCategory = categoryKey \? categoryShopLabel : reportedCategoryName\(product\.category\)/
+    );
   });
 });

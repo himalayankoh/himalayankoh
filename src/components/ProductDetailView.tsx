@@ -62,12 +62,12 @@ export default function ProductDetailView({
   const categoryKey = productCategoryFilterKey(product);
   const categoryShopPath = categoryKey ? buildProductsCategoryPath(categoryKey) : '/products';
   const categoryShopLabel = categoryKey ? categoryFilterLabelForProduct(product, categoryKey) : 'Products';
-  // The eyebrow names the category the store published, read straight, so a product
-  // the shelf taxonomy has no copy for still says where it came from. What it does not
-  // do is render the model's "no category" placeholder: `UNCATEGORIZED` is a bucket in
-  // the store's admin, not a shelf, and a product page that announces it is advertising
-  // a category the shop does not have.
-  const eyebrowCategory = reportedCategoryName(product.category);
+  // The eyebrow names the one category this page is filed under — the shelf the crumb
+  // links to, so the two cannot disagree, and so a shopper never reads a raw WooCommerce
+  // bucket (`UNCATEGORIZED`) or a filing word (`animal feed`) where a shelf name belongs.
+  // When no shelf claims the record, the store's own category is what is left to say;
+  // when it reported none either, the page says nothing rather than inventing one.
+  const eyebrowCategory = categoryKey ? categoryShopLabel : reportedCategoryName(product.category);
 
   useEffect(() => {
     setQty(1);
