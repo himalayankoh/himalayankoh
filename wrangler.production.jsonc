@@ -45,15 +45,10 @@
  * the running deployment, which is the only way to prove the key whose `pk_live_` value
  * a shopper's browser receives is the one that was intended.
  *
- * `STOREFRONT_ORDERS_PAUSED` is the launch mode, and the one entry here that is not an
- * address or a public key. The storefront goes public before its payments are finished
- * (no `sk_live_` on this Worker and no webhook endpoint at the apex yet), so it serves
- * the catalogue and refuses to write an order — `src/lib/storefront/ordering.ts` is the
- * switch, `/api/orders/create` is where it is enforced, and the checkout screen states
- * it to the shopper. It is declared here rather than left to a default so that
- * `scripts/assert-production-config.mjs` refuses any build whose variables lost it:
- * ordering cannot be enabled by deleting a line, only by writing 'false' where a
- * reviewer reads it, after the Stripe webhook has been verified end to end.
+ * `STOREFRONT_ORDERS_PAUSED` explicitly controls order availability. Production
+ * accepts orders after backend credentials, live Stripe keys and a signed diagnostic
+ * pass their checks. The separate payment readiness checks still refuse an invalid
+ * configuration. Keep this switch present so the production guard detects drift.
  *
  * `NEXT_PUBLIC_ORDERS_PAUSED` is the same fact for the browser, and it must say the same
  * thing: the runtime variable is what the server refuses an order from, while this one is
@@ -70,7 +65,7 @@
     "NEXT_PUBLIC_WORDPRESS_BASE_URL": "https://wp.himalayankoh.com",
     "NEXT_PUBLIC_WOOCOMMERCE_BASE_URL": "https://wp.himalayankoh.com",
     "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_bScMJ0xIRFCAbr3IQJM5YWfY004PNn0fn2",
-    "STOREFRONT_ORDERS_PAUSED": "true",
-    "NEXT_PUBLIC_ORDERS_PAUSED": "true"
+    "STOREFRONT_ORDERS_PAUSED": "false",
+    "NEXT_PUBLIC_ORDERS_PAUSED": "false"
   }
 }

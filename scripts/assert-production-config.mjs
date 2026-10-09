@@ -21,9 +21,8 @@
  *      production variables and nothing else, no staging origin, and no route or
  *      custom domain naming the apex. The variable set is asserted as a *set* rather
  *      than a minimum, which is what makes the launch mode part of the guard:
- *      `STOREFRONT_ORDERS_PAUSED=true` is declared in the overlay, so a build that
- *      lost it — or a build that flipped it to `false` — is refused here rather than
- *      discovered after it is taking orders.
+ *      `STOREFRONT_ORDERS_PAUSED` must match the explicit production constant;
+ *      missing or mismatched order availability is refused before deployment.
  *   3. {@link assertProductionArtifact} — the built bundle itself was compiled for
  *      production. The variables in the config are *not* what the server code reads:
  *      `NEXT_PUBLIC_*` is inlined at build time, so a bundle built against the
