@@ -7,12 +7,18 @@ WordPress.
 
 | | |
 | --- | --- |
-| Branch | `integration/cloudflare-workers-migration` |
-| Commit (HEAD, pushed to `origin`) | `c7d1ae5c862b9d21b309ac0b9d53c42c25be2796` |
-| Deployed Worker | `himalayan-koh-ecommerce-prod`, version `066e25dc-c704-4fa7-b381-2335591699ee` |
-| Deployed build stamp | `/api/version` → `{"sha":"c7d1ae5c…","builtAt":"2026-10-09T10:15:07Z"}` — **identical to HEAD** |
+| Branch | `integration/cloudflare-workers-migration`, pushed to `origin` |
+| Commit the artifact was built from | `c10ca502a3ec6fdd2546bb91df1a79e58eb72c44` |
+| Deployed Worker | `himalayan-koh-ecommerce-prod`, version `1cca2a70-7597-486b-97b5-3afc319d194a` |
+| Deployed build stamp | `/api/version` → `{"sha":"c10ca502a3ec6fdd2546bb91df1a79e58eb72c44","builtAt":"2026-10-09T10:18:57Z"}` |
 | Reachable at | `himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev`, `preview.himalayankoh.com` (both behind the preview gate) |
 | Attached to `himalayankoh.com` | **No.** No Worker route and no custom domain for the apex or `www`. |
+
+The invariant is *the deployed artifact matches a committed revision*, and the way to read it is
+`/api/version`'s `sha` against that commit — not naive equality with `HEAD`. A commit that changes
+no build input (this document is one) cannot alter the artifact, and the guards
+(`scripts/assert-production-config.mjs`, `scripts/check-build-secrets.mjs`) compare the built
+output rather than the tree.
 
 ## The check list
 
