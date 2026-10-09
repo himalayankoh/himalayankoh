@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { Package } from 'lucide-react';
+import { ORDERING_ENABLED } from '../../lib/storefront/ordering';
 
 interface Props {
   categoryLabel: string;
@@ -31,7 +32,16 @@ export default function CategoryShopPanel({ categoryLabel, productCount, childre
           </span>
         </div>
         <p className="text-xs text-charcoal-light mt-2 pl-14">
-          Browse, add to cart, or open product details — same as our main store.
+          {/*
+            The subtitle describes what this shelf can actually do. It used to promise a
+            cart on every shelf, including the deployment whose every cart control is
+            disabled — measured on the catalogue-only launch, 2026-10-09. Same build-time
+            constant the cards and the product page read, so the sentence and the buttons
+            cannot disagree.
+          */}
+          {ORDERING_ENABLED
+            ? 'Browse, add to cart, or open product details — same as our main store.'
+            : 'Browse the range and open any product for its full details. Online ordering is temporarily unavailable — call or email us to place an order.'}
         </p>
       </div>
       <div className="p-4 md:p-5 space-y-5 bg-warm-white/50">{children}</div>

@@ -98,6 +98,14 @@ describe('production launches in catalogue-only mode', () => {
     // none: a stepper beside a button that says ordering is unavailable still reads as a
     // shop that takes orders.
     expect(detail).toMatch(/\{ORDERING_ENABLED && \(\s*<div className="mb-5">/);
+
+    // And a sentence is a purchase control too: the shelf panel's own subtitle promised
+    // "add to cart" on the deployment whose every cart control is disabled, which a
+    // shopper reads before any button. Measured on the deployed catalogue-only build,
+    // 2026-10-09.
+    const panel = read('../../components/category/CategoryShopPanel.tsx');
+    expect(panel).toMatch(/ORDERING_ENABLED/);
+    expect(panel).toMatch(/\{ORDERING_ENABLED\s*\?/);
   });
 
   it('keeps the pause in the set of variables the guard accepts, and nothing else', () => {
