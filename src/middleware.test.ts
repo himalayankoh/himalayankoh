@@ -134,6 +134,56 @@ describe('middleware — browse query strings', () => {
   });
 });
 /* ------------------------------------------------------------------ */
+/* One canonical hostname                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Both the apex and `www` are attached to this Worker, so without the host rule the same
+ * page answers 200 at two hostnames. The judgement lives in `lib/http/canonicalHost` (with
+ * its own suite); these cases prove the middleware applies it to real requests and, just as
+ * importantly, in the right order relative to the callback relay.
+ */
+describe('middleware — one canonical hostname', () => {
+  /** The same helper, with the arrival host a browser would send. */
+  async function runOn(host: string, url: string, method = 'GET') {
+    const response = await middleware(new NextRequest(url, { method, headers: { host } }));
+    return { status: response.status, location: response.headers.get('location') };
+  }
+
+  it('permanently redirects www to the apex, keeping path and query', async () => {
+    const res = await runOn('www.himalayankoh.com', 'https://www.himalayankoh.com/products?category=live-stock');
+    expect(res.status).toBe(301);
+    expect(res.location).toBe('https://himalayankoh.com/products?category=live-stock');
+  });
+
+  it('does not redirect the apex, so the redirect cannot loop', async () => {
+    const res = await runOn('himalayankoh.com', 'https://himalayankoh.com/products?category=live-stock');
+    expect(res.status).toBe(200);
+    expect(res.location).toBeNull();
+  });
+
+  it('leaves the staging hostname on its own origin', async () => {
+    const res = await runOn('preview.himalayankoh.com', 'https://preview.himalayankoh.com/products');
+    expect(res.status).toBe(200);
+    expect(res.location).toBeNull();
+  });
+
+  it('delivers a legacy payment callback that arrives on www rather than redirecting it', async () => {
+    // The relay owns this surface: a 301 on a webhook is a lost payment event, which is
+    // why the callback rule runs before the host rule.
+    const response = await middleware(
+      new NextRequest('https://www.himalayankoh.com/?wc-api=wc_stripe', {
+        headers: { host: 'www.himalayankoh.com' },
+      }),
+    );
+    // No backend is configured in the test environment, so the relay answers with its own
+    // refusal — the point is that it is the *relay* answering, not a redirect.
+    expect(response.status).not.toBe(301);
+    expect(response.headers.get('location')).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* The pre-cutover access gate                                        */
 /* ------------------------------------------------------------------ */
 
@@ -228,10 +278,22 @@ describe('middleware — the pre-cutover access gate', () => {
     expect((await withToken(`${GATE_HOST}/products?hk_preview=${GATE_TOKEN.slice(0, -1)}`)).status).toBe(401);
   });
 
-  it('leaves the production hosts open, which is what the cutover depends on', async () => {
+  it('leaves the production hosts ungated, which is what the cutover depends on', async () => {
+    // The apex is served, and `www` is answered by the *canonical host* rule (a permanent
+    // redirect to the apex) rather than by this gate — which is the assertion that matters
+    // here: neither host is refused, and neither is asked for a token. The old form of this
+    // case expected both hosts to pass straight through, which stopped being true when the
+    // host rule landed; what it was protecting is that the gate does not apply to a
+    // production hostname, and that is what it now pins.
+    const apex = await withToken('https://himalayankoh.com/products');
+    expect(apex.headers.get('x-middleware-next')).toBe('1');
+
+    const www = await withToken('https://www.himalayankoh.com/products');
+    expect(www.status).not.toBe(401);
+    expect(www.headers.get('location')).toBe('https://himalayankoh.com/products');
     for (const host of ['himalayankoh.com', 'www.himalayankoh.com']) {
       const response = await withToken(`https://${host}/products`);
-      expect(response.headers.get('x-middleware-next'), host).toBe('1');
+      expect(response.status, host).not.toBe(401);
     }
   });
 

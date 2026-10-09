@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { offNicheTerm } from '@/lib/catalog/niche';
 import { backendConfig } from '@/lib/backend/config';
 import { isCategoryFilterValue } from '@/lib/categoryContent/keys';
+import { canonicalHostRedirect } from '@/lib/http/canonicalHost';
 import {
   LEGACY_CALLBACK_HEADERS_TO_DROP,
   legacyWooCallback,
@@ -45,6 +46,12 @@ import { PRODUCTION_HOSTS } from '@/lib/seo/indexing';
  *
  * One denylist, one shelf list, both borrowed from the modules that already own
  * them — no second copy of either judgement lives here.
+ *
+ * A fourth decision is made here and is not about URL text at all: the **canonical
+ * hostname**. Both the apex and `www` are attached to this Worker, so two hostnames answer
+ * the same page; the `www` request is answered with a permanent redirect to the apex, with
+ * its path and query preserved byte for byte. The judgement lives in
+ * `@/lib/http/canonicalHost`; the ordering lives here.
  *
  * ## Product detail URLs are *not* judged by their text here
  *
@@ -349,6 +356,22 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (legacyWooCallback(pathname, searchParams).forward) {
     return forwardLegacyWooCallback(request);
   }
+
+  // --- 0c. One canonical hostname --------------------------------------------
+  // Both the apex and `www` are attached to this Worker, so without this rule the same
+  // page answers 200 at two hostnames. Before the cutover the collapse was WordPress's
+  // own canonical redirect; it left with WordPress, and this is what replaces it. It runs
+  // *after* the callback relay on purpose — a webhook must be delivered, never redirected
+  // — and *before* the niche rules, so a `www` URL answers with one redirect to the
+  // canonical host rather than two. See `@/lib/http/canonicalHost` for the judgements,
+  // including why only `GET` and `HEAD` are redirected.
+  const canonical = canonicalHostRedirect({
+    host: request.headers.get('host'),
+    pathname,
+    search: request.nextUrl.search,
+    method: request.method,
+  });
+  if (canonical) return NextResponse.redirect(canonical, 301);
 
   // --- 1. Content URLs that name something the shop does not sell ------------
   const retired = retireOffNicheContentUrl(request, pathname);
