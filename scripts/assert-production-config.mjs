@@ -137,6 +137,9 @@ export function readProductionOverlay(root = ROOT) {
 
   const declaredVars = declared.vars ?? {};
   const differences = [];
+  if (!declared.compatibility_flags?.includes('global_fetch_strictly_public')) {
+    differences.push('global_fetch_strictly_public is required for the public webhook health probe');
+  }
   if (declared.name !== PRODUCTION_WORKER_NAME) {
     differences.push(`name is ${JSON.stringify(declared.name)}, scripts/production-target.mjs says ${PRODUCTION_WORKER_NAME}`);
   }
@@ -157,7 +160,11 @@ export function readProductionOverlay(root = ROOT) {
     );
   }
 
-  return { name: PRODUCTION_WORKER_NAME, vars: { ...EXPECTED_VARS } };
+  return {
+    name: PRODUCTION_WORKER_NAME,
+    vars: { ...EXPECTED_VARS },
+    compatibility_flags: [...declared.compatibility_flags],
+  };
 }
 
 /**
@@ -173,6 +180,11 @@ export function assertProductionConfig(config) {
 
   if (config.name !== PRODUCTION_WORKER_NAME) {
     refuse(`the Worker is named ${JSON.stringify(config.name)} — production must be ${PRODUCTION_WORKER_NAME}.`);
+  }
+
+  const flags = config.compatibility_flags ?? [];
+  if (!flags.includes('global_fetch_strictly_public') || flags.includes('global_fetch_private_origin')) {
+    refuse('global_fetch_strictly_public is required without global_fetch_private_origin so the webhook probe reaches the public Worker.');
   }
 
   const vars = config.vars ?? {};
@@ -423,7 +435,7 @@ async function main() {
       `Scanned ${artifact.scanned} of ${artifact.files} built file(s); no staging value is compiled in.\n` +
       `Stripe publishable key: a live key is inlined in ${artifact.stripe.servedOccurrences} browser-served ` +
       `file(s) (${artifact.stripe.occurrences} in total) and no test key is present.\n` +
-      `No route or custom domain is attached, so this Worker is reachable only at its workers.dev name.\n`,
+      `This artifact declares no routes; existing Cloudflare route assignments must be verified separately.\n`,
   );
 }
 

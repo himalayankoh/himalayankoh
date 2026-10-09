@@ -9,13 +9,13 @@
  * reads it back. Nothing deploys without `assert-production-config.mjs` passing, so
  * "forgot to apply the overlay" cannot reach Cloudflare as a staging Worker.
  *
- * Only `name` and `vars` are touched. `main`, `assets`, `compatibility_date`,
- * `compatibility_flags`, `exports` and the rest belong to the build and are copied
- * through untouched — the overlay's job is the deployment's identity, not its shape.
+ * `name` and `vars` are replaced, and required production routing flags are merged
+ * with the build's compatibility flags. `main`, `assets`, `compatibility_date`,
+ * `exports` and the rest are copied through untouched.
  *
  * The variables are replaced wholesale rather than merged. A merge would leave a
  * staging variable in place and the guard would reject the result; replacing makes
- * the guard's "exactly these four" rule the thing that decides, which is the point.
+ * the guard's exact variable set the thing that decides, which is the point.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -37,6 +37,10 @@ const applied = {
   ...built,
   name: overlay.name,
   vars: { ...overlay.vars },
+  compatibility_flags: [...new Set([
+    ...(built.compatibility_flags ?? []),
+    ...overlay.compatibility_flags,
+  ])],
 };
 
 // Fail here rather than at deploy time: if the overlay does not produce a config the
@@ -51,7 +55,7 @@ process.stdout.write(
     `  NEXT_PUBLIC_WORDPRESS_BASE_URL=${applied.vars.NEXT_PUBLIC_WORDPRESS_BASE_URL}\n` +
     `  NEXT_PUBLIC_WOOCOMMERCE_BASE_URL=${applied.vars.NEXT_PUBLIC_WOOCOMMERCE_BASE_URL}\n` +
     `  STOREFRONT_ORDERS_PAUSED=${applied.vars.STOREFRONT_ORDERS_PAUSED} ` +
-    `(NEXT_PUBLIC_ORDERS_PAUSED=${applied.vars.NEXT_PUBLIC_ORDERS_PAUSED}) — the catalogue-only\n` +
-    `    launch mode: the storefront serves products, renders no cart control, and refuses to write an order\n` +
-    `  routes: none (the apex stays on WordPress until the cutover is approved)\n`,
+    `(NEXT_PUBLIC_ORDERS_PAUSED=${applied.vars.NEXT_PUBLIC_ORDERS_PAUSED})\n` +
+    `  public webhook routing: global_fetch_strictly_public\n` +
+    `  routes: omitted; existing Cloudflare route assignments are managed separately\n`,
 );

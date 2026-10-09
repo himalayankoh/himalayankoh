@@ -59,6 +59,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "himalayan-koh-ecommerce-prod",
+  // Health probes must reach the public webhook, including when called by this
+  // Worker. The default fetch mode bypasses Workers and reaches WordPress instead.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "vars": {
     "NEXT_PUBLIC_SITE_URL": "https://himalayankoh.com",
     "NEXT_PUBLIC_DATA_SOURCE": "woocommerce",

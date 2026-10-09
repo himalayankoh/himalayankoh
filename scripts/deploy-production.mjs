@@ -94,7 +94,7 @@ const env = {
 };
 
 process.stdout.write(
-  `\n[deploy:production] Deploying ${built.name} (no domain attached)\n` +
+  `\n[deploy:production] Deploying ${built.name} (preserving separately managed route assignments)\n` +
     `[deploy:production] Cloudflare credentials from ${credentials.source}\n`,
 );
 
@@ -124,8 +124,8 @@ const checkSecrets = spawnSync('node', ['scripts/check-build-secrets.mjs'], { cw
 if (checkSecrets.status !== 0) fail('Post-deploy secret scan failed.', checkSecrets.status ?? 1);
 
 process.stdout.write(
-  `\n[deploy:production] ${built.name} is deployed and reachable only at its workers.dev name.\n` +
-    `No DNS record was created and no custom domain was attached — himalayankoh.com is still WordPress.\n`,
+  `\n[deploy:production] ${built.name} is deployed.\n` +
+    `Existing Cloudflare route assignments must be checked alongside public checkout verification.\n`,
 );
 
 /**
@@ -171,6 +171,10 @@ async function verifyDeployedWorker(config, credentials) {
   }
 
   const body = await response.json();
+  const deployedFlags = body?.result?.compatibility_flags ?? [];
+  if (!deployedFlags.includes('global_fetch_strictly_public') || deployedFlags.includes('global_fetch_private_origin')) {
+    fail(`${config.name} was deployed without the required public webhook fetch routing.`);
+  }
   const deployedVars = Object.fromEntries(
     (body?.result?.bindings ?? [])
       .filter((binding) => binding.type === 'plain_text')
@@ -189,6 +193,6 @@ async function verifyDeployedWorker(config, credentials) {
 
   process.stdout.write(
     `\n[deploy:production] Verified with Cloudflare: ${config.name} exists and carries the production public ` +
-      `variables (${Object.keys(EXPECTED_VARS).length} checked).\n`,
+      `variables (${Object.keys(EXPECTED_VARS).length} checked) and public webhook fetch routing.\n`,
   );
 }
