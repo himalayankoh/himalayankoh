@@ -105,6 +105,28 @@ async function fetchProductsByIds(ids: number[]): Promise<WooProductLike[]> {
     });
     if (Array.isArray(page)) out.push(...page);
   }
+
+  // WooCommerce's collection excludes product_variation posts, even when their
+  // ids are in `include`. Its individual product endpoint resolves them and
+  // returns the selected option's own name, weight and registered packing meta.
+  const returnedIds = new Set(out.map((product) => product.id));
+  const missing = ids.filter((id) => !returnedIds.has(id));
+  for (let start = 0; start < missing.length; start += 4) {
+    const batch = missing.slice(start, start + 4);
+    const results = await Promise.allSettled(batch.map((id) =>
+      wordpressRequest<WooProductLike>(`${REST_V3}/products/${id}`, {
+        useCredentials: true,
+        timeoutMs: 20000,
+      }),
+    ));
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value.id === batch[index]) {
+        out.push(result.value);
+      } else if (result.status === 'rejected') {
+        console.warn(`[Shippo] Shipping facts for product ${batch[index]} could not be read.`);
+      }
+    });
+  }
   return out;
 }
 

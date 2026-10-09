@@ -32,7 +32,7 @@ const BOX_BAG_45: BoxDimensions = { lengthIn: 12, widthIn: 10, heightIn: 8 };
 
 function hasLb(text: string, pounds: number): boolean {
   const normalized = text.toLowerCase();
-  const lb = `${pounds}\\s*(-|\\s)?lb`;
+  const lb = `${pounds}\\s*(-|\\s)?lbs?`;
   const oz = pounds === 1 ? '16\\s*(-|\\s)?oz' : null;
   return new RegExp(`\\b(${lb}${oz ? `|${oz}` : ''})\\b`, 'i').test(normalized);
 }
@@ -257,7 +257,11 @@ export function resolvePackingRule(product: {
       if (weight === 45) return getPackingRuleById('bag-45lb') ?? null;
       if (weight === 18) return getPackingRuleById('bag-18lb') ?? null;
     }
-    return pickRuleByWeightOnly(weight);
+    // Legacy variations use kg and can weigh more than their nominal size:
+    // the store's 6 lb lick is 3 kg (6.61 lb). Keep its named carton capacity
+    // before falling back to an unrelated weight-only product rule.
+    const namedRule = ACTIVE_PACKING_RULES.find((rule) => rule.matches(product));
+    return namedRule ?? pickRuleByWeightOnly(weight);
   }
 
   for (const rule of ACTIVE_PACKING_RULES) {

@@ -275,6 +275,16 @@ describe('quantities that are not a whole number of units', () => {
 });
 
 describe('which product gets which rule', () => {
+  it('keeps the approved 6 lb lick carton and four-piece capacity for the live 3 kg variation', () => {
+    const item = { ...lick6(5), name: 'Himalayan Pink Salt Licks for Horses - 6 lbs.', weightLbs: 6.61 };
+    const parcels = buildParcelsFromPackingLineItems([item]);
+    expect(parcels).toHaveLength(2);
+    expect(parcels.map((parcel) => parcel.actualWeightLbs)).toEqual([26.44, 6.61]);
+    expect(parcels.map(({ lengthIn, widthIn, heightIn }) => [lengthIn, widthIn, heightIn]))
+      .toEqual([[10, 10, 6], [10, 10, 6]]);
+    expect(shippoParcelPayload(parcels[0]).weight).toBe('26.44');
+  });
+
   it('gives the live lick listing the 2 lb rule, now that its weight says 2 lb', () => {
     // The exact product the owner corrected, resolved the way checkout resolves it: from
     // the name and weight WooCommerce reports. Six to a box at 2 lb a piece.

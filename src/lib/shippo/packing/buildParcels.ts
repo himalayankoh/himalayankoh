@@ -154,7 +154,10 @@ export function buildParcelsFromPackingLineItems(items: PackingLineItem[]): Ship
     while (remaining > 0) {
       const unitsInBox = Math.min(remaining, rule.unitsPerBox);
       const { lengthIn, widthIn, heightIn } = rule.box;
-      const actualWeightLbs = roundWeightLbs(unitsInBox * rule.unitWeightLbs);
+      const unitWeightLbs = item.weightLbs != null && Number.isFinite(item.weightLbs) && item.weightLbs > 0
+        ? item.weightLbs
+        : rule.unitWeightLbs;
+      const actualWeightLbs = roundWeightLbs(unitsInBox * unitWeightLbs);
       const dimWeightLbs = roundWeightLbs(calcDimWeightLbs(lengthIn, widthIn, heightIn));
       const billableWeightLbs = roundWeightLbs(
         calcBillableWeightLbs(actualWeightLbs, lengthIn, widthIn, heightIn),

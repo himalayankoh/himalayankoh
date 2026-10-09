@@ -76,6 +76,35 @@ function product(overrides: Record<string, unknown> = {}) {
 }
 
 describe('readOrderableProducts', () => {
+  it('resolves selected variation ids omitted by the collection using their own weights and names', async () => {
+    const stub = createWordPressStub([
+      settingsRoute('kg'),
+      { path: '/wc/v3/products', body: [product({ id: 271, weight: '20.412', meta_data: [] })] },
+      { path: '/wc/v3/products/1549', body: product({ id: 1549, name: 'Horse salt licks - 2 lbs.', weight: '0.907', meta_data: [] }) },
+      { path: '/wc/v3/products/1548', body: product({ id: 1548, name: 'Horse salt licks - 6 lbs.', weight: '3', meta_data: [] }) },
+    ]);
+    globalThis.fetch = stub.fetch as unknown as typeof fetch;
+    __resetWeightUnitCacheForTests();
+
+    const facts = await readOrderableProducts([271, 1549, 1548, 1549]);
+    expect(facts.get('1549')?.weightLbs).toBe(2);
+    expect(facts.get('1548')?.weightLbs).toBe(6.61);
+    expect(facts.get('1548')?.name).toContain('6 lbs.');
+    expect(facts.get('271')?.weightLbs).toBe(45);
+    expect(stub.callsTo('/wc/v3/products/271')).toHaveLength(0);
+    expect(stub.callsTo('/wc/v3/products/1549')).toHaveLength(1);
+  });
+
+  it('keeps resolved products when an unknown variation cannot be read', async () => {
+    useWordPress([
+      { path: '/wc/v3/products', body: [product()] },
+      { path: '/wc/v3/products/999', status: 404, body: { code: 'woocommerce_rest_product_invalid_id' } },
+    ]);
+    const facts = await readOrderableProducts([2492, 999]);
+    expect(facts.has('2492')).toBe(true);
+    expect(facts.has('999')).toBe(false);
+  });
+
   it('reads weight and packing profile from the store', async () => {
     const stub = useWordPress([{ path: '/wc/v3/products', body: [product()] }]);
 

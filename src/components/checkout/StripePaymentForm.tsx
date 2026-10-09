@@ -71,10 +71,7 @@ function PaymentFormInner({
       <div className="flex items-start gap-3 rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3">
         <LockKeyhole size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-himalayan" />
         <div>
-          <p className="text-sm font-semibold text-charcoal">Choose a secure payment method</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-charcoal-light">
-            Stripe shows the card and pay-over-time options available for this order and location.
-          </p>
+          <p className="text-sm font-semibold text-charcoal">Choose your payment method</p>
         </div>
       </div>
       {!elementReady && !elementError && (
