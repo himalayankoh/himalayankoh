@@ -61,9 +61,19 @@ The pending Namecheap certificate is **not** the launch blocker it was assumed t
 2. Leave `wp.himalayankoh.com`, `mail.`, `webmail.`, the three MX records, SPF and DKIM exactly as
    they are.
 3. Verify, in this order: homepage, `/products`, both shelves, one product page per shelf, images,
-   HTTPS on apex and `www`, the `www → apex` redirect, `wp.himalayankoh.com/wp-admin/`,
+   HTTPS on apex and `www`, `wp.himalayankoh.com/wp-admin/`,
    `wp.himalayankoh.com/?wc-api=wc_stripe` (the legacy callback), `/api/orders/create` (must stay
    503), and mobile at 390 px.
+
+   **`www` is one thing to know in advance.** Today's `www → apex` 301 comes from WordPress
+   (`x-redirect-by: WordPress`), not from a Cloudflare rule — and the zone's rulesets could not be
+   read with the credentials here (HTTP 403), so a rule of that kind can be neither confirmed nor
+   ruled out. The application itself does not redirect by host: `www.himalayankoh.com` is in
+   `PRODUCTION_HOSTS` (`lib/seo/indexing.ts`) so it is served rather than gated, and its canonical
+   and metadata name the apex. After the cutover, `www` therefore serves the same storefront under
+   a second hostname rather than bouncing to the apex. That is a cosmetic duplicate, not a broken
+   page, and making it a redirect is a one-rule change in `middleware.ts` if the owner wants it —
+   it is not a launch requirement and is not done here.
 
 Rollback, if any of those fails: detach the two custom domains and re-create
 `A himalayankoh.com 162.0.209.25` proxied.
