@@ -14,6 +14,7 @@ vi.hoisted(() => {
 });
 
 import { fetchAdminProductBySlug, fetchAdminProducts } from './woocommerce';
+import { readCatalogProductBySlug } from './products';
 
 const realFetch = globalThis.fetch;
 
@@ -40,6 +41,21 @@ const VARIABLE_PARENT = {
   attributes: [
     { id: 2, name: 'Grain Size', visible: true, variation: true, options: ['Fine Grain', 'Coarse Grain'] },
   ],
+};
+
+/** The live catalogue's 6 lb pouches: its own slug, and a retirement-map key. */
+const LIVE_POUCHES = {
+  id: 2321,
+  name: 'Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes - 6 lbs',
+  slug: 'pouches',
+  type: 'simple',
+  sku: '',
+  price: '17.95',
+  regular_price: '17.95',
+  stock_status: 'instock',
+  featured: false,
+  categories: [{ id: 15, name: 'Uncategorized', slug: 'uncategorized' }],
+  images: [{ src: 'https://himalayankoh.test/wp-content/uploads/2023/08/S6.jpg' }],
 };
 
 const VARIATIONS = [
@@ -202,5 +218,46 @@ describe('the catalog read of a variable product', () => {
     expect(product.grainSizes).toBeUndefined();
     // The parent's own price is empty, so it stays unknown rather than becoming 0.
     expect(product.priceMin).toBeNull();
+  });
+
+  it('answers a live product\u2019s own slug before translating it as retired', async () => {
+    // `pouches` is the live catalogue's own URL for the 6 lb pouches (id 2321) and
+    // *also* a key in `RETIRED_PRODUCT_SLUGS`, pointing at a curated product that
+    // exists only on the staging install. Translating before the lookup made this
+    // live product's page a 404 while the catalogue was linking straight at it.
+    const asked: string[] = [];
+    globalThis.fetch = (async (input: unknown) => {
+      const url = new URL(String(input));
+      const slug = url.searchParams.get('slug') ?? '';
+      asked.push(slug);
+      const body = slug === 'pouches' ? [LIVE_POUCHES] : [];
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const lookup = await readCatalogProductBySlug('pouches');
+
+    expect(lookup.product?.id).toBe(2321);
+    expect(asked).toContain('pouches');
+    expect(asked).not.toContain('himalayan-salt-6-lbs');
+  });
+
+  it('still lands a genuinely retired slug on the product that replaced it', async () => {
+    const asked: string[] = [];
+    globalThis.fetch = (async (input: unknown) => {
+      const url = new URL(String(input));
+      asked.push(url.searchParams.get('slug') ?? '');
+      const body = url.searchParams.get('slug') === 'himalayan-salt-6-lbs' ? [VARIABLE_PARENT] : [];
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const lookup = await readCatalogProductBySlug('himalayan-salt-coarse-grain-6-lbs');
+
+    expect(lookup.product?.id).toBe(2492);
   });
 });

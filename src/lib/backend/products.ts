@@ -131,18 +131,17 @@ async function wooList(query: CatalogQuery): Promise<CatalogResult> {
   return { products: core.products, count: core.products.length, degraded: true, warnings };
 }
 
-async function wooLookup(
-  slug: string,
+/**
+ * One slug, resolved against the source with a strict final match.
+ *
+ * Deliberately knows nothing about retirements — the caller decides when a slug
+ * should be translated to the product that replaced it. See `wooLookup`.
+ */
+async function resolveSlug(
+  normalized: string,
   signal?: AbortSignal,
   revalidate?: number
 ): Promise<CatalogLookup> {
-  let normalized = normalizeProductSlug(slug);
-  if (!normalized) return { product: null, related: [], provenance: null, error: null };
-
-  if (RETIRED_PRODUCT_SLUGS[normalized]) {
-    normalized = RETIRED_PRODUCT_SLUGS[normalized];
-  }
-
   try {
     const admin = await fetchAdminProductBySlug(normalized, signal, revalidate);
     if (admin) return { product: admin, related: [], provenance: 'direct', error: null };
@@ -173,6 +172,41 @@ async function wooLookup(
   // No demo-catalog fallback: an unknown slug is genuinely unknown, and
   // inventing a product here would be the worst possible outcome.
   return { product: null, related: [], provenance: null, error: store.error };
+}
+
+/**
+ * Resolve one slug, translating a *retired* slug only when the slug itself is gone.
+ *
+ * The order is the whole point, and it used to be the other way round: the
+ * retirement map (`RETIRED_PRODUCT_SLUGS`) was applied to the slug *before* the
+ * lookup, so a slug that was both a live product's own URL and a key in that map
+ * could never resolve to itself. Two real URLs are in exactly that position —
+ * `pouches` (the live 6 lb pouches, id 2321) and `himalayan-edible-pink-salt`
+ * (the live 16 oz jar, id 2446) — and both are mapped onto curated products that
+ * exist only on the staging install. So on the live backend those two product
+ * pages asked for a substitute that is not there and answered 404, while the
+ * catalogue listed both products and linked straight at them.
+ *
+ * Asking for the slug as given first fixes that without weakening the retirement:
+ * a retired slug whose product genuinely no longer exists still falls through to
+ * the substitute on the second attempt, and `fetchAdminProductBySlug` keeps its
+ * own successor fallback for the credentialed path.
+ */
+async function wooLookup(
+  slug: string,
+  signal?: AbortSignal,
+  revalidate?: number
+): Promise<CatalogLookup> {
+  const normalized = normalizeProductSlug(slug);
+  if (!normalized) return { product: null, related: [], provenance: null, error: null };
+
+  const direct = await resolveSlug(normalized, signal, revalidate);
+  if (direct.product) return direct;
+
+  const successor = RETIRED_PRODUCT_SLUGS[normalized];
+  if (!successor || successor === normalized) return direct;
+
+  return resolveSlug(successor, signal, revalidate);
 }
 
 /* ------------------------------------------------------------------ */
