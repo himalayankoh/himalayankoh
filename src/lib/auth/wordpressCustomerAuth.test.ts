@@ -84,7 +84,8 @@ describe('WordPress customer authentication', () => {
     expect(result.error).toMatch(/storefront plugin is not active/);
   });
 
-  it('reports a refused app credential as a configuration problem', async () => {
+  it('reports a refused app credential without naming the configuration to the shopper', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     useWordPress([
       {
         method: 'POST',
@@ -99,10 +100,17 @@ describe('WordPress customer authentication', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.status).toBe(502);
-    expect(result.error).toMatch(/WORDPRESS_ADMIN_USER/);
+    // This is the unauthenticated sign-in surface, and it used to hand a stranger the
+    // two variables the Worker was missing. The operator still gets the note — in the
+    // log, where its audience reads it.
+    expect(result.error).not.toMatch(/WORDPRESS_ADMIN/);
+    expect(result.error).toMatch(/temporarily unavailable/);
+    expect(logged.mock.calls.flat().join(' ')).toMatch(/WORDPRESS_ADMIN_USER/);
+    logged.mockRestore();
   });
 
-  it('fails closed when the app has no WordPress credential at all', async () => {
+  it('fails closed, and quietly, when the app has no WordPress credential at all', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     delete process.env.WORDPRESS_ADMIN_USER;
     delete process.env.WORDPRESS_ADMIN_APP_PASSWORD;
 
@@ -111,7 +119,10 @@ describe('WordPress customer authentication', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.status).toBe(503);
-    expect(result.error).toMatch(/WORDPRESS_ADMIN_USER/);
+    expect(result.error).not.toMatch(/WORDPRESS_ADMIN/);
+    expect(result.error).toMatch(/temporarily unavailable/);
+    expect(logged.mock.calls.flat().join(' ')).toMatch(/WORDPRESS_ADMIN_USER/);
+    logged.mockRestore();
   });
 
   it('refuses an empty credential without asking WordPress', async () => {

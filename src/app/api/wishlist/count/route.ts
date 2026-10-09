@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server';
 
 import { verifyCustomerRequest } from '@/lib/auth/customerRequest';
 import { getErrorMessage } from '@/lib/errors';
+import { publicMessage } from '@/lib/http/publicError';
 import { WishlistError, wishlistCount } from '@/lib/wishlist/store';
 
 export async function GET(request: Request) {
@@ -23,7 +24,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ count: await wishlistCount(String(auth.customer.id)) });
   } catch (error) {
     if (error instanceof WishlistError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      // The count is a decoration on the dashboard, so the customer gets the same
+      // shape of sentence the list gives them — never the credential note behind it
+      // (see `@/lib/http/publicError`).
+      return NextResponse.json(
+        {
+          error: publicMessage({
+            internal: error.message,
+            fallback: 'Your wishlist could not be counted right now.',
+            context: 'wishlist-count',
+          }),
+        },
+        { status: error.status }
+      );
     }
     console.error('Wishlist count failed:', error);
     return NextResponse.json(

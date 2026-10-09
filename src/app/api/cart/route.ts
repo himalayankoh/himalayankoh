@@ -23,6 +23,7 @@ import { NextResponse } from 'next/server';
 import { readCartSession, writeCartSession } from '@/lib/cart/cookies';
 import { saveAccountCart } from '@/lib/cart/accountCart';
 import { verifyCustomerRequest } from '@/lib/auth/customerRequest';
+import { publicMessage } from '@/lib/http/publicError';
 import {
   NOT_CONFIGURED,
   StoreCartError,
@@ -81,8 +82,18 @@ function storeErrorResponse(error: unknown, fallback: string) {
     // timeout would empty a shopper's cart and let them refill it with items the
     // server has never heard of.
     if (error.code === NOT_CONFIGURED) {
+      // The browser acts on `code` — it is what switches the cart to its local copy —
+      // but the sentence is still a response body, so it must not be the one that names
+      // the variable to set; see `@/lib/http/publicError`.
       return privateJson(
-        { error: error.message, code: 'store_unavailable' },
+        {
+          error: publicMessage({
+            internal: error.message,
+            fallback: 'The store is not available right now.',
+            context: 'cart',
+          }),
+          code: 'store_unavailable',
+        },
         { status: 503 }
       );
     }
@@ -91,7 +102,7 @@ function storeErrorResponse(error: unknown, fallback: string) {
     // problem with the store's own wording. Anything else is our side failing.
     const clientFault = error.status >= 400 && error.status < 500;
     return privateJson(
-      { error: error.message || fallback },
+      { error: publicMessage({ internal: error.message || fallback, fallback, context: 'cart' }) },
       { status: clientFault ? 400 : 502 }
     );
   }

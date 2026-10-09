@@ -132,6 +132,45 @@ describe('GET /api/wishlist', () => {
   });
 });
 
+/**
+ * The route is where a server-side diagnostic stops being a shopper-facing message.
+ * These two cases are the two shapes of "the app cannot talk to WordPress": one is the
+ * operator's to fix and names configuration, the other is the store's own state and is
+ * worth telling the customer about.
+ */
+describe('what the customer is told when WordPress is the problem', () => {
+  it('does not narrate the refused credential to the browser', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    useWordPress([
+      {
+        path: '/hk-storefront/v1/wishlist',
+        status: 403,
+        body: { code: 'rest_forbidden', message: 'Sorry, you are not allowed to do that.' },
+      },
+    ]);
+
+    const response = await GET(request({ headers: { Authorization: 'Bearer good' } }));
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error).not.toMatch(/WORDPRESS_ADMIN/);
+    expect(body.error).toBe('Your wishlist could not be loaded right now.');
+    // Withheld, not swallowed: the install note is in the log for whoever runs this.
+    expect(logged.mock.calls.flat().join(' ')).toMatch(/WORDPRESS_ADMIN_USER/);
+    logged.mockRestore();
+  });
+
+  it('passes the plugin-not-active answer through untouched', async () => {
+    useWordPress([]);
+
+    const response = await GET(request({ headers: { Authorization: 'Bearer good' } }));
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error).toMatch(/plugin is not active/);
+  });
+});
+
 describe('POST /api/wishlist', () => {
   it('adds a product that is not saved yet and reports it as saved', async () => {
     const stub = useWordPress([

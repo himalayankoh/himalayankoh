@@ -32,6 +32,7 @@
 
 import { WordPressApiError, wordpressRequest } from '@/lib/backend/wordpress';
 import { requireWordPressCredentials } from '@/lib/backend/wordpressCredentials';
+import { publicMessage } from '@/lib/http/publicError';
 
 const NAMESPACE = '/hk-storefront/v1';
 const TIMEOUT_MS = 15_000;
@@ -127,6 +128,23 @@ export function storefrontNamespace(): string {
   return NAMESPACE;
 }
 
+/**
+ * What the shopper is told when the app cannot authenticate to WordPress itself.
+ *
+ * There is nothing here for them to do. The two failures that produce it — a missing
+ * application-password variable, or a refused one — are the operator's to fix, and the
+ * text a server module writes about them names the variables. That text goes to the
+ * log, and this is what the browser gets; see `@/lib/http/publicError` for why the two
+ * audiences are separated at all.
+ *
+ * The verb is carried through so the sentence is about the action that failed:
+ * "Customer sign-in is temporarily unavailable" rather than a generic failure notice on
+ * a password-reset screen.
+ */
+function unavailableToShopper(verb: string): string {
+  return `Customer ${verb} is temporarily unavailable. Please try again in a few minutes, or email sales@himalayankoh.com and we will help you directly.`;
+}
+
 function describeFailure(error: unknown, verb: string): { status: number; error: string } {
   if (error instanceof WordPressApiError) {
     if (error.code && PLUGIN_ERRORS[error.code]) return PLUGIN_ERRORS[error.code];
@@ -144,8 +162,12 @@ function describeFailure(error: unknown, verb: string): { status: number; error:
     if (error.status === 401 || error.status === 403) {
       return {
         status: 502,
-        error:
-          'WordPress refused the app credential while checking the customer account. Check WORDPRESS_ADMIN_USER and WORDPRESS_ADMIN_APP_PASSWORD.',
+        error: publicMessage({
+          internal:
+            'WordPress refused the app credential while checking the customer account. Check WORDPRESS_ADMIN_USER and WORDPRESS_ADMIN_APP_PASSWORD.',
+          fallback: unavailableToShopper(verb),
+          context: 'customer-auth',
+        }),
       };
     }
     if (error.status === 0) {
@@ -156,8 +178,16 @@ function describeFailure(error: unknown, verb: string): { status: number; error:
   }
 
   const message = error instanceof Error ? error.message : String(error);
+  // A missing credential never becomes a request, so `requireWordPressCredentials` is
+  // the thrower here — and its message is the configuration note that must not be
+  // forwarded. Anything else that merely mentions a variable by name is withheld too:
+  // this is the one route a signed-out stranger can reach, and it is not the place to
+  // learn the deployment's shape from.
   if (/WORDPRESS_ADMIN_(USER|APP_PASSWORD)/.test(message)) {
-    return { status: 503, error: message };
+    return {
+      status: 503,
+      error: publicMessage({ internal: message, fallback: unavailableToShopper(verb), context: 'customer-auth' }),
+    };
   }
   return { status: 502, error: `Customer ${verb} failed: ${message}` };
 }

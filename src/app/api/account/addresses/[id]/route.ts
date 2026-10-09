@@ -18,12 +18,17 @@ import { NextResponse } from 'next/server';
 import { verifyCustomerRequest } from '@/lib/auth/customerRequest';
 import { AddressError, deleteAddress, updateAddress } from '@/lib/account/addressStore';
 import { readAddressPatch } from '@/lib/account/addressInput';
+import { publicMessage } from '@/lib/http/publicError';
 
 export const dynamic = 'force-dynamic';
 
+/** The one address failure a browser may see — same boundary as the list route. */
 function failure(error: unknown, fallback: string) {
   if (error instanceof AddressError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json(
+      { error: publicMessage({ internal: error.message, fallback, context: 'addresses' }) },
+      { status: error.status }
+    );
   }
   console.error('Address request failed:', error);
   return NextResponse.json({ error: fallback }, { status: 502 });

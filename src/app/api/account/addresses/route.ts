@@ -22,15 +22,25 @@ import { NextResponse } from 'next/server';
 import { verifyCustomerRequest } from '@/lib/auth/customerRequest';
 import { AddressError, createAddress, listAddresses } from '@/lib/account/addressStore';
 import { readAddressInput } from '@/lib/account/addressInput';
+import { publicMessage } from '@/lib/http/publicError';
 
 export const dynamic = 'force-dynamic';
 
 /** How many addresses one account may keep — a cap, not a feature. */
 const MAX_ADDRESSES = 20;
 
+/**
+ * The address failure a browser may see.
+ *
+ * `AddressError` names the WordPress credential to check when one was refused, which
+ * is exactly what must not leave the server; see `@/lib/http/publicError`.
+ */
 function failure(error: unknown, fallback: string) {
   if (error instanceof AddressError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json(
+      { error: publicMessage({ internal: error.message, fallback, context: 'addresses' }) },
+      { status: error.status }
+    );
   }
   console.error('Address request failed:', error);
   return NextResponse.json({ error: fallback }, { status: 502 });

@@ -13,6 +13,7 @@ DNS change.
 | Deployed Worker | `himalayan-koh-ecommerce-prod`, version `1cca2a70-7597-486b-97b5-3afc319d194a` |
 | Deployed build stamp | `/api/version` → `{"sha":"c10ca502a3ec6fdd2546bb91df1a79e58eb72c44","builtAt":"2026-10-09T10:18:57Z"}` |
 | Reachable at | `himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev`, `preview.himalayankoh.com` (both behind the preview gate) |
+| Deployed Worker, after the post-cutover fixes | version `cb430b83-e419-42df-8aec-aad71d057be6`, rebuilt and redeployed from the commit that carries them (`/api/version` reads back that `sha`, which is the invariant this document defines) |
 | Attached to `himalayankoh.com` | **Pre-cutover: no.** Two Worker routes were added later the same day (see "The cutover, executed"). |
 
 The invariant is *the deployed artifact matches a committed revision*, and the way to read it is
@@ -37,7 +38,7 @@ output rather than the tree.
 | DNS / MAIL | **PASS** | Zone export (12 records, `docs/production/` sibling of this file): 3 MX (`mx1/2/3-hosting.jellyfish.systems`, DNS-only), SPF `v=spf1 +mx +a +ip4:162.0.209.25 +include:spf.web-hosting.com ~all`, DKIM `default._domainkey`. No DMARC record exists (pre-existing). None of these names is touched by attaching a Worker to the apex or `www`. |
 | ROLLBACK | **AVAILABLE and untested in anger** | The apex `A 162.0.209.25` (proxied) and `www CNAME himalayankoh.com` records were never changed, so deleting the two Worker routes returns the apex to WordPress with no DNS edit, no code change and no rebuild; `wp` and the mail records are untouched throughout. |
 | HOSTING CONTINUITY | **OWNER ACTION** | Namecheap → Hosting Subscriptions: `himalayankoh.com` — plan *Stellar Plus*, status **EXPIRING**, **Auto-Renew not set**, expires **Oct 17, 2026** (8 days out). The domain itself is `ACTIVE`, auto-renew on, expiring Aug 10, 2027. The WordPress backend this launch depends on must be renewed by the owner. |
-| BACKUP | **FAIL (per this repository's own rule)** | `node scripts/verify-backup.mjs --db ../hk-backups/2026-10-08/himaljpz_dbigyg59kmwnws.sql.gz --files ../hk-backups/2026-10-08/` → 14 PASS, 1 FAIL, 1 PARTIAL: the dump (67.5 MiB decompressed, 320 tables, orders present), the split files archives, `wp-config.php` and the checksums all verify, but **no restore into a scratch database is recorded** (§4.5). No local MySQL/MariaDB or Docker is available on this machine, so §4.5 cannot be run from here; `docs/production/BACKUP-RESTORE-VERIFICATION.md` keeps the item at FAIL until it is. |
+| BACKUP | **PASS** | `node scripts/verify-backup.mjs --db ../hk-backups/2026-10-08/himaljpz_dbigyg59kmwnws.sql.gz --files ../hk-backups/2026-10-08/ --restore-evidence docs/production/backup-restore-evidence-2026-10-09.txt` → **16 passed, 0 failed, 0 partial**: the dump (320 tables, 257 INSERTs, orders present), both archives, `wp-config.php` and the checksums verify, and the restore into an isolated local MariaDB 11.4.13 is recorded (§4.5). The FAIL this row carried was the check being run **without** `--restore-evidence` while the evidence file was already on disk — the verifier reports a missing record, not a failed restore. |
 
 ## The SSL question, answered
 
@@ -82,10 +83,9 @@ config (which carries no route), so future `npm run deploy:production` runs are 
   products; `?category=live-stock` links exactly its four, `?category=edible-pink-salt` exactly its
   one, with no shelf leaking into the other; `/products/pouches` 200, priced, no cart control.
 - two `wp-content/uploads` images 200 `image/jpeg` through the Worker's passthrough.
-- `www` 200 over verified HTTPS, **served rather than redirected**: the apex-to-`www` 301 shoppers
-  saw before was WordPress's own canonical redirect, and the application does not redirect by host
-  (`www.himalayankoh.com` is in `PRODUCTION_HOSTS`, so it is served rather than gated). Same
-  storefront, second hostname, canonical pointing at the apex.
+- `www` 200 over verified HTTPS, **served rather than redirected** — the state as measured on the
+  day. The application now collapses `www` onto the apex with a 301 instead (see "Superseded on
+  2026-10-09" below), so this line describes an earlier build.
 - `POST /api/orders/create` 503, `POST /api/stripe/create-payment-intent` 503, `/cart` 307 to
   `/products`, and `POST /api/stripe/webhook` 503 — the new endpoint is still unconfigured, as the
   owner asked.
@@ -110,12 +110,115 @@ node .freebuff/cutover.mjs revert    # removes himalayankoh.com/* and www.himala
 or from the API, `DELETE /zones/<zone>/workers/routes/<id>` for each id above. The apex returns to
 WordPress as soon as the last route is gone, because its `A 162.0.209.25` record was never touched.
 
+### Superseded on 2026-10-09 (later the same day)
+
+- **The backup is PASS**, not FAIL: the restore is recorded in
+  `docs/production/backup-restore-evidence-2026-10-09.txt`, and the verifier was simply being run
+  without `--restore-evidence`. With it: **16 passed, 0 failed** (see the table above).
+- **`www` now redirects to the apex.** The "served rather than redirected" measurement above was of
+  the build deployed at the cutover. Serving one storefront on two hostnames meant two URLs for
+  every page — the canonical tag pointed at the apex while the response itself was 200 on `www`,
+  which is the duplicate-content shape a crawler acts on. The app now answers `www` with a 301 that
+  preserves path and query (`src/lib/http/canonicalHost.ts`, applied in `src/middleware.ts`).
+  Verified against the live origin: `www/`, `www/products`, `www/products?category=live-stock`,
+  `www/products/pouches`, `www/?utm_source=…` and `www/blog?page=2&sort=Date` all 301 to the same
+  path and query on the apex, and following the redirect ends at a 200 with no loop.
+
+## Post-cutover defects, found and closed (2026-10-09)
+
+### 1. The sign-in route answered with the deployment's own configuration — FIXED
+
+`POST /api/auth/customer/login` is unauthenticated by necessity: a shopper reaches it before they
+are a customer. It was answering
+
+```json
+{"error":"WordPress is not connected for the app: set WORDPRESS_ADMIN_USER and WORDPRESS_ADMIN_APP_PASSWORD in the server environment (create the password under Users → Profile → Application Passwords)."}
+```
+
+HTTP `503`, to anyone who asked, and the login modal rendered it to the shopper. The cause was real —
+the production Worker held 17 secrets and neither of those two — but the *message* was written for an
+operator and the boundary did not distinguish the two audiences.
+
+Fixed in two places:
+
+- **The cause:** the two variables are now set on `himalayan-koh-ecommerce-prod` (19 secret
+  bindings; presence verified, values never printed).
+- **The class:** `src/lib/http/publicError.ts` — a server module may hand a route operator-facing
+  text, and `publicMessage` logs it under a context label and returns a sentence about the
+  shopper's situation instead. Applied at every publicly-reachable boundary that could carry a
+  configuration name: customer auth (`wordpressCustomerAuth.ts`), the wishlist routes and the
+  address routes, `/api/cart` and `/api/orders/create`. Admin-only surfaces are deliberately left
+  alone: their audience is the operator, which is the same reason LeadOS "fails loudly".
+
+Tests: `src/lib/http/publicError.test.ts` (the rule), and the auth, wishlist and route tests now
+assert the variable names reach the **log** and not the response body. `npm run typecheck` clean;
+`npm test` **1971 passed, 19 skipped, 0 failed**.
+
+### 2. Customer accounts, wishlist, saved addresses and password reset are down — OWNER ACTION
+
+With the credential in place, the next honest failure surfaced: the production backend has **no
+`hk-storefront/v1` namespace**. Measured directly against the backend the Worker uses:
+
+```
+GET https://wp.himalayankoh.com/wp-json/     → 200, 25 namespaces, wc/store/v1 present
+                                            → hk-storefront/v1 ABSENT
+POST https://wp.himalayankoh.com/wp-json/hk-storefront/v1/customer/login → 404 rest_no_route
+```
+
+So `himalayan-koh-storefront.php` (which provides customer login, registration, password reset, the
+wishlist and saved addresses) is not active on the live WordPress install. Every one of those
+features is therefore unavailable in production, and the app says so honestly rather than blaming
+the shopper's password.
+
+### 3. The application password installed for production does not authenticate there — OWNER ACTION
+
+`WORDPRESS_ADMIN_USER` / `WORDPRESS_ADMIN_APP_PASSWORD` from `.env.local` were minted for the
+**staging** install: `WORDPRESS_BASE_URL` in that file is still `https://himalayankoh.com/staging`,
+which now answers **404** because the apex is the Worker. Against the production backend:
+
+```
+GET https://wp.himalayankoh.com/wp-json/wp/v2/users/me  → 401 rest_not_logged_in
+```
+
+Token-driven probes were used to rule out the obvious alternative — an `Authorization` header that
+never arrives would fail for every credential, and it does not (the WooCommerce consumer key draws a
+WooCommerce-level error from the same host). So the production Worker needs an application password
+minted **on the live install** (`wp.himalayankoh.com` → Users → Profile → Application Passwords).
+
+This is recorded rather than fixed in place because it changes a live store's backend: minting the
+credential and activating the plugin are the owner's call, and until they are done the two failures
+above are the honest, non-leaking answers a shopper gets.
+
+### 4. Confirmed deliberate: ordering is paused, and the Stripe secret does not exist anywhere
+
+The deployed Worker carries `STOREFRONT_ORDERS_PAUSED=true` and `NEXT_PUBLIC_ORDERS_PAUSED=true`,
+which is what renders "Ordering unavailable" on every card. Consistently, the missing secret
+inventory is exactly the ordering half: `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are absent
+from the Worker **and from every local and owner file** — only the live *publishable* key is present.
+So ordering cannot be enabled from this machine; it needs the owner's Stripe secret key.
+
+### 5. A stale staging base in the local env
+
+`himalayankoh.com/staging` — the address in `.env.local`, `.dev.vars` and
+`scripts/install-wordpress-plugins.mjs`'s fallback — no longer serves WordPress at all (404, served
+by the Worker). Local tooling that defaults to it cannot reach a WordPress install; the live backend
+is `https://wp.himalayankoh.com`. Not a production defect, but it is why the credential in those
+files looked correct and was not.
+
+### Also found: the wp-admin automation cannot read this host
+
+`scripts/install-wordpress-plugins.mjs` reports "cannot read the plugin list" against
+`wp.himalayankoh.com`. The page it receives is a ~745-byte *"Checking your browser…"* gate that sets
+an `hc_js_gate` cookie in JavaScript and reloads. curl does not run the script, so the installer
+reads the gate as the plugin list. It is not a permissions problem, and it did not block anything
+here — it is why the plugin state in item 2 was settled by the REST namespace index instead.
+
 ### Still open after the cutover
 
 - **The hosting renewal** (owner action): `Stellar Plus` for `himalayankoh.com` expires
   **Oct 17, 2026**, auto-renew not set. The storefront keeps working without it, but the WordPress
   backend, `wp-admin`, the WooCommerce API and the legacy callback do not.
-- **The backup stays FAIL** until a scratch restore is recorded (see the table above).
+- **The storefront plugin and the production application password** (items 2 and 3 above).
 - **`scripts/check-production-gate.mjs` now fails by design** — it asserts that no Worker route and
   no custom domain serve the apex, which was the pre-cutover condition this document recorded.
 - **The new Stripe endpoint and live checkout** are deliberately not configured.

@@ -22,6 +22,7 @@
 
 import { NextResponse } from 'next/server';
 import { getErrorMessage } from '@/lib/errors';
+import { publicMessage } from '@/lib/http/publicError';
 import { readCartSession } from '@/lib/cart/cookies';
 import { optionalCustomerRequest } from '@/lib/auth/customerRequest';
 import { reserveOrderForCheckout, clearReservedCart } from '@/lib/orders/serverCreateOrder';
@@ -116,8 +117,18 @@ export async function POST(request: Request) {
     return NextResponse.json(reserved.order);
   } catch (error) {
     console.error('Create order failed:', error);
+    // Guest checkout is reachable by anyone, so the message is the shopper's: an
+    // internal failure keeps its diagnostic in the log above and answers with the
+    // sentence `getErrorMessage` would have fallen back to anyway
+    // (see `@/lib/http/publicError`).
     return NextResponse.json(
-      { error: getErrorMessage(error, 'Unable to place order.') },
+      {
+        error: publicMessage({
+          internal: getErrorMessage(error, 'Unable to place order.'),
+          fallback: 'Unable to place order. Please try again, or email sales@himalayankoh.com.',
+          context: 'create-order',
+        }),
+      },
       { status: 500 }
     );
   }

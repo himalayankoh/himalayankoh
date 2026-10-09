@@ -19,6 +19,7 @@ import { NextResponse } from 'next/server';
 
 import { verifyCustomerRequest } from '@/lib/auth/customerRequest';
 import { getErrorMessage } from '@/lib/errors';
+import { publicMessage } from '@/lib/http/publicError';
 import {
   WishlistError,
   addWishlistProduct,
@@ -29,9 +30,19 @@ import {
   type WishlistItem,
 } from '@/lib/wishlist/store';
 
+/**
+ * The wishlist failure a browser may see.
+ *
+ * `WishlistError` carries the sentence an operator needs — which of the two WordPress
+ * credentials was refused — and this is the boundary where that stops being the
+ * sentence a customer gets; see `@/lib/http/publicError`.
+ */
 function wishlistErrorResponse(error: unknown, fallback: string) {
   if (error instanceof WishlistError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json(
+      { error: publicMessage({ internal: error.message, fallback, context: 'wishlist' }) },
+      { status: error.status }
+    );
   }
   console.error('Wishlist request failed:', error);
   return NextResponse.json({ error: getErrorMessage(error, fallback) }, { status: 502 });
