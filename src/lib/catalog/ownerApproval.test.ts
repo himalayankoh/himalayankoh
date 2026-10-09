@@ -27,8 +27,10 @@ describe('storefront niche — owner approval', () => {
   });
 
   it('never lets an approval re-admit a record the owner rejected', () => {
-    // 2321 is on OWNER_REJECTED_PRODUCT_IDS.
-    expect(isNicheProduct({ id: 2321, name: 'Himalayan Rock Salt Pouches', ownerApproved: true })).toBe(false);
+    // 2352 (SALT LICKS) is on OWNER_REJECTED_PRODUCT_IDS. 2321 used to be the
+    // example here; it left that list on 2026-10-09, when the owner admitted it
+    // for the live launch, so it is no longer a refusal to outrank.
+    expect(isNicheProduct({ id: 2352, name: 'Himalayan Rock Salt Pouches', ownerApproved: true })).toBe(false);
   });
 
   it('still honours the authorised-SKU half of the policy', () => {

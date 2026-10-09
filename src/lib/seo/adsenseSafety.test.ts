@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { OWNER_APPROVED_SKUS, OWNER_REJECTED_PRODUCT_IDS, isOwnerRejectedProduct } from '../catalog/niche';
+import {
+  LIVE_LAUNCH_PRODUCT_IDS,
+  OWNER_APPROVED_SKUS,
+  OWNER_REJECTED_PRODUCT_IDS,
+  isOwnerRejectedProduct,
+} from '../catalog/niche';
 import { RESOURCE_ARTICLES, getAllResourceArticles, getResourceArticleBySlug } from '../../data/resources';
 import { AUTHORS, getAllAuthors } from '../../data/authors';
 import { requiresNoindex } from './indexing';
@@ -13,11 +18,21 @@ describe('Phase 23 — Automated AdSense & Compliance Safety Gates', () => {
     });
 
     it('blocks retired legacy products from public display', () => {
-      const retiredProductIds = [2321, 2352, 2372, 2446, 2461];
+      const retiredProductIds = [2352, 2372, 2461];
       retiredProductIds.forEach((id) => {
         expect(isOwnerRejectedProduct(id)).toBe(true);
         expect(OWNER_REJECTED_PRODUCT_IDS).toContain(id);
       });
+    });
+
+    it('applies the owner\u2019s launch admission, and nothing wider than it', () => {
+      // `2321` and `2446` left the retired list on 2026-10-09 for the live launch,
+      // and the admission names them explicitly rather than opening a class of
+      // product: no record outside this list is admitted by it.
+      expect(LIVE_LAUNCH_PRODUCT_IDS).toEqual([271, 281, 291, 2321, 2446]);
+      expect(isOwnerRejectedProduct(2321)).toBe(false);
+      expect(isOwnerRejectedProduct(2446)).toBe(false);
+      expect(isOwnerRejectedProduct(2352)).toBe(true);
     });
   });
 

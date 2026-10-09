@@ -5,8 +5,10 @@ import {
   isNicheCategory,
   isNicheProduct,
   isOffNicheText,
+  isLiveLaunchProduct,
   isOwnerApprovedSku,
   isOwnerRejectedProduct,
+  LIVE_LAUNCH_PRODUCT_IDS,
   OWNER_APPROVED_SKUS,
   OWNER_REJECTED_PRODUCT_IDS,
   sectionsWithProducts,
@@ -165,9 +167,12 @@ describe('owner catalog policy', () => {
     // Two owner decisions live in one list: the products they refused outright
     // (Himalayan Chef jars, the salt lamp) and the legacy carry-overs they hid on
     // 2026-09-18. Both are refused however they are named, because the decision
-    // was about the record — several of these are pink-salt products in substance
-    // and two closely resemble authorised SKUs.
-    const HIDDEN_LEGACY = [2321, 2352, 2372, 2446, 2461];
+    // was about the record — the remaining three are pink-salt products in
+    // substance and are refused all the same.
+    //
+    // `2321` and `2446` were on this list and are no longer: the owner re-admitted
+    // them for the live launch on 2026-10-09 (see `LIVE_LAUNCH_PRODUCT_IDS`).
+    const HIDDEN_LEGACY = [2352, 2372, 2461];
     for (const id of HIDDEN_LEGACY) {
       expect(OWNER_REJECTED_PRODUCT_IDS, `id ${id}`).toContain(id);
       expect(isNicheProduct({ id, name: 'Himalayan Pink Salt', category: 'Edible Pink Salt' })).toBe(
@@ -177,14 +182,51 @@ describe('owner catalog policy', () => {
 
     // A rename plus an authorised SKU is not enough to bring one back: that is
     // the case this list exists for, since any of them could be retitled in the
-    // console, and 2446/2321 look like SKUs the price list covers.
+    // console.
     expect(
       isNicheProduct({
-        id: 2446,
-        sku: 'HK-ESF-16oz',
+        id: 2352,
+        sku: 'HK-LFH-2lbs',
         name: 'Himalayan Pink Salt Fine Grain',
         category: 'Edible Pink Salt',
       })
+    ).toBe(false);
+  });
+
+  it('admits the live records the owner named for the launch storefront', () => {
+    // The live install is the legacy catalogue, and the policy written for the
+    // curated launch catalogue withheld every row of it. The owner's decision was
+    // to launch on the live records the shop actually stocks — these five, which
+    // are the only live rows both correctly priced and in stock.
+    expect(LIVE_LAUNCH_PRODUCT_IDS).toEqual([271, 281, 291, 2321, 2446]);
+
+    for (const id of LIVE_LAUNCH_PRODUCT_IDS) {
+      expect(isLiveLaunchProduct(id), `id ${id}`).toBe(true);
+      // Admitted however they are filed, and without a SKU: the live records carry
+      // none, and the animal-feed category is exactly what the term guard refuses.
+      expect(
+        isNicheProduct({
+          id,
+          sku: null,
+          name: 'Himalayan Pink Salt Licks for Horses',
+          category: 'animal feed',
+          description: 'Salt for your livestock and your animals.',
+        }),
+        `id ${id}`
+      ).toBe(true);
+    }
+
+    // The admission is a list of named records, not a rule about their wording or
+    // their neighbours: an adjacent id, and a livestock record with no admission,
+    // are both still refused.
+    expect(isLiveLaunchProduct(272)).toBe(false);
+    expect(isLiveLaunchProduct('')).toBe(false);
+    expect(isLiveLaunchProduct(null)).toBe(false);
+    expect(
+      isNicheProduct({ id: 272, name: 'Himalayan Pink Salt Licks for Horses', category: 'animal feed' })
+    ).toBe(false);
+    expect(
+      isNicheProduct({ id: 286, name: 'Himalayan Pink Salt Block for Deer', category: 'animal feed' })
     ).toBe(false);
   });
 

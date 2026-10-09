@@ -191,14 +191,23 @@ describe('owner-approved Salt Lick products', () => {
     expect(isOwnerRejectedProduct(2295)).toBe(true);
     expect(isOwnerRejectedProduct(2294)).toBe(true);
 
-    // Animal-feed records name their animal and are not owner-approved SKUs.
+    // Animal-feed records name their animal and are not owner-approved SKUs, so a
+    // record the owner has not named is refused however it is priced or filed.
     expect(isOwnerApprovedSku('5483976372749')).toBe(false);
     expect(
-      isNicheProduct({ id: 281, name: 'Himalayan Pink Salt Licks for Horses', sku: null, category: 'animal feed' })
+      isNicheProduct({ id: null, name: 'Himalayan Pink Salt Licks for Horses', sku: null, category: 'animal feed' })
     ).toBe(false);
     expect(
       isNicheProduct({ id: 286, name: 'Himalayan Pink Salt Block for Deer', sku: null, category: 'animal feed' })
     ).toBe(false);
+
+    // The owner's live-launch admission is what admits the two live livestock
+    // records, and it is the record that is admitted — not the wording. The same
+    // name and category with no admitted id is still refused, which is asserted
+    // above; this is the same product *with* its id.
+    expect(
+      isNicheProduct({ id: 281, name: 'Himalayan Pink Salt Licks for Horses', sku: null, category: 'animal feed' })
+    ).toBe(true);
   });
 });
 

@@ -10,13 +10,16 @@
  * The policy has two directions, and the order they are asked in is the whole
  * design:
  *
- * 1. **Refusals first.** `OWNER_REJECTED_PRODUCT_IDS` names records the owner has
- *    looked at and refused. A refusal outranks everything else, so an approval
- *    can never re-admit one.
- * 2. **Approvals next, keyed on SKU.** `OWNER_APPROVED_SKUS` is the owner's price
+ * 1. **The launch admission first.** `LIVE_LAUNCH_PRODUCT_IDS` names the live
+ *    records the owner admitted to the launch storefront. It is the most recent
+ *    owner decision about named records, so it is asked before the older lists.
+ * 2. **Refusals next.** `OWNER_REJECTED_PRODUCT_IDS` names records the owner has
+ *    looked at and refused. A refusal outranks an approval, so a SKU can never
+ *    re-admit one.
+ * 3. **Approvals next, keyed on SKU.** `OWNER_APPROVED_SKUS` is the owner's price
  *    list. An authorised SKU is in the catalog whatever its name says, which is
  *    what lets the shop sell its own Salt Licks range.
- * 3. **The term guard last**, as a residual net for records the owner has not
+ * 4. **The term guard last**, as a residual net for records the owner has not
  *    spoken about yet.
  *
  * That order was not the original design. The guard used to answer only "does
@@ -54,6 +57,70 @@ import {
   type NicheSection,
   type NicheSectionKey,
 } from './nicheSections';
+
+/**
+ * The live records the owner admitted to the storefront for the 2026-10-09 launch.
+ *
+ * This is the one place the shop's *policy* and the live install's *data* are
+ * reconciled by hand, and it exists because they were answering different
+ * questions. The policy above was written against the curated launch catalogue
+ * (the authorised SKU line, `HK-LFH-*`, `HK-ESF-*`, `HK-LFC-45lbs` …), which lives
+ * on the staging install. The live install is the legacy catalogue: the same goods
+ * in substance — the 45 lb bulk bag, the licks, the 18 lb cattle rock, the 6 lb
+ * pouches, the 16 oz jar — but published years ago without SKUs, under names that
+ * name the animal they are for.
+ *
+ * Applied unchanged to the live catalogue, that policy withheld **every** product
+ * (12 of 13 rows, measured 2026-10-09) and the storefront served nothing. The
+ * owner's decision the same day was to launch on the live catalogue, showing its
+ * correctly priced and in-stock records rather than an empty shop.
+ *
+ * So this list is a **named owner decision about named records**, which is the same
+ * shape as `OWNER_APPROVED_SKUS` and for the same reason: membership is not
+ * derivable from a name or a price. It is deliberately not a rule like "admit any
+ * priced record in stock" — that classifier would also re-admit the next livestock
+ * record the owner prices, and the whole point of the term guard is that the shop
+ * decides, not the catalogue.
+ *
+ * What this list does not do:
+ *
+ *  - It does not repeal the niche. Every other record is judged exactly as before:
+ *    seven live rows stay refused by the lists and the term guard below (six for
+ *    being off-brand — the Himalayan Chef jars and the salt-lamp ionizer — and the
+ *    deer block for naming its animal), and one more is kept by the guard but
+ *    withheld by the public contract for having no price or copy.
+ *  - It does not make these listings *eligible*. It only clears the niche guard;
+ *    the public contract still decides what may be served, which is why the
+ *    unpriced rows stay hidden whatever this list says.
+ *
+ * The live install traded these goods — 14 orders, the most recent in April 2026,
+ * are the livestock records — so admitting them re-opens the shop's own trade
+ * rather than introducing a new line.
+ *
+ * Each entry is the WooCommerce id, with the price and stock as measured on
+ * 2026-10-09. **Delete an id when the live record is archived, or when the curated
+ * SKU catalogue replaces it on the live install** — this list is a bridge to that
+ * publication, not a permanent part of the policy.
+ */
+export const LIVE_LAUNCH_PRODUCT_IDS: readonly number[] = [
+  // Bag of Himalayan Pink Salt for Livestock (45 lbs.) — $99.95, in stock
+  271,
+  // Himalayan Pink Salt Licks for Horses — $9.95, in stock
+  281,
+  // Himalayan Salt Rock for Cattle 18 Lbs Bag — $49.95, in stock
+  291,
+  // Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes - 6 lbs — $17.95, in stock
+  2321,
+  // Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain — $9.95, in stock
+  2446,
+];
+
+/** True when a record is one the owner admitted for the launch storefront. */
+export function isLiveLaunchProduct(id: number | string | null | undefined): boolean {
+  if (id === null || id === undefined || id === '') return false;
+  const numeric = typeof id === 'number' ? id : Number(String(id));
+  return Number.isFinite(numeric) && LIVE_LAUNCH_PRODUCT_IDS.includes(numeric);
+}
 
 /** Words that put a product outside the Himalayan pink salt niche. */
 export const OFF_NICHE_TERMS: readonly string[] = [
@@ -183,14 +250,17 @@ export const OWNER_REJECTED_PRODUCT_IDS: readonly number[] = [
   // the temporary build; the authorised SKUs above are the catalog that replaced
   // them. They stay in WooCommerce (draft, ids and history intact) — only their
   // storefront visibility is refused.
-  // Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes - 6 lbs
-  2321,
+  //
+  // NOTE (2026-10-09): two of the five — `2321` (Rock Salt Pouches, 6 lbs) and
+  // `2446` (Edible Pink Salt, 16 oz jar) — are no longer refused. They are the two
+  // most on-brand records on the live install, and the owner re-admitted them for
+  // the launch storefront because the authorised SKU line that was meant to replace
+  // them is published on staging, not on live. They are named in
+  // `LIVE_LAUNCH_PRODUCT_IDS` above; the remaining three are still refused here.
   // SALT LICKS
   2352,
   // HIMALAYAN ROCK SALT BAG 18 LBS
   2372,
-  // Himalayan Edible Pink Salt - 16 oz Jar | Fine Grain
-  2446,
   // Himalayan Koh Authentic Pure Natural Halal Unprocessed ... Edible Pink Cooking Salt
   2461,
 ];
@@ -289,6 +359,12 @@ export function isOwnerReviewProduct(id: number | string | null | undefined): bo
  * its own description sells it for a feed lot.
  */
 export function isNicheProduct(input: NicheCheckInput): boolean {
+  // The owner's launch admission for the live catalogue, checked first because it
+  // is the most recent decision about these named records: the shop was serving
+  // nothing at all on the live install, and the owner chose to launch on the live
+  // records it actually stocks and sells. See `LIVE_LAUNCH_PRODUCT_IDS`.
+  if (isLiveLaunchProduct(input.id)) return true;
+
   // An owner decision outranks the text guard, in both directions, and a refusal
   // is checked first: a SKU on the approved list must never be able to re-admit a
   // record the owner has explicitly rejected.
