@@ -41,9 +41,19 @@
  * the same reason Stripe's publishable keys always are: it is served to every visitor
  * by `src/app/api/stripe/config/route.ts` and embedded in the browser bundle. It is
  * declared here as well as inlined by the build so that the deployed Worker can be read
- * back and compared — `scripts/deploy-production.mjs` verifies these five variables
- * against the running deployment, which is the only way to prove the key whose `pk_live_`
- * value a shopper's browser receives is the one that was intended.
+ * back and compared — `scripts/deploy-production.mjs` verifies these variables against
+ * the running deployment, which is the only way to prove the key whose `pk_live_` value
+ * a shopper's browser receives is the one that was intended.
+ *
+ * `STOREFRONT_ORDERS_PAUSED` is the launch mode, and the one entry here that is not an
+ * address or a public key. The storefront goes public before its payments are finished
+ * (no `sk_live_` on this Worker and no webhook endpoint at the apex yet), so it serves
+ * the catalogue and refuses to write an order — `src/lib/storefront/ordering.ts` is the
+ * switch, `/api/orders/create` is where it is enforced, and the checkout screen states
+ * it to the shopper. It is declared here rather than left to a default so that
+ * `scripts/assert-production-config.mjs` refuses any build whose variables lost it:
+ * ordering cannot be enabled by deleting a line, only by writing 'false' where a
+ * reviewer reads it, after the Stripe webhook has been verified end to end.
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -53,6 +63,7 @@
     "NEXT_PUBLIC_DATA_SOURCE": "woocommerce",
     "NEXT_PUBLIC_WORDPRESS_BASE_URL": "https://wp.himalayankoh.com",
     "NEXT_PUBLIC_WOOCOMMERCE_BASE_URL": "https://wp.himalayankoh.com",
-    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_bScMJ0xIRFCAbr3IQJM5YWfY004PNn0fn2"
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_bScMJ0xIRFCAbr3IQJM5YWfY004PNn0fn2",
+    "STOREFRONT_ORDERS_PAUSED": "true"
   }
 }

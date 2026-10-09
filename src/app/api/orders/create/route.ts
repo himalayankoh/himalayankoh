@@ -26,6 +26,7 @@ import { readCartSession } from '@/lib/cart/cookies';
 import { optionalCustomerRequest } from '@/lib/auth/customerRequest';
 import { reserveOrderForCheckout, clearReservedCart } from '@/lib/orders/serverCreateOrder';
 import { dispatchOrderCreatedNotifications } from '@/lib/orders/notifyOrderEvents';
+import { ORDERS_PAUSED_MESSAGE, isOrderingPaused } from '@/lib/storefront/ordering';
 import type { CreateOrderData, ShippingMethod } from '@/lib/orders/totals';
 
 type CreateOrderBody = CreateOrderData;
@@ -50,6 +51,18 @@ function parseBody(body: unknown): { ok: true; data: CreateOrderBody } | { ok: f
 }
 
 export async function POST(request: Request) {
+  // First, before the body is even read: is this deployment accepting orders at all?
+  //
+  // This is the server-side half of a catalogue-only launch. The checkout screen
+  // already refuses to submit when no payment path exists, but a screen is not a
+  // control — a hand-written POST reaches this route directly, and this route is the
+  // one that writes to the store's order table. Refusing here is what makes "no
+  // customer orders are accepted" true of the deployment rather than true of the
+  // buttons. Nothing above this line has touched WooCommerce.
+  if (isOrderingPaused()) {
+    return NextResponse.json({ error: ORDERS_PAUSED_MESSAGE }, { status: 503 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();

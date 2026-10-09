@@ -91,6 +91,25 @@ export const PRODUCTION_BACKEND_ORIGIN = 'https://wp.himalayankoh.com';
 export const PRODUCTION_STRIPE_PUBLISHABLE_KEY = 'pk_live_bScMJ0xIRFCAbr3IQJM5YWfY004PNn0fn2';
 
 /**
+ * Does the production storefront accept orders yet? It does not — and this constant
+ * is what makes that a property of the deployment rather than of a screen.
+ *
+ * The storefront goes public before its payments are finished: `sk_live_` is not on
+ * the Worker, no webhook endpoint exists at the apex yet, and until both are true an
+ * order the storefront wrote could be charged without ever being marked paid. The
+ * catalogue, the product pages and the shipping information are all fine to serve in
+ * that state; taking an order is not.
+ *
+ * Declared here, in the overlay and in `EXPECTED_VARS`, for the same reason the
+ * publishable key is: this is the switch that keeps a launch from accepting an order
+ * it cannot complete, so it must not be a value that can quietly go missing. The
+ * guard refuses a production artifact whose variables lost it, and the deploy reads
+ * it back off the running Worker. Turning ordering on is a deliberate `'false'` in
+ * two reviewed files after the Stripe webhook has been verified — never a deletion.
+ */
+export const PRODUCTION_ORDERS_PAUSED = 'true';
+
+/**
  * `pk_live_…`, and nothing else, for a production build.
  *
  * The shape check is deliberately loose about the body — Stripe has changed key

@@ -17,9 +17,13 @@
  *      `production-target.mjs`, so the declaration a human edits cannot drift from
  *      the values the build and the deployer use.
  *   2. {@link assertProductionConfig} — the artifact that is about to be uploaded
- *      (`dist/server/wrangler.json`) carries the production Worker name, the four
- *      production public variables, no staging origin, and no route or custom domain
- *      naming the apex.
+ *      (`dist/server/wrangler.json`) carries the production Worker name, exactly the
+ *      production variables and nothing else, no staging origin, and no route or
+ *      custom domain naming the apex. The variable set is asserted as a *set* rather
+ *      than a minimum, which is what makes the launch mode part of the guard:
+ *      `STOREFRONT_ORDERS_PAUSED=true` is declared in the overlay, so a build that
+ *      lost it — or a build that flipped it to `false` — is refused here rather than
+ *      discovered after it is taking orders.
  *   3. {@link assertProductionArtifact} — the built bundle itself was compiled for
  *      production. The variables in the config are *not* what the server code reads:
  *      `NEXT_PUBLIC_*` is inlined at build time, so a bundle built against the
@@ -34,6 +38,7 @@ import {
   FORBIDDEN_IN_PRODUCTION_ARTIFACT,
   HOLD_UNTIL_CUTOVER_HOSTS,
   PRODUCTION_BACKEND_ORIGIN,
+  PRODUCTION_ORDERS_PAUSED,
   PRODUCTION_SITE_ORIGIN,
   PRODUCTION_STRIPE_PUBLISHABLE_KEY,
   PRODUCTION_WORKER_NAME,
@@ -72,11 +77,17 @@ function forbiddenValuesFor(rel) {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * The four public variables a production Worker must declare, and nothing else.
+ * Every variable a production Worker must declare, and nothing else.
  *
  * Exported because the deploy verifies the *deployed* Worker against this same map.
  * The guard proves what the file says; only a read-back from Cloudflare proves what
  * the deployment got.
+ *
+ * "And nothing else" is load-bearing, and so is the fact that the set is fixed: the
+ * last entry is not an address but the **launch mode** (`STOREFRONT_ORDERS_PAUSED`),
+ * and a set comparison is what keeps it present. A minimum-count check would let the
+ * pause be deleted from the overlay and the storefront would quietly start writing
+ * orders on a deployment that cannot mark them paid.
  */
 export const EXPECTED_VARS = {
   NEXT_PUBLIC_SITE_URL: PRODUCTION_SITE_ORIGIN,
@@ -89,6 +100,12 @@ export const EXPECTED_VARS = {
   // checkout that cannot take a card, and `assertStripePublishableKey` below is what
   // turns that from a discovery in production into a failed build.
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: PRODUCTION_STRIPE_PUBLISHABLE_KEY,
+  // The launch mode, and not a public value at all: this one is read on the server,
+  // where it decides whether the storefront may write an order. It is asserted here
+  // for the opposite reason to the four above — not because it must reach the browser,
+  // but because a production deployment that lost it would accept orders it has no
+  // way to complete. See `src/lib/storefront/ordering.ts`.
+  STOREFRONT_ORDERS_PAUSED: PRODUCTION_ORDERS_PAUSED,
 };
 
 function refuse(reason) {
