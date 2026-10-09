@@ -351,11 +351,11 @@ export async function POST(request: Request) {
           const origin = new URL(request.url).origin;
           const stamp = Date.now();
           const payload = JSON.stringify({
-            id: `evt_health_${stamp}`,
+            id: `hk_health_${stamp}`,
             object: 'event',
-            type: 'payment_intent.created',
+            type: 'hk.configuration.probe',
             livemode: false,
-            data: { object: { id: `pi_health_${stamp}`, object: 'payment_intent', livemode: false, metadata: {} } },
+            data: { object: {} },
           });
           const t = Math.floor(stamp / 1000);
           const signature = createHmac('sha256', webhookSecret).update(`${t}.${payload}`).digest('hex');
