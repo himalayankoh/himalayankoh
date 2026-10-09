@@ -13,7 +13,7 @@ DNS change.
 | Deployed Worker | `himalayan-koh-ecommerce-prod`, version `1cca2a70-7597-486b-97b5-3afc319d194a` |
 | Deployed build stamp | `/api/version` → `{"sha":"c10ca502a3ec6fdd2546bb91df1a79e58eb72c44","builtAt":"2026-10-09T10:18:57Z"}` |
 | Reachable at | `himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev`, `preview.himalayankoh.com` (both behind the preview gate) |
-| Deployed Worker, after the post-cutover fixes | version `a9387d48-3885-4ec7-b520-81b643293b43`, built from commit `28fbb3e119ea40c092e33da940d9fcc6da66b134` — `/api/version` reads back that `sha`, which is the invariant this document defines |
+| Deployed Worker, after the post-cutover fixes | version `a2dbefd7-cb7c-49cb-8a8a-2b1e876cb9bb`, built from commit `9a45a8288acc79bbae2c4c0afe1e10f8f77fdb45` — `/api/version` reads back that `sha`, which is the invariant this document defines |
 | Attached to `himalayankoh.com` | **Pre-cutover: no.** Two Worker routes were added later the same day (see "The cutover, executed"). |
 
 The invariant is *the deployed artifact matches a committed revision*, and the way to read it is
@@ -150,9 +150,26 @@ Fixed in two places:
   address routes, `/api/cart` and `/api/orders/create`. Admin-only surfaces are deliberately left
   alone: their audience is the operator, which is the same reason LeadOS "fails loudly".
 
-Tests: `src/lib/http/publicError.test.ts` (the rule), and the auth, wishlist and route tests now
-assert the variable names reach the **log** and not the response body. `npm run typecheck` clean;
-`npm test` **1971 passed, 19 skipped, 0 failed**.
+Sweeping the class found a second instance in the same two routes, which the first fix had not
+touched: sign-in and sign-up refuse *before* WordPress is reached when `CUSTOMER_SESSION_SECRET` is
+unset, and both answered with that variable's name. They now return the same sentence the
+WordPress-failure branches use (`customerAccountsUnavailable`), so a shopper cannot tell the two
+causes apart and learns neither. `src/app/api/auth/customer/register/route.test.ts` is new — that
+route had no test — and asserts the **response body**, which is what a stranger sees.
+
+Tests: `src/lib/http/publicError.test.ts` (the rule), and the auth, wishlist and address routes now
+assert the variable names reach the **log** and not the response body — including the two
+unauthenticated auth routes, through the route handler rather than the module.
+`npm run typecheck` clean; `npm test` **1972 passed, 19 skipped, 0 failed**.
+
+Live, against `himalayankoh.com` after the redeploy: `POST /api/auth/customer/login` and
+`POST /api/auth/customer/register` both answer `503` and neither body matches
+`WORDPRESS_ADMIN_(USER|APP_PASSWORD)|CUSTOMER_SESSION_SECRET`.
+
+What is **not** proven live: the sanitizing branch itself, because the condition it guards has been
+fixed. Removing `WORDPRESS_ADMIN_USER` from the Worker to force it did not change what the running
+deployment served — deleting a secret through the raw API does not roll the live version — so the
+branch is verified by the route-level tests above, not by a network probe.
 
 ### 2. Customer accounts, wishlist, saved addresses and password reset are down — OWNER ACTION
 
