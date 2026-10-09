@@ -23,7 +23,7 @@ import type { Product, StockStatus } from '../../data/products';
 import { collectMissingCatalogFields, priceDisplayFromRange } from '../products/price';
 import { productSlugFromName } from '../products/slug';
 import { resolveCuratedProductImages } from '../products/curatedImages';
-import { cleanProductName, normalizeWeightUnits } from '../products/displayName';
+import { UNCATEGORIZED_CATEGORY, cleanProductName, normalizeWeightUnits } from '../products/displayName';
 import { parseStoreSrcset, type ResponsiveImageSources } from '../images/responsiveImage';
 import { SEO_META_KEYS, variationPriceRange, type WooVariationLike } from '../woo/productPayload';
 import {
@@ -234,9 +234,14 @@ export const RETIRED_PRODUCT_SLUGS: Record<string, string> = {
  *
  * The storefront needs a non-empty string in `Product.category`, so the model has
  * a placeholder. Consumers that must not invent taxonomy — the admin catalog read
- * model counts categories — treat this value as "not reported" instead.
+ * model counts categories, a product page shows the eyebrow — treat this value as
+ * "not reported" instead.
+ *
+ * Defined in `lib/products/displayName.ts` (see `reportedCategoryName` there) and
+ * re-exported here because the server-side readers already import it from this
+ * module; there is one string, not one per consumer.
  */
-export const UNCATEGORIZED_CATEGORY = 'Uncategorized';
+export { UNCATEGORIZED_CATEGORY };
 
 /* ------------------------------------------------------------------ */
 /* Pure helpers — unit tested                                          */

@@ -94,6 +94,10 @@ describe('production launches in catalogue-only mode', () => {
     const detail = read('../../components/ProductDetailView.tsx');
     expect(detail).toMatch(/!ORDERING_ENABLED\s*\?\s*'Ordering unavailable'/);
     expect(detail).toMatch(/ORDERS_PAUSED_MESSAGE/);
+    // The quantity stepper is a purchase control as well, so the paused deployment renders
+    // none: a stepper beside a button that says ordering is unavailable still reads as a
+    // shop that takes orders.
+    expect(detail).toMatch(/\{ORDERING_ENABLED && \(\s*<div className="mb-5">/);
   });
 
   it('keeps the pause in the set of variables the guard accepts, and nothing else', () => {

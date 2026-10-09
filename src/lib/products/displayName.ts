@@ -72,3 +72,31 @@ export function cleanProductName(name: string, slug?: string): string {
 
   return normalizeWeightUnits(trimmed.replace(TRAILING_BRAND, '').trim());
 }
+
+/**
+ * Category name the catalog model carries when a source reported none.
+ *
+ * The storefront needs a non-empty string in `Product.category`, so the model has a
+ * placeholder rather than an empty field. Anything that *shows* or *counts* a
+ * category must treat this value as "not reported" instead — a product page that
+ * renders it as an eyebrow announces `UNCATEGORIZED` as though it were a shelf of
+ * the shop. Defined here because this is the module both the mappers and the screens
+ * already share (`lib/backend/woocommerce.ts` re-exports it, the admin catalog read
+ * imports it), so there is one string, not one per consumer.
+ */
+export const UNCATEGORIZED_CATEGORY = 'Uncategorized';
+
+/**
+ * The category worth showing a shopper, or null when the source reported none.
+ *
+ * A category the store genuinely filed the product under is returned exactly as the
+ * store published it, including one this build's shelf taxonomy has no copy for:
+ * rewriting or hiding it would be a second guess about a fact we did receive. Only
+ * the placeholder is dropped, and an empty/whitespace value with it — the two ways
+ * "no category" arrives.
+ */
+export function reportedCategoryName(category: string | null | undefined): string | null {
+  const name = (category ?? '').trim();
+  if (!name) return null;
+  return name.toLowerCase() === UNCATEGORIZED_CATEGORY.toLowerCase() ? null : name;
+}

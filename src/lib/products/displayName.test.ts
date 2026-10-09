@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { cleanProductName, normalizeWeightUnits } from './displayName';
+import {
+  UNCATEGORIZED_CATEGORY,
+  cleanProductName,
+  normalizeWeightUnits,
+  reportedCategoryName,
+} from './displayName';
 
 describe('normalizeWeightUnits', () => {
   it('reduces every store spelling of pounds to `lb`', () => {
@@ -55,5 +60,28 @@ describe('cleanProductName', () => {
   it('handles empty input without inventing a name', () => {
     expect(cleanProductName('')).toBe('');
     expect(cleanProductName('   ')).toBe('');
+  });
+});
+
+describe('reportedCategoryName', () => {
+  it('returns the category the store published, as published', () => {
+    expect(reportedCategoryName('Edible Pink Salt')).toBe('Edible Pink Salt');
+    expect(reportedCategoryName('Live Stock')).toBe('Live Stock');
+    // A category this build's shelf taxonomy has no copy for is still a fact the source
+    // reported, so it is shown rather than hidden or rewritten.
+    expect(reportedCategoryName('Salt Licks')).toBe('Salt Licks');
+  });
+
+  it('treats the model’s placeholder as "not reported", in any spelling', () => {
+    expect(reportedCategoryName(UNCATEGORIZED_CATEGORY)).toBeNull();
+    expect(reportedCategoryName('uncategorized')).toBeNull();
+    expect(reportedCategoryName('  Uncategorized  ')).toBeNull();
+  });
+
+  it('treats an empty category as not reported', () => {
+    expect(reportedCategoryName('')).toBeNull();
+    expect(reportedCategoryName('   ')).toBeNull();
+    expect(reportedCategoryName(null)).toBeNull();
+    expect(reportedCategoryName(undefined)).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import type { Product } from '../data/products';
 import { findVariationOption } from '../lib/woo/variationOptions';
 import { isPriceKnown, variationPriceDisplay } from '../lib/products/price';
 import { getProductDisplayName } from '../lib/products/productSeo';
+import { reportedCategoryName } from '../lib/products/displayName';
 import { useCart } from '../store/cartStore';
 import { useAuthContext } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -61,6 +62,12 @@ export default function ProductDetailView({
   const categoryKey = productCategoryFilterKey(product);
   const categoryShopPath = categoryKey ? buildProductsCategoryPath(categoryKey) : '/products';
   const categoryShopLabel = categoryKey ? categoryFilterLabelForProduct(product, categoryKey) : 'Products';
+  // The eyebrow names the category the store published, read straight, so a product
+  // the shelf taxonomy has no copy for still says where it came from. What it does not
+  // do is render the model's "no category" placeholder: `UNCATEGORIZED` is a bucket in
+  // the store's admin, not a shelf, and a product page that announces it is advertising
+  // a category the shop does not have.
+  const eyebrowCategory = reportedCategoryName(product.category);
 
   useEffect(() => {
     setQty(1);
@@ -258,9 +265,11 @@ export default function ProductDetailView({
             </button>
           )}
 
-          <p className="text-xs font-bold uppercase tracking-wider text-himalayan mb-2">
-            {product.category}
-          </p>
+          {eyebrowCategory && (
+            <p className="text-xs font-bold uppercase tracking-wider text-himalayan mb-2">
+              {eyebrowCategory}
+            </p>
+          )}
 
           <h1 className="font-serif text-xl md:text-2xl font-bold text-charcoal mb-3 leading-snug pr-8">
             {displayName}
@@ -356,6 +365,10 @@ export default function ProductDetailView({
             </div>
           )}
 
+          {/* The quantity control is a purchase control, so a paused deployment does not
+              render one: a stepper beside a button that says ordering is unavailable still
+              reads as a shop that takes orders, and the figure it holds means nothing. */}
+          {ORDERING_ENABLED && (
           <div className="mb-5">
             <label className="block text-sm font-semibold text-charcoal mb-2">Quantity</label>
             <div className="inline-flex items-center border border-gray-200 rounded-xl overflow-hidden">
@@ -386,6 +399,7 @@ export default function ProductDetailView({
               </p>
             )}
           </div>
+          )}
 
           <div className="flex gap-3">
             <motion.button
