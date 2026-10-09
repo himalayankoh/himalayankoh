@@ -67,17 +67,24 @@ describe('POST /api/auth/customer/login', () => {
     delete process.env.CUSTOMER_SESSION_SECRET;
   });
 
-  it('fails closed when the deployment has no signing key', async () => {
+  it('fails closed when the deployment has no signing key, without naming it', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     delete process.env.CUSTOMER_SESSION_SECRET;
     const wp = useWordPress([]);
 
     const res = await POST(post({ login: 'shopper@example.com', password: 'hunter2!' }));
+    const body = (await res.json()) as { error: string };
 
     expect(res.status).toBe(503);
-    expect(await res.json()).toEqual({
-      error:
-        'Customer sign-in is not configured on this deployment: set CUSTOMER_SESSION_SECRET in the server environment.',
-    });
+    // Anyone can reach this route. The variable this deployment is missing is the
+    // operator's business, and this body used to carry its name verbatim.
+    expect(body.error).not.toMatch(/CUSTOMER_SESSION_SECRET/);
+    expect(body.error).toBe(
+      'Customer sign-in is temporarily unavailable. Please try again in a few minutes, or email sales@himalayankoh.com and we will help you directly.'
+    );
+    // Withheld from the body, not swallowed: the note is in the log.
+    expect(logged.mock.calls.flat().join(' ')).toMatch(/CUSTOMER_SESSION_SECRET/);
+    logged.mockRestore();
     expect(wp.calls).toHaveLength(0);
   });
 

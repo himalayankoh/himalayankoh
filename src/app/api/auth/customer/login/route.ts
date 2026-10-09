@@ -24,16 +24,24 @@
 import { NextResponse } from 'next/server';
 
 import { createCustomerSession, isCustomerAuthConfigured } from '@/lib/auth/customerSession';
-import { verifyWordPressCustomerCredentials } from '@/lib/auth/wordpressCustomerAuth';
+import { customerAccountsUnavailable, verifyWordPressCustomerCredentials } from '@/lib/auth/wordpressCustomerAuth';
+import { publicMessage } from '@/lib/http/publicError';
 import { readCartSession, writeCartSession } from '@/lib/cart/cookies';
 import { adoptAccountCart } from '@/lib/cart/accountCart';
 
 export async function POST(request: Request) {
   if (!isCustomerAuthConfigured()) {
+    // This branch belongs to the same rule as the credential failures below it: the
+    // route is reachable by anyone, so the sentence that names the variable to set is
+    // the one that must not be in the body (`@/lib/http/publicError`).
     return NextResponse.json(
       {
-        error:
-          'Customer sign-in is not configured on this deployment: set CUSTOMER_SESSION_SECRET in the server environment.',
+        error: publicMessage({
+          internal:
+            'Customer sign-in is not configured on this deployment: set CUSTOMER_SESSION_SECRET in the server environment.',
+          fallback: customerAccountsUnavailable('sign-in'),
+          context: 'customer-auth',
+        }),
       },
       { status: 503 }
     );

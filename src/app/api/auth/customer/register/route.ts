@@ -18,16 +18,24 @@
 import { NextResponse } from 'next/server';
 
 import { createCustomerSession, isCustomerAuthConfigured } from '@/lib/auth/customerSession';
-import { createWordPressCustomer } from '@/lib/auth/wordpressCustomerAuth';
+import { createWordPressCustomer, customerAccountsUnavailable } from '@/lib/auth/wordpressCustomerAuth';
+import { publicMessage } from '@/lib/http/publicError';
 import { readCartSession, writeCartSession } from '@/lib/cart/cookies';
 import { adoptAccountCart } from '@/lib/cart/accountCart';
 
 export async function POST(request: Request) {
   if (!isCustomerAuthConfigured()) {
+    // A stranger reaches this route, so the note naming the variable to set stays on
+    // the server (`@/lib/http/publicError`) — the same boundary the credential
+    // failures behind it use.
     return NextResponse.json(
       {
-        error:
-          'Customer accounts are not available on this deployment: set CUSTOMER_SESSION_SECRET in the server environment.',
+        error: publicMessage({
+          internal:
+            'Customer accounts are not available on this deployment: set CUSTOMER_SESSION_SECRET in the server environment.',
+          fallback: customerAccountsUnavailable('account creation'),
+          context: 'customer-auth',
+        }),
       },
       { status: 503 }
     );

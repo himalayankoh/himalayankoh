@@ -140,8 +140,12 @@ export function storefrontNamespace(): string {
  * The verb is carried through so the sentence is about the action that failed:
  * "Customer sign-in is temporarily unavailable" rather than a generic failure notice on
  * a password-reset screen.
+ *
+ * Exported because the sign-in and sign-up routes refuse for a second, unrelated reason —
+ * this deployment has no session signing key — and a shopper must not be able to tell the
+ * two apart, nor learn from either that a variable is unset. One sentence, one place.
  */
-function unavailableToShopper(verb: string): string {
+export function customerAccountsUnavailable(verb: string): string {
   return `Customer ${verb} is temporarily unavailable. Please try again in a few minutes, or email sales@himalayankoh.com and we will help you directly.`;
 }
 
@@ -165,7 +169,7 @@ function describeFailure(error: unknown, verb: string): { status: number; error:
         error: publicMessage({
           internal:
             'WordPress refused the app credential while checking the customer account. Check WORDPRESS_ADMIN_USER and WORDPRESS_ADMIN_APP_PASSWORD.',
-          fallback: unavailableToShopper(verb),
+          fallback: customerAccountsUnavailable(verb),
           context: 'customer-auth',
         }),
       };
@@ -186,7 +190,11 @@ function describeFailure(error: unknown, verb: string): { status: number; error:
   if (/WORDPRESS_ADMIN_(USER|APP_PASSWORD)/.test(message)) {
     return {
       status: 503,
-      error: publicMessage({ internal: message, fallback: unavailableToShopper(verb), context: 'customer-auth' }),
+      error: publicMessage({
+        internal: message,
+        fallback: customerAccountsUnavailable(verb),
+        context: 'customer-auth',
+      }),
     };
   }
   return { status: 502, error: `Customer ${verb} failed: ${message}` };
