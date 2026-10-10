@@ -18,6 +18,7 @@
  */
 
 import { storefrontRequest as call } from './storefrontClient';
+import { SETTINGS_REGISTRY } from '../settings/registry';
 
 /**
  * A category key as both halves of this client spell it.
@@ -48,7 +49,17 @@ export const siteSettingsApi = {
     const response = await call<SettingsCategoryResponse>('/settings', {
       params: { category: normaliseCategoryKey(category) },
     });
-    return response.values && typeof response.values === 'object' ? response.values : {};
+    const values = response.values && typeof response.values === 'object' ? { ...response.values } : {};
+    // WordPress sanitize_key lowercases persisted field names. Restore the
+    // registered app spelling on reads so a successful save round-trips. Keep
+    // unregistered collection keys intact and prefer the current stored value
+    // over a legacy mixed-case duplicate.
+    const fields = SETTINGS_REGISTRY.find(c => c.id === normaliseCategoryKey(category))?.fields ?? [];
+    for (const field of fields) {
+      const storedKey = field.key.toLowerCase();
+      if (storedKey in values) values[field.key] = values[storedKey];
+    }
+    return values;
   },
 
   /**

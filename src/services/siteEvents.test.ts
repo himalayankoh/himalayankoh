@@ -35,10 +35,10 @@ describe('storefront traffic privacy and backend reads', () => {
     expect(() => recordSiteEvent('page_view')).not.toThrow();
   });
   it('does not count local or preview traffic in production', () => {
-    window.location.origin = 'http://localhost:3335';
-    recordSiteEvent('page_view');
-    window.location.origin = 'https://preview.himalayankoh.com';
-    recordSiteEvent('page_view');
+    for (const origin of ['http://localhost:3335', 'https://preview.himalayankoh.com']) {
+      vi.stubGlobal('window', { location: { pathname: '/products/salt', origin } });
+      recordSiteEvent('page_view');
+    }
     expect(send).not.toHaveBeenCalled();
   });
   it('preserves partial-window status and interprets WordPress UTC timestamps correctly', async () => {

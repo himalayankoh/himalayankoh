@@ -15,6 +15,7 @@
 - Add a traffic refresh action, correct UTC timestamp handling and replace obsolete Supabase/migration messages with the actual data source.
 - Show actual Search Console results or the precise connection/processing state on the traffic dashboard. No search metrics are invented.
 - Complete global marketing settings persistence, including placement controls and exclusions, through the existing settings API. Advertising remains disabled.
+- Live save verification revealed that WordPress lowercases setting names with `sanitize_key`. The shared server adapter now maps stored names back to registered application names on reads, preserving collection/OAuth keys and preferring current lowercase values over legacy duplicates.
 - Prepare GA4 loading with visitor consent and manual page views. Google Enhanced Measurement history-based page views must be disabled on the eventual web stream to prevent duplicate route events, per Google's page-view documentation.
 - This does not backfill historical traffic or infer purchases from page visits. Browser-recorded traffic includes real verification visits and is not a complete sales ledger or Google search-impression count.
 
