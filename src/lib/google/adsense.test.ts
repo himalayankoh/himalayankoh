@@ -18,10 +18,23 @@ describe('AdSense genuine reporting', () => {
     expect(parsed.values).toEqual({ earnings: 1.25, pageViews: 20, impressions: 30, clicks: 2, pageRpm: 62.5, impressionRpm: 41.67 });
     expect(parseAdSenseReport({ ...report, totals: { cells: names.map(() => ({ value: '0' })) } }).values.earnings).toBe(0);
   });
-  it('does not turn missing, invalid, or currency-less reports into fabricated zeros', () => {
-    expect(() => parseAdSenseReport({})).toThrow('no report totals');
-    expect(() => parseAdSenseReport({ ...report, totals: { cells: [{ value: 'bad' }] } })).toThrow('incomplete report');
-    expect(() => parseAdSenseReport({ ...report, headers: names.map(name => ({ name })) })).toThrow('currency');
+  it('does not turn invalid or currency-less reports into fabricated zeros', () => {
+    // One bad cell leaves its metric unavailable rather than throwing.
+    expect(parseAdSenseReport({ ...report, totals: { cells: [{ value: 'bad' }] } }).values.earnings).toBeNull();
+    expect(() => parseAdSenseReport({ ...report, totals: { cells: [{ value: 'bad' }] } }).currency).toBeDefined();
+    // A currency-less header must still carry null currency, never an invented code.
+    const noCurrency = parseAdSenseReport({ ...report, headers: names.map(name => ({ name })) });
+    expect(noCurrency.currency).toBeNull();
+  });
+  it('keeps parsing when a valid range legitimately returns no report body (e.g. YESTERDAY on a young account)', () => {
+    const parsed = parseAdSenseReport({});
+    expect(parsed.values).toBeNull();
+    expect(parsed.currency).toBeNull();
+    expect(parsed.warnings).toEqual([]);
+    // A range with a body but one unparseable cell marks that metric unavailable.
+    const partial = parseAdSenseReport({ ...report, totals: { cells: [{ value: '1.25' }, { value: '' }] } });
+    expect(partial.values.earnings).toBe(1.25);
+    expect(partial.values.pageViews).toBeNull();
   });
   it('uses CUSTOM for the previous calendar month in the publisher timezone', () => {
     const range = previousAdSenseMonth('America/Los_Angeles', new Date('2026-01-01T01:00:00Z'));

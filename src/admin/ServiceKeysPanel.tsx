@@ -160,7 +160,7 @@ export default function ServiceKeysPanel() {
     setGoogleConnecting(true);
     setNote(null);
     try {
-      const response = await fetch(`/api/admin/google-auth${searchConsoleOnly ? '?service=search-console' : ''}`, { headers: authHeaders() });
+      const response = await fetch(`/api/admin/google-auth${searchConsoleOnly ? '?service=search-console' : ''}`, { headers: authHeaders(), credentials: 'same-origin' });
       const body = await response.json() as { authUrl?: string; error?: string };
       if (!response.ok || !body.authUrl) {
         setNote({ kind: 'err', text: body.error || 'Google authorization could not start.' });

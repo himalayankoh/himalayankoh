@@ -69,6 +69,7 @@ export default function AdSenseEarnings() {
   const api = useCallback(async (path: string, init?: RequestInit) => {
     const token = getAccessToken();
     const res = await fetch(path, {
+      credentials: 'same-origin',
       ...init,
       headers: { ...(init?.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
@@ -102,11 +103,15 @@ export default function AdSenseEarnings() {
       const res = await api('/api/admin/google-auth');
       const d = await res.json() as { authUrl?: string; error?: string };
       if (d.authUrl) {
-        // Open the Google consent screen in a new tab. Owner authorizes once;
-        // Google redirects back to the protected admin callback, which stores
-        // the encrypted refresh token server-side and returns to Settings.
-        window.open(d.authUrl, '_blank', 'noopener,noreferrer');
-        setNote('Google authorization opened in a new tab. After you approve, return here and click "Refresh earnings".');
+        // Same-tab navigation, matching the Settings panel. The PKCE transaction
+        // cookie is single-use: a new tab would let a second "Connect" overwrite
+        // the cookie while the first Google consent is still pending, so the
+        // callback would exchange a code against the wrong verifier and Google
+        // would reject it (invalid_grant). Same-tab makes that race impossible.
+        const target = new URL(d.authUrl);
+        if (target.origin !== 'https://accounts.google.com') throw new Error('Unexpected Google authorization URL.');
+        window.location.assign(target.toString());
+        setNote('Opening Google authorization…');
       } else {
         setError(d.error || 'Could not start Google authorization.');
       }

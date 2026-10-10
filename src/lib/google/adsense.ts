@@ -17,16 +17,19 @@ export class AdSenseError extends Error {
 /** Missing or malformed metrics are unavailable, not $0.00. */
 export function parseAdSenseReport(report: Report) {
   const cells = report.totals?.cells ?? report.rows?.[0]?.cells;
-  if (!report.headers || !cells) throw new AdSenseError('REPORT_UNAVAILABLE', 'Google returned no report totals. No earnings can be displayed.');
+  // Google legitimately answers some valid ranges with no body at all — YESTERDAY on
+  // an account whose latest day has not closed yet returns neither rows nor totals.
+  // That is "no data for this range", not a broken report: null values here keep
+  // every other range readable instead of rejecting the whole payload.
+  if (!report.headers || !cells) return { values: null, currency: null, warnings: report.warnings ?? [] };
   const pairs = METRICS.map((metric, index) => {
     const column = report.headers!.findIndex(header => header.name === metric);
     const raw = column < 0 ? undefined : cells[column]?.value;
     const value = raw?.trim() ? Number(raw) : NaN;
-    if (!Number.isFinite(value) || value < 0) throw new AdSenseError('REPORT_UNAVAILABLE', 'Google returned an incomplete report. No earnings can be displayed.');
+    if (!Number.isFinite(value) || value < 0) return [FIELDS[index], null];
     return [FIELDS[index], value];
   });
-  const currency = report.headers.find(header => header.name === 'ESTIMATED_EARNINGS')?.currencyCode;
-  if (!currency || !/^[A-Z]{3}$/.test(currency)) throw new AdSenseError('REPORT_UNAVAILABLE', 'Google did not identify the report currency.');
+  const currency = report.headers.find(header => header.name === 'ESTIMATED_EARNINGS')?.currencyCode || null;
   return { values: Object.fromEntries(pairs), currency, warnings: report.warnings ?? [] };
 }
 
@@ -77,8 +80,10 @@ export async function readAdSenseEarnings() {
     for (const metric of METRICS) params.append('metrics', metric);
     return { key, ...parseAdSenseReport(await googleJson<Report>(`${ACCOUNT}/reports:generate?${params}`, token)) };
   }));
-  const currency = reports[0].currency;
-  if (reports.some(r => r.currency !== currency)) throw new AdSenseError('REPORT_UNAVAILABLE', 'Google returned inconsistent report currencies.');
+  // A currency from any populated range serves all of them; ranges with no data
+  // carried null and only a genuine disagreement between populated ones is an error.
+  const currency = reports.find(r => r.currency)?.currency ?? null;
+  if (reports.some(r => r.currency && r.currency !== currency)) throw new AdSenseError('REPORT_UNAVAILABLE', 'Google returned inconsistent report currencies.');
   return { syncedAt: new Date().toISOString(), currency, ranges: Object.fromEntries(reports.map(r => [r.key, r.values])),
     warnings: reports.flatMap(r => r.warnings), estimated: true, timeZone };
 }
