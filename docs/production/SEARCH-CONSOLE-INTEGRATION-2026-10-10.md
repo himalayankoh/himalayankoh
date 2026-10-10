@@ -26,14 +26,24 @@ not evidence that ownership verification failed. No search metrics are invented.
 - Full suite: 179 suites passed / 5 skipped; 1,995 tests passed / 19 skipped.
 - Typecheck and lint pass; existing lint warnings remain.
 - Next.js production build and public-origin/credential scans pass.
-- Production still reports commit `8bb609dcc3008732f5a0bc4f44ca2faf6ad9257b` at the
-  initial check. Ordering is enabled and Stripe/session secret bindings are present.
-- Production Google client bindings and encrypted refresh token are absent.
-- Automatic approval review rejected installing the two production Google secrets
-  because approval named the callback but did not explicitly approve the secret
-  installation. No upload executed; do not work around the rejection.
-- Production release, exact secret-installation approval, owner-private Google
-  account selection/consent and a genuine Search Analytics request remain pending.
+- Owner explicitly approved installing the two server-only Google client secrets
+  on `himalayan-koh-ecommerce-prod` and deploying tested commit `60b62c2`.
+  The earlier automatic-review rejection was resolved by that exact authorization.
+- Both secrets are installed. The clean Cloudflare build and credential/origin
+  scans passed, using committed source with unfinished edits excluded.
+- Production reports commit `60b62c2f1ea1c0581e5edac94355bd6577968761`, Cloudflare
+  version `a1693993-4213-45d0-ae83-c93c52720a19`.
+- Homepage, products and checkout return HTTP 200. Admin API routes reject
+  unauthenticated requests; an invalid OAuth callback returns HTTP 403.
+- Ordering is enabled, Stripe reports live mode with its webhook configured, and
+  the apex/www Worker routes and existing Stripe/session bindings are preserved.
+- The production connection test correctly reports missing Google authorization.
+  Search Console-only OAuth reaches Google's account chooser with the approved
+  production callback, PKCE and `webmasters.readonly` scope.
+- Owner-private account selection/consent and a genuine Search Analytics request
+  remain pending. No encrypted refresh token is stored yet. The browser is handed
+  to the owner at account selection, as required by the owner's mission prompt.
+- Performance and indexing reports still require Google to finish processing.
 - Existing unfinished AdminSection/marketing changes and plugin ZIP are preserved
   and excluded from this change. No plugin installation, campaign, payment or
   customer/catalog mutation is performed.
