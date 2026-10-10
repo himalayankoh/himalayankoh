@@ -33,9 +33,21 @@ export async function GET(request: NextRequest) {
         redirect_uri: `${url.origin}${GOOGLE_OAUTH_CALLBACK}`, grant_type: 'authorization_code', code_verifier: transaction.verifier }),
       signal: AbortSignal.timeout(15_000),
     });
-    const data = await response.json() as { refresh_token?: unknown };
-    // Provider payloads can contain credential material; never forward them.
-    if (!response.ok) return finish(NextResponse.json({ error: 'Google rejected the authorization code. Start authorization again.' }, { status: 502 }));
+    const data = await response.json() as { refresh_token?: unknown; error?: unknown };
+    // Only known OAuth error identifiers are safe to return. Never forward the
+    // provider description, code, tokens, or credential payload.
+    if (!response.ok) {
+      const known = ['invalid_grant', 'invalid_client', 'unauthorized_client', 'redirect_uri_mismatch'];
+      const providerCode = typeof data.error === 'string' && known.includes(data.error) ? data.error : 'token_exchange_failed';
+      const guidance = providerCode === 'invalid_grant'
+        ? 'The code may be expired or already used, or the callback/PKCE transaction may not match. Start a fresh connection from Settings in the same browser; do not reload the callback.'
+        : providerCode === 'invalid_client' || providerCode === 'unauthorized_client'
+          ? 'The server OAuth client credentials were rejected. The owner must verify the matching client ID and replacement secret privately.'
+          : providerCode === 'redirect_uri_mismatch'
+            ? 'The OAuth client must register this exact storefront callback URL.'
+            : 'Start a fresh connection from Settings. If it persists, verify the OAuth client and exact callback privately.';
+      return finish(NextResponse.json({ error: `Google rejected the authorization code. ${guidance}`, providerCode }, { status: 502 }));
+    }
     if (typeof data.refresh_token !== 'string' || !data.refresh_token) return finish(NextResponse.json({ error: 'Google did not issue a refresh token. Start authorization again and grant offline access.' }, { status: 502 }));
     await upsertSettings('google_oauth', { refresh_token_encrypted: await sealGoogleOAuthValue(data.refresh_token, 'refresh-token') });
     return finish(NextResponse.redirect(`${url.origin}/admin/settings?google=connected`));

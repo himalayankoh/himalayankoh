@@ -91,7 +91,20 @@ describe('admin Google authorization', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'invalid_grant', secret: 'provider-private-detail' }), { status: 400 })));
     const response = await callback(returning(cookie, url.searchParams.get('state')!));
     expect(response.status).toBe(502);
-    expect(await response.text()).not.toContain('provider-private-detail');
+    const body = await response.json();
+    expect(JSON.stringify(body)).not.toContain('provider-private-detail');
+    expect(body.providerCode).toBe('invalid_grant');
+    expect(body.error).toContain('do not reload the callback');
+    expect(settings.write).not.toHaveBeenCalled();
+  });
+  it.each(['invalid_client', 'unauthorized_client', 'redirect_uri_mismatch', 'untrusted-private-payload'])('reports only safe exchange diagnostics for %s', async error => {
+    const { cookie, url } = await begin();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ error, error_description: 'private credential detail' }, { status: 400 })));
+    const response = await callback(returning(cookie, url.searchParams.get('state')!));
+    const body = await response.json();
+    expect(body.providerCode).toBe(error === 'untrusted-private-payload' ? 'token_exchange_failed' : error);
+    expect(JSON.stringify(body)).not.toContain('private credential detail');
+    expect(JSON.stringify(body)).not.toContain('untrusted-private-payload');
     expect(settings.write).not.toHaveBeenCalled();
   });
 });

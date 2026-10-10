@@ -1778,28 +1778,36 @@ function hk_storefront_blog_meta_fields() {
 		'hk_secondary_keywords' => array( 'type' => 'array' ),
 		'hk_tags'               => array( 'type' => 'array' ),
 		'hk_faq_json'           => array( 'type' => 'string' ),
+		'hk_author_name'        => array( 'type' => 'string' ),
 	);
 }
 
 /**
  * Registers the fields above on posts.
  *
- * The auth callback is the default REST write check (`edit_posts` for the post in
- * question) rather than a custom rule: the app writes posts through WordPress core
- * with an administrator application password, so WordPress's own capability check
- * is the right one and a second rule here could only disagree with it.
+ * The auth callback checks `edit_post` against the specific post being written.
+ * WordPress therefore honors its own per-post capability and ownership rules while
+ * refusing REST writes from users who cannot edit that post. Public reads remain
+ * available through `show_in_rest`; the authorization callback only governs edits.
  */
 add_action(
 	'init',
 	function () {
 		foreach ( hk_storefront_blog_meta_fields() as $key => $spec ) {
+			$schema = array( 'type' => $spec['type'] );
+			if ( $spec['type'] === 'array' ) {
+				$schema['items'] = array( 'type' => 'string' );
+			}
 			register_post_meta(
 				'post',
 				$key,
 				array(
 					'type'         => $spec['type'],
 					'single'       => true,
-					'show_in_rest' => array( 'schema' => array( 'type' => $spec['type'] ) ),
+					'auth_callback' => function ( $allowed, $meta_key, $post_id, $user_id ) {
+						return user_can( $user_id, 'edit_post', $post_id );
+					},
+					'show_in_rest' => array( 'schema' => $schema ),
 				)
 			);
 		}

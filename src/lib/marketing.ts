@@ -214,16 +214,11 @@ export function validateConfig(c: MarketingConfig): Record<string, string> {
 // Script loaders — load exactly once
 // ---------------------------------------------------------------------------
 
-export function loadAdSenseScript(clientId: string): void {
-  if (!clientId || typeof document === 'undefined') return;
-  // Consent gate: without an 'accepted' decision (or inside the EEA where a
-  // certified CMP may later own the signal) the AdSense library never loads.
-  // Remove the shell <head> tag too, so an unconsented visitor neither loads
-  // nor keeps the publisher script.
-  if (getConsent() !== 'accepted') {
-    removeAdSenseScript();
-    return;
-  }
+export function loadAdSenseScript(clientId: string, advertisingConsent = false): void {
+  if (!advertisingConsent || !clientId || typeof document === 'undefined') return;
+  if (!CLIENT_ID_RE.test(clientId.trim())) return;
+  // The existing certified CMP must authorize advertising independently of GA4.
+  // If the CMP is unavailable, fail closed rather than requesting ads.
   if (document.getElementById(SCRIPT_ID)) return;
   const s = document.createElement('script');
   s.id = SCRIPT_ID;

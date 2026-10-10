@@ -15,7 +15,8 @@ export interface SearchConsoleRow {
   position: number;
 }
 
-async function accessToken(): Promise<string> {
+/** Shared encrypted Google connection for the already-authorized read-only scopes. */
+export async function googleAccessToken(): Promise<string> {
   const settings = await getSettingsForCategoryWithStatus('google_oauth');
   if (!settings.ok) throw new SearchConsoleError('SETTINGS_UNAVAILABLE', 'Google connection settings could not be read. Try again.', 503);
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() || settings.values.client_id;
@@ -59,7 +60,7 @@ export function searchConsoleDateRange(days: number, now = new Date()) {
 }
 
 export async function readSearchConsole(days: number) {
-  const token = await accessToken();
+  const token = await googleAccessToken();
   const sites = await googleJson<{ siteEntry?: Array<{ siteUrl: string; permissionLevel: string }> }>('https://www.googleapis.com/webmasters/v3/sites', token);
   const site = sites.siteEntry?.find(s => s.siteUrl === SEARCH_CONSOLE_PROPERTY && s.permissionLevel !== 'siteUnverifiedUser');
   if (!site) throw new SearchConsoleError('PROPERTY_ACCESS_REQUIRED', 'The connected Google account cannot access sc-domain:himalayankoh.com.', 403);

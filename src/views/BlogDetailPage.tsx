@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowUpRight, Clock, Loader2, Tag, User } from 'lucide-react
 import { blogPostApi } from '../lib/blog/client';
 import type { BlogPostWithAuthor } from '../lib/blog/client';
 import { resolveLegacyImageSrc } from '../lib/images/legacyAssets';
+import AdSlot from '../components/ads/AdSlot';
 
 interface BlogDetailPageProps {
   /**
@@ -135,6 +136,8 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
             dangerouslySetInnerHTML={{ __html: post.content || '' }}
           />
         </div>
+
+        {post.is_published && <AdSlot key={post.slug} className="mt-10" />}
 
         {relatedPosts.length > 0 && (
           <section className="mt-12">

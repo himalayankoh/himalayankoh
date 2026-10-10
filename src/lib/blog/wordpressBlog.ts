@@ -105,6 +105,7 @@ export function blogPostFromWp(post: WpPost): BlogPostWithAuthor {
   const avatar = author?.avatar_urls ? Object.values(author.avatar_urls)[0] ?? null : null;
   const terms = embeddedTerms(post);
   const meta = post.meta ?? {};
+  const byline = typeof meta.hk_author_name === 'string' ? meta.hk_author_name.trim() : '';
   const category = terms.find((term) => term.taxonomy === 'category')?.name ?? null;
   const metaTags = Array.isArray(meta.hk_tags)
     ? meta.hk_tags.filter((tag): tag is string => typeof tag === 'string')
@@ -146,8 +147,8 @@ export function blogPostFromWp(post: WpPost): BlogPostWithAuthor {
     view_count: 0,
     created_at: published ?? modified ?? new Date(0).toISOString(),
     updated_at: modified ?? published ?? new Date(0).toISOString(),
-    author: author
-      ? { id: String(author.id ?? post.author ?? ''), full_name: decodeEntities(author.name ?? ''), avatar_url: avatar }
+    author: author || byline
+      ? { id: String(author?.id ?? post.author ?? ''), full_name: decodeEntities(byline || author?.name || ''), avatar_url: avatar }
       : null,
   };
 }

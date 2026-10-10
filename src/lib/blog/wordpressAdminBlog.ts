@@ -198,7 +198,7 @@ export function rowFromWpPost(post: WpEditPost): CmsBlogRow {
     hero_image_url: (typeof meta.hk_hero_image_url === 'string' && meta.hk_hero_image_url) || featured,
     hero_image_alt: (typeof meta.hk_hero_image_alt === 'string' && meta.hk_hero_image_alt) || null,
     tags: metaTags.length ? metaTags : [],
-    author_name: author?.name ?? null,
+    author_name: (typeof meta.hk_author_name === 'string' && meta.hk_author_name.trim()) || author?.name || null,
     author_id: post.author ? String(post.author) : null,
     status,
     created_at: published ?? new Date(0).toISOString(),

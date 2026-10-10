@@ -477,7 +477,7 @@ export default function BlogManager() {
         <div>
           <h1 className="text-2xl font-bold">Blog Manager</h1>
           <p className="text-xs text-gray-500 mt-1">
-            Content lives in the Supabase CMS — publishing takes effect immediately with no code/deploy.
+            Content lives in WordPress — publishing needs no code deployment. Public reads can take up to five minutes to refresh.
           </p>
         </div>
         <button onClick={startCreate} className="flex items-center gap-2 px-4 py-2 bg-luxe-gold hover:bg-luxe-gold-dark text-white text-sm rounded-lg">

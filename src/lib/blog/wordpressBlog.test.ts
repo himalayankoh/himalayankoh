@@ -32,6 +32,12 @@ const wpPost = {
 };
 
 describe('blogPostFromWp', () => {
+  it('preserves the editor byline instead of silently replacing it with the WP login', () => {
+    expect(blogPostFromWp({ ...wpPost, meta: { hk_author_name: 'Himalayan Koh' } }).author?.full_name).toBe('Himalayan Koh');
+    expect(blogPostFromWp({ ...wpPost, meta: { hk_author_name: '   ' } }).author?.full_name).toBe('Salman Bashir');
+    expect(blogPostFromWp({ ...wpPost, _embedded: {}, meta: { hk_author_name: 'Himalayan Koh' } }).author?.full_name).toBe('Himalayan Koh');
+  });
+
   it('maps the post into the shape the screens render', () => {
     const post = blogPostFromWp(wpPost);
 

@@ -158,7 +158,11 @@ export function readProductionOverlay(root = ROOT) {
     );
   }
 
-  return { name: PRODUCTION_WORKER_NAME, vars: { ...EXPECTED_VARS } };
+  const compatibilityFlags = declared.compatibility_flags ?? [];
+  if (!compatibilityFlags.includes('nodejs_compat') || !compatibilityFlags.includes('global_fetch_strictly_public')) {
+    refuse('the production overlay must preserve Node compatibility and public webhook fetch routing.');
+  }
+  return { name: PRODUCTION_WORKER_NAME, vars: { ...EXPECTED_VARS }, compatibility_flags: [...compatibilityFlags] };
 }
 
 /**
@@ -174,6 +178,10 @@ export function assertProductionConfig(config) {
 
   if (config.name !== PRODUCTION_WORKER_NAME) {
     refuse(`the Worker is named ${JSON.stringify(config.name)} — production must be ${PRODUCTION_WORKER_NAME}.`);
+  }
+
+  for (const flag of ['nodejs_compat', 'global_fetch_strictly_public']) {
+    if (!config.compatibility_flags?.includes(flag)) refuse(`the production artifact is missing required compatibility flag ${flag}.`);
   }
 
   const vars = config.vars ?? {};
@@ -424,7 +432,7 @@ async function main() {
       `Scanned ${artifact.scanned} of ${artifact.files} built file(s); no staging value is compiled in.\n` +
       `Stripe publishable key: a live key is inlined in ${artifact.stripe.servedOccurrences} browser-served ` +
       `file(s) (${artifact.stripe.occurrences} in total) and no test key is present.\n` +
-      `No route or custom domain is attached, so this Worker is reachable only at its workers.dev name.\n`,
+      `This artifact declares no route or custom-domain change; existing production routing must be verified separately.\n`,
   );
 }
 

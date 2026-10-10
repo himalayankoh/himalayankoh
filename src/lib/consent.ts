@@ -48,12 +48,12 @@ interface ConsentModeWindow {
 }
 
 /** Write one Consent Mode v2 state object into the gtag dataLayer queue. */
-function pushConsentState(state: Record<string, 'granted' | 'denied'>): void {
+function pushConsentState(state: Record<string, 'granted' | 'denied'>, command: 'default' | 'update' = 'default'): void {
   try {
     const w = window as unknown as ConsentModeWindow;
     w.dataLayer = w.dataLayer || [];
     w.gtag = w.gtag || function gtag() { w.dataLayer!.push(arguments); };
-    w.gtag('consent', 'default', state);
+    w.gtag('consent', command, state);
   } catch {
     /* never break the storefront on consent errors */
   }
@@ -89,7 +89,9 @@ export function setDefaultConsentMode(): void {
 
 /** Push the current decision into Consent Mode v2 signals. */
 export function syncConsentMode(c: ConsentChoice): void {
-  pushConsentState(c === 'accepted' ? grantedConsentState() : defaultConsentState());
+  // Analytics-only banner: Google's CMP owns advertising choices. Omit them
+  // here so analytics acceptance cannot grant or overwrite advertising consent.
+  pushConsentState({ analytics_storage: c === 'accepted' ? 'granted' : 'denied' }, 'update');
 }
 
 // Wire the denied defaults as early as this module is imported — before any

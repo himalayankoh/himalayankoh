@@ -39,6 +39,7 @@ interface Status {
   publisherId: string;
   site: string;
   lastSync: string | null;
+  message?: string;
 }
 
 function money(n: number | undefined, currency = 'USD'): string {
@@ -79,11 +80,12 @@ export default function AdSenseEarnings() {
       setLoading(true);
       setError(null);
       const [sRes, eRes] = await Promise.all([api('/api/adsense/status'), api('/api/adsense/earnings')]);
-      if (sRes.ok) setStatus(await sRes.json() as Status);
-      if (eRes.ok) {
-        const e = await eRes.json() as { connected?: boolean; stale?: boolean; data?: EarningsCache | null };
-        setCache(e.data ?? null);
-      }
+      if (!sRes.ok) throw new Error(`AdSense status unavailable (HTTP ${sRes.status}).`);
+      const statusBody = await sRes.json() as Status;
+      setStatus(statusBody);
+      const e = await eRes.json() as { data?: EarningsCache | null; error?: string };
+      setCache(eRes.ok ? e.data ?? null : null);
+      if (!eRes.ok) setError(e.error || statusBody.message || `AdSense reports unavailable (HTTP ${eRes.status}).`);
     } catch {
       setError('Google AdSense data temporarily unavailable.');
     } finally {
@@ -120,9 +122,9 @@ export default function AdSenseEarnings() {
     setError(null);
     setNote(null);
     try {
-      const res = await api('/api/adsense/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const res = await api('/api/adsense/earnings');
       const d = await res.json() as { connected?: boolean; data?: EarningsCache | null; message?: string; error?: string };
-      if (d.data) {
+      if (res.ok && d.data) {
         setCache(d.data);
         setNote('Synced from Google AdSense.');
       } else if (d.error === 'not-connected') {
@@ -140,10 +142,10 @@ export default function AdSenseEarnings() {
   const disconnect = async () => {
     setBusy(true);
     try {
-      await api('/api/adsense/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      setStatus((s) => (s ? { ...s, connected: false, lastSync: null } : s));
-      setCache(null);
-      setNote('Disconnected from Google AdSense.');
+      // Google authorization is shared with Search Console. Do not silently
+      // revoke both integrations from an earnings-only panel.
+      window.open('https://myaccount.google.com/connections', '_blank', 'noopener,noreferrer');
+      setNote('Manage the shared Google authorization privately in Google Account. Revoking it also disconnects Search Console.');
     } catch {
       setError('Could not disconnect.');
     } finally {
@@ -203,8 +205,8 @@ export default function AdSenseEarnings() {
 
           {!status?.clientConfigured && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              Google OAuth is not configured yet. The owner must set <code className="bg-amber-100 px-1 rounded">GOOGLE_ADSENSE_CLIENT_ID</code> and{' '}
-              <code className="bg-amber-100 px-1 rounded">GOOGLE_ADSENSE_CLIENT_SECRET</code> as wrangler secrets, then this panel becomes connectable.
+              Google OAuth is not configured yet. The owner must set <code className="bg-amber-100 px-1 rounded">GOOGLE_OAUTH_CLIENT_ID</code> and{' '}
+              <code className="bg-amber-100 px-1 rounded">GOOGLE_OAUTH_CLIENT_SECRET</code> as wrangler secrets, then this panel becomes connectable.
             </div>
           )}
 
@@ -246,11 +248,11 @@ export default function AdSenseEarnings() {
               )}
               <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
                 <p className="text-[11px] text-gray-400">
-                  Data source: Google AdSense · {status?.site} · {status?.publisherId} · synced {fmtTime(status.lastSync)}
+                  Data source: Google AdSense · estimated earnings · {status?.site} · {status?.publisherId} · synced {fmtTime(cache?.syncedAt)}
                 </p>
                 <button onClick={disconnect} disabled={busy}
                   className="text-[11px] text-gray-400 hover:text-red-600 underline underline-offset-2 disabled:opacity-40">
-                  Disconnect
+                  Manage shared Google authorization
                 </button>
               </div>
             </>
