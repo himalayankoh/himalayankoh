@@ -29,6 +29,12 @@ function returning(cookie: string, state: string) {
 }
 
 describe('admin Google authorization', () => {
+  it('can request Search Console read access without AdSense permissions', async () => {
+    const session = await createAdminSession({ id: '1', username: 'owner', email: 'owner@example.com', name: 'Owner' });
+    const response = await start(new Request(`${ORIGIN}/api/admin/google-auth?service=search-console`, { headers: { Authorization: `Bearer ${session.token}` } }));
+    const body = await response.json();
+    expect(new URL(body.authUrl).searchParams.get('scope')).toBe('https://www.googleapis.com/auth/webmasters.readonly');
+  });
   it('refuses an anonymous start before reading credentials', async () => {
     const response = await start(new Request(`${ORIGIN}/api/admin/google-auth`));
     expect(response.status).toBe(401);

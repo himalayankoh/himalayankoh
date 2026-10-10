@@ -21,7 +21,9 @@ export async function GET(request: Request) {
   url.search = new URLSearchParams({
     client_id: clientId, redirect_uri: `${origin}${GOOGLE_OAUTH_CALLBACK}`,
     response_type: 'code', access_type: 'offline', prompt: 'consent',
-    scope: 'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/adsense.readonly',
+    scope: new URL(request.url).searchParams.get('service') === 'search-console'
+      ? 'https://www.googleapis.com/auth/webmasters.readonly'
+      : 'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/adsense.readonly',
     state: transaction.state, code_challenge: transaction.challenge, code_challenge_method: 'S256',
   }).toString();
   // A bare browser link cannot carry the admin Authorization header.

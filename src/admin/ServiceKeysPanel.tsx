@@ -122,6 +122,8 @@ export default function ServiceKeysPanel() {
   const [stripe, setStripe] = useState<StripeProviderStatus | null>(null);
   const [testing, setTesting] = useState(false);
   const [googleConnecting, setGoogleConnecting] = useState(false);
+  const [googleTesting, setGoogleTesting] = useState(false);
+  const [googleNote, setGoogleNote] = useState('');
   const [testNote, setTestNote] = useState<{ kind: 'ok' | 'err' | 'warn'; text: string } | null>(null);
 
   const authHeaders = useCallback((): Record<string, string> => {
@@ -154,11 +156,11 @@ export default function ServiceKeysPanel() {
     void load();
   }, [load]);
 
-  const connectGoogle = async () => {
+  const connectGoogle = async (searchConsoleOnly = false) => {
     setGoogleConnecting(true);
     setNote(null);
     try {
-      const response = await fetch('/api/admin/google-auth', { headers: authHeaders() });
+      const response = await fetch(`/api/admin/google-auth${searchConsoleOnly ? '?service=search-console' : ''}`, { headers: authHeaders() });
       const body = await response.json() as { authUrl?: string; error?: string };
       if (!response.ok || !body.authUrl) {
         setNote({ kind: 'err', text: body.error || 'Google authorization could not start.' });
@@ -170,6 +172,17 @@ export default function ServiceKeysPanel() {
     } catch {
       setNote({ kind: 'err', text: 'Google authorization could not start.' });
     } finally { setGoogleConnecting(false); }
+  };
+
+  const testSearchConsole = async () => {
+    setGoogleTesting(true);
+    setGoogleNote('');
+    try {
+      const response = await fetch('/api/admin/search-console?days=28', { headers: authHeaders(), cache: 'no-store' });
+      const body = await response.json() as { message?: string; error?: string };
+      setGoogleNote(response.ok ? body.message || 'Search Console connection verified.' : body.error || 'Search Console could not be read.');
+    } catch { setGoogleNote('Search Console could not be read. Try again.'); }
+    finally { setGoogleTesting(false); }
   };
 
   // Stripe first: it is the credential an owner most often comes here to set.
@@ -321,10 +334,19 @@ export default function ServiceKeysPanel() {
             </div>
 
             {category.id === 'google_oauth' && (
-              <button type="button" disabled={googleConnecting} onClick={() => void connectGoogle()}
-                className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-white disabled:opacity-50">
-                {googleConnecting ? 'Opening Google…' : 'Authorize Google Search Console & AdSense'}
-              </button>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button type="button" disabled={googleConnecting} onClick={() => void connectGoogle()}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-white disabled:opacity-50">
+                  {googleConnecting ? 'Opening Google…' : 'Authorize Google Search Console & AdSense'}
+                </button>
+                <button type="button" disabled={googleConnecting} onClick={() => void connectGoogle(true)} className="px-3 py-2 text-sm rounded-lg border border-blue-200 text-blue-700 disabled:opacity-50">
+                  Connect Search Console only
+                </button>
+                <button type="button" disabled={googleTesting} onClick={() => void testSearchConsole()} className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50">
+                  {googleTesting ? 'Checking Google…' : 'Test Search Console'}
+                </button>
+                {googleNote && <p role="status" className="w-full text-sm text-gray-700">{googleNote}</p>}
+              </div>
             )}
 
             {isStripe && (
