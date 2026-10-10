@@ -17,8 +17,8 @@ const checkoutSource = readFileSync(
  * checkout whose payment method is an invoice.
  */
 describe('checkout payment section wiring', () => {
-  it('feeds the strip the server-decided booleans, under the Stripe method only', () => {
-    expect(checkoutSource).toContain("{paymentMethod === 'stripe' && (");
+  it('feeds the Stripe-only checkout the server-decided booleans', () => {
+    expect(checkoutSource).not.toMatch(/PayPal/i);
     expect(checkoutSource).toContain('stripeEnabled={stripeEnabled}');
     expect(checkoutSource).toContain('simulatorEnabled={stagingSimulatorEnabled}');
   });

@@ -1,3 +1,5 @@
+import { getSetting } from '@/lib/settings/serverSettings';
+
 export type OutreachDeliveryState =
   | 'simulated'
   | 'provider_unavailable'
@@ -26,8 +28,8 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-export function buildOutreachHtml(text: string): string {
-  return `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#1e293b;">${escapeHtml(text).replace(/\n/g, '<br/>')}<hr><p style="font-size:12px;color:#64748b"><strong>Himalayan Koh</strong><br>Direct B2B inquiries: sales@himalayankoh.com</p></div>`;
+export function buildOutreachHtml(text: string, fromEmail = 'sales@himalayankoh.com'): string {
+  return `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#1e293b;">${escapeHtml(text).replace(/\n/g, '<br/>')}<hr><p style="font-size:12px;color:#64748b"><strong>Himalayan Koh</strong><br>Direct B2B inquiries: ${escapeHtml(fromEmail)}</p></div>`;
 }
 
 export async function sendLeadOSMail(
@@ -38,7 +40,10 @@ export async function sendLeadOSMail(
     return { state: 'simulated', provider: 'simulation', providerMessageId: null };
   }
 
-  const key = process.env.RESEND_API_KEY?.trim();
+  const key = (await getSetting('resend', 'api_key')) || process.env.RESEND_API_KEY?.trim();
+  const fromEmail = (await getSetting('resend', 'from_email')) || 'sales@himalayankoh.com';
+  const fromName = 'Himalayan Koh';
+
   if (!key || !key.startsWith('re_')) {
     return {
       state: 'provider_unavailable',
@@ -48,12 +53,13 @@ export async function sendLeadOSMail(
     };
   }
 
-  const from = 'Himalayan Koh <sales@himalayankoh.com>';
+  const from = `${fromName} <${fromEmail}>`;
   try {
+    const htmlBody = buildOutreachHtml(input.text, fromEmail);
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ from, to: [input.to], subject: input.subject, text: input.text, html: buildOutreachHtml(input.text) }),
+      body: JSON.stringify({ from, to: [input.to], subject: input.subject, text: input.text, html: htmlBody }),
       signal: AbortSignal.timeout(15000),
     });
     const body = await response.json().catch(() => ({})) as { id?: string; message?: string };

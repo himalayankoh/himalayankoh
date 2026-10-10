@@ -46,9 +46,8 @@ export const PRODUCTION_SITE_ORIGIN = 'https://himalayankoh.com';
  * and `mail.himalayankoh.com` and answers 404 for an unknown Host, so step 2 (or the
  * Origin Rule) is what makes the new name work.
  *
- * WordPress Site URL / Home URL are deliberately NOT changed: the backend keeps
- * `https://himalayankoh.com` as its own address so nothing in WordPress, the
- * database or the existing storefront has to move.
+ * WordPress's installation URL is this backend origin; its public home remains
+ * the storefront apex. The HK plugin sends REST URLs to the installation URL.
  */
 export const PRODUCTION_BACKEND_ORIGIN = 'https://wp.himalayankoh.com';
 
@@ -91,23 +90,17 @@ export const PRODUCTION_BACKEND_ORIGIN = 'https://wp.himalayankoh.com';
 export const PRODUCTION_STRIPE_PUBLISHABLE_KEY = 'pk_live_bScMJ0xIRFCAbr3IQJM5YWfY004PNn0fn2';
 
 /**
- * Does the production storefront accept orders yet? It does not — and this constant
- * is what makes that a property of the deployment rather than of a screen.
- *
- * The storefront goes public before its payments are finished: `sk_live_` is not on
- * the Worker, no webhook endpoint exists at the apex yet, and until both are true an
- * order the storefront wrote could be charged without ever being marked paid. The
- * catalogue, the product pages and the shipping information are all fine to serve in
- * that state; taking an order is not.
+ * The production storefront accepts orders after backend credentials and Stripe
+ * configuration checks pass. Payment readiness remains a separate runtime gate.
  *
  * Declared here, in the overlay and in `EXPECTED_VARS`, for the same reason the
  * publishable key is: this is the switch that keeps a launch from accepting an order
  * it cannot complete, so it must not be a value that can quietly go missing. The
  * guard refuses a production artifact whose variables lost it, and the deploy reads
- * it back off the running Worker. Turning ordering on is a deliberate `'false'` in
- * two reviewed files after the Stripe webhook has been verified — never a deletion.
+ * it back off the running Worker. Change this and the overlay together to pause
+ * ordering again; never delete the switch or rely on an implicit default.
  */
-export const PRODUCTION_ORDERS_PAUSED = 'true';
+export const PRODUCTION_ORDERS_PAUSED = 'false';
 
 /**
  * The same fact in the one form a browser bundle can read (`NEXT_PUBLIC_ORDERS_PAUSED`).

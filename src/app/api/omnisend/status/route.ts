@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { getSetting } from '@/lib/settings/serverSettings';
 
 export async function GET() {
-  const apiKey = process.env.OMNISEND_API_KEY?.trim();
+  const apiKey = (await getSetting('omnisend', 'api_key')) || process.env.OMNISEND_API_KEY?.trim();
 
   if (!apiKey) {
     return NextResponse.json({

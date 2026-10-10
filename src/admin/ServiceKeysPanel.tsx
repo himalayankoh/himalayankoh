@@ -90,7 +90,9 @@ function getCategoryStatus(
     }
     const pk = values['publishable_key'] || '';
     if (pk.startsWith('pk_live_') || stripe?.mode === 'production') {
-      return { label: 'Blocked (Live disabled)', className: 'bg-amber-100 text-amber-900 border border-amber-300 font-semibold' };
+      return stripe?.ready
+        ? { label: 'Live ready', className: 'bg-emerald-100 text-emerald-800 border border-emerald-200' }
+        : { label: 'Live readiness unconfirmed', className: 'bg-amber-100 text-amber-900 border border-amber-300 font-semibold' };
     }
     return { label: 'Test Sandbox', className: 'bg-sky-100 text-sky-800 border border-sky-200 font-semibold' };
   }
@@ -119,6 +121,7 @@ export default function ServiceKeysPanel() {
   const [note, setNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [stripe, setStripe] = useState<StripeProviderStatus | null>(null);
   const [testing, setTesting] = useState(false);
+  const [googleConnecting, setGoogleConnecting] = useState(false);
   const [testNote, setTestNote] = useState<{ kind: 'ok' | 'err' | 'warn'; text: string } | null>(null);
 
   const authHeaders = useCallback((): Record<string, string> => {
@@ -150,6 +153,24 @@ export default function ServiceKeysPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const connectGoogle = async () => {
+    setGoogleConnecting(true);
+    setNote(null);
+    try {
+      const response = await fetch('/api/admin/google-auth', { headers: authHeaders() });
+      const body = await response.json() as { authUrl?: string; error?: string };
+      if (!response.ok || !body.authUrl) {
+        setNote({ kind: 'err', text: body.error || 'Google authorization could not start.' });
+        return;
+      }
+      const target = new URL(body.authUrl);
+      if (target.origin !== 'https://accounts.google.com') throw new Error('Unexpected Google authorization URL.');
+      window.location.assign(target.toString());
+    } catch {
+      setNote({ kind: 'err', text: 'Google authorization could not start.' });
+    } finally { setGoogleConnecting(false); }
+  };
 
   // Stripe first: it is the credential an owner most often comes here to set.
   const categories = useMemo<SettingsCategory[]>(() => {
@@ -299,6 +320,13 @@ export default function ServiceKeysPanel() {
               )}
             </div>
 
+            {category.id === 'google_oauth' && (
+              <button type="button" disabled={googleConnecting} onClick={() => void connectGoogle()}
+                className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold bg-gray-800 text-white disabled:opacity-50">
+                {googleConnecting ? 'Opening Google…' : 'Authorize Google Search Console & AdSense'}
+              </button>
+            )}
+
             {isStripe && (
               <div className="mt-3.5 p-3 rounded-lg border border-blue-100 bg-blue-50/60">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
@@ -323,7 +351,7 @@ export default function ServiceKeysPanel() {
                   <div>
                     <span className="text-gray-500 block text-[11px]">Charging Mode:</span>
                     <span className="font-semibold text-amber-900">
-                      Live Disabled (Safety gate active)
+                      {stripe?.ready ? 'Ready' : stripe?.lastError || 'Readiness unconfirmed'}
                     </span>
                   </div>
                 </div>
@@ -364,7 +392,7 @@ export default function ServiceKeysPanel() {
                               >
                                 {on ? 'ON' : 'OFF'}
                               </span>
-                              {on && (
+                              {on && field.key === 'staging_simulator' && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-rose-100 text-rose-700">
                                   STAGING ONLY
                                 </span>
@@ -378,7 +406,7 @@ export default function ServiceKeysPanel() {
                                 ? 'Stored in WordPress settings'
                                 : source === 'env'
                                   ? 'Set by the deployment (Cloudflare Worker variable)'
-                                  : 'Not set — staging defaults it on, every other origin refuses it'}
+                                  : field.key === 'staging_simulator' ? 'Not set — staging defaults it on, every other origin refuses it' : 'Not configured'}
                               {edited ? ' · edited, press Save to apply' : ''}
                             </p>
                           </div>

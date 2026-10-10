@@ -80,7 +80,7 @@ export interface MarketingConfig {
 
 export const DEFAULT_CONFIG: MarketingConfig = {
   version: 1,
-  adsenseEnabled: true,
+  adsenseEnabled: false,
   adsenseClientId: 'ca-pub-5473713135927706',
   publisherId: 'pub-5473713135927706',
   autoAdsEnabled: false,

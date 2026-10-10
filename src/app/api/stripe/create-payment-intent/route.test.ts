@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ORDERS_PAUSED_MESSAGE } from '@/lib/storefront/ordering';
 
 /**
  * What the PaymentIntent route is allowed to charge.
@@ -112,6 +113,7 @@ function request(payload = body()) {
 
 describe('POST /api/stripe/create-payment-intent', () => {
   beforeEach(() => {
+    vi.stubEnv('STOREFRONT_ORDERS_PAUSED', 'false');
     state.cartItems = [{ id: 1, quantity: 1 }];
     state.recordedIntentId = null;
     state.recordedIntentStatus = 'requires_payment_method';
@@ -127,6 +129,20 @@ describe('POST /api/stripe/create-payment-intent', () => {
     stripeCalls.create = [];
     stripeCalls.createOptions = [];
     stripeCalls.retrieve = [];
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('refuses a paused deployment before reading the request or calling Stripe', async () => {
+    vi.stubEnv('STOREFRONT_ORDERS_PAUSED', 'true');
+    const pausedRequest = request('invalid JSON');
+    const readBody = vi.spyOn(pausedRequest, 'json');
+    const response = await POST(pausedRequest);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: ORDERS_PAUSED_MESSAGE });
+    expect(readBody).not.toHaveBeenCalled();
+    expect(stripeCalls.create).toEqual([]);
+    expect(stripeCalls.retrieve).toEqual([]);
   });
 
   it("charges the order total WooCommerce saved, not a total sent by the browser", async () => {

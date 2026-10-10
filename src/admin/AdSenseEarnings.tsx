@@ -97,12 +97,12 @@ export default function AdSenseEarnings() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api('/api/adsense/auth-url');
+      const res = await api('/api/admin/google-auth');
       const d = await res.json() as { authUrl?: string; error?: string };
       if (d.authUrl) {
         // Open the Google consent screen in a new tab. Owner authorizes once;
-        // Google redirects back to /api/adsense/oauth/callback which stores the
-        // refresh token server-side and returns to /admin/marketing-traffic.
+        // Google redirects back to the protected admin callback, which stores
+        // the encrypted refresh token server-side and returns to Settings.
         window.open(d.authUrl, '_blank', 'noopener,noreferrer');
         setNote('Google authorization opened in a new tab. After you approve, return here and click "Refresh earnings".');
       } else {

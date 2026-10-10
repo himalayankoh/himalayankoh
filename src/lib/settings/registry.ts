@@ -319,6 +319,8 @@ export const SETTINGS_REGISTRY: SettingsCategory[] = [
         hint: 'Sending also needs a verified sending domain.',
         envFallback: 'RESEND_API_KEY',
       },
+      { key: 'from_email', label: 'From Email Address', type: 'text', placeholder: 'sales@himalayankoh.com', envFallback: 'RESEND_FROM' },
+      { key: 'admin_email', label: 'Admin Notification Email', type: 'text', placeholder: 'admin@himalayankoh.com', envFallback: 'ADMIN_NOTIFICATION_EMAIL' },
     ],
   },
   {
@@ -370,5 +372,47 @@ export const SETTINGS_REGISTRY: SettingsCategory[] = [
       },
     ],
   },
+  {
+    id: 'marketing',
+    label: 'Marketing & Traffic',
+    description: 'Google Analytics, AdSense, and overall marketing configuration.',
+    fields: [
+      { key: 'gaEnabled', label: 'Enable Google Analytics (GA4)', type: 'toggle', envFallback: 'GA_ENABLED' },
+      { key: 'ga4Id', label: 'GA4 Measurement ID', type: 'text', placeholder: 'G-XXXXXXXXXX', envFallback: 'GA4_MEASUREMENT_ID' },
+      { key: 'adsenseEnabled', label: 'Enable Google AdSense', type: 'toggle', envFallback: 'ADSENSE_ENABLED' },
+      { key: 'adsenseClientId', label: 'AdSense Client ID', type: 'text', placeholder: 'ca-pub-...', envFallback: 'ADSENSE_CLIENT_ID' },
+      { key: 'publisherId', label: 'Publisher ID', type: 'text', placeholder: 'pub-...', envFallback: 'ADSENSE_PUBLISHER_ID' },
+      { key: 'autoAdsEnabled', label: 'Enable Auto Ads', type: 'toggle', envFallback: 'ADSENSE_AUTO_ADS' },
+      { key: 'manualAdsEnabled', label: 'Enable Manual Ad Units', type: 'toggle', envFallback: 'ADSENSE_MANUAL_ADS' },
+      { key: 'adsTxtRecord', label: 'Ads.txt Record', type: 'text', envFallback: 'ADS_TXT_RECORD' },
+    ]
+  },
+  {
+    id: 'omnisend',
+    label: 'Omnisend — Email Marketing',
+    description: 'Sync contacts, subscriptions, and campaigns to Omnisend.',
+    docsHref: 'https://app.omnisend.com/settings/api',
+    fields: [
+      { key: 'api_key', label: 'Omnisend API Key', type: 'password', placeholder: '...', envFallback: 'OMNISEND_API_KEY' },
+    ]
+  },
+  {
+    id: 'leados',
+    label: 'LeadOS — B2B Lead Gen',
+    description: 'B2B Lead gen, ICP scoring, and outreach automation.',
+    fields: [
+      { key: 'api_key', label: 'LeadOS API Key', type: 'password', placeholder: '...', envFallback: 'LEADOS_API_KEY' },
+    ]
+  },
+  {
+    id: 'google_oauth',
+    label: 'Google OAuth — Search Console & AdSense',
+    description: 'OAuth credentials used to authenticate the owner for Search Console and AdSense APIs. (Server-side only).',
+    fields: [
+      { key: 'client_id', label: 'OAuth Client ID', type: 'text', placeholder: '509630118186-....apps.googleusercontent.com', envFallback: 'GOOGLE_OAUTH_CLIENT_ID' },
+      { key: 'client_secret', label: 'OAuth Client Secret', type: 'password', placeholder: 'GOCSPX-...', envFallback: 'GOOGLE_OAUTH_CLIENT_SECRET' },
+    ]
+  },
+
   // ─── Add future services below ───────────────────────────────────────────────
 ];

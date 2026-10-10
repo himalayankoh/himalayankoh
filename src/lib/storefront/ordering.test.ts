@@ -52,7 +52,7 @@ describe('the catalogue-only launch switch', () => {
 });
 
 /**
- * The production deployment is in catalogue-only mode, pinned where it is declared.
+ * Production ordering is enabled after the verified live checkout cutover.
  *
  * The unit tests above prove the switch behaves; these prove the *deployment* has it.
  * A switch that defaults to "ordering allowed" is only safe because production does
@@ -61,16 +61,16 @@ describe('the catalogue-only launch switch', () => {
  * build whose overlay lost the pause. Read as text, the same way the footer's and the
  * homepage's category links are guarded in `lib/categoryContent/shelves.test.ts`.
  */
-describe('production launches in catalogue-only mode', () => {
+describe('production preserves live ordering', () => {
   const read = (relative: string) =>
     readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
 
-  it('declares the pause in the production overlay, in both forms', () => {
+  it('keeps server and browser ordering enabled in the production overlay', () => {
     const overlay = read('../../../wrangler.production.jsonc');
-    expect(overlay).toMatch(/"STOREFRONT_ORDERS_PAUSED"\s*:\s*"true"/);
+    expect(overlay).toMatch(/"STOREFRONT_ORDERS_PAUSED"\s*:\s*"false"/);
     // The browser's copy: a mismatch would show a cart control to a shopper whose order
     // the routes refuse.
-    expect(overlay).toMatch(/"NEXT_PUBLIC_ORDERS_PAUSED"\s*:\s*"true"/);
+    expect(overlay).toMatch(/"NEXT_PUBLIC_ORDERS_PAUSED"\s*:\s*"false"/);
     expect(ORDERS_PAUSED_PUBLIC_ENV_KEY).toBe('NEXT_PUBLIC_ORDERS_PAUSED');
   });
 
@@ -118,7 +118,7 @@ describe('production launches in catalogue-only mode', () => {
 
   it('states the launch mode as a production constant that is itself pinned', () => {
     const target = read('../../../scripts/production-target.mjs');
-    expect(target).toMatch(/export const PRODUCTION_ORDERS_PAUSED = 'true'/);
+    expect(target).toMatch(/export const PRODUCTION_ORDERS_PAUSED = 'false'/);
   });
 
   it('enforces the pause on the route that writes an order', () => {

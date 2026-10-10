@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft,
   BadgeCheck,
-  Banknote,
   CheckCircle,
   ChevronDown,
   CreditCard,
@@ -14,7 +13,6 @@ import {
   PackageCheck,
   ShieldCheck,
   Truck,
-  Wallet,
 } from 'lucide-react';
 import { useAuthContext } from '../context/AuthContext';
 import StripePaymentForm from '../components/checkout/StripePaymentForm';
@@ -944,8 +942,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               </div>
             </section>
 
-            {/* Delivery service and the address are independent, so on a wide screen
-                they sit side by side — that is where the vertical saving comes from. */}
+            {/* Shipping choices appear after an address, without a premature error. */}
             <div className="grid gap-3 xl:grid-cols-2">
 
             {/*
@@ -955,11 +952,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               delivery prices on the page. Nothing here is priced by hand, and no
               transit window is promised that a carrier did not give us.
             */}
-            <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+            {addressReady && <section className="order-2 rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <Truck size={18} className="text-himalayan" />
-                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Delivery service</h2>
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Shipping</h2>
                 </div>
                 {useLiveShippoRates && (
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-light">
@@ -967,14 +964,6 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   </span>
                 )}
               </div>
-
-              {!showShippoPanel && !addressReady && (
-                <p className="rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3 text-sm text-charcoal-light">
-                  {shippoEnabled
-                    ? 'Add your shipping address and we’ll price delivery with the carriers that serve it.'
-                    : 'Add your shipping address, then choose a delivery service.'}
-                </p>
-              )}
 
               {showShippoPanel && (
                 <div className="mb-4 rounded-xl border border-himalayan/20 bg-himalayan-lighter/60 px-4 py-3 text-sm">
@@ -984,8 +973,13 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       Fetching rates for your address...
                     </p>
                   )}
-                  {!shippoRatesLoading && shippoRatesError && (
-                    <p className="mt-1 text-amber-800">{shippoRatesError}</p>
+                  {!shippoRatesLoading && shippoRatesAttempted && (shippoRatesError || shippoRates.length === 0) && (
+                    <div role="alert" className="space-y-2">
+                      <p className="text-amber-800">Shipping rates are unavailable. Check your address and try again.</p>
+                      <button type="button" onClick={() => setRatesReloadKey((key) => key + 1)} className="min-h-10 rounded-full border border-himalayan-line bg-white px-4 py-1.5 text-xs font-semibold text-charcoal">
+                        Try again
+                      </button>
+                    </div>
                   )}
                   {!shippoRatesLoading && shippoRates.length > 0 && (
                     <div className="space-y-3">
@@ -1020,40 +1014,6 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       })}
                     </div>
                   )}
-                  {!shippoRatesLoading && shippoRates.length === 0 && !shippoRatesError && shippoRatesAttempted && (
-                    <p className="mt-1 text-charcoal-light">
-                      No carrier returned a rate for this address. Check it, then try again.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/*
-                No fixed delivery price and no fixed transit time is offered here.
-
-                This used to render two priced options — $9.95 standard at "3–7 business
-                days" and $18.95 expedited at "2–4 business days" — whenever a live rate was
-                not in play. Both the amounts and the windows were written by hand, and the
-                customer could pay against them, so the checkout charged a price no carrier
-                had quoted for a date no carrier had promised. Delivery is priced by the
-                carrier from the real parcels, so until a rate comes back there is nothing
-                honest to show but an explanation and a way to try again.
-              */}
-              {!useLiveShippoRates && shippoEnabled && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  <p className="font-semibold">Delivery could not be priced for this order.</p>
-                  <p className="mt-1">
-                    Carriers quote the parcels this order actually makes up, so no delivery service can be chosen
-                    until that lookup succeeds and no delivery charge has been added to your total. Check the
-                    delivery address and try again.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setRatesReloadKey((key) => key + 1)}
-                    className="mt-2 inline-flex min-h-10 items-center rounded-full border border-amber-300 bg-white px-4 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
-                  >
-                    Try again
-                  </button>
                 </div>
               )}
 
@@ -1102,14 +1062,14 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   />
                 </div>
               )}
-            </section>
+            </section>}
 
             {/*
               2 — Shipping address. The fields collapse to the address they
               produced once it is complete, with `Change` to reopen them, which is
               the reviewed-address shape of the reference page.
             */}
-            <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+            <section className="order-1 rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <MapPin size={18} className="text-himalayan" />
@@ -1221,13 +1181,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
             </section>
             </div>
 
-            {/*
-              3 — Payment methods. Each row names something this store can really
-              take. Card is the one that can charge today (Stripe hosts the card
-              fields, so the number never reaches this server); the rest are shown
-              greyed and unselectable rather than hidden, so the shopper can see
-              what is coming without ever being offered a method that cannot run.
-            */}
+            {/* One Stripe form presents the methods available for this order. */}
             <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
@@ -1256,11 +1210,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       <RadioDot selected={stripeEnabled || stagingSimulatorEnabled} />
                       <CreditCard size={18} className="flex-shrink-0 text-himalayan" />
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-charcoal">Pay by card</p>
+                        <p className="font-semibold text-charcoal">Secure payment</p>
                         <p className="mt-0.5 text-xs text-charcoal-light">
                           {stripeMode === 'test'
                             ? 'Test mode — Stripe test cards only. No real money is charged.'
-                            : 'Visa, Mastercard, American Express — processed securely by Stripe.'}
+                            : 'Cards, Klarna, Afterpay, Affirm and supported wallets.'}
                         </p>
                       </div>
                       {stripeEnabled && (
@@ -1320,21 +1274,6 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                     )}
                   </div>
 
-                  <ComingSoonPaymentRow
-                    name="PayPal"
-                    icon={<Wallet size={18} />}
-                    note="Being set up for this store. Not selectable yet."
-                  />
-                  <ComingSoonPaymentRow
-                    name="Google Pay"
-                    icon={<Wallet size={18} />}
-                    note="Being set up for this store. Not selectable yet."
-                  />
-                  <ComingSoonPaymentRow
-                    name="Pay by bank transfer"
-                    icon={<Banknote size={18} />}
-                    note="Being set up for this store. Not selectable yet."
-                  />
                 </div>
               ) : (
                 <>
@@ -1398,7 +1337,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   these an order may use, so the strip says which of the three
                   situations this checkout is in instead of listing them as if
                   they were all selectable. */}
-              {paymentMethod === 'stripe' && (
+              {!retailOnly && paymentMethod === 'stripe' && (
                 <PayOverTimeOptions
                   stripeEnabled={stripeEnabled}
                   simulatorEnabled={stagingSimulatorEnabled}
@@ -1767,42 +1706,6 @@ function RadioDot({ selected }: { selected: boolean }) {
     >
       {selected && <span className="h-2.5 w-2.5 rounded-full bg-himalayan" />}
     </span>
-  );
-}
-
-/**
- * A payment method the store cannot take yet.
- *
- * Rendered as a row so the shopper sees what is coming, and deliberately inert:
- * there is no click handler and no radio, because a row that looks selectable but
- * cannot open a payment is worse than no row at all.
- */
-function ComingSoonPaymentRow({
-  name,
-  icon,
-  note,
-}: {
-  name: string;
-  icon: React.ReactNode;
-  note: string;
-}) {
-  return (
-    <div
-      aria-disabled="true"
-      className="rounded-xl border border-dashed border-himalayan-line/70 bg-warm-white p-3 opacity-70"
-    >
-      <div className="flex items-center gap-3">
-        <span aria-hidden="true" className="grid h-5 w-5 flex-shrink-0 place-items-center rounded-full border-2 border-himalayan-line" />
-        <span className="flex-shrink-0 text-charcoal-light">{icon}</span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-semibold text-charcoal">{name}</span>
-          <span className="mt-0.5 block text-xs text-charcoal-light">{note}</span>
-        </span>
-        <span className="hidden flex-shrink-0 rounded-full border border-himalayan-line bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-charcoal-light sm:inline">
-          Coming soon
-        </span>
-      </div>
-    </div>
   );
 }
 
