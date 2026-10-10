@@ -41,3 +41,18 @@ Source: owner-supplied SoSAi/Hermes report, observed at `2026-10-10T09:01:17Z` a
 Hermes did not obtain authenticated GSC/GA4 metrics, reliable competitor/channel evidence or a successful Salman OS ingest. A preview health response or an OPTIONS failure does not prove successful ingest, production health or durable evidence storage. No ingest/campaign/advertising/price/stock action is claimed here.
 
 Google reference: https://developers.google.com/analytics/devguides/collection/ga4/views
+
+## Final verification and release
+
+- Runtime commits: `648fc4c76577a703e93011cdb92ab208bd07cdf7` and `c1940ec439eb26306eb4670379aab55f9bd984e2`, pushed to active origin `himalayankoh/himalayankoh`, branch `integration/cloudflare-workers-migration`.
+- Typecheck passed. Lint passed with warnings. Full test run: 181 passed / 5 skipped suites; 2,018 passed / 19 skipped tests. Next.js build and Cloudflare build both passed.
+- Final build secret scans passed: Next output scanned against 27 server variables; Cloudflare output scanned against the same server variables. No saved server credentials were found in browser assets.
+- Final deployed Worker version: `65e95cfc-8a07-4930-97a4-607ba2f2dd17`. Production `/api/version` reports runtime SHA `c1940ec439eb26306eb4670379aab55f9bd984e2`.
+- Production smoke at `2026-10-10T10:06:14.414Z`: home, products and checkout returned HTTP 200; unauthenticated event and Search Console reads returned HTTP 401. Stripe reports live mode and webhook configured. This was a read-only configuration check, not a payment or order transaction.
+- Before/after comparison confirmed unchanged Worker binding names/types, apex/www routes and production order gates. Advertising, Auto Ads and manual ads remain disabled.
+- Normal live browser navigation to home and one product persisted 3 events: 2 page views and 1 product view, from 1 visitor / 1 session. Refreshing the private dashboard after the final release shows those counts. No serious console errors were captured. Counts include these verification visits; historical visits were not reconstructed.
+- Desktop, mobile (375 px) and tablet (768 px) layouts were checked; mobile/tablet had no horizontal overflow. Temporary viewport overrides were cleared.
+- Global settings save/readback is verified against WordPress. GA4 remains disabled with no Measurement ID; the Google refresh token remains absent. GA4 property approval and owner Search Console consent are the remaining Google activation steps.
+- Hermes research remains draft evidence, not ingested into Salman OS.
+
+Local evidence: `../traffic-tests-final-2026-10-10.log`, `../traffic-next-build-final-2026-10-10.log`, `../traffic-cloudflare-build-final-2026-10-10.log`, `../traffic-cloudflare-deploy-final-2026-10-10.log`, `../traffic-production-after-2026-10-10.json` and `../traffic-live-desktop-2026-10-10.png` (relative to the repository root).
