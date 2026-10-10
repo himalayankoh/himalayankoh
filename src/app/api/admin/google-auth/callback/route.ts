@@ -30,15 +30,25 @@ export async function GET(request: NextRequest) {
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret,
-        redirect_uri: `${url.origin}${GOOGLE_OAUTH_CALLBACK}`, grant_type: 'authorization_code', code_verifier: transaction.verifier }),
-      signal: AbortSignal.timeout(15_000),
+        redirect_uri: `${url.origin}${GOOGLE_OAUTH_CALLBACK}`, grant_type: 'authorization_code', code_verifier: transaction.verifier }).toString(),
+      signal: AbortSignal.timeout(15_000), cache: 'no-store',
     });
-    const data = await response.json() as { refresh_token?: unknown; error?: unknown };
+    const data = await response.json() as { refresh_token?: unknown; error?: unknown; error_description?: unknown };
     // Only known OAuth error identifiers are safe to return. Never forward the
     // provider description, code, tokens, or credential payload.
     if (!response.ok) {
       const known = ['invalid_grant', 'invalid_client', 'unauthorized_client', 'redirect_uri_mismatch'];
       const providerCode = typeof data.error === 'string' && known.includes(data.error) ? data.error : 'token_exchange_failed';
+      // Classify known provider explanations; never echo arbitrary descriptions,
+      // authorization codes, cookies, client secrets or tokens to logs/the browser.
+      const description = typeof data.error_description === 'string' ? data.error_description.toLowerCase() : '';
+      const reason = providerCode !== 'invalid_grant' ? providerCode
+        : /code_verifier|code verifier|pkce/.test(description) ? 'pkce_rejected'
+        : /redirect/.test(description) ? 'callback_mismatch'
+        : /expired/.test(description) ? 'code_expired'
+        : /already.*(used|redeemed)|reused/.test(description) ? 'code_already_used'
+        : /malformed/.test(description) ? 'code_malformed'
+        : 'code_rejected';
       const guidance = providerCode === 'invalid_grant'
         ? 'The code may be expired or already used, or the callback/PKCE transaction may not match. Start a fresh connection from Settings in the same browser; do not reload the callback.'
         : providerCode === 'invalid_client' || providerCode === 'unauthorized_client'
@@ -46,7 +56,7 @@ export async function GET(request: NextRequest) {
           : providerCode === 'redirect_uri_mismatch'
             ? 'The OAuth client must register this exact storefront callback URL.'
             : 'Start a fresh connection from Settings. If it persists, verify the OAuth client and exact callback privately.';
-      return finish(NextResponse.json({ error: `Google rejected the authorization code. ${guidance}`, providerCode }, { status: 502 }));
+      return finish(NextResponse.json({ error: `Google rejected the authorization code. ${guidance}`, providerCode, reason }, { status: 502 }));
     }
     if (typeof data.refresh_token !== 'string' || !data.refresh_token) return finish(NextResponse.json({ error: 'Google did not issue a refresh token. Start authorization again and grant offline access.' }, { status: 502 }));
     await upsertSettings('google_oauth', { refresh_token_encrypted: await sealGoogleOAuthValue(data.refresh_token, 'refresh-token') });

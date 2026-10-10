@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — Wholesale (B2B)
  * Description:       The wholesale side of Himalayan Koh: buyer applications and accounts, a wholesale product master with its own packaging/MOQ/cost fields, price tiers, suppliers and origins, container and cost profiles, freight rates, port charges, quotes and wholesale orders. Wholesale pricing is separate from the retail price WooCommerce owns — a change here never rewrites a storefront price. The Next.js app talks to the hk-wholesale/v1 namespace below; nothing in this plugin reads or writes a retail customer, cart or WooCommerce order.
- * Version:           1.2.0
+ * Version:           1.2.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -52,7 +52,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_WHOLESALE_VERSION', '1.2.0' );
+define( 'HK_WHOLESALE_VERSION', '1.2.1' );
 // Bumped when the schema array changes: `hk_wholesale_maybe_upgrade` re-runs dbDelta
 // only when this differs from what is stored, so an existing install picks up the new
 // columns on its next load instead of waiting for a deactivate/reactivate cycle.
@@ -61,7 +61,7 @@ define( 'HK_WHOLESALE_VERSION', '1.2.0' );
 // reserved word, and the unquoted CREATE TABLE was rejected in silence — which left the
 // quotations table missing on a real install while every read of it returned an empty
 // list rather than an error. v4 records *why* a table is missing; v3 verifies the work.
-define( 'HK_WHOLESALE_DB_VERSION', '6' );
+define( 'HK_WHOLESALE_DB_VERSION', '7' );
 
 /** The installed schema version, so a later release can add tables without re-activation. */
 const HK_WHOLESALE_DB_OPTION = 'hk_wholesale_db_version';
@@ -505,6 +505,18 @@ function hk_wholesale_managed_columns() {
 /* Install                                                             */
 /* ------------------------------------------------------------------ */
 
+/** Quote each index column separately, including composite indexes. */
+function hk_wholesale_quote_schema_key( $key ) {
+	return preg_replace_callback(
+		'/^\s*(PRIMARY KEY|UNIQUE KEY|KEY|FULLTEXT KEY)\s+([a-z_]+)\s*\(([^)]+)\)\s*$/i',
+		function ( $matches ) {
+			$columns = array_map( function ( $column ) { return '`' . trim( $column ) . '`'; }, explode( ',', $matches[3] ) );
+			return $matches[1] . ' `' . $matches[2] . '` (' . implode( ', ', $columns ) . ')';
+		},
+		(string) $key
+	);
+}
+
 /**
  * Creates or updates every table. Safe to call repeatedly — that is what dbDelta is.
  *
@@ -533,13 +545,7 @@ function hk_wholesale_install() {
 			$columns[] = "`{$name}` " . hk_wholesale_column_sql( $type );
 		}
 		$keys = isset( $spec['keys'] ) ? $spec['keys'] : array();
-		$keys = array_map(
-			function ( $key ) {
-				// `KEY status (status)` becomes `KEY `status` (`status`)`.
-				return preg_replace( '/^\s*(PRIMARY KEY|UNIQUE KEY|KEY|FULLTEXT KEY)\s+([a-z_]+)\s*\(([^)]+)\)\s*$/i', '$1 `$2` (`$3`)', (string) $key );
-			},
-			$keys
-		);
+		$keys = array_map( 'hk_wholesale_quote_schema_key', $keys );
 
 		// dbDelta is whitespace-sensitive: two spaces after PRIMARY KEY, and the
 		// key list after it one per line.

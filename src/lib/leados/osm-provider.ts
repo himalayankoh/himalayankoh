@@ -188,7 +188,12 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
 
   try {
     const data = await res.json();
-    const elements = data.elements || [];
+    // Overpass can return HTTP 200 with a runtime-error remark and no results.
+    // Treat incomplete/error responses as unavailable, not successful emptiness.
+    if (data.remark || !Array.isArray(data.elements)) {
+      return { leads: [], rawCount: 0, error: 'Overpass returned an incomplete response.', rateLimited: false, durationMs: Date.now() - start };
+    }
+    const elements = data.elements;
     const seen = new Set<string>();
     const leads: NormalizedLead[] = [];
 

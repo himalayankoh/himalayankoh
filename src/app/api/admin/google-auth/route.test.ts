@@ -78,7 +78,9 @@ describe('admin Google authorization', () => {
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe(`${ORIGIN}/admin/settings?google=connected`);
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
-    const body = fetchMock.mock.calls[0][1].body as URLSearchParams;
+    expect(typeof fetchMock.mock.calls[0][1].body).toBe('string');
+    expect(fetchMock.mock.calls[0][1].cache).toBe('no-store');
+    const body = new URLSearchParams(fetchMock.mock.calls[0][1].body);
     expect(body.get('code_verifier')).toHaveLength(43);
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body.get('code_verifier')!));
     expect(Buffer.from(digest).toString('base64url')).toBe(url.searchParams.get('code_challenge'));
@@ -111,5 +113,30 @@ describe('admin Google authorization', () => {
     expect(JSON.stringify(body)).not.toContain('private credential detail');
     expect(JSON.stringify(body)).not.toContain('untrusted-private-payload');
     expect(settings.write).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['Invalid code_verifier.', 'pkce_rejected'],
+    ['Redirect URI does not match.', 'callback_mismatch'],
+    ['Authorization code expired.', 'code_expired'],
+    ['Code was already redeemed.', 'code_already_used'],
+    ['Malformed auth code.', 'code_malformed'],
+    ['private-secret-description', 'code_rejected'],
+  ])('classifies %s without forwarding provider detail', async (description, reason) => {
+    const { cookie, url } = await begin();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ error: 'invalid_grant', error_description: description }, { status: 400 })));
+    const response = await callback(returning(cookie, url.searchParams.get('state')!));
+    const body = await response.json();
+    expect(body.reason).toBe(reason);
+    expect(JSON.stringify(body)).not.toContain(description);
+    expect(settings.write).not.toHaveBeenCalled();
+  });
+  it('preserves the exact decoded authorization code in the form body', async () => {
+    const { cookie, url } = await begin();
+    const code = '4/fixture+code=%value';
+    const query = new URLSearchParams({ code, state: url.searchParams.get('state')! });
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ error: 'invalid_grant' }, { status: 400 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await callback(new NextRequest(`${ORIGIN}/api/admin/google-auth/callback?${query}`, { headers: { Cookie: `${GOOGLE_OAUTH_COOKIE}=${cookie}` } }));
+    expect(new URLSearchParams(fetchMock.mock.calls[0][1].body).get('code')).toBe(code);
   });
 });

@@ -41,6 +41,15 @@ export async function POST(request: Request) {
       requirePhone: Boolean(requirePhone),
     });
 
+    if (diagnostics.errorSummary) {
+      return NextResponse.json({
+        ok: false,
+        error: diagnostics.geocodeSuccess
+          ? 'The business-data provider could not complete this search. Try again later.'
+          : 'The target location could not be resolved. Check the city and state and try again.',
+      }, { status: diagnostics.geocodeSuccess ? 503 : 422 });
+    }
+
     // Check saved leads to mark if already saved
     const { leads: existingSaved } = await listSavedLeads({ limit: 200 });
     const savedNames = new Set(existingSaved.map((s) => s.businessName.toLowerCase()));
