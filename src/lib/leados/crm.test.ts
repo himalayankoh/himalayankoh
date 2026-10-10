@@ -175,6 +175,11 @@ describe('CRM data layer against the WordPress REST API', () => {
     await expect(listCrmLeads()).rejects.toThrow(/crm\/v1 namespace is missing/);
   });
 
+  it('does not treat a malformed successful response as an empty inbox', async () => {
+    useWordPress([{ path: '/crm/v1/leads', body: { error: 'Database unavailable' } }]);
+    await expect(listCrmLeads()).rejects.toThrow(/invalid lead list/);
+  });
+
   it('refuses to call WordPress when the app has no credential', async () => {
     const username = process.env.WORDPRESS_ADMIN_USER;
     const password = process.env.WORDPRESS_ADMIN_APP_PASSWORD;

@@ -4,34 +4,15 @@
 // Reads /api/adsense/* (server-side, admin-auth) which calls the official
 // AdSense Management API v2 and caches results. This is REAL Google data —
 // never a page-view estimate. States are honest: not connected → Connect,
-// token expired → Reconnect, API down → temporary unavailable, no earnings →
-// $0.00. Payment balance/payouts are NOT exposed by the AdSense API, so we
+// token expired → Reconnect, API down → temporary unavailable, missing reports →
+// No data. Payment balance/payouts are NOT exposed by the AdSense API, so we
 // link to the Google Payments page instead of fabricating a balance.
 // ============================================================================
 import { useEffect, useState, useCallback } from 'react';
 import { getAccessToken } from '../services/wordpressAdminAuth';
 import { ArrowClockwise, LinkSimple, Megaphone, CheckCircle, Warning, SpinnerGap } from '@phosphor-icons/react';
 
-interface EarningsRange {
-  earnings: number;
-  pageViews: number;
-  impressions: number;
-  clicks: number;
-  pageRpm: number;
-  impressionRpm: number;
-}
-
-interface EarningsCache {
-  syncedAt: string;
-  currency: string;
-  ranges: {
-    today: EarningsRange;
-    yesterday: EarningsRange;
-    last7: EarningsRange;
-    thisMonth: EarningsRange;
-    prevMonth: EarningsRange;
-  };
-}
+import AdSenseReportCards, { type EarningsCache } from './AdSenseReportCards';
 
 interface Status {
   connected: boolean;
@@ -40,19 +21,6 @@ interface Status {
   site: string;
   lastSync: string | null;
   message?: string;
-}
-
-function money(n: number | undefined, currency = 'USD'): string {
-  const v = Number(n ?? 0);
-  try {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(v);
-  } catch {
-    return `$${v.toFixed(2)}`;
-  }
-}
-
-function num(n: number | undefined): string {
-  return (Number(n ?? 0)).toLocaleString('en-US');
 }
 
 const fmtTime = (iso: string | null | undefined) =>
@@ -160,13 +128,6 @@ export default function AdSenseEarnings() {
 
   const connected = !!status?.connected;
 
-  const R = ({ label, value }: { label: string; value: string }) => (
-    <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-      <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">{label}</p>
-      <p className="text-lg font-bold text-gray-900 tabular-nums">{value}</p>
-    </div>
-  );
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -234,22 +195,7 @@ export default function AdSenseEarnings() {
                   No earnings synced yet — click "Refresh earnings".
                 </div>
               ) : (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-                    <R label="Today" value={money(cache.ranges.today.earnings, cache.currency)} />
-                    <R label="Yesterday" value={money(cache.ranges.yesterday.earnings, cache.currency)} />
-                    <R label="Last 7 days" value={money(cache.ranges.last7.earnings, cache.currency)} />
-                    <R label="This month" value={money(cache.ranges.thisMonth.earnings, cache.currency)} />
-                    <R label="Previous month" value={money(cache.ranges.prevMonth.earnings, cache.currency)} />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
-                    <R label="Page views" value={num(cache.ranges.thisMonth.pageViews)} />
-                    <R label="Ad impressions" value={num(cache.ranges.thisMonth.impressions)} />
-                    <R label="Clicks" value={num(cache.ranges.thisMonth.clicks)} />
-                    <R label="Page RPM" value={money(cache.ranges.thisMonth.pageRpm, cache.currency)} />
-                    <R label="Impression RPM" value={money(cache.ranges.thisMonth.impressionRpm, cache.currency)} />
-                  </div>
-                </>
+                <AdSenseReportCards cache={cache} />
               )}
               <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
                 <p className="text-[11px] text-gray-400">

@@ -80,6 +80,11 @@ describe('admin Google authorization', () => {
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
     const body = fetchMock.mock.calls[0][1].body as URLSearchParams;
     expect(body.get('code_verifier')).toHaveLength(43);
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body.get('code_verifier')!));
+    expect(Buffer.from(digest).toString('base64url')).toBe(url.searchParams.get('code_challenge'));
+    expect(body.get('redirect_uri')).toBe(url.searchParams.get('redirect_uri'));
+    expect(body.get('client_id')).toBe(url.searchParams.get('client_id'));
+    expect(body.get('grant_type')).toBe('authorization_code');
     const stored = settings.write.mock.calls[0][1];
     expect(stored.refresh_token).toBeUndefined();
     expect(stored.refresh_token_encrypted).not.toContain('fixture-refresh-token');

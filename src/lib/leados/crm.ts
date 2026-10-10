@@ -121,7 +121,8 @@ export async function listCrmLeads(filters: CrmLeadFilters = {}): Promise<CrmLea
         couponUsed: filters.couponUsed,
       },
     });
-    return (response.leads || []).map(toCrmLead);
+    if (!Array.isArray(response.leads)) throw new Error('WordPress returned an invalid lead list.');
+    return response.leads.map(toCrmLead);
   } catch (error) {
     throw describe('Failed to list CRM leads', error);
   }

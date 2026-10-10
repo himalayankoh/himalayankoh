@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — Storefront Account State
  * Description:       Custom tables and REST endpoints for the state WordPress does not already own: per-account storefront state (wishlist, saved addresses, cart binding), the customer operations WooCommerce exposes no REST route for (sign-in, account creation, password reset), and the app's site-content bridge (settings, category-hub overrides, first-party events, newsletter/contact submissions, HK blog fields). This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the hk-storefront/v1 namespace below.
- * Version:           1.5.2
+ * Version:           1.5.4
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -69,7 +69,37 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_STOREFRONT_VERSION', '1.5.1' );
+define( 'HK_STOREFRONT_VERSION', '1.5.4' );
+
+/**
+ * WordPress builds REST URLs from home, which is the Next.js storefront in a
+ * headless deployment. Send those URLs to the configured WordPress installation
+ * instead, including admin requests that create application passwords. Ordinary
+ * same-host WordPress installations keep core's subdirectory behaviour.
+ */
+function hk_storefront_backend_rest_url( $url, $path, $blog_id, $scheme ) {
+	$home = untrailingslashit( get_home_url( $blog_id, '', $scheme ) );
+	$site = untrailingslashit( get_site_url( $blog_id, '', $scheme ) );
+	$home_parts = wp_parse_url( $home );
+	$site_parts = wp_parse_url( $site );
+	if ( empty( $home_parts['host'] ) || empty( $site_parts['host'] ) ) {
+		return $url;
+	}
+	if ( strtolower( $home_parts['host'] ) === strtolower( $site_parts['host'] )
+		&& ( $home_parts['port'] ?? null ) === ( $site_parts['port'] ?? null ) ) {
+		return $url;
+	}
+	// Only rewrite core's home prefix; never redirect another filter's URL.
+	if ( strpos( $url, $home ) !== 0 ) {
+		return $url;
+	}
+	$suffix = substr( $url, strlen( $home ) );
+	if ( $suffix !== '' && ! in_array( $suffix[0], array( '/', '?', '#' ), true ) ) {
+		return $url;
+	}
+	return $site . $suffix;
+}
+add_filter( 'rest_url', 'hk_storefront_backend_rest_url', 10, 4 );
 
 /** The installed schema version, so an update can add tables without re-activation. */
 const HK_STOREFRONT_DB_VERSION_OPTION = 'hk_storefront_db_version';

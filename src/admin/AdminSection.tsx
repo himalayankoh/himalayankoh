@@ -5865,7 +5865,7 @@ export function ACRM() {
       if (couponUsed !== '') q.set('couponUsed', couponUsed);
       const r = await fetch(`/api/crm/list?${q.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
       const j = await r.json().catch(() => null);
-      if (Array.isArray(j?.leads)) setLeads(j.leads);
+      if (r.ok && Array.isArray(j?.leads)) setLeads(j.leads);
       else { setLeads([]); setErr(j?.error || 'Could not load leads.'); }
     } catch (e) { setLeads([]); setErr(`Request failed: ${(e as Error).message}`); }
     finally { setLoading(false); }
@@ -5917,7 +5917,7 @@ export function ACRM() {
           <button onClick={() => void load()} disabled={loading} className="px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1.5">
             <ArrowClockwise size={13} /> {loading ? 'Loading…' : 'Refresh'}
           </button>
-          <button onClick={exportCsv} className="btn-glow px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
+          <button onClick={exportCsv} disabled={loading || !!err} className="btn-glow px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50">
             <Download size={13} /> Export CSV (Excel / HubSpot)
           </button>
         </div>
@@ -5957,11 +5957,15 @@ export function ACRM() {
 
       {loading ? (
         <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-xs text-gray-400">Loading leads…</div>
+      ) : err ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-10 text-center text-sm text-gray-500">
+          Leads are unavailable. Resolve the backend error, then refresh.
+        </div>
       ) : leads.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 p-10 text-center">
           <UsersIcon size={36} className="mx-auto text-gray-200 mb-3" />
           <p className="text-sm text-gray-500 font-medium">No leads yet</p>
-          <p className="text-xs text-gray-400 mt-1">They appear here when visitors claim the welcome coupon, click WhatsApp or chat with the AI assistant. No backend error — the table is simply empty.</p>
+          <p className="text-xs text-gray-400 mt-1">No leads match the current filters. Leads appear when visitors claim the welcome coupon, click WhatsApp or chat with the AI assistant.</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
