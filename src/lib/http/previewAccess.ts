@@ -168,15 +168,19 @@ export function previewAccessDecision(
     };
   }
 
+  // Either carrier authorizes on its own: the admin console on a gated QA URL
+  // sends the preview cookie alongside an unrelated admin `Authorization`
+  // bearer, and a header-first single pick would let that bearer shadow a
+  // valid cookie into a mismatch. Each carrier is still an exact comparison
+  // against the configured token, so presenting neither (or only wrong values)
+  // fails exactly as before.
+  const expected = (input.configuredToken ?? '').trim();
+  const header = (input.authorization ?? '').trim();
+  const headerToken = /^Bearer\s+(.+)$/i.exec(header)?.[1]?.trim() ?? '';
+  if (headerToken !== '' && headerToken === expected) return { required: true, authorized: true, reason: 'authorized-header' };
+  if ((input.cookie ?? '').trim() !== '' && (input.cookie ?? '').trim() === expected) return { required: true, authorized: true, reason: 'authorized-cookie' };
+
   const presented = presentedPreviewToken(input);
   if (presented === '') return { required: true, authorized: false, reason: 'missing' };
-
-  const expected = (input.configuredToken ?? '').trim();
-  if (presented !== expected) return { required: true, authorized: false, reason: 'mismatch' };
-
-  return {
-    required: true,
-    authorized: true,
-    reason: /^Bearer\s+/i.test((input.authorization ?? '').trim()) ? 'authorized-header' : 'authorized-cookie',
-  };
+  return { required: true, authorized: false, reason: 'mismatch' };
 }

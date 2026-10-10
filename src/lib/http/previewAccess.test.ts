@@ -133,6 +133,19 @@ describe('previewAccessDecision', () => {
     const d = previewAccessDecision({ host, configuredToken: TOKEN, authorization: `Bearer ${TOKEN}`, cookie: 'stale' }, PRODUCTION_HOSTS);
     expect(d.reason).toBe('authorized-header');
   });
+
+  it('still honors a valid cookie when the header carries an unrelated bearer (admin console on a gated QA URL)', () => {
+    // The admin SPA sends `Authorization: Bearer <admin-session>` on every API
+    // call; on a gated host that bearer must not shadow a valid preview cookie
+    // into a mismatch — either carrier matching exactly is enough.
+    const d = previewAccessDecision({ host, configuredToken: TOKEN, authorization: 'Bearer admin-session-token', cookie: TOKEN }, PRODUCTION_HOSTS);
+    expect(d).toEqual({ required: true, authorized: true, reason: 'authorized-cookie' });
+  });
+
+  it('refuses when both carriers are present but neither matches', () => {
+    const d = previewAccessDecision({ host, configuredToken: TOKEN, authorization: 'Bearer wrong', cookie: 'also-wrong' }, PRODUCTION_HOSTS);
+    expect(d).toEqual({ required: true, authorized: false, reason: 'mismatch' });
+  });
 });
 
 describe('the constants the middleware and the owner both depend on', () => {
