@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { checkRateLimit, record } = vi.hoisted(() => ({
+const { checkRateLimit, record, list, verify } = vi.hoisted(() => ({
   checkRateLimit: vi.fn(),
   record: vi.fn(),
+  list: vi.fn(), verify: vi.fn(),
 }));
 
 vi.mock('@/lib/rateLimit', () => ({ checkRateLimit }));
 vi.mock('@/lib/wordpress/siteContent', () => ({
-  siteEventsApi: { record },
+  siteEventsApi: { record, list },
 }));
+vi.mock('@/lib/auth/verifyAdminRequest', () => ({ verifyAdminRequest: verify }));
 
-import { POST } from './route';
+import { POST, GET } from './route';
 
 function post(body: unknown): Request {
   return new Request('http://localhost/api/events', {
@@ -84,5 +86,31 @@ describe('POST /api/events', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, recorded: false });
+  });
+});
+
+describe('GET /api/events', () => {
+  beforeEach(() => {
+    list.mockReset().mockResolvedValue([]);
+    verify.mockReset().mockResolvedValue({ ok: true });
+  });
+  it('keeps raw traffic private and bypasses caches', async () => {
+    const response = await GET(new Request('https://himalayankoh.com/api/events?days=30'));
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(await response.json()).toEqual({ events: [], truncated: false });
+  });
+  it('rejects unauthenticated reads before reaching WordPress', async () => {
+    verify.mockResolvedValue({ ok: false, error: 'Unauthorized', status: 401 });
+    expect((await GET(new Request('https://himalayankoh.com/api/events'))).status).toBe(401);
+    expect(list).not.toHaveBeenCalled();
+  });
+  it.each(['-1', '91', 'NaN', '2.5'])('bounds the read window %s', async days => {
+    expect((await GET(new Request(`https://himalayankoh.com/api/events?days=${days}`))).status).toBe(400);
+    expect(list).not.toHaveBeenCalled();
+  });
+  it('marks capped rows as partial', async () => {
+    list.mockResolvedValue(Array.from({ length: 5000 }, () => ({ event: 'page_view' })));
+    const response = await GET(new Request('https://himalayankoh.com/api/events'));
+    expect((await response.json()).truncated).toBe(true);
   });
 });

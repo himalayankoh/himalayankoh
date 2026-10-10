@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { trackEvent, utmParams } from '../lib/marketing';
 import {
   CartRequestError,
   STORE_UNAVAILABLE,
@@ -237,6 +238,7 @@ export function useCart() {
           mode = 'remote';
           loaded = true;
           applyView(view);
+          trackEvent('add_to_cart', { items: [{ item_id: productId, quantity }], ...utmParams() });
           return;
         }
       }

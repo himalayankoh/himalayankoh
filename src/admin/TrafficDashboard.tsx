@@ -1,7 +1,7 @@
 // ============================================================================
 // TRAFFIC OVERVIEW — first-party analytics dashboard (Admin)
 //
-// Reads `site_events` (Supabase, migration 0023) as a signed-in admin and shows
+// Reads WordPress storefront events as a signed-in admin and shows
 // real visitor traffic with charts: page views, visitors, sessions, funnel,
 // daily trend, wishlist saves, top pages, traffic sources, devices, top
 // products. This is independent of Google — data is what this site itself
@@ -13,6 +13,7 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import { fetchSiteEvents, type SiteEventRow } from '../services/siteEvents';
+import SearchConsoleTraffic from './SearchConsoleTraffic';
 
 const DAY_OPTIONS = [7, 14, 30, 90];
 const COLORS = ['#2563eb', '#0ea5e9', '#16a34a', '#f59e0b', '#8b5cf6', '#ec4899', '#10b981', '#f43f5e'];
@@ -44,6 +45,8 @@ export default function TrafficDashboard() {
   const [rows, setRows] = useState<SiteEventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const [truncated, setTruncated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +54,8 @@ export default function TrafficDashboard() {
     fetchSiteEvents(days)
       .then((r) => {
         if (cancelled) return;
-        setRows(r);
+        setRows(r.events);
+        setTruncated(r.truncated);
         setError(null);
       })
       .catch((e) => {
@@ -65,7 +69,7 @@ export default function TrafficDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [days]);
+  }, [days, refresh]);
 
   const stats = useMemo(() => {
     const views = rows.filter((r) => r.event === 'page_view');
@@ -82,8 +86,8 @@ export default function TrafficDashboard() {
     const salesRevenue = purchases.reduce((s, p) => s + (typeof p.value === 'number' && Number.isFinite(p.value) ? p.value : 0), 0);
     const revenueCurrency = purchases.find((p) => p.currency)?.currency || 'USD';
 
-    const visitors = new Set(views.map((v) => v.visitor_id ?? '')).size;
-    const sessions = new Set(views.map((v) => v.session_id ?? '')).size;
+    const visitors = new Set(views.map((v) => v.visitor_id).filter(Boolean)).size;
+    const sessions = new Set(views.map((v) => v.session_id).filter(Boolean)).size;
 
     // Daily trend (page_view + unique sessions + wishlist saves per day) for the
     // whole selected window; the chart always shows every day (0-filled).
@@ -200,9 +204,9 @@ export default function TrafficDashboard() {
         <p className="font-semibold mb-1">Traffic data unavailable</p>
         <p className="leading-relaxed">{error}</p>
         <p className="mt-2 text-xs text-amber-700">
-          This dashboard needs the <code className="bg-amber-100 px-1 rounded">site_events</code> table and a signed-in admin. Once recording starts,
-          views, sessions, funnel and charts appear here automatically — no deploy required.
+          Sign in again or check the WordPress storefront connection, then retry.
         </p>
+        <button onClick={() => setRefresh(n => n + 1)} className="mt-3 rounded-lg border px-3 py-2">Retry traffic</button>
       </div>
     );
   }
@@ -212,6 +216,7 @@ export default function TrafficDashboard() {
 
   return (
     <div className="space-y-4">
+      <SearchConsoleTraffic />
       {/* Day range selector */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs text-gray-500">
@@ -219,6 +224,7 @@ export default function TrafficDashboard() {
           {rows.length > 0 && <span className="ml-1 font-semibold text-gray-700">{fmt(rows.length)} events · last {days} days</span>}
         </p>
         <div className="flex items-center gap-1">
+          <button disabled={loading} onClick={() => setRefresh(n => n + 1)} className="rounded-lg border px-2.5 py-1 text-xs font-semibold disabled:opacity-50">{loading ? 'Refreshing…' : 'Refresh traffic'}</button>
           {DAY_OPTIONS.map((d) => (
             <button key={d} onClick={() => setDays(d)}
               className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${days === d ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
@@ -227,6 +233,8 @@ export default function TrafficDashboard() {
           ))}
         </div>
       </div>
+
+      {truncated && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Showing the newest 5,000 recorded events. This window is partial; totals below cover these events only.</p>}
 
       {empty ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500 shadow-sm">
@@ -245,7 +253,7 @@ export default function TrafficDashboard() {
                 {stats.anyRevenue ? (
                   <p className="text-[10px] text-emerald-600 mt-0.5">Real {fmt(stats.purchaseCount)} purchases</p>
                 ) : (
-                  <p className="text-[10px] text-amber-600 mt-0.5">No purchase value yet (needs migration 0024)</p>
+                  <p className="text-[10px] text-amber-600 mt-0.5">No recorded purchase value in this window</p>
                 )}
               </div>
               <div className="rounded-xl border border-emerald-100 bg-white p-4 shadow-sm">
@@ -405,9 +413,9 @@ export default function TrafficDashboard() {
           </div>
 
           <p className="text-[11px] text-gray-400">
-            Data source: Supabase <code className="px-1 rounded bg-gray-100">site_events</code> (events your storefront records via{' '}
+            Data source: WordPress storefront events (events your storefront records via{' '}
             <code className="px-1 rounded bg-gray-100">recordSiteEvent</code>). Admin-only read; visitors can write events but never read them.
-            GA4 still receives the same events separately.
+            Google Analytics receives events separately when enabled and accepted by the visitor. These counts include verification visits and are not Google search impressions.
           </p>
         </>
       )}

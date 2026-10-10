@@ -7,6 +7,7 @@ import HashUrlRedirect from '@/components/HashUrlRedirect';
 import NavigationProgress from '@/components/NavigationProgress';
 import RouteScrollRestoration from '@/components/RouteScrollRestoration';
 import StaleChunkRecovery from '@/components/StaleChunkRecovery';
+import StorefrontTraffic from '@/components/StorefrontTraffic';
 
 /**
  * Client-only effects, and deliberately *not* wrapped in Suspense.
@@ -40,6 +41,7 @@ function ClientEffects() {
       <HashUrlRedirect />
       <NavigationProgress />
       <RouteScrollRestoration />
+      <StorefrontTraffic />
     </>
   );
 }

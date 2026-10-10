@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { trackEvent, utmParams } from '../lib/marketing';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -53,6 +54,13 @@ export default function ProductDetailView({
   const { user } = useAuthContext();
   const toast = useToast();
   const displayName = getProductDisplayName(product);
+  const viewedProduct = useRef('');
+  useEffect(() => {
+    const id = String(product.id);
+    if (viewedProduct.current === id) return;
+    viewedProduct.current = id;
+    trackEvent('view_item', { items: [{ item_id: id }], ...utmParams() });
+  }, [product.id]);
   // The crumb names the category the owner filed the product under, through the
   // same taxonomy the filter row uses — so the two can never disagree. The shelf
   // resolver is not enough on its own: it only knows the shelves the taxonomy has

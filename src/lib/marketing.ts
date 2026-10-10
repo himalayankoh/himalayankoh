@@ -1,15 +1,12 @@
 import { recordSiteEvent } from '../services/siteEvents';
 import { isHeldProduct } from '../content/reviewHolds';
-import { getConsent } from './consent';
+import { getConsent, syncConsentMode } from './consent';
 
 // ============================================================================
 // MARKETING & TRAFFIC — shared config, script loading, GA4 events
 //
-// Global config source of truth: /site-config.json (committed, deployed with
-// the site, fetched by every visitor). Admin edits are saved to localStorage
-// (luxedge_mkt_config) as a PREVIEW override for the admin's own browser only —
-// the admin page exports the updated site-config.json for deployment so the
-// change becomes global for all visitors.
+// Global config comes from WordPress through the public /site-config.json
+// endpoint. Admin writes use the authenticated settings API.
 // ============================================================================
 
 export type Density = 'low' | 'balanced' | 'high';
@@ -115,7 +112,6 @@ export const CLIENT_ID_RE = /^ca-pub-[0-9]+$/;
 export const GA4_ID_RE = /^G-[A-Z0-9]{6,}$/;
 export const AD_SLOT_RE = /^[0-9]{5,}$/;
 
-const LS_KEY = 'luxedge_mkt_config';
 const UTM_KEY = 'luxedge_utm';
 const SCRIPT_ID = 'adsbygoogle-script';
 const GA_SCRIPT_ID = 'gtag-script';
@@ -141,12 +137,7 @@ let globalConfig: MarketingConfig | null = null;
 let globalConfigPromise: Promise<MarketingConfig> | null = null;
 
 function readPreview(): MarketingConfig | null {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    return raw ? normalize(JSON.parse(raw)) : null;
-  } catch {
-    return null;
-  }
+  return null; // Local preview is removed. Settings are now global and saved to DB.
 }
 
 /** Fetch the deployed global config (site-config.json). */
@@ -184,29 +175,16 @@ export function getCachedPreview(): MarketingConfig | null {
   return readPreview();
 }
 
-/** Admin preview: persists to localStorage (this browser only). */
 export function savePreviewConfig(cfg: MarketingConfig): void {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(cfg));
-  } catch {
-    /* storage unavailable */
-  }
+  // Removed, settings are now saved via API to the DB
 }
 
 export function clearPreviewConfig(): void {
-  try {
-    localStorage.removeItem(LS_KEY);
-  } catch {
-    /* ignore */
-  }
+  // Removed
 }
 
 export function hasPreviewConfig(): boolean {
-  try {
-    return !!localStorage.getItem(LS_KEY);
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 /** Validate a config and return error messages keyed by field. */
@@ -262,17 +240,19 @@ export function removeAdSenseScript(): void {
 
 export function loadGtag(ga4Id: string): void {
   if (!ga4Id || typeof document === 'undefined') return;
+  if (getConsent() !== 'accepted') return;
   if (document.getElementById(GA_SCRIPT_ID)) return;
   const w = window as any;
   w.dataLayer = w.dataLayer || [];
   w.gtag = function gtag() { w.dataLayer.push(arguments); };
+  syncConsentMode(getConsent());
   const s = document.createElement('script');
   s.id = GA_SCRIPT_ID;
   s.async = true;
   s.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ga4Id.trim())}`;
   document.head.appendChild(s);
   w.gtag('js', new Date());
-  w.gtag('config', ga4Id.trim());
+  w.gtag('config', ga4Id.trim(), { send_page_view: false, page_location: window.location.origin + window.location.pathname });
 }
 
 export function removeGtag(): void {
@@ -299,7 +279,7 @@ export function trackEvent(name: string, params: Record<string, unknown> = {}): 
   } catch {
     /* never break the storefront */
   }
-  if (!isGAEnabled()) return;
+  if (params.first_party_only || !isGAEnabled() || getConsent() !== 'accepted') return;
   const w = window as any;
   if (typeof w.gtag !== 'function') return;
   try {

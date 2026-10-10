@@ -385,6 +385,11 @@ export const SETTINGS_REGISTRY: SettingsCategory[] = [
       { key: 'autoAdsEnabled', label: 'Enable Auto Ads', type: 'toggle', envFallback: 'ADSENSE_AUTO_ADS' },
       { key: 'manualAdsEnabled', label: 'Enable Manual Ad Units', type: 'toggle', envFallback: 'ADSENSE_MANUAL_ADS' },
       { key: 'adsTxtRecord', label: 'Ads.txt Record', type: 'text', envFallback: 'ADS_TXT_RECORD' },
+      { key: 'density', label: 'Manual ad density', type: 'text', envFallback: '' },
+      { key: 'mobileDensity', label: 'Mobile ad density', type: 'text', envFallback: '' },
+      { key: 'showAdsOnMobile', label: 'Show ads on mobile', type: 'toggle', envFallback: '' },
+      { key: 'placements', label: 'Manual placement settings', type: 'text', envFallback: '' },
+      { key: 'exclusions', label: 'Excluded ad pages', type: 'text', envFallback: '' },
     ]
   },
   {

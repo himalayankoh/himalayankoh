@@ -18,6 +18,10 @@ const SID_KEY = 'luxedge_sid';
 
 const EVENTS_PATH = '/api/events';
 
+export function isPublicTrafficPath(path: string): boolean {
+  return path.startsWith('/') && !/^\/(admin|api|account|orders|profile|login|signup|reset-password|track)(\/|$)/.test(path);
+}
+
 function makeId(): string {
   try {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -72,16 +76,18 @@ export interface TrackParams {
 export function recordSiteEvent(name: string, params: TrackParams = {}): void {
   try {
     if (typeof window === 'undefined') return;
+    // Development and staging visits must not inflate the production dashboard.
+    if (!['himalayankoh.com', 'www.himalayankoh.com'].includes(new URL(window.location.origin).hostname)) return;
 
-    const path = window.location.pathname + window.location.search;
-    if (path.startsWith('/admin')) return; // keep public traffic honest
+    const path = window.location.pathname;
+    if (!isPublicTrafficPath(path)) return;
 
     const { visitor, session } = ids();
 
     let referrer = '';
     try {
       const raw = document.referrer || '';
-      referrer = raw.startsWith(window.location.origin) ? '' : raw;
+      referrer = raw && new URL(raw).origin !== window.location.origin ? new URL(raw).origin : '';
     } catch {
       /* ignore */
     }
@@ -157,12 +163,13 @@ export interface SiteEventRow {
  * Fetch the last `days` of events as a signed-in admin. Throws on auth failure
  * or an unreadable response (e.g. the table is not migrated yet).
  */
-export async function fetchSiteEvents(days = 30): Promise<SiteEventRow[]> {
+export async function fetchSiteEvents(days = 30): Promise<{ events: SiteEventRow[]; truncated: boolean }> {
   const token = await getFreshAccessToken();
   if (!token) throw new Error('Sign in as admin to view traffic analytics.');
 
   const response = await fetch(`${EVENTS_PATH}?days=${encodeURIComponent(String(days))}`, {
     headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
   });
 
   if (response.status === 401 || response.status === 403) {
@@ -176,10 +183,11 @@ export async function fetchSiteEvents(days = 30): Promise<SiteEventRow[]> {
     throw new Error(body.error || `Could not load analytics (HTTP ${response.status}).`);
   }
 
-  const body = (await response.json()) as { events?: SiteEventRow[] };
-  return (body.events ?? []).map((row) => ({
+  const body = (await response.json()) as { events?: SiteEventRow[]; truncated?: boolean };
+  return { truncated: body.truncated === true, events: (body.events ?? []).map((row) => ({
     ...row,
+    occurred_at: /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(row.occurred_at) ? row.occurred_at.replace(' ', 'T') + 'Z' : row.occurred_at,
     value: row.value ?? null,
     currency: row.currency ?? null,
-  }));
+  })) };
 }

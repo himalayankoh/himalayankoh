@@ -112,7 +112,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const days = Number(new URL(request.url).searchParams.get('days') ?? '30') || 30;
+  const days = Number(new URL(request.url).searchParams.get('days') ?? '30');
+  if (!Number.isInteger(days) || days < 1 || days > 90) {
+    return NextResponse.json({ error: 'days must be between 1 and 90.' }, { status: 400 });
+  }
   const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 19).replace('T', ' ');
 
   try {
@@ -122,7 +125,7 @@ export async function GET(request: Request) {
       // Newest-first, so hitting the cap keeps the most recent events; the flag is
       // what stops the dashboard from drawing a partial window as a complete one.
       truncated: events.length >= READ_LIMIT,
-    });
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('Traffic event read failed:', error);
     return NextResponse.json({ error: 'Could not load traffic events.' }, { status: 502 });

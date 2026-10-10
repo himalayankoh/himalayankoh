@@ -55,9 +55,9 @@ import type {
 } from '../App';
 import { signOutOfBrowser } from '../lib/auth/browserSignOut';
 import {
-  activeModeLabel, AD_SLOT_RE, clearPreviewConfig, CLIENT_ID_RE, fetchGlobalConfig,
-  getCachedPreview, hasPreviewConfig, PLACEMENT_KEYS, PLACEMENT_LABELS,
-  savePreviewConfig, validateConfig, MarketingConfig, PlacementKey, DEFAULT_CONFIG,
+  activeModeLabel, AD_SLOT_RE, CLIENT_ID_RE, fetchGlobalConfig,
+  PLACEMENT_KEYS, PLACEMENT_LABELS,
+  validateConfig, MarketingConfig, PlacementKey, DEFAULT_CONFIG,
 } from '../lib/marketing';
 const TrafficDashboard = lazy(() => import('./TrafficDashboard'));
 const AdSenseEarnings = lazy(() => import('./AdSenseEarnings'));
@@ -6370,14 +6370,12 @@ export function AMarketingTraffic() {
   const [saved, setSaved] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [adsTxtStatus, setAdsTxtStatus] = useState<'checking' | 'configured' | 'missing' | 'invalid'>('checking');
-  const [hasPreview, setHasPreview] = useState(hasPreviewConfig());
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetchGlobalConfig().then(g => {
       setGlobalCfg(g);
-      const preview = hasPreviewConfig() ? getCachedPreview() : null;
-      setCfg(JSON.parse(JSON.stringify(preview || g)));
-      setHasPreview(hasPreviewConfig());
+      setCfg(JSON.parse(JSON.stringify(g)));
     });
   }, []);
 
@@ -6400,15 +6398,46 @@ export function AMarketingTraffic() {
   };
   useEffect(() => { checkAdsTxt(); }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const errs = validateConfig(cfg);
     setErrors(errs);
     if (Object.keys(errs).length > 0) { notify('Please fix the validation errors', 'error'); return; }
-    savePreviewConfig(cfg);
-    setHasPreview(true);
-    setSaved(true);
-    notify('Marketing settings saved (preview for this browser)');
-    setTimeout(() => setSaved(false), 3000);
+
+    setSaved(false);
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getAccessToken()}` },
+        body: JSON.stringify({
+          category: 'marketing',
+          settings: {
+            gaEnabled: cfg.gaEnabled ? 'true' : 'false',
+            ga4Id: cfg.ga4Id,
+            adsenseEnabled: cfg.adsenseEnabled ? 'true' : 'false',
+            adsenseClientId: cfg.adsenseClientId,
+            publisherId: cfg.publisherId,
+            autoAdsEnabled: cfg.autoAdsEnabled ? 'true' : 'false',
+            manualAdsEnabled: cfg.manualAdsEnabled ? 'true' : 'false',
+            adsTxtRecord: cfg.adsTxtRecord,
+            density: cfg.density,
+            mobileDensity: cfg.mobileDensity,
+            showAdsOnMobile: String(cfg.showAdsOnMobile),
+            exclusions: JSON.stringify(cfg.exclusions),
+            placements: JSON.stringify(cfg.placements),
+          }
+        })
+      });
+      if (!res.ok) throw new Error('Save failed');
+      setGlobalCfg(structuredClone(cfg));
+      setSaved(true);
+      notify('Marketing settings saved globally to production database');
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e) {
+      notify('Failed to save settings to production', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleTest = async () => {
@@ -6431,24 +6460,7 @@ export function AMarketingTraffic() {
     catch { notify('Copy failed — select the text manually', 'error'); }
   };
 
-  const exportConfig = () => {
-    const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'site-config.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    notify('Downloaded site-config.json — commit it to the repo to make these settings global for all visitors');
-  };
-
-  const resetGlobal = () => {
-    clearPreviewConfig();
-    setHasPreview(false);
-    if (globalCfg) setCfg(JSON.parse(JSON.stringify(globalCfg)));
-    setErrors({});
-    notify('Local preview cleared — now using the deployed global config');
-  };
+  // Export and reset removed because settings are now saved to the DB
 
   const Toggle = ({ on, onChange, disabled, label }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean; label?: string }) => (
     <button type="button" disabled={disabled} onClick={() => onChange(!on)}
@@ -6483,7 +6495,7 @@ export function AMarketingTraffic() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Marketing &amp; Traffic</h1>
         <div className="flex items-center gap-2">
-          {hasPreview && <StatusPill ok text="Local preview active (this browser)" />}
+          <StatusPill ok={!!globalCfg} text={globalCfg ? 'Global settings loaded' : 'Loading global settings'} />
           <span className="text-[11px] text-gray-400">Code installed ≠ Google approved</span>
         </div>
       </div>
@@ -6523,7 +6535,7 @@ export function AMarketingTraffic() {
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700 leading-relaxed">
           <strong>Active mode:</strong> {activeModeLabel(cfg)}.
           {!adsenseOk && cfg.adsenseEnabled ? ' Fix the Client ID to enable ads.' : ''}
-          The live traffic charts above use your own first-party events from Supabase; these cards below are configuration status only.
+          Traffic charts above show events recorded by this storefront in WordPress. The cards below show saved configuration; Google collection must be verified separately.
         </div>
       </Card>
 
@@ -6667,30 +6679,22 @@ export function AMarketingTraffic() {
           {errors.ga4Id ? <p className="text-red-500 text-xs mt-1">{errors.ga4Id}</p>
             : <p className="text-xs text-gray-400 mt-1">Paste the GA4 Measurement ID from your Google Analytics property. No API key needed for standard browser tracking.</p>}
         </div>
-        <p className="text-xs text-gray-400 leading-relaxed">Events wired to real user actions: <code className="bg-gray-100 px-1 rounded">page_view</code>, <code className="bg-gray-100 px-1 rounded">view_item</code>, <code className="bg-gray-100 px-1 rounded">add_to_cart</code>, <code className="bg-gray-100 px-1 rounded">begin_checkout</code>, <code className="bg-gray-100 px-1 rounded">purchase</code> (fires on the Stripe-hosted checkout success return), <code className="bg-gray-100 px-1 rounded">search</code>. UTM campaign parameters are captured per session.</p>
+        <p className="text-xs text-gray-400 leading-relaxed">Page views, product views and successful cart additions are recorded from storefront actions. Checkout and purchase counts require recorded events; an empty count is not a complete sales report. UTM campaign parameters are captured per session. Google tracking requires visitor consent.</p>
       </Card>
 
       {/* Actions */}
       <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={handleSave} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors">
-          <FloppyDisk size={16} /> Save Settings
+        <button disabled={saving} onClick={handleSave} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors disabled:opacity-50">
+          <FloppyDisk size={16} /> {saving ? 'Saving…' : 'Save Settings'}
         </button>
         <button onClick={handleTest} className="px-6 py-2.5 bg-white border border-gray-200 hover:border-blue-300 text-gray-700 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors">
           <ArrowClockwise size={16} /> Test Configuration
         </button>
-        <button onClick={exportConfig} className="px-6 py-2.5 bg-white border border-gray-200 hover:border-blue-300 text-gray-700 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors">
-          <Download size={16} /> Export site-config.json
-        </button>
-        {hasPreview && (
-          <button onClick={resetGlobal} className="px-6 py-2.5 bg-white border border-gray-200 hover:border-red-300 text-gray-700 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors">
-            <ArrowCounterClockwise size={16} /> Reset to Global
-          </button>
-        )}
       </div>
 
       {saved && (
         <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">
-          <CheckCircle size={16} /> Settings saved as a preview for this browser. Download site-config.json and commit it to the repo to make these settings global for all visitors.
+          <CheckCircle size={16} /> Settings saved globally to the production database.
         </div>
       )}
       {testResult && (
@@ -6701,13 +6705,11 @@ export function AMarketingTraffic() {
       )}
 
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-500 leading-relaxed">
-        <strong className="text-gray-700">Global deployment note:</strong> This deployment runs on Cloudflare Workers backed by WordPress and WooCommerce. Browser
-        localStorage only previews changes on this device. To make settings apply to <em>all</em> visitors, download
-        <code className="bg-white px-1 rounded"> site-config.json </code>, commit it to the repo at
-        <code className="bg-white px-1 rounded"> public/site-config.json </code>, and deploy. The <code className="bg-white px-1 rounded">ads.txt</code>
-        file at the site root ships with every deploy. A cookie-consent banner is implemented on the storefront: AdSense and GA4 scripts only load
-        after a visitor clicks "Accept All". If you serve personalized ads in the EEA/UK, connect a Google-certified CMP (Consent Management Platform)
-        from your AdSense dashboard and paste its ID in the GA4 tag here.
+        <strong className="text-gray-700">Global deployment note:</strong> This deployment runs on Cloudflare Workers backed by WordPress and WooCommerce.
+        Settings are saved to WordPress. Public configuration may take up to 11 minutes to refresh from cache, and tracking
+        also requires the storefront integration and visitor consent. The <code className="bg-white px-1 rounded">ads.txt</code>
+        file at the site root ships with every deploy. AdSense approval and Google Analytics event delivery must be verified
+        separately in Google. Keep advertising disabled until the owner approves it.
       </div>
     </div>
   );

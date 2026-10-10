@@ -32,4 +32,20 @@ describe('public marketing configuration privacy', () => {
     expect(config).not.toHaveProperty('refresh_token_encrypted');
     expect(JSON.stringify(config)).not.toContain('fixture-');
   });
+
+  it('loads saved placement controls with a strict public allowlist and protects admin exclusions', async () => {
+    settings.read.mockResolvedValue({ density: 'low', mobileDensity: 'low', showAdsOnMobile: 'false',
+      placements: JSON.stringify({ home_after_hero: { enabled: true, slot: '1234567890', secret: 'private' }, unknown: 'private' }),
+      exclusions: JSON.stringify({ admin: false, checkout: false, secret: 'private' }),
+    });
+    const config = await (await GET()).json();
+    expect(config).toMatchObject({ density: 'low', mobileDensity: 'low', showAdsOnMobile: false, exclusions: { admin: true, checkout: false } });
+    expect(config.placements.home_after_hero).toEqual({ enabled: true, slot: '1234567890' });
+    expect(JSON.stringify(config)).not.toContain('private');
+    settings.read.mockResolvedValue({ placements: '{bad', exclusions: 'null', density: 'invalid' });
+    const safe = await (await GET()).json();
+    expect(safe.placements.home_after_hero.enabled).toBe(false);
+    expect(safe.exclusions.admin).toBe(true);
+    expect(safe.density).toBe('balanced');
+  });
 });
