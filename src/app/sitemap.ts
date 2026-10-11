@@ -15,6 +15,11 @@ const STATIC_ROUTES: { path: string; priority: number; changeFrequency: ChangeFr
   { path: '/contact', priority: 0.6, changeFrequency: 'monthly' },
   { path: '/faqs', priority: 0.5, changeFrequency: 'monthly' },
   { path: '/disclaimer', priority: 0.5, changeFrequency: 'monthly' },
+  // How the guides are researched, sourced, edited and corrected. It is linked from
+  // the footer and the HTML sitemap but was missing here, so the one page that
+  // explains who is responsible for the educational content was the one page a
+  // crawler could not reach from the sitemap.
+  { path: '/editorial-policy', priority: 0.5, changeFrequency: 'monthly' },
   { path: '/sitemap', priority: 0.5, changeFrequency: 'weekly' },
   { path: '/shipping', priority: 0.4, changeFrequency: 'yearly' },
   { path: '/returns', priority: 0.4, changeFrequency: 'yearly' },
