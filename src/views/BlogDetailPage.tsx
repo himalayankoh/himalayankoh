@@ -14,13 +14,21 @@ interface BlogDetailPageProps {
    * loading spinner they would otherwise get from a client-only fetch.
    */
   initialPost?: BlogPostWithAuthor | null;
+  /**
+   * The server could not read the store for this slug. Distinct from "no such
+   * post": the URL may well be a real article that one failed read could not
+   * reach, so the page says so and keeps trying instead of claiming the article
+   * does not exist.
+   */
+  unavailable?: boolean;
 }
 
-export default function BlogDetailPage({ initialPost = null }: BlogDetailPageProps) {
+export default function BlogDetailPage({ initialPost = null, unavailable = false }: BlogDetailPageProps) {
   const { slug } = useParams();
   const [post, setPost] = useState<BlogPostWithAuthor | null>(initialPost);
   const [relatedPosts, setRelatedPosts] = useState<BlogPostWithAuthor[]>([]);
   const [loading, setLoading] = useState(!initialPost);
+  const [readFailed, setReadFailed] = useState(unavailable);
 
   useEffect(() => {
     const fetchPost = async () => {
@@ -44,6 +52,7 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
         }
       } catch (err) {
         console.error('Failed to fetch blog post:', err);
+        setReadFailed(true);
       } finally {
         setLoading(false);
       }
@@ -67,11 +76,28 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
       <div className="min-h-screen bg-warm-white py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
           <div className="bg-white rounded-2xl shadow-md p-12">
-            <h1 className="font-serif text-3xl font-bold text-charcoal mb-3">Article Not Found</h1>
-            <p className="text-charcoal-light mb-6">This blog post is unavailable.</p>
-            <Link to="/blog" className="inline-flex items-center justify-center px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors">
-              Back to Blog
-            </Link>
+            <h1 className="font-serif text-3xl font-bold text-charcoal mb-3">
+              {readFailed ? 'This guide could not be loaded' : 'Article Not Found'}
+            </h1>
+            <p className="text-charcoal-light mb-6">
+              {readFailed
+                ? 'The guides could not be reached just now. The link itself may still be good, so please reload the page in a moment.'
+                : 'This blog post is unavailable.'}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {readFailed && (
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="inline-flex items-center justify-center px-6 py-3 border border-himalayan-line text-charcoal font-semibold rounded-xl hover:bg-cream transition-colors"
+                >
+                  Reload
+                </button>
+              )}
+              <Link to="/blog" className="inline-flex items-center justify-center px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors">
+                Back to Blog
+              </Link>
+            </div>
           </div>
         </div>
       </div>

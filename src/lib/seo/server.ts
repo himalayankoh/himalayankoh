@@ -131,20 +131,47 @@ export async function fetchSeoBlogPost(slug: string): Promise<SeoBlogPost | null
 export type SeoBlogPostFull = BlogPostWithAuthor;
 
 /**
- * Full published post including body content and author, for server rendering
- * the article into the initial HTML. Returns null when unpublished or missing.
+ * What the article route needs to know about one slug: three answers, not two.
+ *
+ *  - `found` — the store answered and the post is published. Render it.
+ *  - `missing` — the store answered that it has no such published post. That is a
+ *    fact about the URL, so the route answers 404.
+ *  - `unavailable` — the read itself failed (timeout, HTTP error, HTML fatal).
+ *    Nothing is known about the URL. Answering 404 here would deindex a real
+ *    article because the origin was slow for one request, and answering with a
+ *    blank 200 (what this route used to do for both cases) leaves a thin page
+ *    where an article should be.
+ *
+ * The distinction is already in the read: `getPostBySlug` resolves to `null` only
+ * when WordPress answered with an empty list, and throws when the request could
+ * not be made. Collapsing the two into one nullable value is what hid the
+ * difference, so this function returns the three states instead.
+ */
+export type SeoBlogPostLookup =
+  | { state: 'found'; post: SeoBlogPostFull }
+  | { state: 'missing' }
+  | { state: 'unavailable' };
+
+/**
+ * Full published post including body content and author, for server rendering the
+ * article into the initial HTML, or the reason there is none.
  *
  * Read from WordPress, which owns the blog — see `lib/blog/wordpressBlog.ts`.
  */
-export async function fetchSeoBlogPostFull(slug: string): Promise<SeoBlogPostFull | null> {
+export async function lookupSeoBlogPostFull(slug: string): Promise<SeoBlogPostLookup> {
   const normalized = slug?.trim();
-  if (!normalized) return null;
+  if (!normalized) return { state: 'missing' };
 
-  return safeSeoRead(
-    `blog article ${normalized}`,
-    async () => wordpressBlog.getPostBySlug(normalized),
-    null
-  );
+  try {
+    const post = await wordpressBlog.getPostBySlug(normalized);
+    return post ? { state: 'found', post } : { state: 'missing' };
+  } catch (error) {
+    // Logged, not swallowed: this is the case an operator needs to see in the
+    // Worker logs, because it is the only one that means "the store is in
+    // trouble" rather than "that URL does not exist".
+    console.error(`Blog article read failed for "${normalized}"; rendering a retryable state.`, error);
+    return { state: 'unavailable' };
+  }
 }
 
 /**
