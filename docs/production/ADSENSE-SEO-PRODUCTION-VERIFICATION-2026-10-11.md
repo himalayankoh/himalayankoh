@@ -88,8 +88,10 @@ gate, and the sitemap's trust page.
 
 ## 5. Technical SEO
 
-- **Legacy redirects:** 25 product URLs verified 200 in one hop (12 re-verified on the final
-  build); 9 page-level legacy URLs 200 in ≤2 hops; none land on a 404.
+- **Legacy redirects:** the 25 legacy URLs swept on `f1660be` all answered 200 (every one of
+them product-pattern, in a single hop). The final build `78613ae` was swept again over 21
+URLs — 11 product-pattern (one hop) and 10 page-level (≤2 hops) — and all 21 answered 200.
+No swept legacy URL lands on a 404.
   `/why-do-dairy-cows-need-trace-minerals/` → `/products?category=live-stock`,
   `/services/fresh-dairy-products/` → the same live shelf, `/himalayan-pink-vs-white-salt/` →
   the real article.
@@ -166,8 +168,8 @@ the catalog backup remain available; no DNS or routing change was made.
   unsupported health claims in the app's copy, no demo content in navigation or sitemaps,
   thin/empty destinations removed, consent working and ads off, editorial responsibility
   documented. What remains is original content depth and the owner decisions above.
-- **Production health: PASS.** 18 key routes 200, 34 legacy URLs resolving, sitemaps and
-  robots correct, Stripe/Shippo/cart/checkout intact, 2128 tests green, no ad or analytics
-  script loading without consent.
+- **Production health: PASS.** 18 key routes 200, every legacy URL swept in both passes
+  resolving 200, sitemaps and robots correct, Stripe/Shippo/cart/checkout intact, 2128 tests
+  green, no ad or analytics script loading without consent.
 
 Google AdSense approval is not claimed and cannot be established from the site itself.
