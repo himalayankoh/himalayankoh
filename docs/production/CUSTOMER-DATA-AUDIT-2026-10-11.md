@@ -323,7 +323,8 @@ existing images show 6 lb packaging.
 | Phase 9 relevance | **PASS for the claims** — 5 unsupported claims removed from the two public legacy theme pages; demo filler on pages 35/688 still published, and restricting the WP origin is recommended |
 | Phase 10 3 lb product | **PASS** — still draft |
 | Phase 12 guides / AdSense | **not published, not claimed** — unchanged from the approval package |
-| Phase 13 tests | **PASS** — typecheck ✔, lint ✔ (0 errors, pre-existing warnings), vitest **2,202 passed / 19 skipped / 0 failed**, production build ✔ with the build's own origin and secret scans clean. The live buyer-filter and role results above came from a temporary live test (real modules, real store) that was **not** committed, so the suite stays offline |
+| Phase 13 tests | **PASS** — typecheck ✔, lint ✔ (0 errors, pre-existing warnings), vitest **2,202 passed / 19 skipped / 0 failed**, `npm run build` ✔ (exit 0, with the build's own origin + secret scans clean), production build ✔. The live buyer-filter and role results above came from a temporary live test (real modules, real store) that was **not** committed, so the suite stays offline |
+| Phase 13 integration suites | **PARTIAL — 6 failures, all staging-only and unrelated to this work.** `npm run test:integration` (exit 1): the write suites **skipped themselves**, as designed — they refuse to run unless the base URL matches `/himalayankoh\.com\/staging/`, and `.env.local` points at production (`wp.himalayankoh.com`), so no test product was created. The 6 failures are all in `src/lib/backend/wordpress.integration.test.ts`, which asserts the **staging** catalog's contents: `expected 5 to be 7` (pink-salt slice) and `expected 5 to be 11` (whole catalog), plus staging slugs/media and a Store-API fatal that the production install does not have. None of this work's modules are in that suite's import graph — `products.ts`, `serverCatalog.ts`, `woocommerce.ts`, `wordpress.ts`, `config.ts` — confirmed by search; `customers.ts`/`customerActivity.ts`/`signupGuard.ts` are imported only by the admin routes, `dashboardAnalytics.ts` and their own tests. The suite is written for the staging origin and needs staging credentials to be meaningful |
 | Phase 14 deployment | see the commit/push/deploy record below |
 
 **LIMITATIONS, stated plainly**
@@ -349,4 +350,9 @@ existing images show 6 lb packaging.
    Cloudflare Workers it is per-isolate and porous under scale. It is not presented
    as bot protection on its own.
 6. No native-device mobile QA for these changes; the affected surfaces are the
-   console table and two content pages.
+   console table and two content pages. The console's own layout guard
+   (`adminCustomersToolbar.test.ts`) is a source assertion, not a browser run.
+7. The staging integration suites could not be run meaningfully from here: the
+   write suites skip (production origin, by their own guard, so nothing was
+   written) and the read-only one fails on staging catalog counts. Reported above
+   rather than presented as a pass.
