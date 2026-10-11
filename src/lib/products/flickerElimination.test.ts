@@ -13,8 +13,9 @@ describe('Product and Shop Page Flicker Prevention Audits', () => {
     expect(content).not.toContain('initial={{ opacity: 0 }}');
     // Must filter empty or whitespace strings
     expect(content).toContain('validImages');
-    // AnimatePresence must disable initial animation on mount
-    expect(content).toContain('initial={false}');
+    // Photo navigation must not unmount the image behind a fade-to-zero exit.
+    expect(content).not.toContain('AnimatePresence');
+    expect(content).not.toContain('exit={{ opacity: 0 }}');
   });
 
   it('ProductDetailView does not use Framer Motion layout prop on page container', () => {

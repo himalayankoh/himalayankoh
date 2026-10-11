@@ -33,7 +33,8 @@ export default function ProductDetailView({
   onClose,
 }: ProductDetailViewProps) {
   const location = useLocation();
-  const requestedVariation = product.selectedVariationId ?? Number(new URLSearchParams(location.search).get('variation'));
+  const queryVariation = new URLSearchParams(location.search).get('variation');
+  const requestedVariation = queryVariation ? Number(queryVariation) : product.selectedVariationId;
   const dialogRef = useDialogFocus(variant === 'modal', () => onClose?.());
   const [qty, setQty] = useState(1);
   // The store's real variations when the product is variable, `grainSizes`
@@ -48,7 +49,10 @@ export default function ProductDetailView({
   const grainChoices = hasVariations
     ? variationOptions.map((option) => option.label)
     : product.grainSizes ?? [];
-  const [selectedGrain, setSelectedGrain] = useState('');
+  const [selectedGrain, setSelectedGrain] = useState(() =>
+    product.variations?.options.find(option => option.id === requestedVariation)?.label ??
+    (hasVariations ? '' : product.grainSizes?.[0] ?? '')
+  );
   const [addedToCart, setAddedToCart] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
@@ -160,7 +164,7 @@ export default function ProductDetailView({
           // matches what the store is about to price. WooCommerce still prices
           // the cart line itself; this is only what is shown while it answers.
           price: (option?.price ?? product.priceMin) as number,
-          image: product.image,
+          image: option?.image || product.image,
           grainSize: selectedGrain || undefined,
           // Woo derives its own taxonomy values from this genuine child ID.
         },
@@ -443,6 +447,15 @@ export default function ProductDetailView({
             <summary className="min-h-11 py-3 cursor-pointer text-sm font-semibold">Product description</summary>
             <p className="pb-4 text-charcoal-light text-sm leading-relaxed">{product.description}</p>
           </details>}
+          <details className="border-t border-himalayan-line">
+            <summary className="min-h-11 py-3 cursor-pointer text-sm font-semibold">Product specifications</summary>
+            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 pb-4 text-sm">
+              {eyebrowCategory && <><dt className="text-charcoal-light">Category</dt><dd>{eyebrowCategory}</dd></>}
+              {(selectedOption?.sku || (!hasVariations && product.sku)) && <><dt className="text-charcoal-light">SKU</dt><dd className="break-words">{selectedOption?.sku || product.sku}</dd></>}
+              {selectedOption && <><dt className="text-charcoal-light">{product.variations?.attributeLabel}</dt><dd>{selectedOption.label}</dd></>}
+              {needsOption && <><dt className="text-charcoal-light">Option</dt><dd>Select an option above for its specifications.</dd></>}
+            </dl>
+          </details>
         </div>
       </div>
     </div>

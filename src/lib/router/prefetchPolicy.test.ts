@@ -17,8 +17,10 @@ describe('shouldPrefetchOnViewport', () => {
     expect(shouldPrefetchOnViewport('/products?featured=true')).toBe(false);
   });
 
-  it('allows the plain catalogue listing, the one shared edge-cached page', () => {
-    expect(shouldPrefetchOnViewport('/products')).toBe(true);
+  it('refuses speculative listing and homepage reads, including cold-cache misses', () => {
+    expect(shouldPrefetchOnViewport('/products')).toBe(false);
+    expect(shouldPrefetchOnViewport('/')).toBe(false);
+    expect(shouldPrefetchOnViewport('/?utm_source=shop')).toBe(false);
   });
 
   it('allows a tracker that merely starts with the catalogue word', () => {
@@ -32,7 +34,7 @@ describe('shouldPrefetchOnViewport', () => {
   });
 
   it('allows static marketing pages, so a footer click still feels instant', () => {
-    for (const path of ['/', '/about', '/faqs', '/privacy', '/quality', '/shipping', '/blog']) {
+    for (const path of ['/about', '/faqs', '/privacy', '/quality', '/shipping', '/blog']) {
       expect(shouldPrefetchOnViewport(path)).toBe(true);
     }
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { largestShiftSession } from './labMetrics';
+import { interactionLatency, largestShiftSession } from './labMetrics';
 describe('CLS measurement', () => {
   it('ignores shifts caused by a recent interaction', () => {
     expect(largestShiftSession([{ startTime: 0, value: 0.5, hadRecentInput: true }])).toBe(0);
@@ -9,5 +9,15 @@ describe('CLS measurement', () => {
   });
   it('limits a continuous session to five seconds', () => {
     expect(largestShiftSession(Array.from({ length: 10 }, (_, i) => ({ startTime: i * 900, value: 0.01 })))).toBeCloseTo(0.06);
+  });
+});
+
+describe('provisional interaction latency', () => {
+  it('does not invent a zero INP for a page without recorded interactions', () => {
+    expect(interactionLatency([], 0)).toBeNull();
+  });
+  it('reports the worst short visit and excludes one outlier per fifty interactions', () => {
+    expect(interactionLatency([32, 160, 48], 3)).toBe(160);
+    expect(interactionLatency([32, 160, 48], 50)).toBe(48);
   });
 });

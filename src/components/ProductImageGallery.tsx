@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { galleryImages } from '../lib/images/galleryImages';
-import { motion, AnimatePresence } from 'framer-motion';
+import { galleryImages, gallerySwipeDirection } from '../lib/images/galleryImages';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   GALLERY_IMAGE_SIZES,
@@ -26,11 +25,16 @@ export default function ProductImageGallery({
 }: ProductImageGalleryProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [failedImages, setFailedImages] = useState<string[]>([]);
+  const [heroLoaded, setHeroLoaded] = useState(false);
   const gesture = useRef<{ x: number; y: number } | null>(null);
   const imageKey = JSON.stringify({ images, srcsets });
   useEffect(() => {
     setCurrentIndex(0);
     setFailedImages([]);
+    setHeroLoaded(false);
+  }, [imageKey]);
+  useEffect(() => {
+    if (!heroLoaded) return;
     let active = true;
     const source = JSON.parse(imageKey) as { images: string[]; srcsets?: ResponsiveImageSources };
     // Check small, store-published candidates first. This validates hidden slides
@@ -50,7 +54,7 @@ export default function ProductImageGallery({
       return probe;
     });
     return () => { active = false; probes.forEach(probe => { probe.onerror = null; }); };
-  }, [imageKey]);
+  }, [imageKey, heroLoaded]);
 
   // Filter out empty or whitespace-only strings
   const validImages = galleryImages(images, failedImages);
@@ -81,17 +85,30 @@ export default function ProductImageGallery({
 
   return (
     <div className={`relative w-full aspect-[4/3] sm:aspect-square bg-warm-white overflow-hidden ${rounded}`}
+      role="group" aria-label="Product images" tabIndex={0}
       style={{ touchAction: 'pan-y' }}
-      onPointerDown={e => { if (e.pointerType === 'touch') gesture.current = { x: e.clientX, y: e.clientY }; }}
+      onKeyDown={e => {
+        if (e.target !== e.currentTarget || validImages.length < 2) return;
+        if (e.key === 'ArrowRight') { e.preventDefault(); goToNext(); }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); goToPrevious(); }
+      }}
+      onPointerDown={e => {
+        // Capture photo drags, not arrow/indicator taps. Capturing a button's
+        // pointer would redirect its click to the group on touch devices.
+        if (e.button === 0 && !(e.target as HTMLElement).closest('button')) {
+          gesture.current = { x: e.clientX, y: e.clientY };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }
+      }}
       onPointerCancel={() => { gesture.current = null; }}
       onPointerUp={e => {
         const start = gesture.current; gesture.current = null;
         if (!start) return;
-        const dx = e.clientX - start.x; const dy = e.clientY - start.y;
-        if (Math.abs(dx) >= 45 && Math.abs(dx) > Math.abs(dy) * 1.3) { if (dx < 0) goToNext(); else goToPrevious(); }
+        const direction = gallerySwipeDirection(start, { x: e.clientX, y: e.clientY });
+        if (direction === 1) goToNext();
+        if (direction === -1) goToPrevious();
       }}>
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.img
+        <img
           key={currentImage}
           src={heroImage.src}
           srcSet={heroImage.srcSet}
@@ -104,10 +121,7 @@ export default function ProductImageGallery({
           decoding="async"
           draggable={false}
           className="w-full h-full object-contain p-2 sm:p-4"
-          initial={false}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.12 }}
+          onLoad={() => setHeroLoaded(true)}
           onError={(e) => {
             const image = e.currentTarget;
             // Same self-healing rule as the card: a candidate that 404s falls
@@ -120,7 +134,6 @@ export default function ProductImageGallery({
             setFailedImages(failed => [...failed, currentImage]);
           }}
         />
-      </AnimatePresence>
 
       {/* Navigation arrows - only show if multiple images */}
       {validImages.length > 1 && (

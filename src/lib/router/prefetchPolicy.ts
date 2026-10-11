@@ -49,20 +49,11 @@ const PRIVATE_PREFIXES = ['/admin', '/account', '/cart', '/checkout', '/order-co
 /**
  * The catalogue's own prefix.
  *
- * `/products` with no query is a single edge-cached listing and stays prefetchable,
- * because it is the destination of the main "Shop all" call to action. Everything
- * below it, and every filtered form of it, is a distinct server render.
+ * Even the plain listing and homepage can miss their brief commerce cache.
+ * Fetch them on navigation, rather than queueing speculative Woo reads behind
+ * a product's photos and the customer's cart.
  */
 const CATALOG_PREFIX = '/products';
-
-/**
- * Query parameters that make a catalogue URL its own uncached render.
- *
- * `?category=` is the shelf the sitemap and the category pills point at, `search`
- * and `sort` are free text, and `page` walks the listing. Each is a different key
- * in the edge cache, so the first visitor to reach one pays the full origin read.
- */
-const CATALOG_QUERY_KEYS = ['category', 'search', 'sort', 's', 'page', 'featured', 'min', 'max'];
 
 /** True when the destination leaves this site, or is not a route at all. */
 function isExternalOrAnchor(destination: string): boolean {
@@ -96,11 +87,7 @@ export function shouldPrefetchOnViewport(destination: string): boolean {
     return false;
   }
 
-  if (path === CATALOG_PREFIX) {
-    // The plain listing is one shared, edge-cached page; a filtered one is not.
-    const query = destination.includes('?') ? destination.slice(destination.indexOf('?') + 1) : '';
-    return !CATALOG_QUERY_KEYS.some((key) => new RegExp(`(^|&)${key}=`).test(query));
-  }
+  if (path === '/' || path === CATALOG_PREFIX) return false;
 
   // A product page under `/products/<slug>`: its own render, its own edge entry,
   // and a WooCommerce read behind it.

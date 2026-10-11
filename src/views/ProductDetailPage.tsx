@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import ProductDetailView from '../components/ProductDetailView';
 import ProductCard from '../components/ProductCard';
 import type { Product } from '../data/products';
-import { lookupCatalogProduct } from '../lib/backend/catalogClient';
+import { getCatalogProducts, lookupCatalogProduct } from '../lib/backend/catalogClient';
+import { relatedProducts } from '../features/catalog/relatedProducts';
 import ProductDetailSections from '../components/product/ProductDetailSections';
 
 interface ProductDetailPageProps {
@@ -25,6 +26,26 @@ export default function ProductDetailPage({
   const [product, setProduct] = useState<Product | null>(initialProduct);
   const [related, setRelated] = useState<Product[]>(initialRelated);
   const [loading, setLoading] = useState(!initialProduct);
+  const relatedTarget = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!product || related.length || !relatedTarget.current) return;
+    let cancelled = false;
+    const load = () => {
+      observer?.disconnect();
+      // The shared, public read runs only near this below-the-fold section.
+      // It neither delays the main photo nor repeats the product lookup.
+      void getCatalogProducts().then(result => {
+        if (!cancelled) setRelated(relatedProducts(product, result.products));
+      }).catch(() => { /* A related-read failure must not hide the buyable product. */ });
+    };
+    const observer = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) load();
+    }, { rootMargin: '200px' });
+    if (observer) observer.observe(relatedTarget.current);
+    else load();
+    return () => { cancelled = true; observer?.disconnect(); };
+  }, [product, related.length]);
 
   useEffect(() => {
     if (!routeSlug) {
@@ -121,6 +142,7 @@ export default function ProductDetailPage({
 
         <ProductDetailSections product={product} />
 
+        <div ref={relatedTarget}>
         {related.length > 0 && (
           <section className="mt-8">
             <h2 className="font-serif text-xl font-bold text-charcoal mb-4">Related Products</h2>
@@ -131,6 +153,7 @@ export default function ProductDetailPage({
             </div>
           </section>
         )}
+        </div>
       </div>
     </div>
   );

@@ -101,7 +101,10 @@ const PRODUCT_FAQs = faqJsonLd([
  * carries the shop's 404 page instead, and `generateMetadata` above emits no
  * canonical for it.
  */
-export default async function Page({ params }: { params: Promise<Params> }) {
+export default async function Page({ params, searchParams }: {
+  params: Promise<Params>;
+  searchParams?: Promise<{ variation?: string }>;
+}) {
   const { slug } = await params;
   const lookup = await lookupCatalogProduct(slug, seoFetchDeadline()).catch(() => null);
   const product = lookup?.product ?? null;
@@ -118,6 +121,8 @@ export default async function Page({ params }: { params: Promise<Params> }) {
   // answer 500 on the preview Worker). Until it works, the 404 is the honest
   // response: the product is not served, and the URL is not advertised.
   if (!product) notFound();
+  const requestedId = Number((await searchParams)?.variation);
+  const selectedVariationId = product.variations?.options.find(option => option.id === requestedId)?.id;
 
   return (
     <>
@@ -135,8 +140,8 @@ export default async function Page({ params }: { params: Promise<Params> }) {
       {/* key remounts the view when navigating product-to-product, so the
           seeded server data is picked up instead of the previous product's. */}
       <ProductDetailClient
-        key={product.slug}
-        initialProduct={product}
+        key={`${product.slug}:${selectedVariationId ?? 'parent'}`}
+        initialProduct={selectedVariationId ? { ...product, selectedVariationId } : product}
         initialRelated={related}
       />
     </>
