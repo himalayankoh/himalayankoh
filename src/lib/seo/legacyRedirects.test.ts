@@ -227,6 +227,17 @@ describe('legacy redirect map', () => {
     expect(missing).toEqual([]);
   });
 
+  it('sends the legacy pink-vs-white page to the slug WordPress actually publishes', () => {
+    // The rule named `/blog/himalayan-pink-vs-white-salt-farmers`, which matches no
+    // post: the URL answered a 200 shell with no article and no robots meta, so an
+    // indexed legacy URL ended in a thin soft-404 one hop after redirecting away
+    // from a real page. Verified against the store's own post list.
+    const rule = LEGACY_REDIRECTS.find((entry) => entry.source === '/himalayan-pink-vs-white-salt');
+
+    expect(rule?.destination).toBe('/blog/himalayan-pink-vs-white-salt');
+    expect(rule?.permanent).toBe(true);
+  });
+
   it('never shadows a product the catalogue still sells', () => {
     // A redirect source naming a live slug would replace the product page with a
     // redirect — the same class of mistake as `/checkout` being listed as a legacy

@@ -178,9 +178,18 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   { source: '/testimonials/:slug*', destination: '/about', permanent: true },
 
   // --- Blog -----------------------------------------------------------------
+  // The legacy page is the same article WordPress still publishes as post 233,
+  // whose slug is `himalayan-pink-vs-white-salt` — not the `...-farmers` slug this
+  // rule used to name. That destination matched no post, so the URL resolved to a
+  // 200 page with no article in it and no robots meta: a thin soft-404 sitting at
+  // the end of a redirect from an indexed legacy URL. The slug below was read back
+  // from the store (`GET https://wp.himalayankoh.com/wp-json/wp/v2/posts`, 2026-10-11).
+  //
+  // The article is published for a livestock-and-dairy audience, so the storefront
+  // keeps it readable and noindexed rather than 404ing a URL that was once public.
   {
     source: '/himalayan-pink-vs-white-salt',
-    destination: '/blog/himalayan-pink-vs-white-salt-farmers',
+    destination: '/blog/himalayan-pink-vs-white-salt',
     permanent: true,
   },
   { source: '/category/blog-post', destination: '/blog', permanent: true },
