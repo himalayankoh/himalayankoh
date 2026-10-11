@@ -561,7 +561,7 @@
       "sku": "HK-LFH-2lbs",
       "price": "19.95",
       "weight": "2",
-      "stockQuantity": 7,
+      "stockQuantity": 10,
       "stockStatus": "instock",
       "categories": [
         {
@@ -713,7 +713,7 @@
       "sku": "HK-ESF-16oz",
       "price": "9.95",
       "weight": "",
-      "stockQuantity": 4,
+      "stockQuantity": 10,
       "stockStatus": "instock",
       "categories": [
         {
@@ -1181,5 +1181,6 @@
       "destinationMediaId": 2507,
       "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/2cd15cea-b2f9-428d-92b4-09621e17cd24-1.jpg"
     }
-  ]
+  ],
+  "previewStockReadbackAt": "2026-10-11T07:29:44.902Z"
 }

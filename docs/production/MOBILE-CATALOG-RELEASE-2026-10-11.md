@@ -68,4 +68,125 @@ Previous production Worker version: `d8ef3178-5850-4c00-9924-22fdb7b0ed30` (100%
 
 Rollback command, only if needed: `npx wrangler rollback d8ef3178-5850-4c00-9924-22fdb7b0ed30 --name himalayan-koh-ecommerce-prod --config dist/server/wrangler.json`. Catalog before-images are private ignored `.git` backups; any inventory rollback requires checking intervening orders and must not overwrite stock blindly.
 
-Production build, deployment SHA/version and post-release acceptance results will be recorded after their checks finish.
+## Production release and acceptance
+
+Deployed code commit: `d47610c6ac5fd8267c9678b87f6eb7123d6e0bf1`.
+Cloudflare version: `50e3a436-63a3-48d1-864d-12a305f7122f`, 100% traffic.
+The actual apex `/api/version` returned the deployed commit. Cloudflare readback confirmed all existing binding names/types were preserved and both order-paused flags remain `false`. The script's historical wording about the domain still being WordPress is outdated; the actual domain/version readback is authoritative. No DNS or domain-binding change was made.
+
+| Acceptance check | Result | Evidence/limits |
+|---|---|---|
+| PRODUCT VARIATIONS | PASS | Genuine live children; draft/private options excluded; retired price floors excluded |
+| 2 LB SALT LICK | PASS | First card and homepage position, ID 1549, $19.95, stock 10 |
+| 6 LB SALT LICK | PASS | Second card and homepage position, ID 1548, $17.95, confirmed 3 kg, stock 10 |
+| 30 LB PRODUCT IMAGE | PASS | Original two-photo gallery, genuine product 2520 |
+| 18 LB PRODUCT IMAGE | PASS | Nine originals accessible; product 291 intentionally drafted by owner |
+| PRODUCT GALLERIES | PASS | All 27 selectable slides across seven live card URLs loaded original product photos; no placeholder/overflow failures |
+| MOBILE PRODUCT CARDS | PASS | Seven image-bearing cards, appropriate one/two-column layout, six viewport sizes |
+| PRODUCT DETAIL UX | PASS for verified controls | Variant selection, price, stock, images, quantity, description and policy links; touch gesture coverage remains unverified |
+| COMPACT FOOTER | PASS | 390 px closed footer reduced from 1069.75 px to 493 px; support accordion retains contact details |
+| COOKIE CONSENT | PASS | 126 px banner; floating controls suppressed; decline/reload persistence; explicit accept loads Analytics; withdrawal removes script |
+| MOBILE NAVIGATION | PASS | Menu opens/closes with Escape at each mobile/tablet size, restored focus; category links and catalog search work |
+| ADD TO CART | PASS | Live 1549/1548 lines priced $19.95/$17.95; subtotal $37.90; checkout shows the same sizes; all QA items removed |
+| PERFORMANCE | FAIL against the universal 2.5 s LCP target | Warm shop reaches target; homepage/detail and cold origin misses remain above it. Actual measurements below |
+| MOBILE BROWSER QA | FAIL for complete coverage | Six real Chromium viewport interaction checks pass, including Android UA emulation; native Android/iOS and injected touch swipe coverage are not verified |
+| TYPECHECK | PASS | `npm run typecheck` and build checks |
+| LINT | PASS | Existing image-element warnings, no lint errors |
+| TESTS | PASS | 193 passed suites / 2,083 passed tests; 5 suites / 19 tests skipped |
+| BUILD | PASS | Next production build and guarded Cloudflare build; origin/secret scans passed |
+| DEPLOYED SHA | VERIFIED | `d47610c6ac5fd8267c9678b87f6eb7123d6e0bf1` |
+| PRODUCTION VERIFICATION | PASS for tested commerce/UI | Domain/version, 14 public routes, all galleries, responsive controls, cart and checkout navigation |
+| STRIPE AND ORDERS | PRESERVED / VERIFIED WITHOUT PAYMENT | Live Stripe configuration and webhook presence unchanged; no payment submitted or existing order altered |
+| ROLLBACK READY | YES | Previous Worker version retained; no rollback needed for the verified release |
+
+No claim of complete mobile/performance acceptance is made while the listed coverage and performance limits remain.
+
+### Measured browser performance
+
+Chromium at 390×844, DPR 1, Android Chrome user-agent emulation. Throttled measurements used 150 ms configured network latency, 204,800 B/s download, 96,000 B/s upload, 4× CPU slowdown and disabled browser cache. Edge-cache state is distinguished from browser cache. These are single lab observations, not field percentiles or Lighthouse scores.
+
+| Page / condition | LCP | CLS | TTFB |
+|---|---:|---:|---:|
+| Shop, first load, unthrottled | 6.492 s | 0 | 5.906 s |
+| Shop, repeat, unthrottled | 0.240 s | 0 | 0.041 s |
+| Shop, edge warm, throttled | 2.264 s | 0.0040 | 0.054 s |
+| Homepage, edge cold, throttled | 8.804 s | 0.0200 | 5.822 s |
+| Homepage, edge warm, throttled | 3.184 s | 0.0200 | 0.032 s |
+| 6 lb detail, first measured load, throttled | 5.228 s | 0.0017 | 2.048 s |
+| 6 lb detail, edge warm, throttled | 3.628 s | 0.0017 | 0.084 s |
+
+Cold responses are dominated by WooCommerce/origin latency. The existing 60-second commerce freshness boundary was preserved rather than extending price/inventory staleness to improve a score. During the wider navigation run, one browser cart read hit the existing 12-second WooCommerce timeout; reload recovered, and three subsequent anonymous cart API reads returned 200 in 1136/750/823 ms. This isolated error is recorded rather than described as an error-free run. The final browser QA cart was empty, and no new errors occurred on the recovery reload.
+
+Unauthenticated admin catalog/order APIs returned 401, with `no-store, must-revalidate`. Version, Stripe configuration and cart APIs also retain `no-store, must-revalidate`. All existing Worker bindings were preserved. No paid transactions were attempted.
+
+### Screenshots and QA artifacts
+
+Screenshots are saved outside the repository under `C:\Users\basco\Downloads\hk`: `mobile-shop-before.png`, `mobile-footer-before.png`, `mobile-live-360.png`, `mobile-live-390.png`, `mobile-live-375.png`, `mobile-live-430.png`, `mobile-live-768.png`, `mobile-live-1440.png`, `mobile-live-footer.png`, `mobile-production-cart.png` and `mobile-consent-after.png`. Private/raw QA logs remain ignored under `.git` and contain no committed credentials.
+
+Remaining: owner-confirmed 3 lb package photo; missing source packed weight for the 16 oz jar; native device/swipe verification; further homepage/detail and cold-origin performance work. These cannot be represented as passed by a successful build.
+
+## Workflow report
+
+PROJECT: Himalayan Koh storefront
+
+REPOSITORY: https://github.com/himalayankoh/himalayankoh.git
+
+LOCAL PATH: C:\Users\basco\Downloads\hk\himalayan-koh
+
+BRANCH: integration/cloudflare-workers-migration
+
+CHANGES: Preview/live catalog alignment, guarded stocking/retirement, original media mapping, native variation cart IDs, mobile cards/detail/footer/consent/navigation and optional measured diagnostics.
+
+TESTS: Typecheck/lint and 2,083 tests passed; browser gallery/cart/viewport/category/consent checks as above.
+
+BUILD: Next and Cloudflare production builds passed, including origin and credential-value scans.
+
+COMMIT: Runtime d47610c6ac5fd8267c9678b87f6eb7123d6e0bf1; subsequent documentation-only commit records these post-deployment results.
+
+PUSH STATUS: Runtime branch pushed to active origin; acceptance documentation is pushed on the same branch.
+
+DEPLOYMENT: Apex reports verified runtime SHA; Cloudflare version 50e3a436-63a3-48d1-864d-12a305f7122f at 100%.
+
+BLOCKERS: Missing/ambiguous source asset and packed-weight evidence; unavailable native swipe/device coverage; LCP/origin limits described above.
+
+NEXT ACTION: Confirm missing product evidence and complete native-device and remaining performance acceptance checks. Keep the established 60-second freshness boundary and payment/order protection.
+
+## Files changed in the runtime release
+
+- `docs/production/CATALOG-MEDIA-EVIDENCE-2026-10-10.json`
+- `docs/production/MOBILE-CATALOG-RELEASE-2026-10-11.md`
+- `scripts/apply-owner-catalog-selection.mjs`
+- `scripts/set-active-catalog-stock.mjs`
+- `scripts/sync-preview-catalog.mjs`
+- `src/app/globals.css`
+- `src/components/AIChatWidget.tsx`
+- `src/components/Footer.tsx`
+- `src/components/Layout.tsx`
+- `src/components/ProductCard.tsx`
+- `src/components/ProductDetailView.tsx`
+- `src/components/ProductImageGallery.tsx`
+- `src/components/ScrollToTop.tsx`
+- `src/components/StorefrontTraffic.tsx`
+- `src/components/category/CategoryFilterNav.tsx`
+- `src/data/products.ts`
+- `src/features/catalog/homeFeatured.ts`
+- `src/features/catalog/listingCards.test.ts`
+- `src/features/catalog/listingCards.ts`
+- `src/lib/backend/catalogVariations.test.ts`
+- `src/lib/backend/woocommerce.ts`
+- `src/lib/catalog/catalogPolicyRegression.test.ts`
+- `src/lib/catalog/niche.test.ts`
+- `src/lib/catalog/niche.ts`
+- `src/lib/consent.ts`
+- `src/lib/images/galleryImages.ts`
+- `src/lib/images/responsiveImage.ts`
+- `src/lib/images/wordpressMediaUrl.test.ts`
+- `src/lib/images/wordpressMediaUrl.ts`
+- `src/lib/performance/labMetrics.test.ts`
+- `src/lib/performance/labMetrics.ts`
+- `src/lib/seo/adsenseSafety.test.ts`
+- `src/lib/woo/productPayload.ts`
+- `src/lib/woo/variationOptions.test.ts`
+- `src/lib/woo/variationOptions.ts`
+- `src/views/HomePage.tsx`
+- `src/views/ProductsPage.tsx`
