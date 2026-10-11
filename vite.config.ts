@@ -2,9 +2,11 @@ import { defineConfig } from "vite";
 import vinext from "vinext";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { cdnAdapter } from "@vinext/cloudflare/cache/cdn-adapter";
+import { preserveCdnStageRedirects } from "./src/lib/cloudflare/cdnRedirects";
 
 export default defineConfig({
   plugins: [
+    preserveCdnStageRedirects(),
     // Public page caching runs on Cloudflare's own edge cache, and nothing else.
     //
     // Rendered HTML for the catalogue, a shelf, a product and the blog is stored
