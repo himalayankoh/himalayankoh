@@ -44,7 +44,9 @@ const aboutLinks = [
  */
 const productLinks = [
   { label: 'Salt Licks', to: buildProductsCategoryPath('licks-blocks') },
-  { label: 'Live Stock', to: buildProductsCategoryPath('live-stock') },
+  // The shelf's public label, one word — the footer was the last surface still
+  // printing the owner's WooCommerce category spelling (`Live Stock`) as a link.
+  { label: 'Livestock', to: buildProductsCategoryPath('live-stock') },
   { label: 'Edible Pink Salt', to: buildProductsCategoryPath('edible-pink-salt') },
 ];
 
