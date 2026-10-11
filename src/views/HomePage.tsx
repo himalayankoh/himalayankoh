@@ -67,7 +67,13 @@ export default function HomePage({ initialProducts }: HomePageProps = {}) {
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-himalayan-dark mb-2">For your herd.</p>
             <h1 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-bold text-charcoal leading-tight max-w-xl">Rich All Natural Himalayan Pink Salt</h1>
-            <p className="mt-3 text-sm sm:text-base text-charcoal-light leading-relaxed max-w-xl">Ensure your herd is healthy and happy. Shop our convenient premium Himalayan Pink Salt products and enjoy friendly customer service from Himalayan Koh.</p>
+            {/*
+              The first sentence here promised that a herd would be "healthy and
+              happy" — an outcome no salt product can guarantee, and the same claim
+              shape the owner already removed from the testimonial and the header
+              alt text. What remains is what the shop actually offers.
+            */}
+            <p className="mt-3 text-sm sm:text-base text-charcoal-light leading-relaxed max-w-xl">Shop our convenient premium Himalayan Pink Salt products, with friendly customer service from Himalayan Koh.</p>
             <div className="flex flex-wrap gap-3 mt-4">
               <Link to="/products" className="btn-hk-primary">Shop all salt <ArrowRight size={17} className="ml-2" /></Link>
               <Link to="/about" className="btn-hk-ghost">Quality & sourcing</Link>
