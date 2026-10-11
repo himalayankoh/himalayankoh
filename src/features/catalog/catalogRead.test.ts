@@ -154,8 +154,9 @@ describe('the editor\u2019s view of the console\u2019s own fields', () => {
     expect(p?.saleEnabled).toBe(false);
     expect(p?.shippingCost).toBe(8.5);
     expect(p?.freeShipping).toBe(false);
-    expect(p?.deliveryMinDays).toBe(3);
-    expect(p?.deliveryMaxDays).toBe(7);
+    // Even persisted historical ETAs must not become listing promises.
+    expect(p?.deliveryMinDays).toBeNull();
+    expect(p?.deliveryMaxDays).toBeNull();
     expect(p?.shippingNote).toBe('Ships in a wooden crate');
     expect(p?.features).toEqual(['Fine grain', 'Food grade']);
     expect(p?.listingEndsAt).toBe('2026-10-31T00:00:00.000Z');

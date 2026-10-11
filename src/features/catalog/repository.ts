@@ -293,8 +293,10 @@ function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
     lowStockThreshold: typeof r.lowStockThreshold === 'number' ? r.lowStockThreshold : 5,
     shippingCost: asNum(cf.shippingCost) ?? 0,
     freeShipping: asBool(cf.freeShipping) ?? true,
-    deliveryMinDays: asNum(cf.deliveryMinDays) ?? 2,
-    deliveryMaxDays: asNum(cf.deliveryMaxDays) ?? 5,
+    // Delivery windows belong to address-specific carrier quotes, not listings.
+    // Retain the nullable shape for older callers without surfacing legacy ETAs.
+    deliveryMinDays: null,
+    deliveryMaxDays: null,
     shippingNote: asText(cf.shippingNote) ?? undefined,
     usInventory: asBool(cf.usInventory) ?? true,
     supplierSource: asText(cf.supplierSource) ?? 'WooCommerce',

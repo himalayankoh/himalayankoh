@@ -36,6 +36,7 @@ import {
 } from '../features/catalog/types';
 import { buildFeedCsv, buildProductJsonLd, buildProductMeta, productPath } from '../features/catalog/seo';
 import { adminPublicVisibility } from '../features/catalog/visibility';
+import { loadCatalogProgressively } from '../features/catalog/progressiveLoad';
 import {
   COMMERCE_READINESS_LABELS, SOURCE_TYPE_LABELS, INVENTORY_SOURCE_LABELS,
   type CommerceReadiness,
@@ -463,7 +464,10 @@ export function CatalogProductsPage() {
   }, [applyColWidths]);
   // Guard for the store's onFinished callback: skip the reload if we've unmounted.
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   // First-party analytics: views + add-to-cart interest + wishlist saves per product.
   const [stats, setStats] = useState<Record<string, { views: number; views7d: number; views30d: number; interest: number; saved: number }> | null>(null);
   const [statsNote, setStatsNote] = useState<string | null>(null);
@@ -484,31 +488,28 @@ export function CatalogProductsPage() {
     set: 'Set exact price to',
   };
 
+  const catalogLoadGeneration = useRef(0);
   const load = useCallback(async () => {
+    const generation = ++catalogLoadGeneration.current;
+    const current = () => mountedRef.current && generation === catalogLoadGeneration.current;
     setLoading(true);
     setLoadError(null);
     try {
-      const [productResult, categoryResult, offerResult] = await Promise.allSettled([
-        listProducts(true),
-        listCategories(),
-        listOffers(),
-      ]);
-      if (productResult.status === 'rejected') {
-        throw productResult.reason instanceof Error
-          ? productResult.reason
-          : new Error('The product catalog could not be loaded.');
-      }
-      setProducts(productResult.value);
-      // Auxiliary data must not turn a successful product read into a fake
-      // empty catalog. Filters simply remain at their deterministic defaults.
-      setCats(categoryResult.status === 'fulfilled' ? categoryResult.value : []);
-      setOffers(offerResult.status === 'fulfilled' ? offerResult.value : []);
+      const products = await loadCatalogProgressively({
+        products: () => listProducts(true),
+        categories: listCategories,
+        offers: listOffers,
+        onCategories: value => { if (current()) setCats(value ?? []); },
+        onOffers: value => { if (current()) setOffers(value ?? []); },
+      });
+      if (current()) setProducts(products);
     } catch (e) {
+      if (!current()) return;
       const message = e instanceof Error ? e.message : 'The product catalog could not be loaded.';
       setLoadError(message);
       notify(`Could not load catalog: ${message}`, 'error');
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
   }, [notify]);
 
@@ -2463,8 +2464,6 @@ export function CatalogProductEditor() {
           lowStockThreshold: currentProduct.lowStockThreshold,
           shippingCost: currentProduct.shippingCost,
           freeShipping: currentProduct.freeShipping,
-          deliveryMinDays: currentProduct.deliveryMinDays,
-          deliveryMaxDays: currentProduct.deliveryMaxDays,
           shippingNote: currentProduct.shippingNote,
           usInventory: currentProduct.usInventory,
           supplierSource: currentProduct.supplierSource,
@@ -2522,8 +2521,6 @@ export function CatalogProductEditor() {
         if (dirtyFields.has('lowStockThreshold')) patch.lowStockThreshold = currentProduct.lowStockThreshold;
         if (dirtyFields.has('shippingCost')) patch.shippingCost = currentProduct.shippingCost;
         if (dirtyFields.has('freeShipping')) patch.freeShipping = currentProduct.freeShipping;
-        if (dirtyFields.has('deliveryMinDays')) patch.deliveryMinDays = currentProduct.deliveryMinDays;
-        if (dirtyFields.has('deliveryMaxDays')) patch.deliveryMaxDays = currentProduct.deliveryMaxDays;
         if (dirtyFields.has('shippingNote')) patch.shippingNote = currentProduct.shippingNote;
         if (dirtyFields.has('usInventory')) patch.usInventory = currentProduct.usInventory;
         if (dirtyFields.has('supplierSource')) patch.supplierSource = currentProduct.supplierSource;
@@ -3087,10 +3084,6 @@ export function CatalogProductEditor() {
                   <p className="text-sm font-bold text-gray-800 mt-0.5">{p.freeShipping ? 'Free' : p.shippingCost > 0 ? `$${p.shippingCost.toFixed(2)}` : 'Calculated'}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-[11px] font-semibold text-gray-500 uppercase">Delivery</p>
-                  <p className="text-sm font-bold text-gray-800 mt-0.5">{p.deliveryMinDays && p.deliveryMaxDays ? `${p.deliveryMinDays}–${p.deliveryMaxDays}d` : 'Standard'}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-[11px] font-semibold text-gray-500 uppercase">Risk Flags</p>
                   <p className={`text-sm font-bold mt-0.5 ${p.riskFlags?.length ? 'text-amber-600' : 'text-emerald-600'}`}>
                     {p.riskFlags?.length ? `${p.riskFlags.length} flagged` : 'Clean'}
@@ -3559,28 +3552,6 @@ function ShippingTab({ product, set }: { product: CatalogProduct; set: <K extend
             <span className="font-semibold">Free shipping on this product (Customer pays $0)</span>
           </label>
         </div>
-        <div>
-          <label className={L}>Delivery Min Days</label>
-          <input
-            type="number"
-            min="0"
-            value={product.deliveryMinDays ?? ''}
-            onChange={(e) => set('deliveryMinDays', e.target.value ? +e.target.value : null)}
-            className={I}
-            placeholder="e.g. 2"
-          />
-        </div>
-        <div>
-          <label className={L}>Delivery Max Days</label>
-          <input
-            type="number"
-            min="0"
-            value={product.deliveryMaxDays ?? ''}
-            onChange={(e) => set('deliveryMaxDays', e.target.value ? +e.target.value : null)}
-            className={I}
-            placeholder="e.g. 5"
-          />
-        </div>
         <div className="sm:col-span-2">
           <label className={L}>Shipping Note (Truthful)</label>
           <input
@@ -3970,15 +3941,6 @@ function QuickAddForm({ product, cats, onChange, onImagesChange, onAddCategory }
           <div>
             <label className={L}>Shipping cost (USD) <span className="normal-case font-normal text-gray-400">— if not free</span></label>
             <input type="number" min="0" step="0.01" value={product.shippingCost || ''} onChange={(e) => set('shippingCost', +e.target.value)} className={I} placeholder="0.00" />
-          </div>
-          <div className="sm:col-span-2">
-            <label className={L}>Estimated delivery <span className="normal-case font-normal text-gray-400">(optional, business days)</span></label>
-            <div className="flex items-center gap-2">
-              <input type="number" min="0" value={product.deliveryMinDays ?? ''} onChange={(e) => set('deliveryMinDays', e.target.value ? +e.target.value : null)} className={I} placeholder="min" aria-label="Delivery min days" />
-              <span className="text-xs text-gray-400">–</span>
-              <input type="number" min="0" value={product.deliveryMaxDays ?? ''} onChange={(e) => set('deliveryMaxDays', e.target.value ? +e.target.value : null)} className={I} placeholder="max" aria-label="Delivery max days" />
-              <span className="text-xs text-gray-500 whitespace-nowrap">days</span>
-            </div>
           </div>
         </div>
         <div className="sm:col-span-2">

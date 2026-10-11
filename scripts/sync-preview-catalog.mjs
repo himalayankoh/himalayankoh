@@ -9,12 +9,17 @@ const credentials = ['.env.local', '.dev.vars'].map(file => dotenv.parse(fs.read
 async function request(store, path, body, method = 'PUT') {
   const env = credentials[store];
   const response = await fetch(origins[store] + '/wp-json/wc/v3' + path, {
-    method: body ? method : 'GET',
+    method: body || method === 'DELETE' ? method : 'GET',
     headers: { Authorization: 'Basic ' + Buffer.from(`${env.WOOCOMMERCE_CONSUMER_KEY}:${env.WOOCOMMERCE_CONSUMER_SECRET}`).toString('base64'), 'Content-Type': 'application/json' },
     ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(body ? 90000 : 30000),
   });
   if (!response.ok) throw new Error(`Store ${store}, ${path}: HTTP ${response.status}; inspect before retry.`);
   return response.json();
+}
+if (process.argv.includes('--replace-as-is')) {
+  const { replaceWithPreview } = await import('./lib/previewReplacement.mjs');
+  await replaceWithPreview(request, process.argv.includes('--apply'), process.argv.includes('--resume'));
+  process.exit(0);
 }
 const [live, preview, liveUnit, previewUnit, liveCategories] = await Promise.all([
   request(0, '/products?per_page=100'), request(1, '/products?per_page=100'),

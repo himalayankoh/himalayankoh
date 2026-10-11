@@ -294,6 +294,8 @@ export function htmlToText(html: string | undefined | null): string {
     .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
+    .replace(/&ndash;|&#8211;/g, '–')
+    .replace(/&mdash;|&#8212;/g, '—')
     .replace(/&#0?39;|&rsquo;|&#8217;/g, "'")
     .replace(/&quot;|&#34;/g, '"')
     .replace(/&lt;/g, '<')

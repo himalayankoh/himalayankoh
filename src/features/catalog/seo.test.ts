@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { productPath, productUrl } from './seo';
+import { merchantOfferExtras, productPath, productUrl } from './seo';
+
+describe('address-specific delivery estimates', () => {
+  it.each([
+    {},
+    { deliveryMinDays: 2, deliveryMaxDays: 5 },
+    { deliveryMinDays: 3, deliveryMaxDays: null },
+  ])('never advertises a listing delivery window, including historical metadata: %j', (legacy) => {
+    const extras = merchantOfferExtras({ ...legacy, freeShipping: false, shippingCost: 8.5 });
+    expect(extras.shippingDetails).toEqual({
+      '@type': 'OfferShippingDetails',
+      shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'US' },
+      shippingRate: { '@type': 'MonetaryAmount', value: '8.50', currency: 'USD' },
+    });
+    expect(extras.hasMerchantReturnPolicy).toBeDefined();
+  });
+});
 
 describe('catalog product route', () => {
   it('uses /products for admin preview and storefront links', () => {

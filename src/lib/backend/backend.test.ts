@@ -79,6 +79,10 @@ describe('isPurchasable', () => {
 });
 
 describe('htmlToText', () => {
+  it('decodes WooCommerce product-name dashes in cart display text', () => {
+    expect(htmlToText('Salt 2 lbs &#8211; Himalayan Koh')).toBe('Salt 2 lbs – Himalayan Koh');
+    expect(htmlToText('Salt &ndash; jar &mdash; fine')).toBe('Salt – jar — fine');
+  });
   it('strips tags and decodes the entities WordPress emits', () => {
     expect(htmlToText('<p>Salt &amp; Pepper</p>')).toBe('Salt & Pepper');
     expect(htmlToText('<div>a</div>\n<div>b</div>')).toBe('a b');

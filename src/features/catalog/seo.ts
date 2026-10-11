@@ -27,8 +27,9 @@ export function productUrl(p: { id: string; slug?: string | null }): string {
 /** Merchant-listing offer extras (GSC: hasMerchantReturnPolicy +
  * shippingDetails on the Offer). Only real values are emitted: the 30-day
  * return policy Luxedge advertises, a US shipping destination, shippingRate
- * only when free shipping or a cost is recorded, and transitTime only when
- * per-product delivery estimates exist. Shared by worker SSR + client so the
+ * only when free shipping or a cost is recorded. Delivery times are supplied
+ * by Shippo after the buyer supplies an address, never by product metadata.
+ * Shared by worker SSR + client so the
  * crawl HTML and the hydrated DOM carry identical markup. */
 export function merchantOfferExtras(p: {
   freeShipping?: boolean | null;
@@ -54,10 +55,6 @@ export function merchantOfferExtras(p: {
     shippingDetails: {
       '@type': 'OfferShippingDetails',
       shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'US' },
-      deliveryTime: {
-        '@type': 'ShippingDeliveryTime',
-        handlingTime: { '@type': 'QuantitativeValue', minValue: 1, maxValue: 2, unitCode: 'DAY' },
-      },
     },
   };
   const shippingDetails = extras.shippingDetails as Record<string, unknown>;
@@ -68,14 +65,6 @@ export function merchantOfferExtras(p: {
       '@type': 'MonetaryAmount',
       value: Number(p.shippingCost).toFixed(2),
       currency: p.currency || 'USD',
-    };
-  }
-  if (p.deliveryMinDays != null || p.deliveryMaxDays != null) {
-    (shippingDetails.deliveryTime as Record<string, unknown>).transitTime = {
-      '@type': 'QuantitativeValue',
-      minValue: p.deliveryMinDays ?? 1,
-      maxValue: p.deliveryMaxDays ?? p.deliveryMinDays ?? 1,
-      unitCode: 'DAY',
     };
   }
   return extras;
@@ -136,8 +125,6 @@ export function buildProductJsonLd(p: CatalogProduct, reviews?: ReviewFacts): Re
   Object.assign(offer, merchantOfferExtras({
     freeShipping: p.freeShipping,
     shippingCost: p.shippingCost,
-    deliveryMinDays: p.deliveryMinDays,
-    deliveryMaxDays: p.deliveryMaxDays,
     currency: p.currency,
   }));
   const product: Record<string, unknown> = {
