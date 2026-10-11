@@ -20,6 +20,10 @@ import ScrollToTop from './ScrollToTop';
 const navLinks = [
   { label: 'Home', path: '/' },
   { label: 'Products', path: '/products' },
+  // The guides were reachable only from inside the footer before this: the blog
+  // exists, is indexed, and is linked from nothing in the header, so a visitor
+  // (and a crawler walking the nav) never found it.
+  { label: 'Guides', path: '/blog' },
   { label: 'About Us', path: '/about' },
   { label: 'Contact', path: '/contact' },
 ];
@@ -121,11 +125,13 @@ export default function Layout({ children }: LayoutProps) {
       <header className="bg-cream border-b border-himalayan-line shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-14 md:h-16">
-            {/* Logo */}
+            {/* Logo. The alt text is read aloud and indexed, and the previous value
+                ("Himalayan Koh — Salt that Heals") put an unsupported healing claim
+                into the header of every page. It is the brand name now. */}
             <Link to="/" className="flex items-center gap-3 shrink-0">
               <img
                 src="/logo.svg"
-                alt="Himalayan Koh — Salt that Heals"
+                alt="Himalayan Koh"
                 className="h-8 md:h-11 w-auto max-w-[145px] sm:max-w-none"
               />
             </Link>

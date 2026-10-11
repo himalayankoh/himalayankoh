@@ -342,7 +342,7 @@ describe("the live catalogue's own categories reach the shelf the store means", 
     // The pouches are livestock salt whose title says "pouches"; the name rule reads
     // that as edible salt, which is how an animal product reached the edible shelf.
     expect(productCategoryFilterKey(pouches)).toBe('live-stock');
-    expect(categoryFilterLabelForProduct(pouches, 'live-stock')).toBe('Live Stock');
+    expect(categoryFilterLabelForProduct(pouches, 'live-stock')).toBe('Livestock');
     expect(buildProductsCategoryPath('live-stock')).toBe('/products?category=live-stock');
 
     expect(productCategoryFilterKey(jar)).toBe('edible-pink-salt');
@@ -358,7 +358,7 @@ describe("the live catalogue's own categories reach the shelf the store means", 
 
   it('offers a filter only where products are filed behind it', () => {
     const tabs = productsCategoryTabs(liveCatalogue);
-    expect(tabs.map((tab) => tab.label)).toEqual(['All', 'Edible Pink Salt', 'Live Stock']);
+    expect(tabs.map((tab) => tab.label)).toEqual(['All', 'Edible Pink Salt', 'Livestock']);
 
     for (const tab of tabs) {
       const shown = liveCatalogue.filter((item) => productMatchesCategoryFilter(item, tab.key));

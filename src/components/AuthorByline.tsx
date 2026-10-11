@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { User, CheckCircle, Calendar, ShieldCheck } from 'lucide-react';
+import { Calendar, ShieldCheck } from 'lucide-react';
 import { AUTHORS, getAuthorBySlug, type Author } from '@/data/authors';
 
 interface AuthorBylineProps {
@@ -58,7 +58,10 @@ export default function AuthorByline({
         <div className="flex items-center gap-2 border-l border-gray-200 pl-4">
           <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
           <div>
-            <span className="text-xs text-charcoal/50 block">Reviewed by</span>
+            {/* "Cross-checked" rather than "Reviewed": the second byline is another
+                company team, not an independent or veterinary reviewer, and the
+                label should not read as external vetting. */}
+            <span className="text-xs text-charcoal/50 block">Cross-checked by</span>
             <Link
               href={`/author/${reviewer.slug}`}
               className="font-medium text-charcoal hover:text-himalayan transition-colors"

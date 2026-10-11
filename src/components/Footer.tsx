@@ -18,6 +18,7 @@ import { setConsent } from '../lib/consent';
 const aboutLinks = [
   { label: 'About Himalayan Koh', to: '/about' },
   { label: 'Shop Products', to: '/products' },
+  { label: 'Guides & Articles', to: '/blog' },
   { label: 'Contact Us', to: '/contact' },
   { label: 'FAQs', to: '/faqs' },
 ];
@@ -241,6 +242,7 @@ export default function Footer() {
           <p>Copyright © 2026 Himalayan Koh. All rights reserved.</p>
           <div className="flex flex-wrap justify-center sm:justify-end items-center gap-x-4 gap-y-1 [&>a]:inline-flex [&>a]:min-h-11 [&>a]:items-center">
             <Link prefetch={false} to="/disclaimer" className="hover:text-white/75 transition-colors">Disclaimer</Link>
+            <Link prefetch={false} to="/editorial-policy" className="hover:text-white/75 transition-colors">Editorial Policy</Link>
             <Link prefetch={false} to="/privacy" className="hover:text-white/75 transition-colors">Privacy Policy</Link>
             <Link prefetch={false} to="/terms" className="hover:text-white/75 transition-colors">Terms of Service</Link>
             <Link prefetch={false} to="/shipping" className="hover:text-white/75 transition-colors">Shipping Policy</Link>

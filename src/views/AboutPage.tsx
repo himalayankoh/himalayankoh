@@ -51,14 +51,19 @@ const benefits = [
   },
 ];
 
-/** Customer testimonials carried over from the live HimalayanKoh.com About Us page. */
+/**
+ * Customer testimonials carried over from the live HimalayanKoh.com About Us page.
+ *
+ * A testimonial was removed here rather than rewritten. It described horses that
+ * were "prone to chronic colic" improving after the licks were introduced. Even
+ * as a genuine customer's own account, publishing it associates a salt lick with
+ * the resolution of a disease, which is a health outcome a salt product cannot
+ * substantiate — and rewriting somebody's words to soften them would misquote
+ * them. A revised, non-medical quotation can be restored if the customer supplies
+ * one; until then it stays off the page. The two below describe product quality,
+ * consumption and service, not an animal-health result.
+ */
 const testimonials = [
-  {
-    quote:
-      'The Sam Houston Equestrian Center began to use Himalayan salt licks with the horses that were prone to chronic colic. After about 2 months the horses had less digestive issues. They readily consumed the salt and we are on our fourth shipment.',
-    name: 'Helen Peters, Program Director',
-    place: 'Sam Houston Equestrian Center, Houston, TX',
-  },
   {
     quote:
       'My name is Darolyn Butler, and my ranch, Cypress Trails Equestrian Center, is near Humble, TX. I have a herd of 70 horses; they all work in my trail ride business and over half are also trained for endurance competition. All of the horses, considering our heat here in South Texas, need an excellent supply of salt, and I have been feeding it for about 15 months. I believe my horses are the healthier and able to thrive in this Texas heat due to this change to Himalayan Koh salt.',
@@ -415,14 +420,17 @@ export default function AboutPage() {
                 <div className="w-12 h-12 bg-himalayan-lighter rounded-xl flex items-center justify-center text-himalayan mb-4">
                   <ShieldCheck size={26} />
                 </div>
-                <h3 className="font-serif text-lg font-bold text-charcoal mb-1">Editorial & Resource Board</h3>
-                <p className="text-xs font-semibold text-himalayan uppercase tracking-wider mb-3">Agricultural & Culinary Education</p>
+                <h3 className="font-serif text-lg font-bold text-charcoal mb-1">Himalayan Koh Editorial Team</h3>
+                <p className="text-xs font-semibold text-himalayan uppercase tracking-wider mb-3">Guides, Product Copy & Sources</p>
                 <p className="text-sm text-charcoal-light leading-relaxed mb-3">
-                  Researches and reviews practical guides on livestock mineral management, equine electrolyte replenishment, and culinary salt block techniques to ensure factual accuracy.
+                  Writes and updates the buying guides and product descriptions, working from the product listings and from published extension, government and food-science sources where a claim needs one. It is the company&apos;s own team, not an independent reviewer, and it is not a veterinary or nutrition advisory panel.
                 </p>
               </div>
               <div className="pt-3 border-t border-gray-100 text-xs text-charcoal-light">
-                Review Standard: Human Fact-Checked Against Extension Guidelines
+                How we research and correct our guides:{' '}
+                <Link href="/editorial-policy" className="font-semibold text-himalayan hover:underline">
+                  Editorial Policy
+                </Link>
               </div>
             </div>
           </div>

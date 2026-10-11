@@ -119,7 +119,11 @@ export const NICHE_SECTIONS: readonly NicheSection[] = [
   },
   {
     key: 'live-stock',
-    label: 'Live Stock',
+    // "Livestock" is one word. The shelf previously borrowed the owner's WooCommerce
+    // category spelling (`Live Stock`), which read as two nouns on a public filter
+    // pill. The category name itself is untouched — it is still matched in
+    // `wooCategoryLabels` below, so a product filed under either spelling lands here.
+    label: 'Livestock',
     description: 'Himalayan pink salt bags and pouches filed in the livestock range.',
     visibleInStorefront: true,
     // `Animal Feed` is the live install's own name for this range (WooCommerce

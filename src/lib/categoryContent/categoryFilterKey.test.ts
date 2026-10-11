@@ -193,12 +193,13 @@ describe('the product page crumb follows the owner\u2019s filing', () => {
   };
 
   it('names the category the owner wrote, not the shelf the name implies', () => {
-    // Live Stock now has its own hub; its crumb and filter keep the owner's filing.
+    // The owner's `Live Stock` filing has its own hub; the crumb and filter show
+    // that shelf's public label.
     expect(productShelfKey(POUCH)).toBe('live-stock');
 
     const key = productCategoryFilterKey(POUCH);
     expect(key).toBe('live-stock');
-    expect(categoryFilterLabelForProduct(POUCH, key!)).toBe('Live Stock');
+    expect(categoryFilterLabelForProduct(POUCH, key!)).toBe('Livestock');
     expect(buildProductsCategoryPath(key)).toBe('/products?category=live-stock');
   });
 

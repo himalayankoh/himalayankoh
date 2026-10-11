@@ -36,10 +36,12 @@ export interface LegacyRedirect {
   permanent: boolean;
 }
 
-/** Shelf keys that exist in `lib/catalog/niche.ts` today. */
+/** Shelf keys that exist in `lib/catalog/nicheSections.ts` today. */
 const SHELF = {
   edible: 'edible-pink-salt',
   cooking: 'cooking-serving',
+  licks: 'licks-blocks',
+  livestock: 'live-stock',
   lamps: 'lamps-decor',
   bulk: 'bulk',
 } as const;
@@ -107,19 +109,29 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   { source: '/category/blog-post/:slug*', destination: '/blog', permanent: true },
 
   // --- Legacy "services" pages (livestock) ----------------------------------
-  // The store no longer sells livestock salt, so the old animal-feed service
-  // pages point at the nearest shelf the shop does stock — not at a retired
-  // `?category=` value, which would fall back to the full catalogue.
-  { source: '/services', destination: shelf(SHELF.cooking), permanent: true },
-  { source: '/services/fresh-dairy-products', destination: shelf(SHELF.edible), permanent: true },
-  { source: '/services/salt-for-live-stock', destination: shelf(SHELF.bulk), permanent: true },
-  { source: '/services/salt-lick-for-horses', destination: shelf(SHELF.cooking), permanent: true },
-  { source: '/services/salt-lumps-for-cattle', destination: shelf(SHELF.bulk), permanent: true },
+  // These pages sold salt for animals, and the store still sells exactly that:
+  // the horse salt licks, the 30 lb cattle rock and the 45 lb livestock bag. They
+  // therefore point at the shelves those products are actually filed on.
+  //
+  // They used to point at the cooking and edible shelves, and at `bulk`, on the
+  // old assumption that the storefront had left the livestock trade. It had not —
+  // and all three destinations carried no product at all, so every one of these
+  // indexed URLs landed on an empty grid.
+  { source: '/services', destination: shelf(SHELF.livestock), permanent: true },
+  { source: '/services/fresh-dairy-products', destination: shelf(SHELF.livestock), permanent: true },
+  { source: '/services/salt-for-live-stock', destination: shelf(SHELF.livestock), permanent: true },
+  { source: '/services/salt-lick-for-horses', destination: shelf(SHELF.licks), permanent: true },
+  { source: '/services/salt-lumps-for-cattle', destination: shelf(SHELF.licks), permanent: true },
+  // A dairy-cow trace-mineral article with no equivalent article on this site. The
+  // livestock shelf is the closest live destination; the previous `bulk` target
+  // resolved to a category with no products in it.
   {
     source: '/why-do-dairy-cows-need-trace-minerals',
-    destination: shelf(SHELF.bulk),
+    destination: shelf(SHELF.livestock),
     permanent: true,
   },
+  // The wholesale programme has its own module on this site.
+  { source: '/whole-sale', destination: '/wholesale', permanent: true },
 
   // --- WooCommerce products: live pink-salt products keep their slug ---------
   // These products still exist in WooCommerce under the same slug, so the old URL
@@ -142,20 +154,19 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   },
 
   // --- Retired livestock SKUs ------------------------------------------------
-  // These products are not part of the Himalayan pink salt storefront, so their
-  // indexed URLs land on the shelf that replaced them rather than on a 404.
-  { source: '/product/salt-licks-for-horses', destination: shelf(SHELF.bulk), permanent: true },
-  { source: '/product/bag-of-salt-for-livestock-45-lbs', destination: shelf(SHELF.bulk), permanent: true },
-  { source: '/product/bag-of-salt-for-livestock-55-lbs', destination: shelf(SHELF.bulk), permanent: true },
-  // "Block of salt" was the deer block; salt blocks are now the cooking and
-  // serving shelf, which is the closest live equivalent.
-  { source: '/product/block-of-salt', destination: shelf(SHELF.cooking), permanent: true },
-  { source: '/product/rock-of-salt', destination: shelf(SHELF.bulk), permanent: true },
-  { source: '/product/lump-of-salt', destination: shelf(SHELF.bulk), permanent: true },
-  // `salt-licks` still exists in WooCommerce but is flagged for owner review
-  // (it may be an animal lick), so it points at the shelf it is filed under
-  // rather than at a product page that may be withdrawn.
-  { source: '/product/salt-licks', destination: shelf(SHELF.bulk), permanent: true },
+  // Indexed URLs whose either product or slug is gone. Each lands on the shelf
+  // that now holds the nearest equivalent, not on a 404.
+  { source: '/product/salt-licks-for-horses', destination: shelf(SHELF.licks), permanent: true },
+  { source: '/product/bag-of-salt-for-livestock-45-lbs', destination: shelf(SHELF.livestock), permanent: true },
+  { source: '/product/bag-of-salt-for-livestock-55-lbs', destination: shelf(SHELF.livestock), permanent: true },
+  // "Block of salt" and "lump of salt" were the animal blocks and lumps; the
+  // salt-lick shelf carries the live equivalents.
+  { source: '/product/block-of-salt', destination: shelf(SHELF.licks), permanent: true },
+  { source: '/product/lump-of-salt', destination: shelf(SHELF.licks), permanent: true },
+  { source: '/product/rock-of-salt', destination: shelf(SHELF.livestock), permanent: true },
+  // `salt-licks` is the retired aggregate lick listing; the current lick line is
+  // what replaced it.
+  { source: '/product/salt-licks', destination: shelf(SHELF.licks), permanent: true },
 
   // --- Catch-alls (must stay last) ------------------------------------------
   // Any WooCommerce URL not mapped above still lands somewhere relevant

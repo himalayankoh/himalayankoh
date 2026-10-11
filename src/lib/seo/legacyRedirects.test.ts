@@ -22,6 +22,10 @@ const STATIC_ROUTES = new Set([
   '/return',
   '/returns',
   '/login',
+  // The wholesale module the legacy `/whole-sale` page now points at. It is a
+  // route this app serves (`src/app/(main)/wholesale/page.tsx`), so it belongs
+  // in this list rather than staying unlisted and failing the check below.
+  '/wholesale',
 ]);
 
 /**
@@ -134,6 +138,34 @@ describe('legacy redirect map', () => {
     // Same for the shop and service catch-alls.
     expect(indexOf('/shop/:slug*')).toBeGreaterThan(indexOf('/shop'));
     expect(indexOf('/services/:slug*')).toBeGreaterThan(indexOf('/services'));
+  });
+
+  it('maps the legacy wholesale page instead of letting it 404', () => {
+    // `/whole-sale` was missing from the map entirely, so the indexed URL
+    // redirected to the trailing-slash-stripped path and then answered 404.
+    const rule = LEGACY_REDIRECTS.find((entry) => entry.source === '/whole-sale');
+    expect(rule?.destination).toBe('/wholesale');
+    expect(rule?.permanent).toBe(true);
+  });
+
+  it('sends livestock-intent legacy URLs to the shelves that actually hold those products', () => {
+    // These all used to land on `cooking-serving`, `edible-pink-salt` or `bulk`,
+    // none of which the live catalogue carries a product for — so a shopper
+    // following an indexed link arrived at an empty grid.
+    const expected: Record<string, string> = {
+      '/services/fresh-dairy-products': '/products?category=live-stock',
+      '/services/salt-for-live-stock': '/products?category=live-stock',
+      '/services/salt-lick-for-horses': '/products?category=licks-blocks',
+      '/services/salt-lumps-for-cattle': '/products?category=licks-blocks',
+      '/why-do-dairy-cows-need-trace-minerals': '/products?category=live-stock',
+      '/product/salt-licks-for-horses': '/products?category=licks-blocks',
+      '/product/bag-of-salt-for-livestock-45-lbs': '/products?category=live-stock',
+    };
+
+    for (const [source, destination] of Object.entries(expected)) {
+      const rule = LEGACY_REDIRECTS.find((entry) => entry.source === source);
+      expect(rule?.destination, source).toBe(destination);
+    }
   });
 
   it('sends every retired livestock product to a shelf, never to a product page', () => {

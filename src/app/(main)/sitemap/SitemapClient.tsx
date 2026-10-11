@@ -7,6 +7,17 @@ interface SitemapProduct {
   category?: string;
 }
 
-export default function SitemapClient({ products }: { products?: SitemapProduct[] }) {
-  return <SitemapPage products={products} />;
+interface SitemapArticle {
+  title: string;
+  slug: string;
+}
+
+export default function SitemapClient({
+  products,
+  articles,
+}: {
+  products?: SitemapProduct[];
+  articles?: SitemapArticle[];
+}) {
+  return <SitemapPage products={products} articles={articles} />;
 }

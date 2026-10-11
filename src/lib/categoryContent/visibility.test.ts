@@ -8,6 +8,9 @@ describe('storefront category visibility', () => {
     expect(labels.get('edible-pink-salt')).toBe('Edible Pink Salt');
     expect(labels.get('licks-blocks')).toBe('Salt Licks');
     expect(labels.get('bulk')).toBe('Bulk and Rock Salt');
+    // One word on the public pill, even though the WooCommerce category the owner
+    // files products into is still spelled `Live Stock`.
+    expect(labels.get('live-stock')).toBe('Livestock');
 
     // Every public shelf answers to the store category the owner files products
     // into, so a product filed in WooCommerce is reachable under that name.
@@ -32,7 +35,7 @@ describe('storefront category visibility', () => {
       'Edible Pink Salt',
       'Cooking & Serving',
       'Salt Licks',
-      'Live Stock',
+      'Livestock',
       'Salt Lamps & Décor',
       'Bulk and Rock Salt',
     ]);

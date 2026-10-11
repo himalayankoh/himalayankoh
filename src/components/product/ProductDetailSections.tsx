@@ -3,10 +3,37 @@ import { Link } from 'react-router-dom';
 import { ChevronDown, Gem, HelpCircle, UtensilsCrossed, ShieldAlert } from 'lucide-react';
 import type { Product } from '../../data/products';
 import { getProductContent } from '../../lib/products/productContent';
+import { nicheSectionKeyFor } from '../../lib/catalog/nicheSections';
 import ProductVideoSection from './ProductVideoSection';
 
 interface Props {
   product: Product;
+}
+
+/**
+ * The usage note, in the words the product's own shelf calls for.
+ *
+ * This used to be one paragraph naming *both* animal licks and cooking slabs on
+ * every product, so a horse salt lick page carried instructions for heating a
+ * cooking slab and a cooking slab page carried lick-feeding guidance. A notice
+ * that describes a use the product does not have is exactly the kind of
+ * unrelated instruction shoppers were being shown, so the note now follows the
+ * same shelf the grid, the hub pages and the rest of the product copy use.
+ */
+function usageNote(product: Product): string {
+  const shelf = nicheSectionKeyFor(product);
+  const composition =
+    'Himalayan pink salt is unrefined halite rock salt composed primarily of sodium chloride with naturally occurring trace minerals (iron, potassium, magnesium, calcium).';
+
+  if (shelf === 'licks-blocks' || shelf === 'live-stock') {
+    return `${composition} Salt licks and agricultural salt are offered free-choice: keep fresh, clean drinking water available at all times. Salt supplies sodium and chloride — it is not a complete or balanced vitamin and mineral program, and it does not replace one. Follow the product label and ask an appropriately qualified professional about your animals' needs.`;
+  }
+
+  if (shelf === 'cooking-serving') {
+    return `${composition} A salt block or plate is heated or chilled gradually — taking a cold block straight onto high heat is what cracks it. Wipe it clean with a damp cloth; never soak a salt block or put it in a dishwasher.`;
+  }
+
+  return `${composition} It is a culinary ingredient: use it for everyday cooking and finishing, keep it closed and dry between uses, and follow the product label.`;
 }
 
 export default function ProductDetailSections({ product }: Props) {
@@ -94,7 +121,7 @@ export default function ProductDetailSections({ product }: Props) {
           <h2>Usage Guidelines & Nutritional Notice</h2>
         </div>
         <p className="text-sm text-charcoal-light leading-relaxed">
-          Himalayan pink salt is unrefined halite rock salt composed primarily of sodium chloride with naturally occurring trace minerals (iron, potassium, magnesium, calcium). For animal salt licks: provide continuous access to fresh water. Salt licks do not substitute for a complete veterinary mineral program or forage balancing. For cooking slabs: heat gradually in stages to prevent thermal fractures.
+          {usageNote(product)}
         </p>
         <div className="pt-2 flex flex-wrap items-center gap-y-2 gap-x-5 text-xs font-semibold">
           <Link to="/disclaimer" className="text-himalayan hover:underline">

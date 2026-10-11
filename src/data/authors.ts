@@ -13,21 +13,39 @@ export interface Author {
   };
 }
 
+/**
+ * Public bylines, and only what is true about them.
+ *
+ * Every entry here is an organisation-level attribution of the company that
+ * actually produces the content — the sourcing, warehouse, and copy teams at
+ * Himalayan Koh. None of them is a person, and none of them claims a credential
+ * the business does not hold.
+ *
+ * This list previously described a "Technical & Agricultural Advisory Board",
+ * "Livestock Mineral Nutrition Specialists", and a "Codex Alimentarius & ASTM"
+ * expertise, and pointed at `/images/authors/*.jpg` photographs that do not exist
+ * on this site. A fabricated advisory panel with invented credentials is exactly
+ * the pattern an ad reviewer reads as manufactured authority, and a broken avatar
+ * is a visible symptom of the same thing: the profile described somebody who was
+ * never there. Qualified reviewers have not been engaged, so no entry claims one.
+ *
+ * If a real, named person with real credentials is engaged later, add them here —
+ * one entry, both render paths read it (the worker pre-render and the React page),
+ * so a profile can never half-exist. Until then the honest byline is the company.
+ */
 export const AUTHORS: Record<string, Author> = {
   'sourcing-team': {
     id: 'author-1',
     slug: 'sourcing-team',
-    name: 'Himalayan Koh Sourcing & Supply Chain Team',
-    role: 'Sourcing & Supply Chain Directorate',
+    name: 'Himalayan Koh Sourcing & Warehouse Team',
+    role: 'Sourcing, freight and warehouse packing',
     expertise: [
-      'Geological Salt Sourcing',
-      'Transatlantic Freight Logistics',
-      'Quality Control & Granulometry',
-      'Bulk Mineral Distribution',
+      'Rock salt sourcing from the Salt Range',
+      'Container freight and customs paperwork',
+      'Incoming inspection and packing at the Houston warehouse',
     ],
-    bio: 'The Himalayan Koh Sourcing & Supply Chain Team oversees direct mining partnerships in the Salt Range of northern Pakistan and bulk dispatch operations from Himalayan Koh’s Houston distribution warehouse. The team works closely with logistics partners to ensure raw rock salt and food-grade mineral products meet precise moisture, grading, and packaging specifications.',
-    avatar: '/images/authors/sourcing-team.jpg',
-    credentials: 'Sourcing & Supply Chain Directorate, Himalayan Koh LLC',
+    bio: 'The Himalayan Koh team that selects suppliers in the Salt Range of northern Pakistan, arranges shipping, and inspects and packs incoming salt at the company’s Houston, Texas warehouse. Questions and documents go to sales@himalayankoh.com.',
+    avatar: '',
     socials: {
       email: 'sales@himalayankoh.com',
     },
@@ -35,34 +53,38 @@ export const AUTHORS: Record<string, Author> = {
   'editorial-board': {
     id: 'author-2',
     slug: 'editorial-board',
-    name: 'Himalayan Koh Editorial & Research Board',
-    role: 'Technical Sourcing & Editorial Team',
+    name: 'Himalayan Koh Editorial Team',
+    role: 'Buying guides and product copy',
     expertise: [
-      'Agricultural Mineral Management',
-      'Food Science & Culinary Salt Slabs',
-      'Storage & Humidity Protocols',
-      'Codex Alimentarius & ASTM Standards',
+      'Writing and updating buying guides',
+      'Product listing accuracy',
+      'Sourcing published references and handling corrections',
     ],
-    bio: 'The Himalayan Koh Technical & Editorial Board synthesizes agricultural extension research, mineral chemistry data, and bulk warehouse handling procedures. Every guide is drafted with verified industry literature and reviewed against strict non-medical guidelines.',
-    avatar: '/images/authors/board-placeholder.jpg',
-    credentials: 'Technical & Agricultural Advisory Board',
+    bio: 'The Himalayan Koh team that writes and updates the store’s guides and product descriptions, working from the individual product listings and, where a claim needs a source, from published university extension, government and food-science material. This is the company’s own team: it is not an independent reviewer, it is not a veterinary or nutrition panel, and it does not claim to have tested the products. How we research, cite and correct guides is set out in our editorial policy.',
+    avatar: '',
     socials: {
       email: 'sales@himalayankoh.com',
     },
   },
+  // The slug is kept from the earlier profile so the two indexed URLs
+  // (`/author/sourcing-team`, `/author/editorial-board`) and this one keep
+  // resolving; only the description changed, because the description was the
+  // part that was untrue.
   'agricultural-advisory': {
     id: 'author-3',
     slug: 'agricultural-advisory',
-    name: 'Himalayan Koh Agricultural Nutrition Advisory',
-    role: 'Livestock Mineral Nutrition Specialists',
+    name: 'Himalayan Koh Livestock Product Support',
+    role: 'Order and product support for the livestock range',
     expertise: [
-      'Equine Electrolyte Physiology',
-      'Ruminant Sodium Balance',
-      'Free-Choice Mineral Supplementation',
+      'Sizing and weight of the salt lick and livestock bag range',
+      'Order, shipping and returns questions',
+      'Where to find the product label and lot information',
     ],
-    bio: 'The Himalayan Koh Agricultural Nutrition Advisory specializes in large animal forage balance, sodium chloride supplementation strategies, and pasture lick placement for livestock operations.',
-    avatar: '/images/authors/advisor-placeholder.jpg',
-    credentials: 'Agricultural Nutrition Advisory, Himalayan Koh LLC',
+    bio: 'The Himalayan Koh team that answers questions about the salt lick and livestock bag range — weights, packing, shipping and returns. It supplies product and order information only; it does not give veterinary or animal nutrition advice, and it will point you to an appropriately qualified professional for anything about an animal’s health.',
+    avatar: '',
+    socials: {
+      email: 'sales@himalayankoh.com',
+    },
   },
 };
 

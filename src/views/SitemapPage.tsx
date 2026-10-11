@@ -5,10 +5,7 @@ import {
   Home,
   Package,
   Shield,
-  Users,
 } from 'lucide-react';
-import { RESOURCE_ARTICLES } from '@/data/resources';
-import { getAllAuthors } from '@/data/authors';
 import { buildProductsCategoryPath, productsCategoryTabs } from '@/lib/categoryContent/keys';
 
 interface SitemapProduct {
@@ -17,22 +14,30 @@ interface SitemapProduct {
   category?: string;
 }
 
-interface SitemapPageProps {
-  products?: SitemapProduct[];
+/** A published guide, as the blog index lists it. */
+interface SitemapArticle {
+  title: string;
+  slug: string;
 }
 
-const STATIC_PAGES = [
+interface SitemapPageProps {
+  products?: SitemapProduct[];
+  articles?: SitemapArticle[];
+}
+
+export const STATIC_PAGES = [
   { name: 'Home', href: '/' },
   { name: 'About Himalayan Koh', href: '/about' },
-  // { name: 'Resource Center & Guides', href: '/resources' },
   { name: 'All Products Shop', href: '/products' },
+  { name: 'Guides & Articles', href: '/blog' },
   { name: 'Visual Gallery', href: '/gallery' },
   { name: 'Frequently Asked Questions (FAQs)', href: '/faqs' },
   { name: 'Contact & Warehouse Support', href: '/contact' },
 ];
 
-const POLICY_PAGES = [
+export const POLICY_PAGES = [
   { name: 'Product, Veterinary & Health Disclaimer', href: '/disclaimer' },
+  { name: 'Editorial Policy', href: '/editorial-policy' },
   { name: 'Privacy Policy & Google AdSense Disclosures', href: '/privacy' },
   { name: 'Terms of Service', href: '/terms' },
   { name: 'Shipping & Delivery Policy', href: '/shipping' },
@@ -53,8 +58,7 @@ const DEFAULT_PRODUCTS: SitemapProduct[] = [
   { name: 'Himalayan Pink Edible Salt Fine & Coarse Grain — 16 oz Jar', slug: 'himalayan-pink-edible-salt-16-oz-jar' },
 ];
 
-export default function SitemapPage({ products = DEFAULT_PRODUCTS }: SitemapPageProps) {
-  const authors = getAllAuthors();
+export default function SitemapPage({ products = DEFAULT_PRODUCTS, articles = [] }: SitemapPageProps) {
   const categories = productsCategoryTabs(products)
     .filter((tab) => tab.key)
     .map((tab) => ({ name: tab.label, href: buildProductsCategoryPath(tab.key) }));
@@ -140,17 +144,31 @@ export default function SitemapPage({ products = DEFAULT_PRODUCTS }: SitemapPage
             </ul>
           </div>
 
-          {/* Educational Articles - Hidden for now */}
-          {false && (
-            <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4 md:col-span-2 lg:col-span-2">
-              <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-himalayan" /> Resource Center & Research Library ({RESOURCE_ARTICLES.length} Guides)
-              </h2>
+          {/*
+            * Published guides. This section was previously rendered behind a
+            * `false &&` for the retired `/resources` library, so the HTML sitemap
+            * carried no link to the blog or to any article — the one crawlable
+            * index the site publishes quietly omitted its only educational
+            * content. It now lists the guides the blog index actually serves.
+            */}
+          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4 md:col-span-2 lg:col-span-2">
+            <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-himalayan" /> Guides &amp; Articles ({articles.length})
+            </h2>
+            {articles.length === 0 ? (
+              <p className="text-sm text-charcoal-light">
+                Guides are published on the{' '}
+                <Link href="/blog" className="text-himalayan hover:underline font-semibold">
+                  blog
+                </Link>
+                .
+              </p>
+            ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
-                {RESOURCE_ARTICLES.map((art) => (
+                {articles.map((art) => (
                   <div key={art.slug}>
                     <Link
-                      href={`/resources/${art.slug}`}
+                      href={`/blog/${art.slug}`}
                       className="text-charcoal-light hover:text-himalayan transition-colors flex items-start gap-1.5"
                     >
                       <span className="text-himalayan/60 mt-1">•</span>
@@ -159,30 +177,8 @@ export default function SitemapPage({ products = DEFAULT_PRODUCTS }: SitemapPage
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Authors - Hidden for now */}
-          {false && (
-            <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4">
-              <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
-                <Users className="w-5 h-5 text-himalayan" /> Authors & Editorial Board
-              </h2>
-              <ul className="space-y-2.5 text-sm">
-                {authors.map((auth) => (
-                  <li key={auth.slug}>
-                    <Link
-                      href={`/author/${auth.slug}`}
-                      className="text-charcoal-light hover:text-himalayan transition-colors flex items-center gap-1.5"
-                    >
-                      <span className="text-himalayan/60">•</span>
-                      <span>{auth.name} ({auth.role})</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Published Products */}
           <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4 md:col-span-2 lg:col-span-3">

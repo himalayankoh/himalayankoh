@@ -115,15 +115,19 @@ const SHELF_DEFAULTS: Record<NicheSectionKey, Omit<ProductContent, 'displayName'
     ],
   },
   'licks-blocks': {
-    // Written to describe what the product *is* — a solid piece of pink salt sold
-    // at a stated weight — and nothing about what it is for. The owner sells this
-    // range; the storefront does not get to invent a use for it, and the retreat
-    // from "livestock" framing makes a purpose claim the one thing worse than no
-    // copy at all.
+    // The salt-lick range: the 2 lb horse licks and the 30 lb cattle rock. The copy
+    // describes the piece, its listed weight and the animal it is sold for — which
+    // is what the product names already say — and stops there. It deliberately
+    // carries no health or nutrition outcome, because the storefront is not the
+    // place to claim one; the disclaimer says the same thing in full.
+    //
+    // It previously read "Larger pieces for kitchens, workshops and volume
+    // buyers" — culinary and workshop guidance shown on a horse salt lick, which
+    // described a use the product does not have. Nothing culinary belongs here.
     useCases: [
-      'Solid pink salt supplied in the weight the price list states',
-      'Larger pieces for kitchens, workshops and volume buyers',
-      'Pairs with our edible grades and salt blocks',
+      'Solid Himalayan pink salt licks, supplied in the weight shown on the product',
+      'Offered to horses and cattle as a salt lick, as the product names state',
+      'Hang or place the lick within reach, beside a supply of fresh water',
     ],
     mineralHighlights: [
       'Unrefined Himalayan pink salt, cut from the Khewra range',
@@ -150,14 +154,34 @@ const SHELF_DEFAULTS: Record<NicheSectionKey, Omit<ProductContent, 'displayName'
         answer:
           'Yes. Contact us with the quantity and we will quote it, including freight, before you order.',
       },
+      {
+        question: 'Do these replace a mineral supplement?',
+        answer:
+          'No. A salt lick supplies sodium and chloride. It is not a complete vitamin and mineral program and does not replace a ration balanced for your animals — see our disclaimer for the details.',
+      },
     ],
   },
   'live-stock': {
-    useCases: ['Salt supplied in the bag or pouch size listed for the livestock range'],
-    mineralHighlights: ['Unrefined Himalayan pink salt in the grain sizes shown on each product'],
+    // The livestock range (the 45 lb bag, the 6 lb pouches, the fine-grain bag).
+    // Same rule as the licks: the salt and its packaging, nothing medical.
+    useCases: [
+      'Himalayan pink salt supplied in the bag or pouch size listed',
+      'Granular rock salt in the grain size shown on each product',
+      'Store sealed and dry until it is put out or mixed in',
+    ],
+    mineralHighlights: [
+      'Unrefined Himalayan pink salt in the grain sizes shown on each product',
+      'The same rock salt as our other ranges, supplied in agricultural bag sizes',
+    ],
     shippingInfo: SHARED_SHIPPING,
     trustIndicators: SHARED_TRUST,
-    faqs: [],
+    faqs: [
+      {
+        question: 'Is this a complete mineral supplement?',
+        answer:
+          'No. Himalayan pink salt is mainly sodium chloride. It is not a balanced vitamin and mineral program, and it does not replace one — see our disclaimer.',
+      },
+    ],
   },
   'lamps-decor': {
     useCases: [

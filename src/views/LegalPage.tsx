@@ -255,7 +255,13 @@ const content: Record<LegalPageProps['type'], { eyebrow: string; title: string; 
       },
       {
         title: 'Bulk, Pallet & Freight Shipments',
-        body: 'Bulk granular salt bags (45 lbs), large animal salt blocks, and pallet wholesale orders exceed standard parcel limits and are dispatched via LTL freight. Commercial freight orders require liftgate and delivery appointment coordination. Contact our sales department directly to arrange wholesale freight logistics.',
+        // A 45 lb bag is a normal parcel and checkout quotes it: Shippo returns
+        // live USPS/UPS rates for the 45 lb livestock bag, and the earlier wording
+        // ("exceed standard parcel limits") told customers a weight we ship every
+        // day was undeliverable by parcel. The limit is declared on the pallet and
+        // multi-bag orders, which are arranged as freight. No shipping calculation
+        // is changed by this text.
+        body: 'Individual bags and blocks are shipping by parcel: the live carrier rates for your address, including the 45 lb livestock bag, are calculated in the cart and shown at checkout. Pallet quantities and multi-bag wholesale orders are arranged as LTL freight instead of parcel, because they are moved on a pallet rather than as individual packages. Freight orders may need liftgate or delivery-appointment coordination. To arrange a pallet or wholesale shipment, contact our sales department and we will quote the freight.',
       },
       {
         title: 'Geographic Scope',

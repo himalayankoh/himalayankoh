@@ -45,7 +45,7 @@ export default function DisclaimerPage() {
               <h2 className="font-serif text-2xl font-bold text-charcoal">1. General Educational & Informational Purpose</h2>
             </div>
             <p className="text-charcoal-light">
-              All information, articles, product descriptions, guides, and educational materials published on the Himalayan Koh website (<strong>https://preview.himalayankoh.com</strong> and <strong>https://himalayankoh.com</strong>) are presented solely for general educational, practical, and informational purposes. While we make every reasonable effort to ensure that content is accurate, up-to-date, and grounded in reputable agricultural and geological references, content on this website does not constitute formal veterinary, nutritional, medical, or legal counsel.
+              All information, articles, product descriptions, guides, and educational materials published on the Himalayan Koh website (<strong>https://himalayankoh.com</strong>) are presented solely for general educational, practical, and informational purposes. While we make every reasonable effort to ensure that content is accurate, up-to-date, and grounded in reputable agricultural and geological references, content on this website does not constitute formal veterinary, nutritional, medical, or legal counsel.
             </p>
             <p className="text-charcoal-light">
               Your use of this website and reliance on any information provided is strictly at your own discretion and risk. Himalayan Koh and its operators disclaim any liability for any loss, adverse reaction, or injury resulting directly or indirectly from the use or application of any material on this website.
@@ -126,7 +126,11 @@ export default function DisclaimerPage() {
               <strong>Advertising Disclosure:</strong> In accordance with Federal Trade Commission (FTC) guidelines, this website may display online advertisements, including automated contextual advertisements served by third-party advertising networks such as Google AdSense. Himalayan Koh may receive monetary compensation if users view or click on advertising units. Third-party advertising networks operate independently, and advertisements do not necessarily reflect the views or endorsements of Himalayan Koh.
             </p>
             <p className="text-charcoal-light">
-              <strong>Affiliate Links:</strong> Certain links on our educational or blog pages may occasionally be affiliate links. If you make a purchase through an affiliate link, Himalayan Koh may earn a small referral commission at no additional cost to you. We only recommend products or tools that align with our standard of quality.
+              <strong>Affiliate Links:</strong> Himalayan Koh does not currently publish affiliate links, and no page on this site earns a commission from a third-party retailer. Product links go to our own store; where we sell the product a guide discusses, that commercial interest is stated in our{' '}
+              <Link href="/editorial-policy" className="text-himalayan hover:underline font-semibold">
+                Editorial Policy
+              </Link>
+              . If Himalayan Koh ever joins an affiliate programme, the affected pages will say so above the link rather than only in this disclaimer.
             </p>
             <p className="text-charcoal-light">
               <strong>Editorial Independence:</strong> Editorial guides, resource articles, and buying recommendations are produced independently. Commercial relationships, ad placements, or potential affiliate partnerships never dictate our factual content standards, safety advisories, or product reviews.
