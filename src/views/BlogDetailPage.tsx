@@ -143,19 +143,29 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
           <section className="mt-12">
             <h2 className="font-serif text-2xl font-bold text-charcoal mb-6">Related Articles</h2>
             <div className="grid md:grid-cols-3 gap-6">
-              {relatedPosts.map((related) => (
+              {relatedPosts.map((related) => {
+                // A featured image is optional on a WordPress post. This used to render
+                // `<img src="">` for a post that has none, which put an image element
+                // with no source in the HTML and left a blank 16:10 block in the card.
+                const image = resolveLegacyImageSrc(related.featured_image).src;
+
+                return (
                 <Link
                   key={related.id}
                   to={`/blog/${related.slug}`}
                   className="group bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300"
                 >
-                  <img
-                    src={resolveLegacyImageSrc(related.featured_image).src || ''}
-                    alt={related.title}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full aspect-[16/10] object-cover group-hover:scale-105 transition-transform duration-700"
-                  />
+                  {image ? (
+                    <img
+                      src={image}
+                      alt={related.title}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full aspect-[16/10] object-cover group-hover:scale-105 transition-transform duration-700"
+                    />
+                  ) : (
+                    <div className="w-full aspect-[16/5] bg-cream" aria-hidden="true" />
+                  )}
                   <div className="p-5">
                     {related.category && (
                       <p className="text-xs text-charcoal-light mb-2">{related.category}</p>
@@ -169,7 +179,8 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
                     </span>
                   </div>
                 </Link>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}

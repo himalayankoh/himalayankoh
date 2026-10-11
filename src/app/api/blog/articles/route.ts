@@ -27,6 +27,7 @@
 
 import { NextResponse } from 'next/server';
 import { getPostsForCategoryHub, wordpressBlog } from '@/lib/blog/wordpressBlog';
+import { filterNicheBlogPosts } from '@/lib/catalog/nicheBlog';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +58,12 @@ export async function GET(request: Request) {
     if (related) {
       const category = (url.searchParams.get('category') ?? '').trim() || null;
       const posts = await wordpressBlog.getRelatedPosts(related, category, Math.min(limit, 20));
-      return NextResponse.json({ posts });
+      // The same niche gate the blog index and the sitemap use (`fetchSeoBlogPosts`).
+      // Without it the "keep reading" strip advertised the livestock-era posts the
+      // storefront deliberately holds back from every other public listing — which
+      // turned withheld content into internal links, and left cards with no image
+      // because those posts never got a featured one.
+      return NextResponse.json({ posts: filterNicheBlogPosts(posts) });
     }
 
     if (categories.length === 0 && tags.length === 0) {

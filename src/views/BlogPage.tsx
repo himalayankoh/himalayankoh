@@ -5,6 +5,38 @@ import { ArrowUpRight, Clock, Loader2, Search, Tag, User } from 'lucide-react';
 import type { BlogPostWithAuthor } from '../lib/blog/types';
 import { resolveLegacyImageSrc } from '../lib/images/legacyAssets';
 
+/**
+ * A post's card image, or a soft placeholder when the post has none.
+ *
+ * A WordPress featured image is optional, and the guide this store publishes has no
+ * featured image — so both listing cards rendered `<img src="">`: an image element
+ * with no source in the HTML and a blank block where a photo belonged. The eager
+ * flag is for the featured card, which is the listing's LCP candidate.
+ */
+function PostImage({
+  post,
+  className,
+  eager = false,
+}: {
+  post: BlogPostWithAuthor;
+  className: string;
+  eager?: boolean;
+}) {
+  const image = resolveLegacyImageSrc(post.featured_image).src;
+  if (!image) return <div className="w-full h-full bg-cream" aria-hidden="true" />;
+
+  return (
+    <img
+      src={image}
+      alt={post.title}
+      loading={eager ? 'eager' : 'lazy'}
+      fetchPriority={eager ? 'high' : undefined}
+      decoding="async"
+      className={className}
+    />
+  );
+}
+
 interface BlogPageProps {
   /**
    * Posts fetched during server render, so the listing (and its links into each
@@ -132,11 +164,9 @@ Notes on pink salt: how it is used, how it is stored, and what the labels mean
           <Link to={`/blog/${featuredPost.slug}`} className="grid md:grid-cols-2 gap-0">
             <div className="aspect-[16/10] md:aspect-auto overflow-hidden">
               {/* Featured post sits above the fold and is the LCP candidate. */}
-              <img
-                src={resolveLegacyImageSrc(featuredPost.featured_image).src || ''}
-                alt={featuredPost.title}
-                fetchPriority="high"
-                decoding="async"
+              <PostImage
+                post={featuredPost}
+                eager
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
               />
             </div>
@@ -187,11 +217,9 @@ Notes on pink salt: how it is used, how it is stored, and what the labels mean
             >
               <Link to={`/blog/${post.slug}`} className="block">
               <div className="aspect-[16/10] overflow-hidden">
-                <img
-                  src={resolveLegacyImageSrc(post.featured_image).src || ''}
-                  alt={post.title}
+                <PostImage
+                  post={post}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                  loading="lazy"
                 />
               </div>
               <div className="p-6">
