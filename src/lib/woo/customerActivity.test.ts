@@ -95,8 +95,24 @@ describe('activityBasis', () => {
   it('names how the figure was arrived at', () => {
     expect(activityBasis(index, { id: 20 })).toBe('customer-id');
     expect(activityBasis(index, { id: 999, email: 'guest@example.net' })).toBe('billing-email');
-    expect(activityBasis(index, { id: 999, email: 'nobody@example.net' })).toBe('not-verifiable');
-    expect(activityBasis(index, { id: 999, email: 'nobody@example.net', ordersCount: 3 })).toBe('store-reported');
+    expect(activityBasis(null, { id: 999, email: 'nobody@example.net', ordersCount: 3 })).toBe('store-reported');
     expect(activityBasis(null, { id: 999 })).toBe('not-verifiable');
+  });
+
+  it('calls a checked zero a checked zero, not an unknown', () => {
+    // The whole order book was read and no order carries this account. That is the
+    // same finding `verifiedOrderCount` reports as 0, so the label must agree with it;
+    // reporting it as `not-verifiable` would show a checked answer as an unchecked one.
+    expect(verifiedOrderCount(index, { id: 999, email: 'nobody@example.net' })).toBe(0);
+    expect(activityBasis(index, { id: 999, email: 'nobody@example.net' })).toBe('no-matching-order');
+    // The store's own field does not relabel it: the index is what the figure came from.
+    expect(activityBasis(index, { id: 999, email: 'nobody@example.net', ordersCount: 3 })).toBe(
+      'no-matching-order'
+    );
+    // ...and a record with nothing to match against stays genuinely unverifiable.
+    expect(activityBasis(index, { id: 0, email: '' })).toBe('not-verifiable');
+    // ...as does a partial read, where the absence of an order proves nothing.
+    const partial = buildOrderActivity({ orders: [{ customer_id: 20 }], ordersReported: 900 });
+    expect(activityBasis(partial, { id: 999, email: 'nobody@example.net' })).toBe('not-verifiable');
   });
 });

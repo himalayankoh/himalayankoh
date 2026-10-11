@@ -173,7 +173,33 @@ they are *completed* Amazon Pay / PayPal records with no provider I can check. U
   a guest order").
 - **The rule that matters:** a **truncated** order read yields `null` — *unknown* —
   never `0`. A console that cannot say who bought must not say nobody did. That is
-  pinned in `customerActivity.test.ts`.
+  pinned in `customerActivity.test.ts`, and a *checked* zero is labelled as checked
+  (`no-matching-order`) rather than as unknown, so the label never contradicts the
+  figure beside it.
+
+### The list was also not the whole list (found by running the filter live)
+
+Running the new filter against the live store turned up a second defect: it returned
+three accounts, and **customer #16 was missing from it although it has three orders**.
+
+- `/wc/v3/customers` with no `role` parameter answers with role **`customer` only**:
+  `x-wp-total=2704`. The store actually holds **2,707** accounts (`role=all`), and the
+  three it withholds are **administrator** accounts. One of them is the owner's own
+  account (`username ayazbashir`, created 2019-08-27), and it carries orders
+  **#2362, #2363 (both completed, 2023) and #2468 (pending)**.
+- So the screen's "2,704 customers" was the store's *default listing*, not its
+  account count, and a buyer filter built on it could never show the store's two
+  earliest completed orders. `src/lib/woo/customers.ts` now forwards a `role`, the
+  console asks for `all`, the row carries the role, and the screen labels any
+  non-customer account with a chip instead of passing it off as a shopper.
+- **Verified live** (`role=all`): 2,707 accounts walked over 28 pages (2,704 `customer`
+  + 3 `administrator`); the filter returns **4 accounts** — `#16` (administrator, 3
+  orders), `#17` (2), `#979` (2, matched as a **guest order** by billing address) and
+  `#20` (2). Every customer id an order points at (`16, 17, 20`) is now reachable.
+- Pinned in `src/lib/woo/customers.test.ts` against a stubbed store: `role` is
+  forwarded, the store's default stands when it is not asked for, an account with no
+  order is dropped by the filter, and an account the read could not cover is not
+  called a buyer.
 
 ---
 
@@ -297,12 +323,13 @@ existing images show 6 lb packaging.
 | Phase 9 relevance | **PASS for the claims** — 5 unsupported claims removed from the two public legacy theme pages; demo filler on pages 35/688 still published, and restricting the WP origin is recommended |
 | Phase 10 3 lb product | **PASS** — still draft |
 | Phase 12 guides / AdSense | **not published, not claimed** — unchanged from the approval package |
-| Phase 13 tests | **PASS** — typecheck ✔, lint ✔ (0 errors, pre-existing warnings), vitest **2,191 passed / 19 skipped / 0 failed**, production build ✔ with the build's own origin and secret scans clean |
+| Phase 13 tests | **PASS** — typecheck ✔, lint ✔ (0 errors, pre-existing warnings), vitest **2,202 passed / 19 skipped / 0 failed**, production build ✔ with the build's own origin and secret scans clean. The live buyer-filter and role results above came from a temporary live test (real modules, real store) that was **not** committed, so the suite stays offline |
 | Phase 14 deployment | see the commit/push/deploy record below |
 
 **LIMITATIONS, stated plainly**
 
-1. The customer list still holds 2,704 records. Nothing bulk was removed, by design:
+1. The customer list still holds 2,704 records (2,707 accounts including the 3
+   administrator accounts). Nothing bulk was removed, by design:
    classes `C`/`D`/`B` (737 records) need the owner's approval, and `E` (1,963) cannot
    be decided from the data available here.
 1a. The WordPress origin remains publicly browsable, with legacy demo pages still
@@ -312,6 +339,10 @@ existing images show 6 lb packaging.
    re-write of identical content, which WordPress stamps a new `modified` time).
    No content changed; noted for completeness.
 3. Amazon Pay, Square and PayPal payments are unreconciled — no credentials for them.
+   Two of the three orders on the owner's own account (#2362 $46.78, #2363 $0.10,
+   both completed, 2023) look like gateway tests but carry no provider reference that
+   can be checked from here, so they are **reported, not moved** — the owner can
+   confirm whether they were tests.
 4. The store-side registration setting is unchanged, so the public form keeps
    accepting sign-ups until the owner unticks it.
 5. Rate limiting in the app is in-process (the existing `rateLimit.ts`), so on

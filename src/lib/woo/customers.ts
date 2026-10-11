@@ -73,6 +73,14 @@ export interface WooCustomerQuery {
   payingOnly?: boolean;
   /** The order-derived buyer index, or null when the orders could not be read. */
   activity?: OrderActivityIndex | null;
+  /**
+   * Which roles to list. Omitted means the store's own default, which is
+   * **`customer` only** — and on this store that hides three accounts, one of which
+   * is the owner's own administrator account carrying two completed orders. A buyer
+   * list that omits a paying account is wrong, so a caller that wants every account
+   * the store holds asks for `all` and the store answers it.
+   */
+  role?: string;
 }
 
 export interface WooCustomerPage {
@@ -110,6 +118,7 @@ export async function listWooCustomers(query: WooCustomerQuery = {}): Promise<Wo
         per_page: perPage,
         page,
         search: query.search || undefined,
+        role: query.role || undefined,
       },
       timeoutMs: READ_TIMEOUT,
     });
@@ -192,6 +201,13 @@ export interface WooCustomerSummary {
   name: string;
   email: string | null;
   phone: string | null;
+  /**
+   * The account's WordPress role, as the store reports it. Present so a screen that
+   * lists every account can label a staff account instead of passing it off as a
+   * shopper — the owner's own administrator account carries two of this store's
+   * earliest orders, so it belongs in a buyer list and must not read as a customer.
+   */
+  role: string | null;
   ordersCount: number | null;
   /**
    * Orders counted from the store's own order records — the figure that can be
@@ -234,6 +250,7 @@ export function summariseCustomer(
     name: customerDisplayName(customer),
     email: customer.email?.trim() || null,
     phone: customer.billing?.phone?.trim() || customer.shipping?.phone?.trim() || null,
+    role: customer.role?.trim() || null,
     ordersCount:
       customer.orders_count === undefined || customer.orders_count === null
         ? null

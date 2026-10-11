@@ -119,8 +119,23 @@ export function isVerifiedBuyer(
   return count !== null && count > 0;
 }
 
-/** How a customer's order count was arrived at, for the console to label. */
-export type ActivityBasis = 'customer-id' | 'billing-email' | 'store-reported' | 'not-verifiable';
+/**
+ * How a customer's order count was arrived at, for the console to label.
+ *
+ * `no-matching-order` is the case that is easy to get wrong and was: the whole order
+ * book was read, the customer has something to be matched by, and no order carries it.
+ * That is a *verified* zero — the same finding `verifiedOrderCount` returns — and
+ * labelling it `not-verifiable` would report a checked answer as an unknown one, which
+ * is the same error as the missing field this module exists to work around, pointing
+ * the other way. `not-verifiable` is now reserved for the two cases where it is true:
+ * the read was truncated, or the record carries neither an id nor an address to match.
+ */
+export type ActivityBasis =
+  | 'customer-id'
+  | 'billing-email'
+  | 'no-matching-order'
+  | 'store-reported'
+  | 'not-verifiable';
 
 export function activityBasis(
   index: OrderActivityIndex | null | undefined,
@@ -137,7 +152,10 @@ export function activityBasis(
   if (email && index.ordersByEmail.has(email)) return 'billing-email';
   // A partial read that found nothing cannot say which basis applies.
   if (!index.complete) return 'not-verifiable';
-  return customer?.ordersCount === undefined || customer?.ordersCount === null
-    ? 'not-verifiable'
-    : 'store-reported';
+  // Complete read, matchable record, no order: the zero is verified. The store's own
+  // `orders_count` does not override the index here, because `verifiedOrderCount`
+  // answers from the index whenever there is one — the label must describe the figure
+  // that is actually shown, not the field it replaced.
+  if ((Number.isFinite(id) && id > 0) || email) return 'no-matching-order';
+  return 'not-verifiable';
 }

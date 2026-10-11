@@ -18,6 +18,7 @@
 
 import { getAccessToken } from '@/services/wordpressAdminAuth';
 import type { Order, OrderItem, Profile } from '@/lib/commerce/types';
+import type { ActivityBasis } from '@/lib/woo/customerActivity';
 
 async function authHeaders(): Promise<Record<string, string>> {
   const token = getAccessToken();
@@ -177,6 +178,13 @@ export interface AdminCustomer {
   name: string;
   email: string | null;
   phone: string | null;
+  /**
+   * The account's WordPress role. The list is every account the store holds, so a
+   * row is not necessarily a shopper: this store's own administrator account carries
+   * two completed orders, and the screen labels the role rather than implying it is
+   * a customer.
+   */
+  role: string | null;
   /** Null when WooCommerce does not report a figure for this customer. */
   ordersCount: number | null;
   /**
@@ -185,8 +193,12 @@ export interface AdminCustomer {
    * means the order read could not cover it: unknown, not zero.
    */
   verifiedOrders: number | null;
-  /** How `verifiedOrders` was derived, so a number can be labelled honestly. */
-  activityBasis: 'customer-id' | 'billing-email' | 'store-reported' | 'not-verifiable';
+  /**
+   * How `verifiedOrders` was derived, so a number can be labelled honestly. The union
+   * is imported rather than re-spelled, because a second copy of it is one that goes
+   * stale: this is a client module, but a type-only import is erased at build time.
+   */
+  activityBasis: ActivityBasis;
   totalSpent: number | null;
   lastOrderStatus: string | null;
   lastOrderAt: string | null;

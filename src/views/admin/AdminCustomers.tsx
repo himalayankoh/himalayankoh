@@ -38,6 +38,13 @@ const COLUMNS = [
  * A customer with no orders is still a customer — WooCommerce holds the account —
  * and the "buyers only" toggle narrows to people who have actually bought.
  * Identity and roles stay on Users; the two screens do not overlap.
+ *
+ * The list asks for *every* role the store holds, not just `customer`. The store's
+ * default answer is 2,704 accounts where it holds 2,707, and the three it withholds
+ * are staff accounts — one of them the owner's own administrator account, which made
+ * two completed orders in 2023. A buyer list that cannot show a paying account is a
+ * wrong list, so the role is fetched and shown as a chip on any non-customer row
+ * instead of the row being quietly dropped or passed off as a shopper.
  */
 export default function AdminCustomers() {
   const [customers, setCustomers] = useState<AdminCustomer[]>([]);
@@ -96,6 +103,14 @@ export default function AdminCustomers() {
           {fetchError}
         </AdminNotice>
       )}
+
+      <AdminNotice tone="info" title="This list is every account the store holds">
+        WooCommerce&apos;s customer list answers with role <strong>customer</strong> only, which on this store withholds
+        three accounts that are not shoppers — including the administrator account that made two of its earliest
+        orders. The list therefore asks for every role, and any row that is not a customer is labelled with its role
+        below the customer number rather than dropped, because an account that has bought belongs on this screen
+        whatever role it holds.
+      </AdminNotice>
 
       <AdminNotice tone="info" title="Where the Orders column comes from">
         WooCommerce does not report an order count or a spend total on this store&apos;s customer records — both
@@ -192,7 +207,12 @@ export default function AdminCustomers() {
                     </span>
                     <div className="min-w-0">
                       <p className="truncate font-medium text-admin-ink">{customer.name}</p>
-                      <p className="truncate text-[11px] text-admin-muted">#{customer.id}</p>
+                      <p className="flex items-center gap-2 text-[11px] text-admin-muted">
+                        <span>#{customer.id}</span>
+                        {customer.role && customer.role !== 'customer' && (
+                          <AdminChip tone="muted">{customer.role}</AdminChip>
+                        )}
+                      </p>
                     </div>
                   </div>
                 </td>

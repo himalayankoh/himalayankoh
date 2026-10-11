@@ -70,6 +70,16 @@ export async function GET(request: Request) {
       perPage: Number(params.get('limit') ?? '') || undefined,
       payingOnly,
       activity,
+      // Every account the store holds, not only role `customer`.
+      //
+      // The store's default list is role `customer`, which reports 2,704 accounts of
+      // the 2,707 it actually holds — and the three it withholds are staff accounts,
+      // including the owner's own administrator account, which carries two completed
+      // orders from 2023. So the default list is not "the customers": it is the
+      // customers *and not* the two or three accounts that transacted before the
+      // store had a customer account for them. `all` costs nothing extra and makes
+      // the count on this screen the store's real account count.
+      role: 'all',
     });
 
     const customers = page.customers.map((customer) => summariseCustomer(customer, activity));

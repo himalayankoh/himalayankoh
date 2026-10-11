@@ -144,6 +144,7 @@ if (loopbackHosts.has(parsed.hostname.toLowerCase()) || parsed.hostname.endsWith
 }
 
 let sha = process.env.NEXT_PUBLIC_BUILD_SHA || '';
+let dirty = false;
 if (!sha) {
   try {
     sha = execSync('git rev-parse HEAD', { cwd: ROOT, encoding: 'utf8' }).trim();
@@ -154,6 +155,25 @@ if (!sha) {
     );
     process.exit(1);
   }
+
+  /*
+   * A build from a modified working tree is not that commit, and must not claim to
+   * be. Measured: the previous deploy stamped the committed SHA while carrying
+   * uncommitted changes, so `/api/version` named a commit that did not contain the
+   * code the Worker was running — the one thing this stamp exists to make checkable.
+   *
+   * Untracked files are deliberately excluded (`--untracked-files=no`): a stray
+   * download in the workspace is not part of the artifact, and letting it flag every
+   * build would make the marker useless. Tracked modifications are the signal —
+   * those are code that would ship without a commit behind it.
+   */
+  try {
+    dirty = execSync('git status --porcelain --untracked-files=no', { cwd: ROOT, encoding: 'utf8' }).trim() !== '';
+  } catch {
+    // A tree that cannot be inspected is reported as dirty rather than as clean.
+    dirty = true;
+  }
+  if (dirty) sha = `${sha}-dirty`;
 }
 
 const builtAt = new Date().toISOString();
@@ -184,5 +204,12 @@ process.stdout.write(
   `Deploy env written: origin=${origin}${backendOrigin ? ` backend=${backendOrigin}` : ''} ` +
     `${stripePublishableKey ? `stripe=${stripePublishableKey.slice(0, 8)}…(${stripePublishableKey.length} chars) ` : ''}` +
     `${ordersPausedPublic ? `ordersPaused=${ordersPausedPublic} ` : ''}` +
-    `sha=${sha.slice(0, 12)} builtAt=${builtAt}\n`,
+    `sha=${sha.slice(0, 18)} builtAt=${builtAt}\n`,
 );
+if (dirty) {
+  process.stderr.write(
+    '  NOTE: the working tree had uncommitted tracked changes, so this build is stamped\n' +
+      '  `-dirty`. /api/version will say so. Commit and rebuild if the deployment must be\n' +
+      '  traceable to the commit hash it reports.\n',
+  );
+}
