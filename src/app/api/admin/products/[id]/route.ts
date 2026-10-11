@@ -34,6 +34,7 @@ import {
 } from '@/lib/woo/productPayload';
 import { readProductStatusField } from '@/lib/woo/productStatus';
 import { isNicheProduct } from '@/lib/catalog/niche';
+import { measurementsForAdmin, measurementsForWoo, readStoreMeasurements } from '@/lib/woo/adminMeasurements';
 
 /**
  * Keys this route hands to the mapper.
@@ -127,9 +128,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   }
 
   try {
-    const product = await getWooProduct(id);
+    const [product, units] = await Promise.all([getWooProduct(id), readStoreMeasurements()]);
     const variations = product.type === 'variable' ? await listWooVariations(id) : [];
-    const record = fromWooProduct(product);
+    const record = measurementsForAdmin(fromWooProduct(product), units);
     if ((record.price === null || record.price <= 0) && variations.length > 0) {
       const range = variationPriceRange(variations);
       if (range) {
@@ -198,6 +199,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   const writeBody = status.value ? { ...body, status: status.value } : body;
 
   try {
+    // Resolve before any write; unavailable units must never cause a guessed weight.
+    const units = await readStoreMeasurements();
     const patch = readPatch(writeBody);
     const { patches: variationPatches, ignored: unappliedVariations } = readVariationPatches(writeBody);
 
@@ -210,13 +213,14 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     }
 
     const result = Object.keys(patch).length
-      ? await updateWooProduct(id, patch as never)
+      ? await updateWooProduct(id, measurementsForWoo(patch as never, units))
       : { product: fromWooProduct(await getWooProduct(id)), applied: [], ignored: [] };
 
     // A field nobody can store is reported, never shrugged off: the console shows
     // a refused save rather than a success over a value that went nowhere.
     return NextResponse.json({
       ...result,
+      product: measurementsForAdmin(result.product, units),
       ignored: [...result.ignored, ...unappliedFields(writeBody), ...unappliedVariations],
       variations: updatedVariations,
     });
