@@ -107,12 +107,13 @@ export const LIVE_LAUNCH_PRODUCT_IDS: readonly number[] = [
   271,
   // Himalayan Pink Salt Licks for Horses — $9.95, in stock
   281,
-  // Himalayan Salt Rock for Cattle 18 Lbs Bag — $49.95, in stock
-  291,
   // Himalayan Rock Salt Pouches in Fine and Coarse Grain Sizes - 6 lbs — $17.95, in stock
   2321,
   // Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain — $9.95, in stock
   2446,
+  // Owner selected the preview 3 lb fine-grain line on 2026-10-11. Reuse its
+  // genuine live parent/variation (2461/2466), preserving historical orders.
+  2461,
 ];
 
 /** True when a record is one the owner admitted for the launch storefront. */
@@ -261,8 +262,7 @@ export const OWNER_REJECTED_PRODUCT_IDS: readonly number[] = [
   2352,
   // HIMALAYAN ROCK SALT BAG 18 LBS
   2372,
-  // Himalayan Koh Authentic Pure Natural Halal Unprocessed ... Edible Pink Cooking Salt
-  2461,
+  // 2461 was re-admitted on 2026-10-11 to match the owner's preview 3 lb line.
 ];
 
 /**

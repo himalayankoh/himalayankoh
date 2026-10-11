@@ -7,6 +7,7 @@ import ProductCard from '@/components/ProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
 import { getCatalogProducts } from '@/lib/backend/catalogClient';
 import { selectHomeFeatured } from '@/features/catalog/homeFeatured';
+import { productCardKey } from '@/features/catalog/listingCards';
 
 const saltBenefits = [
   'Naturally dense Himalayan rock salt provides essential sodium and chloride for horses, cattle, and livestock.',
@@ -100,8 +101,8 @@ export default function HomePage({ initialProducts }: HomePageProps = {}) {
           <div><p className="text-xs uppercase tracking-[0.16em] text-himalayan-dark mb-1">Explore the collection</p><h2 id="home-collection" className="text-xl sm:text-2xl font-bold">Salt for everyday use</h2></div>
           <Link to="/products" className="inline-flex items-center gap-2 text-sm font-semibold text-himalayan-dark py-2">View all products <ArrowRight size={16} /></Link>
         </div>
-        <div aria-busy={loading} className="grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-          {loading ? Array.from({length:4},(_,i)=><SkeletonProductCard key={i}/>) : products.map((p,i)=><ProductCard key={p.id} product={p} index={i} priority={i === 0}/>)}
+        <div aria-busy={loading} className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+          {loading ? Array.from({length:4},(_,i)=><SkeletonProductCard key={i}/>) : products.map((p,i)=><ProductCard key={productCardKey(p)} product={p} index={i} priority={i === 0}/>)}
         </div>
         {!loading && !products.length && <p role="status" className="rounded-xl border border-himalayan-line p-6 text-charcoal-light">{failed ? 'Products could not be loaded right now.' : 'Explore available products in our catalogue.'} <Link to="/products" className="underline">Browse the shop</Link></p>}
       </section>

@@ -110,6 +110,8 @@ describe('the catalog read of a variable product', () => {
     expect(product.variations?.options).toEqual([
       {
         id: 7001,
+        stockQuantity: null,
+        weight: null,
         attribute: 'Grain Size',
         label: 'Fine Grain',
         value: 'Fine Grain',
@@ -120,6 +122,8 @@ describe('the catalog read of a variable product', () => {
       },
       {
         id: 7002,
+        stockQuantity: null,
+        weight: null,
         attribute: 'Grain Size',
         label: 'Coarse Grain',
         value: 'Coarse Grain',
@@ -158,13 +162,24 @@ describe('the catalog read of a variable product', () => {
     expect(product.price).toBe('$17.95 - $19.95');
   });
 
-  it('does not raise a parent price the store reported below its variations', async () => {
+  it('uses genuine child prices instead of a stale lower parent summary', async () => {
     useWordPress(routes([{ ...VARIABLE_PARENT, price: '12.00', regular_price: '12.00' }]));
 
     const [product] = (await fetchAdminProducts({})) ?? [];
 
-    expect(product.priceMin).toBe(12);
-    expect(product.price).toBe('$12.00 - $19.95');
+    expect(product.priceMin).toBe(17.95);
+    expect(product.price).toBe('$17.95 - $19.95');
+  });
+
+  it('excludes retired variations from the price range and selector', async () => {
+    useWordPress(routes([VARIABLE_PARENT], [
+      { ...VARIATIONS[0], status: 'publish', regular_price: '19.95' },
+      { ...VARIATIONS[1], status: 'draft', regular_price: '4.95' },
+    ]));
+    const [product] = (await fetchAdminProducts({})) ?? [];
+    expect(product.priceMin).toBe(19.95);
+    expect(product.priceMax).toBeUndefined();
+    expect(product.variations?.options.map(v => v.id)).toEqual([VARIATIONS[0].id]);
   });
 
   it('reads the variations once per variable product, and not at all for a simple one', async () => {

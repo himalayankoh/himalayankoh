@@ -1,0 +1,1185 @@
+{
+  "checkedAt": "2026-10-11T07:07:43.181Z",
+  "liveWeightUnit": "kg",
+  "previewWeightUnit": "lbs",
+  "productionCatalog": [
+    {
+      "id": 2520,
+      "name": "Himalayan Koh 30 lb Red Rock Salt Lick for Cattle",
+      "slug": "himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh",
+      "status": "publish",
+      "type": "simple",
+      "sku": "HK-LB-30LBS",
+      "price": "49.95",
+      "weight": "13.607771",
+      "stockQuantity": 10,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 124,
+          "name": "Salt Blocks",
+          "slug": "salt-blocks"
+        }
+      ],
+      "attributes": [],
+      "images": [
+        {
+          "id": 2518,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/5d377168-56a1-4c09-bc7a-412e46c7ba9e.webp"
+        },
+        {
+          "id": 2519,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/951ebbaa-2ad2-43d8-9111-c58e47ab612f.jpeg"
+        }
+      ]
+    },
+    {
+      "id": 2461,
+      "name": "Himalayan Koh Pure Natural Himalayan Pink Salt for Livestock – Fine Grain (0.5–1mm), Unprocessed &amp; Halal",
+      "slug": "himalayan-koh-edible-salt-grain",
+      "status": "publish",
+      "type": "variable",
+      "sku": "HK-ESF-3lbs",
+      "price": "19.95",
+      "weight": "1.360777",
+      "stockQuantity": null,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 122,
+          "name": "Live Stock",
+          "slug": "livestock"
+        }
+      ],
+      "attributes": [
+        {
+          "id": 4,
+          "name": "Size/Weight",
+          "position": 0,
+          "visible": true,
+          "variation": true,
+          "options": [
+            "3 lbs",
+            "6 lbs"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "id": 2514,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche-2.webp"
+        },
+        {
+          "id": 2515,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche1.png"
+        },
+        {
+          "id": 2516,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche2-1.webp"
+        },
+        {
+          "id": 2517,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche2.webp"
+        }
+      ],
+      "variations": [
+        {
+          "id": 2467,
+          "status": "draft",
+          "sku": "HK-ESF-3lbs",
+          "attributes": [
+            {
+              "id": 4,
+              "name": "Size/Weight",
+              "option": "6 lbs"
+            }
+          ],
+          "price": "17.95",
+          "weight": "1.360777",
+          "stockQuantity": null,
+          "stockStatus": "instock",
+          "image": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche-2.webp"
+        },
+        {
+          "id": 2466,
+          "status": "publish",
+          "sku": "HK-ESF-3lbs",
+          "attributes": [
+            {
+              "id": 4,
+              "name": "Size/Weight",
+              "option": "3 lbs"
+            }
+          ],
+          "price": "19.95",
+          "weight": "1.360777",
+          "stockQuantity": 10,
+          "stockStatus": "instock",
+          "image": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche-2.webp"
+        }
+      ]
+    },
+    {
+      "id": 2446,
+      "name": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+      "slug": "himalayan-edible-pink-salt",
+      "status": "publish",
+      "type": "variable",
+      "sku": "HK-ESF-16oz",
+      "price": "9.95",
+      "weight": "",
+      "stockQuantity": null,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 121,
+          "name": "Edible Pink Salt",
+          "slug": "edible-pink-salt"
+        }
+      ],
+      "attributes": [
+        {
+          "id": 2,
+          "name": "Grain Size",
+          "position": 0,
+          "visible": true,
+          "variation": true,
+          "options": [
+            "Fine Grain",
+            "Coarse Grain"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "id": 2499,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/7017f765-35de-4aee-b150-2022e5ef8a04-1-1.jpeg"
+        },
+        {
+          "id": 2500,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/9e5b8fa6-ce10-4e73-890e-231683089e75-1-1.jpeg"
+        },
+        {
+          "id": 2501,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/bcca2d4e-ba53-4f53-9a20-d5784713aa42-1-1.jpeg"
+        }
+      ],
+      "variations": [
+        {
+          "id": 2451,
+          "status": "draft",
+          "sku": "HK-ESF-16oz",
+          "attributes": [
+            {
+              "id": 2,
+              "name": "Grain Size",
+              "option": "Coarse Grain"
+            }
+          ],
+          "price": "",
+          "weight": "",
+          "stockQuantity": null,
+          "stockStatus": "outofstock",
+          "image": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/7017f765-35de-4aee-b150-2022e5ef8a04-1-1.jpeg"
+        },
+        {
+          "id": 2450,
+          "status": "publish",
+          "sku": "HK-ESF-16oz",
+          "attributes": [
+            {
+              "id": 2,
+              "name": "Grain Size",
+              "option": "Fine Grain"
+            }
+          ],
+          "price": "9.95",
+          "weight": "",
+          "stockQuantity": 10,
+          "stockStatus": "instock",
+          "image": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/7017f765-35de-4aee-b150-2022e5ef8a04-1-1.jpeg"
+        }
+      ]
+    },
+    {
+      "id": 2321,
+      "name": "Himalayan Pink Salt for Livestock - 6 lbs Fine or Coarse Grain Pouches",
+      "slug": "pouches",
+      "status": "publish",
+      "type": "variable",
+      "sku": "HK-ESF-6lbs",
+      "price": "19.95",
+      "weight": "2.721554",
+      "stockQuantity": null,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 122,
+          "name": "Live Stock",
+          "slug": "livestock"
+        }
+      ],
+      "attributes": [
+        {
+          "id": 2,
+          "name": "Grain Size",
+          "position": 0,
+          "visible": true,
+          "variation": true,
+          "options": [
+            "Fine Grain",
+            "Coarse Grain"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "id": 2502,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S4-1.jpeg"
+        },
+        {
+          "id": 2503,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S1-1.jpeg"
+        },
+        {
+          "id": 2504,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S7-1.jpeg"
+        },
+        {
+          "id": 2505,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S2-1.jpeg"
+        }
+      ],
+      "variations": [
+        {
+          "id": 2323,
+          "status": "publish",
+          "sku": "HK-ESF-6lbs",
+          "attributes": [
+            {
+              "id": 2,
+              "name": "Grain Size",
+              "option": "Coarse Grain"
+            }
+          ],
+          "price": "19.95",
+          "weight": "2.721554",
+          "stockQuantity": 10,
+          "stockStatus": "instock",
+          "image": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S4-1.jpeg"
+        },
+        {
+          "id": 2322,
+          "status": "publish",
+          "sku": "HK-ESF-6lbs",
+          "attributes": [
+            {
+              "id": 2,
+              "name": "Grain Size",
+              "option": "Fine Grain"
+            }
+          ],
+          "price": "19.95",
+          "weight": "2.721554",
+          "stockQuantity": 10,
+          "stockStatus": "instock",
+          "image": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S4-1.jpeg"
+        }
+      ]
+    },
+    {
+      "id": 271,
+      "name": "Bag of Himalayan Pink Salt for Livestock (45 lbs.) - Himalayan Koh",
+      "slug": "bag-of-salt-for-livestock-45-lbs",
+      "status": "publish",
+      "type": "simple",
+      "sku": "HK-LFC-45lbs",
+      "price": "49.95",
+      "weight": "20.411657",
+      "stockQuantity": 10,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 122,
+          "name": "Live Stock",
+          "slug": "livestock"
+        }
+      ],
+      "attributes": [
+        {
+          "id": 0,
+          "name": "Weight",
+          "position": 0,
+          "visible": true,
+          "variation": false,
+          "options": [
+            "45 lbs"
+          ]
+        },
+        {
+          "id": 2,
+          "name": "Grain Size",
+          "position": 1,
+          "visible": true,
+          "variation": true,
+          "options": [
+            "Fine Grain",
+            "Medium Grain",
+            "Coarse Grain"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "id": 2506,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/5475e8cf-56b9-42bc-8882-7a990460b044-1.jpg"
+        },
+        {
+          "id": 2507,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/2cd15cea-b2f9-428d-92b4-09621e17cd24-1.jpg"
+        }
+      ]
+    },
+    {
+      "id": 281,
+      "name": "Himalayan Pink Salt Licks for Horses",
+      "slug": "salt-licks-for-horses",
+      "status": "publish",
+      "type": "variable",
+      "sku": "5483976372749",
+      "price": "17.95",
+      "weight": "",
+      "stockQuantity": null,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 123,
+          "name": "Salt Licks",
+          "slug": "salt-licks"
+        }
+      ],
+      "attributes": [
+        {
+          "id": 4,
+          "name": "Size/Weight",
+          "position": 1,
+          "visible": true,
+          "variation": true,
+          "options": [
+            "2 lbs.",
+            "6 lbs."
+          ]
+        }
+      ],
+      "images": [
+        {
+          "id": 2508,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt5-1.jpg"
+        },
+        {
+          "id": 2509,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt-1.jpg"
+        },
+        {
+          "id": 2510,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/20220604_173559-1-scaled-1-1.jpg"
+        },
+        {
+          "id": 2511,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/20220604_173648-1-scaled-1-1.jpg"
+        },
+        {
+          "id": 2512,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt2-1.jpg"
+        },
+        {
+          "id": 2513,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt3-1.jpg"
+        }
+      ],
+      "variations": [
+        {
+          "id": 1549,
+          "status": "publish",
+          "sku": "HK-LFH-2lbs",
+          "attributes": [
+            {
+              "id": 4,
+              "name": "Size/Weight",
+              "option": "2 lbs."
+            }
+          ],
+          "price": "19.95",
+          "weight": "0.907185",
+          "stockQuantity": 10,
+          "stockStatus": "instock",
+          "image": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt5-1.jpg"
+        },
+        {
+          "id": 1548,
+          "status": "publish",
+          "sku": "HK-LFH-6lbs",
+          "attributes": [
+            {
+              "id": 4,
+              "name": "Size/Weight",
+              "option": "6 lbs."
+            }
+          ],
+          "price": "17.95",
+          "weight": "3",
+          "stockQuantity": 10,
+          "stockStatus": "instock",
+          "image": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt5-1.jpg"
+        },
+        {
+          "id": 1547,
+          "status": "draft",
+          "sku": "5483976372749",
+          "attributes": [
+            {
+              "id": 4,
+              "name": "Size/Weight",
+              "option": "4 lbs."
+            }
+          ],
+          "price": "14.95",
+          "weight": "1.814",
+          "stockQuantity": 10,
+          "stockStatus": "instock",
+          "image": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt5-1.jpg"
+        }
+      ]
+    },
+    {
+      "id": 291,
+      "name": "Himalayan Salt Rock for Cattle 18 Lbs Bag",
+      "slug": "rock-of-salt",
+      "status": "draft",
+      "type": "simple",
+      "sku": "2191787207619",
+      "price": "49.95",
+      "weight": "",
+      "stockQuantity": 10,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 58,
+          "name": "animal feed",
+          "slug": "animal-feed"
+        }
+      ],
+      "attributes": [
+        {
+          "id": 0,
+          "name": "Rock size",
+          "position": 0,
+          "visible": false,
+          "variation": true,
+          "options": [
+            "Varies (18 lbs to 20 lbs)"
+          ]
+        }
+      ],
+      "images": [
+        {
+          "id": 1802,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2016/06/WhatsApp-Image-2021-07-28-at-4.39.51-AM.jpeg"
+        },
+        {
+          "id": 1718,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/himalayan-salt-lump-cattle.jpg"
+        },
+        {
+          "id": 1717,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/himalayan-salt-lump-cattle5.jpg"
+        },
+        {
+          "id": 1716,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/himalayan-salt-lump-cattle4.jpg"
+        },
+        {
+          "id": 1715,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/himalayan-salt-lump-cattle3.jpg"
+        },
+        {
+          "id": 1723,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/salt-for-horse-lick.jpg"
+        },
+        {
+          "id": 1722,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/salt-for-horse.jpg"
+        },
+        {
+          "id": 1721,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/salt-lick-for-horse.jpg"
+        },
+        {
+          "id": 1720,
+          "sourceUrl": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/lick-salt-for-horse.jpg"
+        }
+      ]
+    }
+  ],
+  "previewCatalog": [
+    {
+      "id": 2752,
+      "name": "Himalayan Koh 30 lb Red Rock Salt Lick for Cattle",
+      "slug": "himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh",
+      "status": "publish",
+      "type": "simple",
+      "sku": "HK-LB-30LBS",
+      "price": "49.95",
+      "weight": "30",
+      "stockQuantity": 10,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 122,
+          "name": "Salt Blocks",
+          "slug": "salt-blocks"
+        }
+      ],
+      "attributes": [],
+      "images": [
+        {
+          "id": 2750,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/10/5d377168-56a1-4c09-bc7a-412e46c7ba9e.webp"
+        },
+        {
+          "id": 2751,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/10/951ebbaa-2ad2-43d8-9111-c58e47ab612f.jpeg"
+        }
+      ]
+    },
+    {
+      "id": 2721,
+      "name": "Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh",
+      "slug": "himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh",
+      "status": "publish",
+      "type": "simple",
+      "sku": "HK-LFH-2lbs",
+      "price": "19.95",
+      "weight": "2",
+      "stockQuantity": 7,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 123,
+          "name": "Salt Licks",
+          "slug": "salt-licks"
+        }
+      ],
+      "attributes": [],
+      "images": [
+        {
+          "id": 2722,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt5.jpg"
+        },
+        {
+          "id": 2723,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt.jpg"
+        },
+        {
+          "id": 2724,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/20220604_173559-1-scaled-1.jpg"
+        },
+        {
+          "id": 2725,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/20220604_173648-1-scaled-1.jpg"
+        },
+        {
+          "id": 2726,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt2.jpg"
+        },
+        {
+          "id": 2727,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt3.jpg"
+        }
+      ]
+    },
+    {
+      "id": 2716,
+      "name": "Bag of Himalayan Pink Salt for Livestock (45 lbs.) - Himalayan Koh",
+      "slug": "bag-of-himalayan-pink-salt-for-livestock-45-lbs-himalayan-koh",
+      "status": "publish",
+      "type": "simple",
+      "sku": "HK-LFC-45lbs",
+      "price": "49.95",
+      "weight": "45",
+      "stockQuantity": 10,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 75,
+          "name": "Live Stock",
+          "slug": "livestock"
+        }
+      ],
+      "attributes": [],
+      "images": [
+        {
+          "id": 2758,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/10/5475e8cf-56b9-42bc-8882-7a990460b044.jpg"
+        },
+        {
+          "id": 2759,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/10/2cd15cea-b2f9-428d-92b4-09621e17cd24.jpg"
+        }
+      ]
+    },
+    {
+      "id": 2710,
+      "name": "Himalayan Pink Salt for Livestock - 6 lbs Fine or Coarse Grain Pouches",
+      "slug": "himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh",
+      "status": "publish",
+      "type": "simple",
+      "sku": "HK-ESF-6lbs",
+      "price": "19.95",
+      "weight": "6",
+      "stockQuantity": 10,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 75,
+          "name": "Live Stock",
+          "slug": "livestock"
+        }
+      ],
+      "attributes": [],
+      "images": [
+        {
+          "id": 2712,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/S4.jpeg"
+        },
+        {
+          "id": 2713,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/S1.jpeg"
+        },
+        {
+          "id": 2714,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/S7.jpeg"
+        },
+        {
+          "id": 2715,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/S2.jpeg"
+        }
+      ]
+    },
+    {
+      "id": 2704,
+      "name": "Himalayan Koh Pure Natural Himalayan Pink Salt for Livestock – Fine Grain (0.5–1mm), Unprocessed &amp; Halal",
+      "slug": "himalayan-koh-authentic-pure-natural-halal-unprocessed-himalayan-edible-pink-cooking-salt-fine-grain-0-5mm-to-1mm-himalayan-koh",
+      "status": "publish",
+      "type": "simple",
+      "sku": "HK-ESF-3lbs",
+      "price": "19.95",
+      "weight": "3",
+      "stockQuantity": 10,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 75,
+          "name": "Live Stock",
+          "slug": "livestock"
+        }
+      ],
+      "attributes": [],
+      "images": [
+        {
+          "id": 2705,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche-2.webp"
+        },
+        {
+          "id": 2706,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche1.png"
+        },
+        {
+          "id": 2707,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche2-1.webp"
+        },
+        {
+          "id": 2708,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche2.webp"
+        }
+      ]
+    },
+    {
+      "id": 2653,
+      "name": "Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain",
+      "slug": "himalayan-edible-pink-salt-16-oz-jar-fine-grain",
+      "status": "publish",
+      "type": "simple",
+      "sku": "HK-ESF-16oz",
+      "price": "9.95",
+      "weight": "",
+      "stockQuantity": 4,
+      "stockStatus": "instock",
+      "categories": [
+        {
+          "id": 121,
+          "name": "Edible Pink Salt",
+          "slug": "edible-pink-salt"
+        }
+      ],
+      "attributes": [],
+      "images": [
+        {
+          "id": 2672,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/7017f765-35de-4aee-b150-2022e5ef8a04-1.jpeg"
+        },
+        {
+          "id": 2673,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/9e5b8fa6-ce10-4e73-890e-231683089e75-1.jpeg"
+        },
+        {
+          "id": 2674,
+          "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/bcca2d4e-ba53-4f53-9a20-d5784713aa42-1.jpeg"
+        }
+      ]
+    }
+  ],
+  "mapping": [
+    {
+      "preview": 2721,
+      "parent": 281,
+      "variation": 1549
+    },
+    {
+      "ownerConfirmed": true,
+      "parent": 281,
+      "variation": 1548,
+      "packedWeightKg": 3
+    },
+    {
+      "preview": 2752,
+      "live": 2520
+    },
+    {
+      "preview": 2704,
+      "parent": 2461,
+      "variation": 2466
+    },
+    {
+      "preview": 2653,
+      "parent": 2446,
+      "variation": 2450
+    },
+    {
+      "preview": 2710,
+      "parent": 2321,
+      "variations": [
+        2322,
+        2323
+      ]
+    },
+    {
+      "preview": 2716,
+      "live": 271
+    }
+  ],
+  "retired": [
+    291,
+    1547,
+    2467,
+    2451
+  ],
+  "retirement": "draft; IDs/order history preserved",
+  "mediaRootCause": "21 preview apex /staging upload URLs returned 404; same original files at wp.himalayankoh.com/staging returned 200. Originals imported through WooCommerce, without cross-database media IDs.",
+  "photoIdentityLimit": "Preview 3 lb SKU HK-ESF-3lbs uses photos named 6-lbs-pouche; dedicated accurate 3 lb package photo needs owner confirmation.",
+  "ordersTouched": false,
+  "mediaChecks": [
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/5d377168-56a1-4c09-bc7a-412e46c7ba9e.webp",
+      "status": 200,
+      "type": "image/webp",
+      "bytes": "141516"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/951ebbaa-2ad2-43d8-9111-c58e47ab612f.jpeg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "259896"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche-2.webp",
+      "status": 200,
+      "type": "image/webp",
+      "bytes": "36552"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche1.png",
+      "status": 200,
+      "type": "image/png",
+      "bytes": "493584"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche2-1.webp",
+      "status": 200,
+      "type": "image/webp",
+      "bytes": "26722"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche2.webp",
+      "status": 200,
+      "type": "image/webp",
+      "bytes": "61354"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/7017f765-35de-4aee-b150-2022e5ef8a04-1-1.jpeg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "70852"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/9e5b8fa6-ce10-4e73-890e-231683089e75-1-1.jpeg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "57686"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/bcca2d4e-ba53-4f53-9a20-d5784713aa42-1-1.jpeg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "84152"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S4-1.jpeg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "325400"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S1-1.jpeg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "297769"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S7-1.jpeg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "190576"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S2-1.jpeg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "286830"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/5475e8cf-56b9-42bc-8882-7a990460b044-1.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "258308"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/2cd15cea-b2f9-428d-92b4-09621e17cd24-1.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "96308"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt5-1.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "38692"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt-1.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "101500"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/20220604_173559-1-scaled-1-1.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "1458405"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/20220604_173648-1-scaled-1-1.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "1730536"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt2-1.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "154415"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt3-1.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "117806"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2016/06/WhatsApp-Image-2021-07-28-at-4.39.51-AM.jpeg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "258308"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/himalayan-salt-lump-cattle.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "165371"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/himalayan-salt-lump-cattle5.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "96308"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/himalayan-salt-lump-cattle4.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "69373"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/himalayan-salt-lump-cattle3.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "60306"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/salt-for-horse-lick.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "62363"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/salt-for-horse.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "70669"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/salt-lick-for-horse.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "79465"
+    },
+    {
+      "url": "https://wp.himalayankoh.com/wp-content/uploads/2021/03/lick-salt-for-horse.jpg",
+      "status": 200,
+      "type": "image/jpeg",
+      "bytes": "72102"
+    }
+  ],
+  "mediaMapping": [
+    {
+      "previewProductId": 2721,
+      "liveProductId": 281,
+      "sku": "5483976372749",
+      "sourceMediaId": 2722,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt5.jpg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt5.jpg",
+      "destinationMediaId": 2508,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt5-1.jpg"
+    },
+    {
+      "previewProductId": 2721,
+      "liveProductId": 281,
+      "sku": "5483976372749",
+      "sourceMediaId": 2723,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt.jpg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt.jpg",
+      "destinationMediaId": 2509,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt-1.jpg"
+    },
+    {
+      "previewProductId": 2721,
+      "liveProductId": 281,
+      "sku": "5483976372749",
+      "sourceMediaId": 2724,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/20220604_173559-1-scaled-1.jpg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/20220604_173559-1-scaled-1.jpg",
+      "destinationMediaId": 2510,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/20220604_173559-1-scaled-1-1.jpg"
+    },
+    {
+      "previewProductId": 2721,
+      "liveProductId": 281,
+      "sku": "5483976372749",
+      "sourceMediaId": 2725,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/20220604_173648-1-scaled-1.jpg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/20220604_173648-1-scaled-1.jpg",
+      "destinationMediaId": 2511,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/20220604_173648-1-scaled-1-1.jpg"
+    },
+    {
+      "previewProductId": 2721,
+      "liveProductId": 281,
+      "sku": "5483976372749",
+      "sourceMediaId": 2726,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt2.jpg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt2.jpg",
+      "destinationMediaId": 2512,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt2-1.jpg"
+    },
+    {
+      "previewProductId": 2721,
+      "liveProductId": 281,
+      "sku": "5483976372749",
+      "sourceMediaId": 2727,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt3.jpg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/horse-lick-himalayan-salt3.jpg",
+      "destinationMediaId": 2513,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/horse-lick-himalayan-salt3-1.jpg"
+    },
+    {
+      "previewProductId": 2752,
+      "liveProductId": 2520,
+      "sku": "HK-LB-30LBS",
+      "sourceMediaId": 2750,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/10/5d377168-56a1-4c09-bc7a-412e46c7ba9e.webp",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/10/5d377168-56a1-4c09-bc7a-412e46c7ba9e.webp",
+      "destinationMediaId": 2518,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/5d377168-56a1-4c09-bc7a-412e46c7ba9e.webp"
+    },
+    {
+      "previewProductId": 2752,
+      "liveProductId": 2520,
+      "sku": "HK-LB-30LBS",
+      "sourceMediaId": 2751,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/10/951ebbaa-2ad2-43d8-9111-c58e47ab612f.jpeg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/10/951ebbaa-2ad2-43d8-9111-c58e47ab612f.jpeg",
+      "destinationMediaId": 2519,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/951ebbaa-2ad2-43d8-9111-c58e47ab612f.jpeg"
+    },
+    {
+      "previewProductId": 2704,
+      "liveProductId": 2461,
+      "sku": "HK-ESF-3lbs",
+      "sourceMediaId": 2705,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche-2.webp",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche-2.webp",
+      "destinationMediaId": 2514,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche-2.webp"
+    },
+    {
+      "previewProductId": 2704,
+      "liveProductId": 2461,
+      "sku": "HK-ESF-3lbs",
+      "sourceMediaId": 2706,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche1.png",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche1.png",
+      "destinationMediaId": 2515,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche1.png"
+    },
+    {
+      "previewProductId": 2704,
+      "liveProductId": 2461,
+      "sku": "HK-ESF-3lbs",
+      "sourceMediaId": 2707,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche2-1.webp",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche2-1.webp",
+      "destinationMediaId": 2516,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche2-1.webp"
+    },
+    {
+      "previewProductId": 2704,
+      "liveProductId": 2461,
+      "sku": "HK-ESF-3lbs",
+      "sourceMediaId": 2708,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche2.webp",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/6-lbs-pouche2.webp",
+      "destinationMediaId": 2517,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/6-lbs-pouche2.webp"
+    },
+    {
+      "previewProductId": 2653,
+      "liveProductId": 2446,
+      "sku": "HK-ESF-16oz",
+      "sourceMediaId": 2672,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/7017f765-35de-4aee-b150-2022e5ef8a04-1.jpeg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/7017f765-35de-4aee-b150-2022e5ef8a04-1.jpeg",
+      "destinationMediaId": 2499,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/7017f765-35de-4aee-b150-2022e5ef8a04-1-1.jpeg"
+    },
+    {
+      "previewProductId": 2653,
+      "liveProductId": 2446,
+      "sku": "HK-ESF-16oz",
+      "sourceMediaId": 2673,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/9e5b8fa6-ce10-4e73-890e-231683089e75-1.jpeg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/9e5b8fa6-ce10-4e73-890e-231683089e75-1.jpeg",
+      "destinationMediaId": 2500,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/9e5b8fa6-ce10-4e73-890e-231683089e75-1-1.jpeg"
+    },
+    {
+      "previewProductId": 2653,
+      "liveProductId": 2446,
+      "sku": "HK-ESF-16oz",
+      "sourceMediaId": 2674,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/bcca2d4e-ba53-4f53-9a20-d5784713aa42-1.jpeg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/bcca2d4e-ba53-4f53-9a20-d5784713aa42-1.jpeg",
+      "destinationMediaId": 2501,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/bcca2d4e-ba53-4f53-9a20-d5784713aa42-1-1.jpeg"
+    },
+    {
+      "previewProductId": 2710,
+      "liveProductId": 2321,
+      "sku": "HK-ESF-6lbs",
+      "sourceMediaId": 2712,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/S4.jpeg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/S4.jpeg",
+      "destinationMediaId": 2502,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S4-1.jpeg"
+    },
+    {
+      "previewProductId": 2710,
+      "liveProductId": 2321,
+      "sku": "HK-ESF-6lbs",
+      "sourceMediaId": 2713,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/S1.jpeg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/S1.jpeg",
+      "destinationMediaId": 2503,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S1-1.jpeg"
+    },
+    {
+      "previewProductId": 2710,
+      "liveProductId": 2321,
+      "sku": "HK-ESF-6lbs",
+      "sourceMediaId": 2714,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/S7.jpeg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/S7.jpeg",
+      "destinationMediaId": 2504,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S7-1.jpeg"
+    },
+    {
+      "previewProductId": 2710,
+      "liveProductId": 2321,
+      "sku": "HK-ESF-6lbs",
+      "sourceMediaId": 2715,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/09/S2.jpeg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/09/S2.jpeg",
+      "destinationMediaId": 2505,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/S2-1.jpeg"
+    },
+    {
+      "previewProductId": 2716,
+      "liveProductId": 271,
+      "sku": "HK-LFC-45lbs",
+      "sourceMediaId": 2758,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/10/5475e8cf-56b9-42bc-8882-7a990460b044.jpg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/10/5475e8cf-56b9-42bc-8882-7a990460b044.jpg",
+      "destinationMediaId": 2506,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/5475e8cf-56b9-42bc-8882-7a990460b044-1.jpg"
+    },
+    {
+      "previewProductId": 2716,
+      "liveProductId": 271,
+      "sku": "HK-LFC-45lbs",
+      "sourceMediaId": 2759,
+      "sourceUrl": "https://himalayankoh.com/staging/wp-content/uploads/2026/10/2cd15cea-b2f9-428d-92b4-09621e17cd24.jpg",
+      "correctedOriginUrl": "https://wp.himalayankoh.com/staging/wp-content/uploads/2026/10/2cd15cea-b2f9-428d-92b4-09621e17cd24.jpg",
+      "destinationMediaId": 2507,
+      "destinationUrl": "https://wp.himalayankoh.com/wp-content/uploads/2026/10/2cd15cea-b2f9-428d-92b4-09621e17cd24-1.jpg"
+    }
+  ]
+}

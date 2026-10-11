@@ -88,13 +88,13 @@ export const GALLERY_IMAGE_SIZES = '(min-width: 768px) 50vw, 100vw';
 /**
  * A product card, across the two grids that render one.
  *
- * `/products` is `1 / 2 / 3 / 4` columns at `<360 / ≥360 / ≥768 / ≥1280`, and the
- * homepage featuring is `1 / 2 / 4` at `<360 / ≥360 / ≥1024`, inside a `max-w-7xl`
+ * Narrow mobile cards use a 112 px image beside readable controls. From 400 px,
+ * grids use two columns, increasing on tablet/desktop inside a `max-w-7xl`
  * container. One `sizes` cannot be exact for both, so this states the wider of the
  * two at each breakpoint.
  */
 export const CARD_IMAGE_SIZES =
-  '(min-width: 1280px) 320px, (min-width: 1024px) 25vw, (min-width: 768px) 33vw, (min-width: 360px) 50vw, 100vw';
+  '(min-width: 1280px) 320px, (min-width: 1024px) 25vw, (min-width: 768px) 33vw, (min-width: 400px) 50vw, 112px';
 
 const IMAGE_EXTENSION = /\.(png|jpe?g|webp|gif|avif)$/i;
 const SIZE_TOKEN = /^\d+x\d+$/;

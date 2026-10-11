@@ -22,7 +22,7 @@
 import type { Product, StockStatus } from '../../data/products';
 import { collectMissingCatalogFields, priceDisplayFromRange } from '../products/price';
 import { productSlugFromName } from '../products/slug';
-import { resolveCuratedProductImages } from '../products/curatedImages';
+import { wordpressMediaUrl } from '../images/wordpressMediaUrl';
 import { UNCATEGORIZED_CATEGORY, cleanProductName, normalizeWeightUnits } from '../products/displayName';
 import { parseStoreSrcset, type ResponsiveImageSources } from '../images/responsiveImage';
 import { SEO_META_KEYS, variationPriceRange, type WooVariationLike } from '../woo/productPayload';
@@ -343,7 +343,10 @@ function buildProduct(input: {
   ownerApproved?: boolean | null;
 }): Product {
   const price = priceDisplayFromRange(input.priceMin, input.priceMax);
-  const images = resolveCuratedProductImages(input.slug, input.sku, input.images);
+  // WooCommerce media is authoritative. A missing original remains missing;
+  // app overlays cannot prove that they depict this particular SKU.
+  const originals = Array.from(new Set(input.images.map(wordpressMediaUrl).filter(Boolean)));
+  const images = originals;
   return {
     id: input.id,
     slug: input.slug,
@@ -357,7 +360,9 @@ function buildProduct(input: {
     priceMax: input.priceMax,
     image: images[0] ?? '',
     images,
-    imageResponsive: input.imageResponsive,
+    imageResponsive: input.imageResponsive ? Object.fromEntries(
+      Object.entries(input.imageResponsive).map(([url, source]) => [wordpressMediaUrl(url), source])
+    ) : undefined,
     category: input.category || UNCATEGORIZED_CATEGORY,
     // The description and SEO strings are customer-facing text too, so the same weight
     // spelling rule applies to them. The brand suffix is deliberately NOT stripped from
@@ -724,8 +729,8 @@ export async function fetchAdminProductBySlug(
 /**
  * Reads a variable product's variations once, for both things they carry.
  *
- * The price range is filled only when the parent reports none — a variable product
- * whose variations all cost the same reports its own price, and needs no arithmetic.
+ * Published child prices determine the range, including when WooCommerce's parent
+ * summary still contains the price of a retired variation.
  * The variation *options* are set whatever the parent's price is, because they are
  * what a shopper chooses between: a single-priced variable product with a grain
  * selector still has to tell the storefront which grains exist.
@@ -788,15 +793,13 @@ async function withVariations(
       // option costs the same, which is exactly the claim a shopper is misled by.
       //
       // Both ends come from the variation rows already read, so WooCommerce stays
-      // the source; the parent's figure is kept as the floor when it is lower,
-      // because this must never raise a price the store reported.
-      const range = variationPriceRange(data);
+      // the source; retired children and stale parent summaries cannot lower it.
+      const range = variationPriceRange(data.filter(v => v.status === undefined || v.status === 'publish'));
       if (!range) return;
 
-      const min =
-        product.priceMin !== null && product.priceMin > 0
-          ? Math.min(product.priceMin, range.min)
-          : range.min;
+      // Real published children own a variable product's price. A stale parent
+      // summary or a retired child must not advertise a lower purchase price.
+      const min = range.min;
       const max = Math.max(range.max, min);
 
       // `priceMax` is the top of a variant range and stays absent when every

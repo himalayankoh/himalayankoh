@@ -18,7 +18,7 @@ describe('Phase 23 — Automated AdSense & Compliance Safety Gates', () => {
     });
 
     it('blocks retired legacy products from public display', () => {
-      const retiredProductIds = [2352, 2372, 2461];
+      const retiredProductIds = [2352, 2372];
       retiredProductIds.forEach((id) => {
         expect(isOwnerRejectedProduct(id)).toBe(true);
         expect(OWNER_REJECTED_PRODUCT_IDS).toContain(id);
@@ -29,7 +29,7 @@ describe('Phase 23 — Automated AdSense & Compliance Safety Gates', () => {
       // `2321` and `2446` left the retired list on 2026-10-09 for the live launch,
       // and the admission names them explicitly rather than opening a class of
       // product: no record outside this list is admitted by it.
-      expect(LIVE_LAUNCH_PRODUCT_IDS).toEqual([271, 281, 291, 2321, 2446]);
+      expect(LIVE_LAUNCH_PRODUCT_IDS).toEqual([271, 281, 2321, 2446, 2461]);
       expect(isOwnerRejectedProduct(2321)).toBe(false);
       expect(isOwnerRejectedProduct(2446)).toBe(false);
       expect(isOwnerRejectedProduct(2352)).toBe(true);

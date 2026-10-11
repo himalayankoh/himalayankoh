@@ -10,6 +10,8 @@ import { useAuthContext } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { wishlistApi } from '../lib/wishlist/client';
 import { ORDERING_ENABLED } from '../lib/storefront/ordering';
+import { productCardPath } from '../features/catalog/listingCards';
+import { variationPriceDisplay } from '../lib/products/price';
 import {
   CARD_IMAGE_SIZES,
   dropResponsiveCandidates,
@@ -41,8 +43,11 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
   // The choice list comes from the store's real variations when the product is
   // variable; `grainSizes` is the same list's labels, and stays the fallback for a
   // hand-written catalog entry.
-  const grainChoices = product.variations?.options.map((option) => option.label) ?? product.grainSizes ?? [];
+  const grainChoices = product.variations?.options.filter(option => !product.selectedVariationId || option.id === product.selectedVariationId).map((option) => option.label) ?? product.grainSizes ?? [];
   const [selectedGrain, setSelectedGrain] = useState(grainChoices[0] || '');
+  const selectedOption = findVariationOption(product.variations, selectedGrain);
+  const [failedImages, setFailedImages] = useState<string[]>([]);
+  const imageUrl = [selectedOption?.image, product.image, ...(product.images ?? [])].find(url => url && !failedImages.includes(url)) || '/images/placeholder-product.svg';
   const [wishlisted, setWishlisted] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
   const { addItem } = useCart();
@@ -53,12 +58,13 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
   // real unit price, and falling back to 0 would let a customer check out for
   // free. The backend reports `priceMin: null` for exactly this case.
   const priceKnown = isPriceKnown(product);
-  const maxQuantity = typeof product.stockQuantity === 'number' ? Math.max(0, product.stockQuantity) : null;
+  const stockQuantity = selectedOption ? selectedOption.stockQuantity : product.stockQuantity;
+  const maxQuantity = typeof stockQuantity === 'number' ? Math.max(0, stockQuantity) : null;
   // A catalogue-only deployment offers no purchase at all, so the card must not render a
   // cart control it cannot honour. `ORDERING_ENABLED` is the build-time mirror of the
   // pause the server enforces (`lib/storefront/ordering.ts`), which is why a product
   // that is genuinely in stock and priced still shows no Add to Cart here.
-  const canBuy = ORDERING_ENABLED && priceKnown && product.inStock && (maxQuantity === null || maxQuantity > 0);
+  const canBuy = ORDERING_ENABLED && priceKnown && product.inStock && (!selectedOption || (selectedOption.inStock && selectedOption.price !== null)) && (maxQuantity === null || maxQuantity > 0);
 
   const [isAdding, setIsAdding] = useState(false);
 
@@ -67,7 +73,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
   // falls back to the full-size image when none does. See
   // `lib/images/responsiveImage.ts`.
   const cardImage = responsiveImageProps(
-    product.image?.trim() || '/images/placeholder-product.svg',
+    imageUrl,
     product.imageResponsive,
     CARD_IMAGE_SIZES
   );
@@ -84,12 +90,13 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
       // choice but no matching variation sends none rather than an invented pair.
       const option = findVariationOption(product.variations, selectedGrain);
       await addItem({
-        id: String(product.id),
+        id: String(option?.id ?? product.id),
         name: product.name,
-        price: product.priceMin as number,
-        image: product.image,
+        price: (option?.price ?? product.priceMin) as number,
+        image: imageUrl,
         grainSize: selectedGrain || undefined,
-        ...(option ? { variation: { attribute: option.attribute, value: option.value } } : {}),
+        // The genuine child ID fully identifies the choice. Sending the REST
+        // display label too can fail Woo's global-term slug validation (6 lb).
       }, qty);
       setAddedToCart(true);
       setTimeout(() => setAddedToCart(false), 2000);
@@ -120,7 +127,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
 
   return (
     <div
-      className={`group flex flex-col min-w-0 bg-white rounded-xl overflow-hidden border border-himalayan-line/60 transition-shadow duration-150 ${
+      className={`group flex flex-col max-[399px]:grid max-[399px]:grid-cols-[112px_minmax(0,1fr)] min-w-0 bg-white rounded-2xl overflow-hidden border border-himalayan-line/60 transition-shadow duration-150 ${
         shopHighlight
           ? 'shadow-md shadow-himalayan/10 border border-himalayan/15 hover:shadow-xl hover:shadow-himalayan/20 hover:border-himalayan/35'
           : 'shadow-sm hover:shadow-md'
@@ -129,14 +136,14 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
       {/* Image */}
       {/* 5:4 rather than square: the card is 20% shorter, so a grid row of products
           fits without scrolling and the listing reads denser on every breakpoint. */}
-      <div className="relative aspect-[5/4] overflow-hidden bg-gray-50">
-        <Link to={`/products/${product.slug}`} className="block w-full h-full">
+      <div className="relative aspect-[5/4] max-[399px]:aspect-auto max-[399px]:min-h-44 overflow-hidden bg-warm-white">
+        <Link to={productCardPath(product)} className="block w-full h-full">
           <img
             src={cardImage.src}
             srcSet={cardImage.srcSet}
             sizes={cardImage.sizes}
             alt={product.name}
-            className="w-full h-full object-contain motion-safe:group-hover:scale-[1.03] transition-transform duration-200"
+            className="w-full h-full object-contain p-2 motion-safe:group-hover:scale-[1.03] transition-transform duration-200"
             loading={priority ? 'eager' : 'lazy'}
             fetchPriority={priority ? 'high' : undefined}
             decoding="async"
@@ -149,7 +156,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
                 image.src = cardImage.src;
                 return;
               }
-              image.src = '/images/placeholder-product.svg';
+              if (imageUrl !== '/images/placeholder-product.svg') setFailedImages(failed => [...failed, imageUrl]);
             }}
           />
         </Link>
@@ -160,7 +167,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => onQuickView?.(product)}
-            className="pointer-events-auto w-11 h-11 bg-white rounded-full flex items-center justify-center shadow-lg hover:bg-himalayan hover:text-white transition-colors"
+            className="max-[399px]:hidden pointer-events-auto w-11 h-11 bg-white rounded-full flex items-center justify-center shadow-sm hover:bg-himalayan hover:text-white transition-colors"
             aria-label="Quick view"
           >
             <Eye size={18} />
@@ -180,7 +187,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
         </div>
 
         {/* Badge — shown only when the product is explicitly featured */}
-        {product.isFeatured && (
+        {product.isFeatured && !product.selectedVariationId && (
           <div className="absolute top-3 left-3 px-3 py-1 bg-himalayan text-white text-xs font-bold rounded-full">
             Featured
           </div>
@@ -188,27 +195,27 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
       </div>
 
       {/* Content */}
-      <div className="p-2.5 md:p-3 flex flex-col flex-1 min-w-0">
-        <h3 className="font-semibold text-charcoal text-sm leading-snug mb-1 min-h-9 break-words">
+      <div className="p-3 flex flex-col flex-1 min-w-0">
+        <h3 className="font-semibold text-charcoal text-sm leading-snug mb-1 min-h-9 break-words line-clamp-3">
           <Link
-            to={`/products/${product.slug}`}
+            to={productCardPath(product)}
             className="group-hover:text-himalayan transition-colors"
           >
             {product.name}
           </Link>
         </h3>
 
-        <p className="text-himalayan font-bold text-base mb-2">
-          {formatPriceDisplay(product)}
+        <p className="text-himalayan-dark font-bold text-lg mb-2 tabular-nums">
+          {selectedOption ? variationPriceDisplay(product, selectedOption) : formatPriceDisplay(product)}
         </p>
 
         {/* Grain Size Selector */}
-        {grainChoices.length > 0 && (
+        {!product.selectedVariationId && grainChoices.length > 0 && (
           <select
-            aria-label={`Choose grain size for ${product.name}`}
+            aria-label={`Choose ${product.variations?.attributeLabel ?? 'grain size'} for ${product.name}`}
             value={selectedGrain}
-            onChange={(e) => setSelectedGrain(e.target.value)}
-            className="w-full mb-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+            onChange={(e) => { setSelectedGrain(e.target.value); setQty(1); }}
+            className="w-full min-h-11 mb-2 px-2 bg-warm-white border border-himalayan-line rounded-lg text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
           >
             {grainChoices.map((g) => (
               <option key={g} value={g}>{g}</option>
@@ -218,14 +225,14 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
 
         {/* Quantity + Add to Cart — omitted entirely while ordering is paused: a stepper
             next to a disabled button still reads as a shop that takes orders. */}
-        <div className="flex flex-wrap items-center gap-2 mt-auto">
+        <div className="flex flex-col items-start gap-2 mt-auto">
           {ORDERING_ENABLED && (
           <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
             <button
               aria-label={`Decrease quantity for ${product.name}`}
               disabled={qty <= 1 || isAdding}
               onClick={() => setQty(Math.max(1, qty - 1))}
-              className="min-h-11 min-w-9 px-2 py-2 text-sm disabled:opacity-40 hover:bg-gray-100 transition-colors font-semibold text-charcoal"
+              className="min-h-11 min-w-11 px-2 py-2 text-sm disabled:opacity-40 hover:bg-gray-100 transition-colors font-semibold text-charcoal"
             >
               −
             </button>
@@ -236,7 +243,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
               aria-label={`Increase quantity for ${product.name}`}
               disabled={isAdding || (maxQuantity !== null && qty >= maxQuantity)}
               onClick={() => setQty(q => maxQuantity === null ? q + 1 : Math.min(q + 1, maxQuantity))}
-              className="min-h-11 min-w-9 px-2 py-2 text-sm disabled:opacity-40 hover:bg-gray-100 transition-colors font-semibold text-charcoal"
+              className="min-h-11 min-w-11 px-2 py-2 text-sm disabled:opacity-40 hover:bg-gray-100 transition-colors font-semibold text-charcoal"
             >
               +
             </button>
@@ -249,7 +256,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
             disabled={!canBuy || isAdding}
             aria-live="polite"
             aria-busy={isAdding}
-            className={`w-full sm:w-auto flex-1 flex items-center justify-center gap-2 min-h-11 rounded-xl font-semibold text-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
+            className={`w-full flex items-center justify-center gap-2 min-h-11 rounded-xl font-semibold text-sm transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${
               addedToCart
                 ? 'bg-himalayan-green text-white'
                 : 'bg-himalayan hover:bg-himalayan-dark text-white'
@@ -263,7 +270,7 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
                 : addedToCart
                   ? 'Added!'
                   : !canBuy
-                    ? (product.stockStatus === 'out_of_stock' ? 'Out of stock' : 'Unavailable')
+                    ? (product.stockStatus === 'out_of_stock' || selectedOption?.inStock === false ? 'Out of stock' : 'Unavailable')
                     : 'Add to Cart'}
           </motion.button>
         </div>

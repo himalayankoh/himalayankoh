@@ -69,6 +69,9 @@ export interface ProductVariationOption {
   inStock: boolean;
   /** The variation's own image, or null when the store gave it none. */
   image?: string | null;
+  /** Raw shipping weight in the WooCommerce store's configured unit. */
+  weight?: string | null;
+  stockQuantity?: number | null;
 }
 
 /** The variation axis a shopper picks from, e.g. Grain Size. */
@@ -114,6 +117,8 @@ export interface Product {
    * told). Both come from one read so they cannot disagree.
    */
   variations?: ProductVariations;
+  /** Listing presentation only; the parent ID and real variation ID stay intact. */
+  selectedVariationId?: number;
   inStock: boolean;
   metaTitle?: string;
   metaDescription?: string;

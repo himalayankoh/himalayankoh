@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Phone, ArrowRight, Send } from 'lucide-react';
+import { Mail, Phone, ArrowRight, Send, ChevronDown } from 'lucide-react';
 import { buildProductsCategoryPath } from '../lib/categoryContent';
+import { setConsent } from '../lib/consent';
 
 /**
  * Business pages, all of which are real routes carrying the store's own content,
@@ -41,9 +42,23 @@ const aboutLinks = [
  * code change at all.
  */
 const productLinks = [
+  { label: 'Salt Licks', to: buildProductsCategoryPath('licks-blocks') },
   { label: 'Live Stock', to: buildProductsCategoryPath('live-stock') },
   { label: 'Edible Pink Salt', to: buildProductsCategoryPath('edible-pink-salt') },
 ];
+
+function FooterSection({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return <section className="border-b border-white/15 sm:border-0">
+    <button type="button" className="sm:hidden min-h-11 w-full flex items-center justify-between gap-3 py-2 text-sm font-semibold text-white"
+      aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>
+      {title}<ChevronDown size={18} className={open ? 'rotate-180' : ''} />
+    </button>
+    <h4 className="hidden sm:block font-serif font-bold text-base mb-3 text-white">{title}</h4>
+    <div id={id} className={`${open ? 'block' : 'hidden'} sm:block pb-3 sm:pb-0`}>{children}</div>
+  </section>;
+}
 
 export default function Footer() {
   const [email, setEmail] = useState('');
@@ -86,10 +101,11 @@ export default function Footer() {
     <footer id="contact" className="bg-charcoal text-cream">
       {/* Newsletter Strip */}
       <div className="border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 md:py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-1 sm:py-5 md:py-6">
+          <FooterSection title="Newsletter">
           <div className="grid md:grid-cols-2 gap-4 md:gap-10 items-center">
             <div>
-              <h3 className="font-serif text-xl md:text-2xl font-bold mb-2 text-white">
+              <h3 className="hidden sm:block font-serif text-xl md:text-2xl font-bold mb-2 text-white">
                 Stay Updated
               </h3>
               <p className="text-white/90 text-sm md:text-base leading-relaxed">
@@ -97,7 +113,7 @@ export default function Footer() {
               </p>
             </div>
             <div>
-              <form onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-3">
+              <form onSubmit={handleSubscribe} className="flex flex-wrap sm:flex-nowrap gap-2">
                 <div className="flex-1 relative">
                   <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal-light" />
                   <input
@@ -116,7 +132,7 @@ export default function Footer() {
                   whileTap={{ scale: 0.98 }}
                   type="submit"
                   disabled={subscribing}
-                  className={`px-7 min-h-11 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-himalayan/30 transition-all duration-300 disabled:opacity-70 ${
+                  className={`px-4 min-h-11 rounded-xl font-bold flex items-center justify-center gap-2 transition-all duration-150 disabled:opacity-70 ${
                     subscribed
                       ? 'bg-himalayan-green text-cream'
                       : 'bg-himalayan hover:bg-himalayan-dark text-cream'
@@ -146,12 +162,13 @@ export default function Footer() {
               )}
             </div>
           </div>
+          </FooterSection>
         </div>
       </div>
 
       {/* Main Footer */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-7">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1 sm:gap-6 md:gap-8">
           {/* Brand */}
           <div className="sm:col-span-2 lg:col-span-1">
             <img
@@ -159,17 +176,16 @@ export default function Footer() {
               alt="Himalayan Koh"
               loading="lazy"
               decoding="async"
-              className="h-9 mb-3 brightness-0 invert"
+              className="h-8 mb-2 brightness-0 invert"
             />
-            <p className="text-white/75 text-sm leading-relaxed mb-4 max-w-xs">
-              Pure, mineral-dense Himalayan pink rock salt for livestock, equine management, wildlife, and gourmet culinary cooking. Sourced from Khewra, Pakistan and distributed from Houston, Texas.
+            <p className="text-white/80 text-xs sm:text-sm leading-relaxed mb-4 max-w-sm">
+              Himalayan pink salt for animals and the kitchen. Sourced from Khewra, Pakistan and distributed from Houston, Texas.
             </p>
 
           </div>
 
           {/* Quick Links */}
-          <div>
-            <h4 className="font-serif font-bold text-base mb-3 text-white">Quick Links</h4>
+          <FooterSection title="Quick Links">
             <ul className="space-y-2">
               {aboutLinks.map((link) => (
                 <li key={link.label}>
@@ -180,11 +196,10 @@ export default function Footer() {
                 </li>
               ))}
             </ul>
-          </div>
+          </FooterSection>
 
           {/* Products */}
-          <div>
-            <h4 className="font-serif font-bold text-base mb-3 text-white">Products</h4>
+          <FooterSection title="Products">
             <ul className="space-y-2">
               {productLinks.map((link) => (
                 <li key={link.label}>
@@ -195,11 +210,10 @@ export default function Footer() {
                 </li>
               ))}
             </ul>
-          </div>
+          </FooterSection>
 
           {/* Contact */}
-          <div>
-            <h4 className="font-serif font-bold text-base mb-3 text-white">Contact Us</h4>
+          <FooterSection title="Customer Support">
             <div className="space-y-3">
               <a href="mailto:sales@himalayankoh.com" className="flex items-center gap-3 text-white/75 text-sm hover:text-himalayan transition-colors">
                 <Mail size={18} className="text-himalayan flex-shrink-0" />
@@ -217,7 +231,7 @@ export default function Footer() {
                 🔒 Secure Checkout
               </div>
             </div>
-          </div>
+          </FooterSection>
         </div>
       </div>
 
@@ -225,14 +239,14 @@ export default function Footer() {
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-white/70">
           <p>Copyright © 2026 Himalayan Koh. All rights reserved.</p>
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap justify-center sm:justify-end items-center gap-x-4 gap-y-1 [&>a]:inline-flex [&>a]:min-h-11 [&>a]:items-center">
             <Link prefetch={false} to="/disclaimer" className="hover:text-white/75 transition-colors">Disclaimer</Link>
             <Link prefetch={false} to="/privacy" className="hover:text-white/75 transition-colors">Privacy Policy</Link>
             <Link prefetch={false} to="/terms" className="hover:text-white/75 transition-colors">Terms of Service</Link>
             <Link prefetch={false} to="/shipping" className="hover:text-white/75 transition-colors">Shipping Policy</Link>
             <Link prefetch={false} to="/returns" className="hover:text-white/75 transition-colors">Return Policy</Link>
-            <Link prefetch={false} to="/faqs" className="hover:text-white/75 transition-colors">FAQs</Link>
             <Link prefetch={false} to="/sitemap" className="hover:text-white/75 transition-colors">Sitemap</Link>
+            <button type="button" onClick={() => setConsent(null)} className="min-h-11 inline-flex items-center hover:text-white">Cookie settings</button>
           </div>
         </div>
       </div>

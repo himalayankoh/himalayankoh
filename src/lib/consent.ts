@@ -25,6 +25,7 @@ export function setConsent(c: ConsentChoice): void {
   // Keep Google Consent Mode v2 signals in sync with the stored decision so
   // any Google tag loaded later starts from the right consent state.
   syncConsentMode(c);
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('hk:consent-choice'));
 }
 
 /**

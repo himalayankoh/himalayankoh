@@ -172,7 +172,7 @@ describe('owner catalog policy', () => {
     //
     // `2321` and `2446` were on this list and are no longer: the owner re-admitted
     // them for the live launch on 2026-10-09 (see `LIVE_LAUNCH_PRODUCT_IDS`).
-    const HIDDEN_LEGACY = [2352, 2372, 2461];
+    const HIDDEN_LEGACY = [2352, 2372];
     for (const id of HIDDEN_LEGACY) {
       expect(OWNER_REJECTED_PRODUCT_IDS, `id ${id}`).toContain(id);
       expect(isNicheProduct({ id, name: 'Himalayan Pink Salt', category: 'Edible Pink Salt' })).toBe(
@@ -198,7 +198,7 @@ describe('owner catalog policy', () => {
     // curated launch catalogue withheld every row of it. The owner's decision was
     // to launch on the live records the shop actually stocks — these five, which
     // are the only live rows both correctly priced and in stock.
-    expect(LIVE_LAUNCH_PRODUCT_IDS).toEqual([271, 281, 291, 2321, 2446]);
+    expect(LIVE_LAUNCH_PRODUCT_IDS).toEqual([271, 281, 2321, 2446, 2461]);
 
     for (const id of LIVE_LAUNCH_PRODUCT_IDS) {
       expect(isLiveLaunchProduct(id), `id ${id}`).toBe(true);

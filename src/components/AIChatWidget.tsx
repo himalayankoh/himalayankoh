@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Bot, Loader2, MessageCircle, Send, Sparkles, Trash2, X } from 'lucide-react';
 
@@ -34,6 +35,12 @@ const friendlyChatError = (message: string) => {
 
 export default function AIChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
+  const dialogRef = useDialogFocus(isOpen, () => setIsOpen(false));
+  useEffect(() => {
+    const hide = (event: Event) => { if ((event as CustomEvent<boolean>).detail) setIsOpen(false); };
+    window.addEventListener('hk:consent-banner', hide);
+    return () => window.removeEventListener('hk:consent-banner', hide);
+  }, []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -140,7 +147,7 @@ export default function AIChatWidget() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-20 right-5 sm:bottom-5 z-fab w-14 h-14 bg-himalayan hover:bg-himalayan-dark text-white rounded-full shadow-xl shadow-himalayan/30 flex items-center justify-center"
+        className="hk-floating-action fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] right-3 sm:right-5 z-fab w-12 h-12 bg-himalayan hover:bg-himalayan-dark text-white rounded-full shadow-xl shadow-himalayan/30 flex items-center justify-center"
         aria-label="Open AI assistant"
       >
         <MessageCircle size={24} />
@@ -160,6 +167,7 @@ export default function AIChatWidget() {
               initial={{ opacity: 0, y: 30, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 30, scale: 0.96 }}
+              ref={dialogRef} role="dialog" aria-modal="true" aria-label="Himalayan Koh AI" tabIndex={-1}
               className="fixed left-3 right-3 bottom-20 h-[30rem] max-h-[calc(100dvh-6rem)] md:left-auto md:right-5 md:bottom-24 md:w-[360px] md:h-[32rem] md:max-h-[calc(100dvh-7rem)] z-chat bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
             >
               <div className="shrink-0 p-4 border-b border-gray-100 flex items-center justify-between">

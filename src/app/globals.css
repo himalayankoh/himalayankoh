@@ -483,6 +483,8 @@ img {
 }
 
 /* Shared keyboard and motion rules for storefront and operations. */
+html[data-consent-open="true"] .hk-floating-action { display: none; }
+footer :where(section a) { min-height: 44px; display: inline-flex; align-items: center; }
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--color-himalayan-dark);
   outline-offset: 3px;

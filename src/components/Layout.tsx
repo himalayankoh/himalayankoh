@@ -89,7 +89,7 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col pb-[var(--consent-space,0px)]">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip focus:px-4 focus:py-2 focus:bg-himalayan-green focus:text-cream focus:rounded-lg"
@@ -126,7 +126,7 @@ export default function Layout({ children }: LayoutProps) {
               <img
                 src="/logo.svg"
                 alt="Himalayan Koh — Salt that Heals"
-                className="h-8 md:h-11 w-auto"
+                className="h-8 md:h-11 w-auto max-w-[145px] sm:max-w-none"
               />
             </Link>
 
@@ -307,6 +307,10 @@ export default function Layout({ children }: LayoutProps) {
                   </Link>
                 </motion.div>
               ))}
+              <div className="grid grid-cols-2 gap-2 py-3 border-y border-himalayan-line">
+                <Link to="/products?category=licks-blocks" onClick={() => setMobileOpen(false)} className="min-h-11 flex items-center px-3 rounded-lg bg-white text-sm font-semibold">Salt Licks</Link>
+                <Link to="/products?category=edible-pink-salt" onClick={() => setMobileOpen(false)} className="min-h-11 flex items-center px-3 rounded-lg bg-white text-sm font-semibold">Edible Pink Salt</Link>
+              </div>
               {isAuthenticated && (
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}

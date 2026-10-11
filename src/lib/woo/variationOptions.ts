@@ -16,7 +16,13 @@
  *
  * ## What the cart addresses, and what it must not be derived from
  *
- * `add-item` takes the axis by **the name the store's own REST API reports**
+ * The storefront sends the genuine variation ID alone; WooCommerce resolves its
+ * internal term slugs. REST display labels are not always those slugs (the real
+ * 6 lb child uses `6lbs-round-block`), so sending them alongside a child ID can
+ * reject an otherwise valid cart item. The raw pairs remain available to callers
+ * that address a parent product using its compatible attribute representation.
+ *
+ * A parent-based `add-item` takes the axis by **the name the store's own REST API reports**
  * (`Grain Size`, `Size/Weight`, `Grain Type`) and the option by **the store's own
  * option string** (`Coarse Grain`, `2 lbs.`, `1kg`). Both are passed through
  * untouched, because both are only true of the store that reported them.
@@ -39,6 +45,8 @@
 
 import type { ProductVariationOption, ProductVariations } from '../../data/products';
 import { parseWooDecimal, type WooVariationLike } from './productPayload';
+import { normalizeWeightUnits } from '../products/displayName';
+import { wordpressMediaUrl } from '../images/wordpressMediaUrl';
 
 /** A product attribute as REST v3 reports it. */
 export interface RestV3Attribute {
@@ -106,8 +114,19 @@ export function productVariations(
   const attribute = attributeLabel;
   if (!attribute) return undefined;
 
+  // Retired/private children are preserved in WooCommerce for order history,
+  // but must not appear as storefront choices.
+  variations = variations.filter(row => row.status === undefined || row.status === 'publish');
   const options: ProductVariationOption[] = [];
-  for (const option of axis.options ?? []) {
+  // A stale parent option list can omit a real child (live product 281's 6 lb).
+  // Reconcile only a single axis with explicit child values, never combinations
+  // or wildcard rows that cannot be addressed by this selector.
+  const singleAxis = (attributes ?? []).filter(a => a.variation).length === 1;
+  const declared = axis.options ?? [];
+  const childOptions = singleAxis ? variations.flatMap(row =>
+    (row.attributes?.length === 1 && row.attributes[0].name === attributeLabel)
+      ? [String(row.attributes[0].option ?? '').trim()] : []) : [];
+  for (const option of Array.from(new Set([...declared, ...childOptions]))) {
     const label = String(option ?? '').trim();
     if (!label) continue;
 
@@ -117,7 +136,7 @@ export function productVariations(
     options.push({
       id: row.id,
       attribute,
-      label,
+      label: normalizeWeightUnits(label),
       // The store's own option string, not a slug derived from it: a custom
       // attribute's options are not terms, and the cart refuses a slug for them.
       value: label,
@@ -125,11 +144,16 @@ export function productVariations(
       sku: row.sku?.trim() ? row.sku.trim() : null,
       // Absent stock means the store did not say; only a positive report counts,
       // the same rule the catalog applies to the parent product.
-      inStock: row.stock_status === 'instock' || row.stock_status === 'onbackorder',
+      // Keep the genuine unavailable size visible, but a private/draft child
+      // must never become purchasable just because its stock field says yes.
+      inStock: (row.status === undefined || row.status === 'publish') &&
+        (row.stock_status === 'instock' || row.stock_status === 'onbackorder'),
       // The variation's own shot, when it has one. Choosing an option is how a
       // shopper says which pack they want, so the picture has to follow the
       // choice — otherwise the 2kg bag is described by the 1kg photograph.
-      image: row.image?.src?.trim() ? row.image.src.trim() : null,
+      image: row.image?.src?.trim() ? wordpressMediaUrl(row.image.src) : null,
+      stockQuantity: typeof row.stock_quantity === 'number' ? row.stock_quantity : null,
+      weight: row.weight?.trim() || null,
     });
   }
 

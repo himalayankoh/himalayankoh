@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { galleryImages } from '../lib/images/galleryImages';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
@@ -24,11 +25,36 @@ export default function ProductImageGallery({
   srcsets,
 }: ProductImageGalleryProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [failedImages, setFailedImages] = useState<string[]>([]);
+  const gesture = useRef<{ x: number; y: number } | null>(null);
+  const imageKey = JSON.stringify({ images, srcsets });
+  useEffect(() => {
+    setCurrentIndex(0);
+    setFailedImages([]);
+    let active = true;
+    const source = JSON.parse(imageKey) as { images: string[]; srcsets?: ResponsiveImageSources };
+    // Check small, store-published candidates first. This validates hidden slides
+    // without downloading every full-resolution original on mobile.
+    const probes = galleryImages(source.images).map(url => {
+      const probe = new Image();
+      probe.fetchPriority = 'low';
+      probe.decoding = 'async';
+      const candidate = responsiveImageProps(url, source.srcsets, '64px');
+      probe.onerror = () => {
+        if (!active) return;
+        if (dropResponsiveCandidates(probe)) { probe.src = url; return; }
+        setFailedImages(failed => [...failed, url]);
+      };
+      if (candidate.srcSet) { probe.srcset = candidate.srcSet; probe.sizes = candidate.sizes ?? '64px'; }
+      probe.src = candidate.src;
+      return probe;
+    });
+    return () => { active = false; probes.forEach(probe => { probe.onerror = null; }); };
+  }, [imageKey]);
 
   // Filter out empty or whitespace-only strings
-  const validImages = (images || []).filter(
-    (img): img is string => typeof img === 'string' && img.trim().length > 0
-  );
+  const validImages = galleryImages(images, failedImages);
+  const visibleIndex = Math.min(currentIndex, Math.max(0, validImages.length - 1));
 
   if (validImages.length === 0) {
     return (
@@ -43,31 +69,41 @@ export default function ProductImageGallery({
   }
 
   const goToPrevious = () => {
-    setCurrentIndex((prev) => (prev === 0 ? validImages.length - 1 : prev - 1));
+    setCurrentIndex(visibleIndex === 0 ? validImages.length - 1 : visibleIndex - 1);
   };
 
   const goToNext = () => {
-    setCurrentIndex((prev) => (prev === validImages.length - 1 ? 0 : prev + 1));
+    setCurrentIndex(visibleIndex === validImages.length - 1 ? 0 : visibleIndex + 1);
   };
 
-  const currentImage = validImages[currentIndex] || validImages[0];
+  const currentImage = validImages[visibleIndex];
   const heroImage = responsiveImageProps(currentImage, srcsets, GALLERY_IMAGE_SIZES);
 
   return (
-    <div className={`relative w-full aspect-[4/3] sm:aspect-square bg-white overflow-hidden ${rounded}`}>
+    <div className={`relative w-full aspect-[4/3] sm:aspect-square bg-warm-white overflow-hidden ${rounded}`}
+      style={{ touchAction: 'pan-y' }}
+      onPointerDown={e => { if (e.pointerType === 'touch') gesture.current = { x: e.clientX, y: e.clientY }; }}
+      onPointerCancel={() => { gesture.current = null; }}
+      onPointerUp={e => {
+        const start = gesture.current; gesture.current = null;
+        if (!start) return;
+        const dx = e.clientX - start.x; const dy = e.clientY - start.y;
+        if (Math.abs(dx) >= 45 && Math.abs(dx) > Math.abs(dy) * 1.3) { if (dx < 0) goToNext(); else goToPrevious(); }
+      }}>
       <AnimatePresence mode="wait" initial={false}>
         <motion.img
-          key={currentIndex}
+          key={currentImage}
           src={heroImage.src}
           srcSet={heroImage.srcSet}
           sizes={heroImage.sizes}
-          alt={`${alt} - Image ${currentIndex + 1}`}
+          alt={`${alt} - Image ${visibleIndex + 1}`}
           // Only the first image is the LCP candidate; the rest wait until the
           // shopper asks for them rather than competing with it for bandwidth.
           fetchPriority={currentIndex === 0 ? 'high' : 'auto'}
           loading={currentIndex === 0 ? 'eager' : 'lazy'}
           decoding="async"
-          className="w-full h-full object-contain"
+          draggable={false}
+          className="w-full h-full object-contain p-2 sm:p-4"
           initial={false}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -81,7 +117,7 @@ export default function ProductImageGallery({
               image.src = heroImage.src;
               return;
             }
-            image.src = '/images/placeholder-product.svg';
+            setFailedImages(failed => [...failed, currentImage]);
           }}
         />
       </AnimatePresence>
@@ -106,14 +142,14 @@ export default function ProductImageGallery({
           </button>
 
           {/* Thumbnail indicators */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex max-w-[calc(100%-1rem)] overflow-x-auto">
             {validImages.map((_, idx) => (
               <button
                 key={idx}
                 onClick={() => setCurrentIndex(idx)}
-                aria-pressed={idx === currentIndex}
-                className={`w-8 h-8 border-[10px] border-transparent bg-clip-content rounded-full transition-colors ${
-                  idx === currentIndex
+                aria-pressed={idx === visibleIndex}
+                className={`shrink-0 w-11 h-11 border-[17px] border-transparent bg-clip-content rounded-full transition-colors ${
+                  idx === visibleIndex
                     ? 'bg-himalayan-dark'
                     : 'bg-white/50 hover:bg-white/75'
                 }`}
@@ -124,7 +160,7 @@ export default function ProductImageGallery({
 
           {/* Image counter */}
           <div className="absolute top-4 right-4 px-3 py-1 bg-black/50 text-white text-xs font-semibold rounded-full">
-            {currentIndex + 1} / {validImages.length}
+            {visibleIndex + 1} / {validImages.length}
           </div>
         </>
       )}

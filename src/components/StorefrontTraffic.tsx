@@ -17,10 +17,32 @@ export default function StorefrontTraffic() {
   const [config, setConfig] = useState<MarketingConfig | null>(null);
   const [consent, setChoice] = useState<ConsentChoice>(null);
   const publicPage = isPublicTrafficPath(pathname);
+  useEffect(() => {
+    if (!publicPage || new URLSearchParams(search).get('hk-performance') !== '1') return;
+    let active = true; let stop: (() => void) | undefined;
+    void import('@/lib/performance/labMetrics').then(module => { if (active) stop = module.observeLabMetrics(); });
+    return () => { active = false; stop?.(); };
+  }, [pathname, search, publicPage]);
+  const bannerRef = useRef<HTMLElement>(null);
+  const showBanner = publicPage && Boolean(config?.gaEnabled && GA4_ID_RE.test(config.ga4Id)) && consent === null;
+  useEffect(() => {
+    document.documentElement.dataset.consentOpen = String(showBanner);
+    window.dispatchEvent(new CustomEvent('hk:consent-banner', { detail: showBanner }));
+    const el = bannerRef.current;
+    const reserve = () => document.documentElement.style.setProperty('--consent-space', showBanner && el ? `${el.getBoundingClientRect().height + 28}px` : '0px');
+    reserve();
+    const observer = el ? new ResizeObserver(reserve) : null;
+    if (el) observer?.observe(el);
+    return () => { observer?.disconnect(); document.documentElement.style.removeProperty('--consent-space'); delete document.documentElement.dataset.consentOpen; };
+  }, [showBanner]);
 
   useEffect(() => {
     setChoice(getConsent());
     void fetchGlobalConfig().then(setConfig);
+    const refresh = () => setChoice(getConsent());
+    window.addEventListener('hk:consent-choice', refresh);
+    window.addEventListener('storage', refresh);
+    return () => { window.removeEventListener('hk:consent-choice', refresh); window.removeEventListener('storage', refresh); };
   }, []);
 
   useEffect(() => {
@@ -57,15 +79,18 @@ export default function StorefrontTraffic() {
     });
   }, [pathname, search, publicPage, config, consent]);
 
-  if (!publicPage || !config?.gaEnabled || !GA4_ID_RE.test(config.ga4Id) || consent !== null) return null;
+  if (!showBanner) return null;
   const choose = (choice: ConsentChoice) => { setConsent(choice); setChoice(choice); };
   return (
-    <aside aria-label="Analytics cookies" className="fixed bottom-4 left-4 right-4 z-50 mx-auto max-w-xl rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-800 shadow-xl">
-      <p>Allow Google Analytics cookies to help us understand how visitors use our store?</p>
-      <div className="mt-3 flex flex-wrap gap-3">
-        <button onClick={() => choose('declined')} className="rounded-lg border px-4 py-2">Decline</button>
-        <button onClick={() => choose('accepted')} className="rounded-lg bg-charcoal px-4 py-2 text-white">Accept analytics</button>
-        <a href="/privacy" className="self-center underline">Privacy policy</a>
+    <aside ref={bannerRef} aria-label="Analytics cookies" className="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-[85] mx-auto max-w-xl rounded-2xl border border-himalayan-line bg-white px-3 pb-3 text-sm text-charcoal shadow-xl">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-semibold">Allow Google Analytics?</p>
+        <a href="/privacy" className="min-h-11 inline-flex items-center text-xs underline shrink-0">Privacy policy</a>
+      </div>
+      <p className="text-xs mb-2 text-charcoal-light">Optional cookies help us understand store visits.</p>
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={() => choose('declined')} className="min-h-11 rounded-lg border border-himalayan-line px-3 font-semibold">Decline</button>
+        <button onClick={() => choose('accepted')} className="min-h-11 rounded-lg bg-charcoal px-3 font-semibold text-white">Accept analytics</button>
       </div>
     </aside>
   );

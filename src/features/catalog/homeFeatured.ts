@@ -21,6 +21,7 @@
  */
 
 import type { Product } from '../../data/products';
+import { listingCards } from './listingCards';
 
 /** How many cards the homepage featuring shows. */
 export const HOME_FEATURED_LIMIT = 4;
@@ -35,6 +36,6 @@ export function selectHomeFeatured(products: Product[], limit = HOME_FEATURED_LI
   if (!Array.isArray(products) || products.length === 0) return [];
 
   const marked = products.filter((product) => product.isFeatured);
-  const chosen = marked.length > 0 ? marked : products;
+  const chosen = listingCards(products).filter(p => p.selectedVariationId || !marked.length || p.isFeatured);
   return chosen.slice(0, Math.max(0, limit));
 }

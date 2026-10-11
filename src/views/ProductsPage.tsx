@@ -5,6 +5,7 @@ import { SkeletonProductGrid } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
 import type { Product } from '../data/products';
 import ProductCard from '../components/ProductCard';
+import { listingCards, productCardKey } from '../features/catalog/listingCards';
 // Deferred: the quick-view modal is only ever shown after a shopper presses
 // "Quick view", and it drags in the whole product page view. Loading it in the
 // route's own chunk meant every visit to a listing paid for a dialog most
@@ -126,7 +127,7 @@ export default function ProductsPage({
   }, []);
 
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
+    return listingCards(products).filter((p) => {
       const matchesCategory = productMatchesCategoryFilter(p, categoryKey, activeFilter);
       const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
@@ -161,12 +162,12 @@ export default function ProductsPage({
           className={
             isCategoryHub
               ? 'grid grid-cols-1 gap-3'
-              : 'grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4'
+              : 'grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4'
           }
         >
           {filteredProducts.map((product, i) => (
             <ProductCard
-              key={product.id}
+              key={productCardKey(product)}
               product={product}
               index={i}
               onQuickView={setQuickViewProduct}

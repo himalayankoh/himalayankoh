@@ -134,6 +134,8 @@ describe('productVariations', () => {
 
     expect(variations?.attributeLabel).toBe('Grain Size');
     expect(variations?.options[0]).toEqual({
+      stockQuantity: null,
+      weight: null,
       id: 7001,
       attribute: 'Grain Size',
       label: 'Fine Grain',
@@ -174,6 +176,11 @@ describe('productVariations', () => {
 
     expect(variations?.attributeLabel).toBe('Grain Size');
     expect(variations?.options.map((option) => option.id)).toEqual([7002]);
+  });
+
+  it('excludes a private size even when stock says in stock', () => {
+    const choices = productVariations([GRAIN], [variation({ status: 'private', stock_status: 'instock' })]);
+    expect(choices).toBeUndefined();
   });
 
   it('does not confuse two axes that share an option name', () => {

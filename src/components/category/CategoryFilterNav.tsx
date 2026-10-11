@@ -19,7 +19,7 @@ interface Props {
  */
 export default function CategoryFilterNav({ activeKey, tabs }: Props) {
   return (
-    <div className="flex flex-wrap gap-2 w-full">
+    <nav aria-label="Product categories" className="flex sm:flex-wrap gap-2 w-full min-w-0 overflow-x-auto pb-1">
       {tabs.map((tab) => {
         const isActive = (tab.key ?? null) === (activeKey ?? null);
         const to = buildProductsCategoryPath(tab.key);
@@ -29,7 +29,7 @@ export default function CategoryFilterNav({ activeKey, tabs }: Props) {
             key={tab.key ?? tab.label}
             to={to}
             replace={false}
-            className={`shrink-0 px-3 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ${
+            className={`shrink-0 min-h-11 flex items-center px-3 py-2 rounded-full text-sm font-medium transition-colors duration-150 ${
               isActive
                 ? 'bg-himalayan-dark text-white'
                 : 'bg-white text-charcoal hover:bg-himalayan-lighter border border-gray-200'
@@ -40,6 +40,6 @@ export default function CategoryFilterNav({ activeKey, tabs }: Props) {
           </Link>
         );
       })}
-    </div>
+    </nav>
   );
 }

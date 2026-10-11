@@ -667,6 +667,8 @@ export interface WooProductLike {
 
 /** One variation, as the storefront and the editor both need it. */
 export interface WooVariationLike {
+  status?: string;
+  weight?: string;
   id?: number;
   regular_price?: string;
   sale_price?: string;

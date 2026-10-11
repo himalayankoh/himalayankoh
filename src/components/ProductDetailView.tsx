@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { trackEvent, utmParams } from '../lib/marketing';
 import { useDialogFocus } from '../hooks/useDialogFocus';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingCart, Heart, Check, Minus, Plus, ChevronRight, Loader2 } from 'lucide-react';
 import type { Product } from '../data/products';
@@ -32,6 +32,8 @@ export default function ProductDetailView({
   variant = 'page',
   onClose,
 }: ProductDetailViewProps) {
+  const location = useLocation();
+  const requestedVariation = product.selectedVariationId ?? Number(new URLSearchParams(location.search).get('variation'));
   const dialogRef = useDialogFocus(variant === 'modal', () => onClose?.());
   const [qty, setQty] = useState(1);
   // The store's real variations when the product is variable, `grainSizes`
@@ -81,9 +83,9 @@ export default function ProductDetailView({
     setQty(1);
     // Nothing preselected for a variable product (see above); a simple product's
     // grain list is a description, not a choice, so its first entry stands.
-    setSelectedGrain(product.variations?.options?.length ? '' : product.grainSizes?.[0] ?? '');
+    setSelectedGrain(product.variations?.options.find(option => option.id === requestedVariation)?.label ?? (product.variations?.options?.length ? '' : product.grainSizes?.[0] ?? ''));
     setAddedToCart(false);
-  }, [product.id, product.grainSizes, product.variations]);
+  }, [product.id, product.grainSizes, product.variations, requestedVariation]);
 
   // No reported price means the product cannot be sold yet — the cart line
   // needs a real unit price and 0 would allow a free checkout.
@@ -127,8 +129,8 @@ export default function ProductDetailView({
   // what the warehouse reports. No count means no ceiling, because inventing one
   // would block an order the source never said was too large.
   const maxQuantity =
-    typeof product.stockQuantity === 'number' && Number.isFinite(product.stockQuantity)
-      ? Math.max(0, product.stockQuantity)
+    typeof (selectedOption ? selectedOption.stockQuantity : product.stockQuantity) === 'number'
+      ? Math.max(0, (selectedOption ? selectedOption.stockQuantity : product.stockQuantity) as number)
       : null;
 
   // Switching products must not leave a quantity the new product cannot fill.
@@ -152,7 +154,7 @@ export default function ProductDetailView({
       const option = selectedOption;
       await addItem(
         {
-          id: String(product.id),
+          id: String(option?.id ?? product.id),
           name: product.name,
           // The option's own price when one is chosen, so the optimistic line
           // matches what the store is about to price. WooCommerce still prices
@@ -160,7 +162,7 @@ export default function ProductDetailView({
           price: (option?.price ?? product.priceMin) as number,
           image: product.image,
           grainSize: selectedGrain || undefined,
-          ...(option ? { variation: { attribute: option.attribute, value: option.value } } : {}),
+          // Woo derives its own taxonomy values from this genuine child ID.
         },
         qty
       );
@@ -201,7 +203,7 @@ export default function ProductDetailView({
       onClick={variant === 'modal' ? (e) => e.stopPropagation() : undefined}
     >
       {variant === 'page' && (
-        <nav className="px-6 py-4 border-b border-gray-100 text-sm text-charcoal-light" aria-label="Breadcrumb">
+        <nav className="px-4 sm:px-6 py-3 border-b border-gray-100 text-xs sm:text-sm text-charcoal-light" aria-label="Breadcrumb">
           <ol className="flex flex-wrap items-center gap-1">
             <li>
               <Link to="/" className="hover:text-himalayan transition-colors">
@@ -234,7 +236,7 @@ export default function ProductDetailView({
       )}
 
       <div className="grid md:grid-cols-2 gap-0">
-        <div className="relative md:aspect-auto bg-gray-50 min-h-72 md:min-h-96">
+        <div className="relative md:aspect-auto bg-warm-white md:min-h-96">
           {/* The product shot is the LCP element on a PDP — fetch it eagerly and
               at high priority rather than letting it queue behind other assets. */}
           <ProductImageGallery
@@ -318,18 +320,14 @@ export default function ProductDetailView({
             </p>
           )}
 
-          {product.description && (
-            <p className="text-charcoal-light text-sm leading-relaxed mb-5">{product.description}</p>
-          )}
-
-          <div className="space-y-2 mb-5">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4">
             {/* Three claims, each traceable to the business's own product copy
                 ("100% Natural & Unrefined", "Over 80 essential minerals", packed in
                 Houston TX). A previous line here advertised "Free Shipping on $50+",
                 which appears nowhere in production content — shipping is priced by
                 weight and destination — so it is gone rather than implied. */}
             {['100% Natural & Unrefined', 'Naturally occurring trace minerals', 'Packed in Houston, Texas'].map((feat) => (
-              <div key={feat} className="flex items-center gap-2 text-sm text-charcoal">
+              <div key={feat} className="flex items-center gap-1 text-xs text-charcoal-light">
                 <Check size={16} className="text-green-500 flex-shrink-0" />
                 {feat}
               </div>
@@ -350,7 +348,7 @@ export default function ProductDetailView({
                     <button
                       key={g}
                       type="button"
-                      onClick={() => setSelectedGrain(g)}
+                      onClick={() => { setSelectedGrain(g); setQty(1); }}
                       aria-pressed={selectedGrain === g}
                       title={unavailable ? `${g} is out of stock` : undefined}
                       className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
@@ -383,7 +381,8 @@ export default function ProductDetailView({
               <button
                 type="button"
                 onClick={() => setQty(Math.max(1, qty - 1))}
-                className="px-4 py-3 hover:bg-gray-100 transition-colors"
+                disabled={qty <= 1 || isAdding}
+                className="min-h-11 min-w-11 px-3 py-2 hover:bg-gray-100 transition-colors disabled:opacity-40"
                 aria-label="Decrease quantity"
               >
                 <Minus size={16} />
@@ -395,7 +394,7 @@ export default function ProductDetailView({
                 type="button"
                 onClick={() => setQty(maxQuantity === null ? qty + 1 : Math.min(maxQuantity, qty + 1))}
                 disabled={maxQuantity !== null && qty >= maxQuantity}
-                className="px-4 py-3 hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="min-h-11 min-w-11 px-3 py-2 hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label="Increase quantity"
               >
                 <Plus size={16} />
@@ -415,7 +414,7 @@ export default function ProductDetailView({
               whileHover={!isAdding ? { scale: 1.02 } : undefined}
               whileTap={!isAdding ? { scale: 0.98 } : undefined}
               onClick={handleAddToCart}
-              disabled={!ORDERING_ENABLED || !product.inStock || !priceKnown || isAdding || needsOption || selectedOutOfStock}
+              disabled={!ORDERING_ENABLED || !product.inStock || !priceKnown || isAdding || needsOption || selectedOutOfStock || (selectedOption !== undefined && selectedOption.price === null)}
               aria-live="polite"
               aria-busy={isAdding}
               className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -439,7 +438,11 @@ export default function ProductDetailView({
               <Heart size={20} fill={wishlisted ? 'currentColor' : 'none'} />
             </motion.button>
           </div>
-          <p className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-charcoal-light"><Link to="/shipping" className="underline underline-offset-4">Shipping & delivery</Link><Link to="/returns" className="underline underline-offset-4">Returns & eligibility</Link><Link to="/contact" className="underline underline-offset-4">Product questions</Link></p>
+          <p className="mt-2 flex flex-wrap gap-x-4 text-xs text-charcoal-light [&>a]:min-h-11 [&>a]:inline-flex [&>a]:items-center"><Link to="/shipping" className="underline underline-offset-4">Shipping & delivery</Link><Link to="/returns" className="underline underline-offset-4">Returns & eligibility</Link><Link to="/contact" className="underline underline-offset-4">Product questions</Link></p>
+          {product.description && <details className="mt-2 border-t border-himalayan-line">
+            <summary className="min-h-11 py-3 cursor-pointer text-sm font-semibold">Product description</summary>
+            <p className="pb-4 text-charcoal-light text-sm leading-relaxed">{product.description}</p>
+          </details>}
         </div>
       </div>
     </div>
