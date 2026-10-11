@@ -22,7 +22,7 @@
  */
 
 import { requireWooCredentials } from '../backend/credentials';
-import { wordpressRequest } from '../backend/wordpress';
+import { WordPressApiError, wordpressRequest } from '../backend/wordpress';
 import { toWeightLbs } from '../products/shippingWeight';
 import type { ProductPackingProfile } from '../shippo/packing/productPackingProfile';
 import { decodePackingProfileJson } from '../shippo/packing/packingProfileTag';
@@ -104,6 +104,28 @@ async function fetchProductsByIds(ids: number[]): Promise<WooProductLike[]> {
       timeoutMs: 20000,
     });
     if (Array.isArray(page)) out.push(...page);
+  }
+
+  // Woo's collection excludes variations even when include names their IDs.
+  // This store's individual product endpoint resolves the real variation (and
+  // its own weight/profile), so fetch only IDs absent from the batch. Never
+  // substitute the parent's weight for a differently sized child.
+  const found = new Set(out.map((product) => product.id));
+  const missing = ids.filter((id) => !found.has(id));
+  for (let i = 0; i < missing.length; i += 10) {
+    const resolved = await Promise.all(missing.slice(i, i + 10).map(async (id) => {
+      try {
+        const product = await wordpressRequest<WooProductLike>(`${REST_V3}/products/${id}`, {
+          useCredentials: true,
+          timeoutMs: 20000,
+        });
+        return product.id === id ? product : null;
+      } catch (error) {
+        if (error instanceof WordPressApiError && error.status === 404) return null;
+        throw error;
+      }
+    }));
+    for (const product of resolved) if (product) out.push(product);
   }
   return out;
 }

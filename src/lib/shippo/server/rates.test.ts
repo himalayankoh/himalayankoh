@@ -163,6 +163,30 @@ function boxesSent(): StubParcel[] {
   return shippo.shipments.flatMap((shipment) => shipment.parcels);
 }
 
+describe('live Woo variation identity and kilogram weights', () => {
+  it.each([
+    [1549, 1, ['2']], [1549, 6, ['12']], [1549, 7, ['12', '2']],
+    [1548, 1, ['6']], [1548, 4, ['24']], [1548, 5, ['24', '6']],
+  ])('quotes variation %s at quantity %s using its genuine size', async (id, quantity, weights) => {
+    wp = createWordPressStub([
+      { path: '/wc/v3/settings/products', body: [{ id: 'woocommerce_weight_unit', value: 'kg' }] },
+      { path: '/wc/v3/products', body: [] },
+      { path: '/wc/v3/products/1549', body: { id: 1549, type: 'variation', parent_id: 281,
+        name: 'Himalayan Pink Salt Licks for Horses - 2 lbs.', slug: 'himalayan-pink-salt-licks-for-horses-3',
+        sku: 'HK-LFH-2lbs', weight: '0.907185', meta_data: [] } },
+      { path: '/wc/v3/products/1548', body: { id: 1548, type: 'variation', parent_id: 281,
+        name: 'Himalayan Pink Salt Licks for Horses - 6 lbs.', slug: 'himalayan-pink-salt-licks-for-horses-2',
+        sku: 'HK-LFH-6lbs', weight: '2.721554', meta_data: [] } },
+    ]);
+    await fetchShippoRates({ toAddress: DESTINATION, lineItems: [{ productId: String(id), quantity }] });
+    expect(boxesSent().map((parcel) => parcel.weight)).toEqual(weights);
+    for (const parcel of boxesSent()) {
+      expect([parcel.length, parcel.width, parcel.height]).toEqual(['10', '10', '6']);
+      expect(parcel.mass_unit).toBe('lb');
+    }
+  });
+});
+
 /** Seven 2 lb licks: two boxes of 12 lb and 2 lb, not one box of 14 lb. */
 describe('a multi-box order reaches Shippo as one shipment per box', () => {
   it('sends seven 2 lb licks as a 12 lb box and a 2 lb box, never as one 14 lb box', async () => {

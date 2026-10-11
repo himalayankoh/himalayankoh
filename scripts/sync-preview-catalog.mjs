@@ -85,7 +85,7 @@ const report = { weightUnits: { live: liveUnit.value, preview: previewUnit.value
   existingMatches: plans.map(({ before, ...plan }) => plan), addition,
   blocked: [{ sourceId: 2704, sku: 'HK-ESF-3lbs', reason: 'Owner selected preview reference: 3 lb SKU and shipping weight matched; original photo filenames mention 6 lb, so package-photo accuracy still needs review.' },
   ],
-  ownerConfirmedSixLb: { liveId: 1548, packedWeightKg: 3, stockQuantity: 10 },
+  ownerConfirmedSixLb: { liveId: 1548, packedWeightKg: 2.721554, listedWeightLbs: 6, stockQuantity: 10 },
   retiredWithoutDeletion: [291, 1547, 2467, 2451], deployed: false };
 console.log(JSON.stringify(report, null, 2));
 const applyAll = process.argv.includes('--apply');

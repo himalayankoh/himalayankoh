@@ -76,6 +76,31 @@ function product(overrides: Record<string, unknown> = {}) {
 }
 
 describe('readOrderableProducts', () => {
+  it('resolves variation IDs omitted by the Woo collection using their own facts', async () => {
+    const stub = useWordPress([
+      { path: '/wc/v3/products', body: [product({ id: 2520, weight: '30' })] },
+      { path: '/wc/v3/products/1548', body: product({ id: 1548, name: 'Salt Lick — 6 lbs.', weight: '6' }) },
+      { path: '/wc/v3/products/1549', body: product({ id: 1549, name: 'Salt Lick — 2 lbs.', weight: '2', meta_data: [] }) },
+    ]);
+    const facts = await readOrderableProducts([1548, 1549, 2520, 1548]);
+    expect(facts.get('1548')?.weightLbs).toBe(6);
+    expect(facts.get('1548')?.packingProfile?.unitsPerBox).toBe(4);
+    expect(facts.get('1549')?.weightLbs).toBe(2);
+    expect(facts.get('1549')?.packingProfile).toBeNull();
+    expect(facts.get('2520')?.weightLbs).toBe(30);
+    expect(stub.callsTo('/wc/v3/products/1548')).toHaveLength(1);
+    expect(stub.callsTo('/wc/v3/products/2520')).toHaveLength(0);
+  });
+
+  it('keeps valid products when an omitted ID really does not exist', async () => {
+    useWordPress([
+      { path: '/wc/v3/products', body: [product()] },
+      { path: '/wc/v3/products/999999', status: 404, body: { code: 'woocommerce_rest_product_invalid_id' } },
+    ]);
+    const facts = await readOrderableProducts([2492, 999999]);
+    expect([...facts.keys()]).toEqual(['2492']);
+  });
+
   it('reads weight and packing profile from the store', async () => {
     const stub = useWordPress([{ path: '/wc/v3/products', body: [product()] }]);
 
