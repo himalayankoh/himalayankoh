@@ -12,21 +12,29 @@ import { productCardKey } from '@/features/catalog/listingCards';
 const saltBenefits = [
   'Naturally dense Himalayan rock salt provides essential sodium and chloride for horses, cattle, and livestock.',
   'Sodium and chloride are vital electrolytes required to maintain proper fluid balance and encourage normal feed intake.',
-  'Solid rock salt licks withstand rain, wind, and pasture weathering significantly better than compressed salt blocks.',
+  'Solid rock salt licks are easy to see and check, and they do not blow away.',
   'Unrefined pink rock salt contains naturally occurring trace elements like iron, potassium, and magnesium with zero chemical binders.',
 ];
 
+/*
+ * Card titles carry the claim on this page, so they say what the product is
+ * rather than what it is for. "Essential Electrolyte Support" read as a benefit
+ * claim over defensible body copy; "Weather-Resistant Durability" and
+ * "Naturally Sourced Minerals" both leaned on an outcome. The replacement titles
+ * name the nutrient and the product, and the outdoor card now says how to make a
+ * block last instead of claiming a saving.
+ */
 const healthCards = [
   {
-    title: 'Essential Electrolyte Support',
+    title: 'Sodium and Chloride',
     text: 'Sodium and chloride are fundamental nutrients required for normal osmotic balance, cellular function, and feed consumption.',
   },
   {
-    title: 'Weather-Resistant Durability',
-    text: 'Dense, natural crystal rock salt blocks resist dissolving in rain and humidity, reducing waste in outdoor pastures and paddocks.',
+    title: 'For Outdoor Placement',
+    text: 'Rock salt dissolves in water, so a block kept off the ground and out of standing rain lasts longer.',
   },
   {
-    title: 'Naturally Sourced Minerals',
+    title: 'Unrefined Rock Salt',
     text: 'Mined from ancient geologic salt seams, our unrefined rock salt retains naturally occurring trace elements with zero added binders.',
   },
 ];

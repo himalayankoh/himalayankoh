@@ -179,6 +179,14 @@ export interface AdminCustomer {
   phone: string | null;
   /** Null when WooCommerce does not report a figure for this customer. */
   ordersCount: number | null;
+  /**
+   * Orders counted from the store's own order records — the figure that is present
+   * here, because `ordersCount` is absent from every record on this store. `null`
+   * means the order read could not cover it: unknown, not zero.
+   */
+  verifiedOrders: number | null;
+  /** How `verifiedOrders` was derived, so a number can be labelled honestly. */
+  activityBasis: 'customer-id' | 'billing-email' | 'store-reported' | 'not-verifiable';
   totalSpent: number | null;
   lastOrderStatus: string | null;
   lastOrderAt: string | null;
@@ -188,7 +196,16 @@ export interface AdminCustomer {
 
 export async function fetchAdminCustomers(
   options: { search?: string; page?: number; limit?: number; payingOnly?: boolean } = {}
-): Promise<{ customers: AdminCustomer[]; count: number; totalPages: number; page: number }> {
+): Promise<{
+  customers: AdminCustomer[];
+  count: number;
+  totalPages: number;
+  page: number;
+  /** Buyers among the returned page, verified against the store's orders. */
+  buyersVerified?: number;
+  /** How far the order read reached, when a buyer filter was applied. */
+  activity?: { ordersRead: number; ordersReported: number | null; complete: boolean } | null;
+}> {
   const params = new URLSearchParams();
   if (options.search) params.set('search', options.search);
   if (options.page) params.set('page', String(options.page));

@@ -1,0 +1,39 @@
+{
+  "_note": "Legacy ThemeForest-era pages on the WordPress origin (wp.himalayankoh.com), reachable while the origin stays public. These are exact-string replacements inside a 23 kB WPBakery page: nothing is rewritten, no shortcode is touched, and scripts/apply-text-replacements.mjs refuses the whole batch if any 'old' string does not match exactly once. Pure lorem-ipsum demo blocks are deliberately NOT replaced here — that is a 'should this page be published at all' decision, reported in the audit.",
+  "pages": {
+    "35": {
+      "slug": "home",
+      "replacements": [
+        [
+          "text=\"~ World's Best for Livestock ~\"",
+          "text=\"Himalayan Pink Rock Salt for Livestock\""
+        ],
+        [
+          "<p>Himalayan pink rock salt has up to 84 nutritious minerals and trace elements. It not only tastes its salty best, but gives cattle, horses, deer, and other animals the higher quality NaCl (Sodium Chloride) they need to stay healthy and be more productive.</p>",
+          "<p>Himalayan pink rock salt is sodium chloride with naturally occurring trace elements from its deposit. It supplies cattle, horses and other livestock with the sodium and chloride their ration needs every day. It is not a trace-mineral supplement, and it is not a substitute for a mineral program chosen from a forage test.</p>"
+        ],
+        [
+          "<p>Livestock need a fair amount of sodium and chloride to maintain appetite and weight. If they don't get good salt, you will find growth can peak out earlier than desired. Mothers have a harder time producing enough milk.</p>",
+          "<p>Livestock need a steady supply of sodium and chloride. Free-choice salt is how most operations provide it, and it is offered alongside a mineral supplement rather than instead of one.</p>"
+        ],
+        [
+          "<p>Pure Himalayan pink salt provides lots of Magnesium necessary for bodies to naturally heal, stay well, and become stronger. Putting out our more nutritious, better tasting bag of best quality Himalayan rose pink salt or lumps for cattle keeps your entire heard in better health.</p>",
+          "<p>Salt supplies sodium and chloride. The other minerals a herd needs \u2014 copper, zinc, manganese, selenium, iodine and cobalt \u2014 come from a mineral supplement matched to your forage, not from salt, and a salt product is not a treatment for any condition.</p>"
+        ]
+      ]
+    },
+    "42": {
+      "slug": "about-us",
+      "replacements": [
+        [
+          "title=\"Over 80 Minerals Available in Himalayan Salt\"",
+          "title=\"Sodium and Chloride in Himalayan Rock Salt\""
+        ],
+        [
+          "<p style=\"text-align: left;\">There is a reason why pink Himalayan Salt is considered the finest in the world for both humans and animals. It tastes amazing and is filled with many of the minerals and trace elements mammal bodies need to stay healthy. It's got natural amounts of sodium, chloride, calcium, and magnesium needed for regulation, better digestion, milk production, and much more.</p>",
+          "<p style=\"text-align: left;\">Himalayan rock salt is sodium chloride with naturally occurring trace elements from its deposit. Salt is how a ration gets its sodium and chloride; the other minerals an animal needs come from a mineral supplement, balanced for the forage and the species.</p>"
+        ]
+      ]
+    }
+  }
+}

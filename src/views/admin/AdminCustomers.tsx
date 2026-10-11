@@ -74,7 +74,9 @@ export default function AdminCustomers() {
     void fetchCustomers();
   }, [fetchCustomers]);
 
-  const buyers = customers.filter((customer) => (customer.ordersCount ?? 0) > 0).length;
+  // Verified against the store's order records. `ordersCount` is absent from every
+  // customer record on this store, so counting it here answered zero on every page.
+  const buyers = customers.filter((customer) => (customer.verifiedOrders ?? 0) > 0).length;
 
   return (
     <>
@@ -95,11 +97,13 @@ export default function AdminCustomers() {
         </AdminNotice>
       )}
 
-      <AdminNotice tone="info" title="Counts are shown exactly as the store reports them">
-        This store&apos;s WooCommerce customer records do not carry an order count or a spend total — the store
-        omits both fields — so those columns read <strong>Not reported</strong> rather than zero, and nothing is
-        summed here to fill the gap. A customer&apos;s actual orders are on the Orders screen, which reads the same
-        store.
+      <AdminNotice tone="info" title="Where the Orders column comes from">
+        WooCommerce does not report an order count or a spend total on this store&apos;s customer records — both
+        fields are absent from every one of them — so this screen counts orders itself, from the store&apos;s own
+        order records, matched by customer and by billing address for guest orders. <strong>Spend</strong> and
+        <strong>Last order</strong> still read <strong>Not reported</strong>, because those really are missing from the
+        store rather than being counted here. When the order read cannot cover a customer it says so instead of
+        showing a zero. Individual orders are on the Orders screen, which reads the same store.
       </AdminNotice>
 
       <AdminNotice tone="info" title="This list is WooCommerce, and it is read-only">
@@ -205,12 +209,21 @@ export default function AdminCustomers() {
                   )}
                 </td>
                 <td className={`${ADMIN_TD} text-right`}>
-                  {customer.ordersCount === null ? (
-                    <AdminChip tone="muted">Not reported</AdminChip>
-                  ) : customer.ordersCount > 0 ? (
+                  {customer.verifiedOrders !== null ? (
+                    customer.verifiedOrders > 0 ? (
+                      <>
+                        <span className="font-semibold text-admin-ink">{customer.verifiedOrders}</span>
+                        <p className="text-[11px] text-admin-muted">
+                          {customer.activityBasis === 'billing-email' ? 'from a guest order' : 'from the order book'}
+                        </p>
+                      </>
+                    ) : (
+                      <AdminChip tone="muted">No orders found</AdminChip>
+                    )
+                  ) : customer.ordersCount !== null ? (
                     <span className="font-semibold text-admin-ink">{customer.ordersCount}</span>
                   ) : (
-                    <AdminChip tone="muted">None</AdminChip>
+                    <AdminChip tone="muted">Not reported</AdminChip>
                   )}
                 </td>
                 <td className={`${ADMIN_TD} text-right`}>

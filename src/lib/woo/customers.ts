@@ -31,6 +31,12 @@
 import { wordpressRequest, wordpressRequestWithMeta } from '../backend/wordpress';
 import { requireWooCredentials } from '../backend/credentials';
 import type { WooOrderAddress } from './orders';
+import {
+  activityBasis,
+  verifiedOrderCount,
+  type ActivityBasis,
+  type OrderActivityIndex,
+} from './customerActivity';
 
 const REST_V3 = '/wc/v3';
 
@@ -58,8 +64,15 @@ export interface WooCustomerQuery {
   search?: string;
   page?: number;
   perPage?: number;
-  /** Only customers the store counts as having bought something. */
+  /**
+   * Only customers verified to have bought something. Measured from the store's
+   * orders, because the customer record carries no `orders_count` here — see
+   * `./customerActivity`. Without an index the old `orders_count` rule is used and,
+   * on this store, can only match nothing.
+   */
   payingOnly?: boolean;
+  /** The order-derived buyer index, or null when the orders could not be read. */
+  activity?: OrderActivityIndex | null;
 }
 
 export interface WooCustomerPage {
@@ -101,9 +114,18 @@ export async function listWooCustomers(query: WooCustomerQuery = {}): Promise<Wo
       timeoutMs: READ_TIMEOUT,
     });
 
-    const customers = (Array.isArray(response.data) ? response.data : []).filter(
-      (row) => !query.payingOnly || Number(row.orders_count ?? 0) > 0
-    );
+    const rows = Array.isArray(response.data) ? response.data : [];
+    const customers = rows.filter((row) => {
+      if (!query.payingOnly) return true;
+      if (query.activity) {
+        // Verified against the store's orders. A customer whose history the index
+        // cannot see does not pass: a buyer filter that guesses is worse than one
+        // that is empty.
+        const count = verifiedOrderCount(query.activity, { id: row.id, email: row.email });
+        return count !== null && count > 0;
+      }
+      return Number(row.orders_count ?? 0) > 0;
+    });
 
     return {
       customers,
@@ -171,6 +193,14 @@ export interface WooCustomerSummary {
   email: string | null;
   phone: string | null;
   ordersCount: number | null;
+  /**
+   * Orders counted from the store's own order records — the figure that can be
+   * trusted here, because `ordersCount` is absent from every record. `null` when the
+   * order read was incomplete: unknown, never zero.
+   */
+  verifiedOrders: number | null;
+  /** Where `verifiedOrders` came from, so the console can label the number. */
+  activityBasis: ActivityBasis;
   totalSpent: number | null;
   /** The store's own status for the most recent order, when it reports one. */
   lastOrderStatus: string | null;
@@ -188,8 +218,17 @@ function gmt(value: string | null | undefined): string | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
-/** The row shape the console renders, with unknown values left unknown. */
-export function summariseCustomer(customer: WooCustomerRecord): WooCustomerSummary {
+/**
+ * The row shape the console renders, with unknown values left unknown.
+ *
+ * `activity`, when supplied, is what makes `verifiedOrders` a number instead of
+ * `null`. It is optional so a caller that has no orders in hand (a one-off lookup)
+ * still gets a truthful row rather than a fabricated zero.
+ */
+export function summariseCustomer(
+  customer: WooCustomerRecord,
+  activity?: OrderActivityIndex | null
+): WooCustomerSummary {
   return {
     id: customer.id,
     name: customerDisplayName(customer),
@@ -199,6 +238,15 @@ export function summariseCustomer(customer: WooCustomerRecord): WooCustomerSumma
       customer.orders_count === undefined || customer.orders_count === null
         ? null
         : Number(customer.orders_count) || 0,
+    verifiedOrders: verifiedOrderCount(activity, { id: customer.id, email: customer.email }),
+    activityBasis: activityBasis(activity, {
+      id: customer.id,
+      email: customer.email,
+      ordersCount:
+        customer.orders_count === undefined || customer.orders_count === null
+          ? null
+          : Number(customer.orders_count) || 0,
+    }),
     totalSpent: customerSpend(customer),
     lastOrderStatus: customer.last_order?.status ?? null,
     lastOrderAt: gmt(customer.last_order?.date_created_gmt),

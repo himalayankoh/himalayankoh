@@ -1,0 +1,14 @@
+{
+  "_note": "Round 2 for page 35. The first pass replaced the heading attribute, and the re-run sweep found the same superlative a second time in a `subtitle` attribute of the same element. Kept as a separate file rather than edited into round 1, because scripts/apply-text-replacements.mjs requires every 'old' string to match exactly once — a round-1 file re-run after round 1 has been applied would (correctly) refuse.",
+  "pages": {
+    "35": {
+      "slug": "home",
+      "replacements": [
+        [
+          "subtitle=\"World's Best for Livestock\"",
+          "subtitle=\"Sodium and chloride, sold by weight\""
+        ]
+      ]
+    }
+  }
+}

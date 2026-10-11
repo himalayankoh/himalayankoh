@@ -54,22 +54,24 @@ const benefits = [
 /**
  * Customer testimonials carried over from the live HimalayanKoh.com About Us page.
  *
- * A testimonial was removed here rather than rewritten. It described horses that
- * were "prone to chronic colic" improving after the licks were introduced. Even
- * as a genuine customer's own account, publishing it associates a salt lick with
- * the resolution of a disease, which is a health outcome a salt product cannot
- * substantiate — and rewriting somebody's words to soften them would misquote
- * them. A revised, non-medical quotation can be restored if the customer supplies
- * one; until then it stays off the page. The two below describe product quality,
- * consumption and service, not an animal-health result.
+ * Two testimonials have been taken off this page rather than rewritten.
+ *
+ * The first described horses that were "prone to chronic colic" improving after
+ * the licks were introduced. The second — Darolyn Butler's, quoted in full in
+ * `docs/production/content-corrections/removed-testimonial-darolyn-butler.md` —
+ * credited a change of salt with her horses being "the healthier and able to
+ * thrive in this Texas heat". Both are genuine customers' own accounts, and that
+ * is the problem: publishing them has the site associate a salt product with a
+ * health outcome it cannot substantiate, which is the one thing a testimonial
+ * cannot be asked to carry. Rewriting somebody's words to soften them would
+ * misquote them, so they are removed instead of edited, and kept in the record
+ * above so the decision is auditable. A factual, customer-supplied version can be
+ * restored if that customer agrees to one.
+ *
+ * What remains describes product quality, service and logistics — no health
+ * result. The heading labels it as the customers' own comments for that reason.
  */
 const testimonials = [
-  {
-    quote:
-      'My name is Darolyn Butler, and my ranch, Cypress Trails Equestrian Center, is near Humble, TX. I have a herd of 70 horses; they all work in my trail ride business and over half are also trained for endurance competition. All of the horses, considering our heat here in South Texas, need an excellent supply of salt, and I have been feeding it for about 15 months. I believe my horses are the healthier and able to thrive in this Texas heat due to this change to Himalayan Koh salt.',
-    name: 'Darolyn Butler',
-    place: 'Cypress Trails Equestrian Center, Humble, TX',
-  },
   {
     quote:
       'Just wanted to let everyone know how great the Himalayan Koh team has been to work with. Not only are they very knowledgeable about all the advantages of Himalayan salt, but their products are by far the best salt blocks we have purchased for our deer ranch.',
@@ -77,6 +79,14 @@ const testimonials = [
     place: 'Conroe, TX',
   },
 ];
+
+/**
+ * Shown above the quotes. A customer's sentence about their own operation reads
+ * as the site's claim about the product unless it is labelled as theirs, so the
+ * label is part of publishing it.
+ */
+const TESTIMONIAL_NOTE =
+  'These are our customers\u2019 own comments, published as they gave them, not claims by Himalayan Koh about what a salt product will do.';
 
 export default function AboutPage() {
   return (
@@ -366,6 +376,7 @@ export default function AboutPage() {
               Testimonials
             </span>
             <h2 className="font-serif text-2xl sm:text-3xl font-bold text-charcoal mb-3">What our customers say</h2>
+            <p className="mx-auto max-w-2xl text-xs text-charcoal-light leading-relaxed">{TESTIMONIAL_NOTE}</p>
           </div>
           <div className="grid md:grid-cols-3 gap-5">
             {testimonials.map((item) => (

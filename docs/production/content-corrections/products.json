@@ -1,0 +1,48 @@
+{
+  "_note": "Owner-reviewed replacements from OWNER-APPROVAL-PACKAGE-2026-10-11.md Part A3, plus product 2526 which the sweep found carrying an unsupported superlative. Only short_description, description and the two Yoast fields are ever written; SKU, price, stock, images, categories and attributes are read back and asserted unchanged by scripts/apply-product-copy.mjs.",
+  "products": {
+    "2544": {
+      "sku": "HK-LB-30LBS",
+      "short_description": "This 30 lb bag of Himalayan Red Rock Salt is for beef cattle and suits all breeds. Unrefined rock salt for free-choice feeding: it supplies sodium and chloride, and it is not a trace-mineral supplement.",
+      "description": "<p>This 30 lb bag of Himalayan Red Rock Salt is for beef cattle and suits all breeds. It is unrefined rock salt, sold for free-choice feeding in the pasture.</p><p>Salt supplies sodium and chloride, the two nutrients a ration has to keep supplying every day, and sodium chloride is what cattle need in the largest quantity. Free-choice salt is how most operations provide it. Rock salt is dense, so a block or lump keeps its shape outdoors for a good while, and animals take what they need.</p><p>Salt is not a trace-mineral supplement. It does not supply balanced copper, zinc, manganese, selenium, iodine or cobalt, and offering salt is not a substitute for a mineral program matched to your forage. A forage test is where that program starts.</p><p>Sold by weight; compare the price per pound with your current source.</p>",
+      "yoast_metadesc": "30 lb Himalayan Red Rock Salt for cattle. Unrefined rock salt for free-choice sodium and chloride. Not a trace-mineral supplement.",
+      "yoast_title": "30 lb Himalayan Red Rock Salt Lick for Cattle | Himalayan Koh"
+    },
+    "2543": {
+      "sku": "HK-LFH-2lbs",
+      "short_description": "Himalayan Pink Salt Licks for Horses, sold in two weight options. The salt supplies sodium and chloride, which horses need in the ration; it is not a trace-mineral supplement.",
+      "description": "<p>Himalayan natural licking salt for horses, also sold as animal feed salt in coarse grains and lumps. Available in two weight options, 2 lbs and 6 lbs.</p><p>Horses take salt free-choice. The salt itself supplies sodium and chloride, the two nutrients a ration must keep supplying every day. Rock salt is dense, so a block holds together outdoors and lasts longer when it is kept off the ground and out of standing rain.</p><p>Salt is not a trace-mineral supplement. Copper, zinc, manganese, selenium, iodine and cobalt come from a mineral product chosen for your forage and your veterinarian's or nutritionist's advice — not from a salt lick, and not from the amount of colour in the block.</p><p>Sold by weight, shipped from our Houston warehouse.</p>",
+      "yoast_metadesc": "Natural Himalayan pink salt licks for horses, 2 lbs. Supplies sodium and chloride for the ration; not a trace-mineral supplement.",
+      "yoast_title": "2 lb Himalayan Pink Salt Licks for Horses | Himalayan Koh"
+    },
+    "2539": {
+      "sku": "HK-LFC-45lbs",
+      "short_description": "This 45 lb bag of Himalayan pink salt is for livestock, including horses and cattle. It comes in three grain sizes and can be offered free-choice or mixed into feed. It supplies sodium and chloride, and it is not a trace-mineral supplement.",
+      "description": "<p>This 45 lb bag of Himalayan pink salt is for livestock, including horses and cattle. It comes in three grain sizes: offer it free-choice, or mix it into feed.</p><p>Pink rock salt is sodium chloride with naturally occurring trace elements from its deposit, which is where the colour comes from. Those trace amounts are not a mineral program. Salt does not supply copper, zinc, manganese, selenium, iodine or cobalt in the balanced amounts a herd needs, and offering it is not a substitute for a mineral supplement chosen from a forage test.</p><p>Livestock need two things offered separately and free-choice: salt, and a mineral product matched to their ration. This listing is the salt half.</p><p>Sold by weight from our Houston warehouse.</p>",
+      "yoast_metadesc": "45 lb bag of Himalayan pink salt for livestock, in three grain sizes. Supplies sodium and chloride; not a trace-mineral supplement.",
+      "yoast_title": "45 lb Himalayan Pink Salt for Livestock | Himalayan Koh"
+    },
+    "2536": {
+      "sku": "HK-ESF-6lbs",
+      "short_description": "Himalayan Pink Salt pouches for livestock, in a 6 lb size and two grain sizes: fine and coarse. The salt supplies sodium and chloride; it is not a trace-mineral supplement.",
+      "description": "<p>Himalayan Koh's Himalayan Pink Salt is offered in 6 lb pouches, in fine or coarse grain.</p><p>The fine grain mixes into feed or water. The coarse grain suits free-choice feeding, so animals take what they need and no more. Both are unrefined rock salt, so the colour and grain vary a little from batch to batch — that is what an unrefined salt looks like.</p><p>Salt supplies sodium and chloride, the electrolytes a ration must keep supplying daily. It is not a trace-mineral supplement: those nutrients come from a mineral product matched to your forage, offered separately from salt.</p>",
+      "yoast_metadesc": "6 lb pouches of Himalayan pink salt for livestock, in fine or coarse grain. Supplies sodium and chloride; not a trace-mineral supplement.",
+      "yoast_title": "6 lb Himalayan Pink Salt Pouches for Livestock | Himalayan Koh"
+    },
+    "2531": {
+      "sku": "HK-ESF-3lbs",
+      "status_note": "STAYS DRAFT. Phase 10 of the mission: keep it inactive, preserve SKU/price/stock and do not reactivate. Only the description text is corrected here.",
+      "short_description": "Fine-grain Himalayan pink salt for cooking, hand-mined and unrefined, with a 0.5-1 mm grain. Sold for kitchen use.",
+      "description": "<p>Fine-grain Himalayan pink salt for cooking, hand-mined and unrefined, with a 0.5-1 mm grain.</p><p>The fine grain dissolves quickly, so it suits everyday seasoning, baking and brining. It is unrefined rock salt, so the pink colour varies slightly between batches.</p><p>This is an edible product, sold for kitchen use. Livestock salt — licks, blocks and bulk bags — is a separate product line; the two are not interchangeable.</p>",
+      "yoast_metadesc": "Fine-grain Himalayan pink salt for cooking, 0.5-1 mm, unrefined and hand-mined.",
+      "yoast_title": "Fine Grain Edible Himalayan Pink Salt | Himalayan Koh"
+    },
+    "2526": {
+      "sku": "HK-ESF-16oz",
+      "short_description": "Fine-grain Himalayan edible pink salt in a 16 oz jar. Hand-mined and unrefined, for everyday seasoning and cooking.",
+      "description": "<p>Fine-grain Himalayan pink salt for cooking, packed in a 16 oz jar. Hand-mined and unrefined, so the grains keep their natural pink colour and dissolve quickly.</p><p>Use it for everyday seasoning, at the table or in the pan, and in baking where a fine grain is wanted. Unrefined rock salt varies a little between batches, in colour and in grain — that variation is normal for a product that is not blended.</p><p>This is an edible product, sold for kitchen use. Our livestock range is separate.</p>",
+      "yoast_metadesc": "Fine-grain Himalayan edible pink salt in a 16 oz jar. Hand-mined, unrefined, for everyday cooking.",
+      "yoast_title": "Himalayan Edible Pink Salt - 16 oz Jar, Fine Grain | Himalayan Koh"
+    }
+  }
+}

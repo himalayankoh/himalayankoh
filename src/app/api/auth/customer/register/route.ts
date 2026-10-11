@@ -22,8 +22,32 @@ import { createWordPressCustomer, customerAccountsUnavailable } from '@/lib/auth
 import { publicMessage } from '@/lib/http/publicError';
 import { readCartSession, writeCartSession } from '@/lib/cart/cookies';
 import { adoptAccountCart } from '@/lib/cart/accountCart';
+import { checkRateLimit } from '@/lib/rateLimit';
+import { signupAbuseSignal, signupRefusal } from '@/lib/auth/signupGuard';
+
+/**
+ * Sign-up is the one public endpoint on this site that *creates a record* in the
+ * store, so it is the one a bot can use to fill the customer list — which is how
+ * the store's 2,700-account list grew (see the census in
+ * `docs/production/CUSTOMER-DATA-AUDIT-2026-10-11.md`). The two cheap controls
+ * below are what stops that here: a per-IP budget, and a shape check on the
+ * address before WordPress is asked to create anything.
+ */
+const SIGNUP_RATE_LIMIT = { limit: 5, windowMs: 60 * 60 * 1000 };
 
 export async function POST(request: Request) {
+  // Rate limit first: it costs nothing and it must apply even to a deployment
+  // that cannot create accounts at all, because the attempt itself is the signal.
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const rl = checkRateLimit(`signup:${ip}`, SIGNUP_RATE_LIMIT);
+  if (!rl.allowed) {
+    console.warn(`[signup] rate limited ${ip} (${SIGNUP_RATE_LIMIT.limit} per hour)`);
+    return NextResponse.json(
+      { error: 'Too many accounts have been created from this connection. Please try again later, or email sales@himalayankoh.com and we will help you directly.' },
+      { status: 429 }
+    );
+  }
+
   if (!isCustomerAuthConfigured()) {
     // A stranger reaches this route, so the note naming the variable to set stays on
     // the server (`@/lib/http/publicError`) — the same boundary the credential
@@ -48,9 +72,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
 
-  const email = String(body.email ?? '').trim();
+  const email = String(body.email ?? '').trim().toLowerCase();
   const password = String(body.password ?? '');
   const name = String(body.name ?? body.fullName ?? '').trim();
+
+  // Refused here rather than by WordPress, so an address that no customer could
+  // own never becomes a user record at all. WordPress's own error would be a
+  // 400 with an internal message, and the account would already exist.
+  const refusal = signupRefusal(email);
+  if (refusal) {
+    console.warn(`[signup] refused ${refusal.code} from ${ip}`);
+    return NextResponse.json({ error: refusal.message }, { status: 400 });
+  }
+
+  // Logged, not blocked. The junk accounts this store accumulated all looked like
+  // this, but a real person can hold an address that looks random, so the pattern
+  // is recorded as evidence and the account is still created.
+  const signal = signupAbuseSignal(email);
+  if (signal) console.warn(`[signup] abuse signal ${signal} from ${ip}`);
 
   const created = await createWordPressCustomer({ email, password, name });
   if (!created.ok) {
