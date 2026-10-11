@@ -126,9 +126,45 @@ Result:
 | `F_failed_genuine_attempt` | 2 | 1772 ($0.49, Stripe, failed), 2469 ($299.85 → intent `requires_payment_method`, amount 0) |
 | `G_unknown_needs_review` | 6 | 1733, 2113 (Amazon Pay), 2259 (Square), 2260 (PayPal), 2362, 2363 — completed but no provider I hold credentials for |
 
-**Verified captured revenue: $815.71 across 5 orders.** The store's own completed
-total is $1,506.01 across 11, so about $690 of "revenue" is unrealised — pending,
-failed, gateway-test or unverifiable. That is the Sales & Profit accuracy finding.
+### The three revenue figures, kept apart (corrected 2026-10-11)
+
+An earlier version of this section printed **$1,506.01** as "the store's own completed
+total across 11". That number was wrong, and wrong in the way this whole audit is
+about: $1,506.01 is the sum of **all 16 orders that existed before the two test orders
+were trashed** — 14 live orders totalling $1,416.05, plus the two test orders
+($30.87 + $59.09 = $89.96) — so it counted failed and pending orders as completed
+revenue. The figures, each labelled with what it actually is:
+
+| Figure | Amount | Basis |
+| --- | --- | --- |
+| All live orders | **$1,416.05** across 14 | every `total`, whatever the status — not revenue |
+| Revenue the store counts | **$1,095.24** across 11 | orders carrying WooCommerce's own **paid date**; this is the rule the console uses, and all 11 are `completed` |
+| Revenue a provider confirms | **$815.71** across 5 | Stripe payment intents read back directly: `livemode: true`, `succeeded` |
+| Unverifiable remainder | **$279.53** across 6 | Amazon Pay (2), PayPal (2), one `Credit Card` legacy gateway, one $0.10 — paid-dated, but no credentials held to confirm them |
+| Not revenue at all | **$320.81** across 3 | order 2468 (pending, $20.47) and 2469 + 1772 (failed, $299.85 + $0.49) |
+
+So the honest statement of "paid revenue" depends on the claim being made: **$1,095.24**
+is what the store asserts it was paid, **$815.71** is what a payment provider can
+still confirm today, and the **$279.53** difference is *unverified, not absent*. That
+gap is the Sales & Profit accuracy finding, and it is a credentials gap, not a
+data-quality one.
+
+### Inventory as measured after cleanup (Phase 1)
+
+```
+orders  any 14 · trash 2 · completed 11 · pending 1 · failed 2 · processing 0
+        on-hold 0 · cancelled 0 · refunded 0   (refunded/cancelled: none exist)
+by payment method  Credit Card (Stripe) 5 · Amazon Pay 4 · Credit Card (legacy) 2
+                   PayPal 2 · Apple Pay (Stripe) 1
+by class           A verified paid 5 · B awaiting 1 · E test 2 (trashed)
+                   F failed 2 · G review 6
+customers linked to orders  3 ids (16, 17, 20) + 1 account matched by guest address
+customers  2,704 role `customer` · 3 administrator · 2,707 accounts
+paid orders 11 · unpaid 3 · refunded 0 · disputed 0
+```
+
+Every number is an `x-wp-total` or a sum read from the store on 2026-10-11; none is
+derived from a cached report.
 
 ### The two test orders — archived, reversibly
 
