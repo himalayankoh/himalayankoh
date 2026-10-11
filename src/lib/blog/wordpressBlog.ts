@@ -98,6 +98,34 @@ function embeddedTerms(post: WpPost): Array<{ name: string; taxonomy: string }> 
     );
 }
 
+/**
+ * WordPress's default category bucket, spelled the ways an install spells it.
+ *
+ * A post the owner has not filed anywhere still carries a category term — WordPress
+ * creates `Uncategorized` and assigns it automatically — so the value arrives on a
+ * read looking exactly like a category somebody chose. It is not one: rendering it
+ * printed an `Uncategorized` chip above the article and beside every related card,
+ * the same way the products model used to announce `UNCATEGORIZED` as a shelf. Same
+ * rule as `reportedCategoryName` for products: a bucket is "not filed", never a
+ * label.
+ */
+const DEFAULT_CATEGORY_NAMES = new Set(['uncategorized', 'uncategorised']);
+
+/**
+ * The category worth showing for a post, or `null` when it has only the default bucket.
+ *
+ * Returning `null` is also what keeps related posts working: `getRelatedPosts` skips
+ * its category match when it is handed no category and tops up from the general
+ * list, rather than searching for a bucket by name.
+ */
+export function reportedPostCategory(
+  terms: ReadonlyArray<{ name: string; taxonomy: string }>
+): string | null {
+  const name = terms.find((term) => term.taxonomy === 'category')?.name?.trim();
+  if (!name) return null;
+  return DEFAULT_CATEGORY_NAMES.has(name.toLowerCase()) ? null : name;
+}
+
 /** A WordPress post, in the shape the screens render. */
 export function blogPostFromWp(post: WpPost): BlogPostWithAuthor {
   const contentHtml = post.content?.rendered ?? '';
@@ -106,7 +134,7 @@ export function blogPostFromWp(post: WpPost): BlogPostWithAuthor {
   const terms = embeddedTerms(post);
   const meta = post.meta ?? {};
   const byline = typeof meta.hk_author_name === 'string' ? meta.hk_author_name.trim() : '';
-  const category = terms.find((term) => term.taxonomy === 'category')?.name ?? null;
+  const category = reportedPostCategory(terms);
   const metaTags = Array.isArray(meta.hk_tags)
     ? meta.hk_tags.filter((tag): tag is string => typeof tag === 'string')
     : [];

@@ -157,7 +157,9 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
                     className="w-full aspect-[16/10] object-cover group-hover:scale-105 transition-transform duration-700"
                   />
                   <div className="p-5">
-                    <p className="text-xs text-charcoal-light mb-2">{related.category}</p>
+                    {related.category && (
+                      <p className="text-xs text-charcoal-light mb-2">{related.category}</p>
+                    )}
                     <h3 className="font-serif font-bold text-charcoal line-clamp-2 group-hover:text-himalayan transition-colors">
                       {related.title}
                     </h3>

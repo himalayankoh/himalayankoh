@@ -145,7 +145,9 @@ Notes on pink salt: how it is used, how it is stored, and what the labels mean
                 <span className="px-3 py-1 bg-himalayan-lighter text-himalayan text-xs font-semibold rounded-full">
                   Featured
                 </span>
-                <span className="text-sm text-charcoal-light">{featuredPost.category}</span>
+                {featuredPost.category && (
+                  <span className="text-sm text-charcoal-light">{featuredPost.category}</span>
+                )}
               </div>
               <h2 className="font-serif text-2xl md:text-3xl font-bold text-charcoal mb-4 group-hover:text-himalayan transition-colors">
                 {featuredPost.title}
@@ -194,10 +196,12 @@ Notes on pink salt: how it is used, how it is stored, and what the labels mean
               </div>
               <div className="p-6">
                 <div className="flex items-center gap-4 mb-3 text-xs text-charcoal-light">
-                  <span className="flex items-center gap-1">
-                    <Tag size={12} />
-                    {post.category}
-                  </span>
+                  {post.category && (
+                    <span className="flex items-center gap-1">
+                      <Tag size={12} />
+                      {post.category}
+                    </span>
+                  )}
                   <span className="flex items-center gap-1">
                     <Clock size={12} />
                     {post.read_time} min read

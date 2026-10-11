@@ -50,6 +50,26 @@ describe('blogPostFromWp', () => {
     expect(post.author).toEqual({ id: '7', full_name: 'Salman Bashir', avatar_url: 'https://example.test/a.png' });
   });
 
+  it('treats the CMS default category as "not filed" instead of printing a bucket', () => {
+    // The live article carried an `Uncategorized` chip because WordPress assigns its
+    // default term to any post the owner has not filed, and the read passed that
+    // term through as though somebody had chosen it.
+    for (const name of ['Uncategorized', 'uncategorized', '  Uncategorized  ', 'Uncategorised']) {
+      const post = blogPostFromWp({
+        ...wpPost,
+        _embedded: { ...wpPost._embedded, 'wp:term': [[{ id: 1, name, taxonomy: 'category' }]] },
+      });
+      expect(post.category, name).toBeNull();
+    }
+
+    // A category the owner did name is still reported exactly as WordPress spells it.
+    const named = blogPostFromWp({
+      ...wpPost,
+      _embedded: { ...wpPost._embedded, 'wp:term': [[{ id: 4, name: 'Storage & Care', taxonomy: 'category' }]] },
+    });
+    expect(named.category).toBe('Storage & Care');
+  });
+
   it('strips markup out of the excerpt and decodes its entities', () => {
     const post = blogPostFromWp(wpPost);
 
