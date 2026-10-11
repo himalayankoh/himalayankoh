@@ -18,8 +18,13 @@ export { SITE_ORIGIN_STAGING, SITE_ORIGIN_PRODUCTION } from '@/lib/site/origin';
 // runtime, so the wording the owner approved is back.
 export const DEFAULT_TITLE =
   'Himalayan Koh - Premium Pink Salt for Livestock & Cooking';
+// The species named here are the ones the live catalogue actually serves: rope licks for
+// horses, a red rock block for cattle, loose salt for livestock, and edible grades for the
+// kitchen. "deer" was in this sentence and in the announcement bar, and the catalogue has no
+// deer product, so a sitewide description was claiming a line that does not exist. Only that
+// word was removed; the owner's wording is otherwise untouched and this is flagged for review.
 export const DEFAULT_DESCRIPTION =
-  'Premium Himalayan Pink Salt for horses, cattle, deer, and edible cooking. All natural, mineral-rich Himalayan salt products.';
+  'Premium Himalayan Pink Salt for horses, cattle, and edible cooking. All natural, mineral-rich Himalayan salt products.';
 /**
  * Social crawlers (Facebook, X, LinkedIn) and Google's rich results do not
  * accept SVG for og:image — this must stay a raster URL. Served as a real

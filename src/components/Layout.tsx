@@ -106,8 +106,18 @@ export default function Layout({ children }: LayoutProps) {
       <div className="bg-warm-white border-b border-himalayan-line text-sm text-charcoal">
         <motion.div className="max-w-7xl mx-auto px-4 py-1.5 flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4">
           <p className="text-center sm:text-left text-xs sm:text-sm tracking-wide flex-1">
+            {/*
+              This line is on every page, including the cooking guide and the
+              policies, so it has to be true of the whole business rather than of
+              one shelf. It named horses, cattle and deer; the live catalogue sells
+              licks, a cattle block, livestock bags and an edible jar, and no deer
+              product exists in it, so the species list was both narrower than the
+              shop and partly unsupported. "Livestock and the kitchen" is what the
+              catalogue actually holds, with no health claim and no promise about a
+              product that is not for sale.
+            */}
             <strong className="font-semibold text-himalayan">All Natural</strong>{' '}
-            Himalayan salt for horses, cattle and deer
+            Himalayan salt for livestock and the kitchen
           </p>
           <div className="hidden sm:flex items-center gap-6 sm:gap-8 text-xs sm:text-sm font-medium flex-shrink-0">
             <a href="tel:8322246466" className="flex items-center gap-1.5 text-charcoal hover:text-himalayan transition-colors whitespace-nowrap">

@@ -118,7 +118,16 @@ export default function HomePage({ initialProducts }: HomePageProps = {}) {
               rewritten to sell something else; the culinary half was removed.
             */}
             <div><h2 className="text-xl sm:text-2xl font-bold mb-3">From the Salt Range to your pasture</h2><div className="space-y-3 text-charcoal-light leading-relaxed">
-              <p>Himalayan pink rock salt gives cattle, horses, deer, and other animals the quality NaCl they need to stay healthy and be more productive.</p>
+              {/*
+                This sentence used to read "gives cattle, horses, deer, and other
+                animals the quality NaCl they need to stay healthy and be more
+                productive". Two problems with one line on the front page: it
+                promised a health and productivity outcome no salt product can
+                support, and it named deer, an animal the catalogue has no product
+                for. It now states what the rock salt supplies and to whom, which is
+                the whole of the supported claim.
+              */}
+              <p>Himalayan pink rock salt supplies sodium and chloride, the two nutrients a livestock ration has to keep supplying every day.</p>
               <Link to="/about" className="inline-flex py-2 items-center gap-2 text-himalayan-dark font-semibold">About Himalayan Koh <ArrowRight size={16}/></Link>
             </div></div>
             <ul className="space-y-2.5">{saltBenefits.map(b=><li key={b} className="flex gap-3 text-sm leading-relaxed text-charcoal-light"><Check size={18} className="shrink-0 text-himalayan-green mt-0.5"/>{b}</li>)}</ul>
