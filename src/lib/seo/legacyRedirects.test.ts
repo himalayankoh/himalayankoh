@@ -29,21 +29,23 @@ const STATIC_ROUTES = new Set([
 ]);
 
 /**
- * Product slugs the WooCommerce catalogue serves today (see
- * `docs/PRODUCT-MIGRATION-MATRIX.md`). A `/products/<slug>` destination must name
- * one of these; anything else is a link to a page this storefront will not render.
+ * Product slugs the live catalogue serves today. A `/products/<slug>` destination
+ * must name one of these; anything else is a link to a page this storefront will
+ * not render.
+ *
+ * Read back from `GET https://himalayankoh.com/api/catalog` on 2026-10-11, after the
+ * owner-approved preview catalog replacement re-slugged every product. The list
+ * before that read was the Supabase-era catalogue's, so this test happily accepted
+ * ten destinations that had been 404ing for a week — which is why the values are
+ * now copied from the live API rather than from a migration document.
  */
 const LIVE_PRODUCT_SLUGS = new Set([
-  'himalayan-koh-edible-salt-grain',
-  'himalayan-edible-pink-salt',
-  'pouches',
-  'himalayan-salt-pouches',
-  'himalayan-rock-salt-bag',
-  'chef-himalayan-pink-salt',
-  'himalayan-chef-himalayan-pink-salt-coarse-grain-jar-1-lbs',
-  'himalayan-crystal-rock-salt-lamp-ionizer-air-purifier-with-dimmable-control',
-  'himalayan-rock-salt-45-lbs-2-3-large-chunks',
-  'salt-licks',
+  'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh',
+  'himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh',
+  'bag-of-himalayan-pink-salt-for-livestock-45-lbs-himalayan-koh',
+  'himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh',
+  'himalayan-koh-authentic-pure-natural-halal-unprocessed-himalayan-edible-pink-cooking-salt-fine-grain-0-5mm-to-1mm-himalayan-koh',
+  'himalayan-edible-pink-salt-16-oz-jar-fine-grain',
 ]);
 
 const SHELF_KEYS = new Set<string>(NICHE_SECTIONS.map((section) => section.key));
@@ -158,8 +160,8 @@ describe('legacy redirect map', () => {
       '/services/salt-lick-for-horses': '/products?category=licks-blocks',
       '/services/salt-lumps-for-cattle': '/products?category=licks-blocks',
       '/why-do-dairy-cows-need-trace-minerals': '/products?category=live-stock',
-      '/product/salt-licks-for-horses': '/products?category=licks-blocks',
-      '/product/bag-of-salt-for-livestock-45-lbs': '/products?category=live-stock',
+      '/product/block-of-salt': '/products?category=licks-blocks',
+      '/product/rock-of-salt': '/products?category=live-stock',
     };
 
     for (const [source, destination] of Object.entries(expected)) {
@@ -168,18 +170,73 @@ describe('legacy redirect map', () => {
     }
   });
 
-  it('sends every retired livestock product to a shelf, never to a product page', () => {
-    const livestock = [
+  it('never leaves a retired product URL to 404', () => {
+    // The rule this replaces said "retired livestock products go to a shelf", which
+    // was right while the map's product destinations had all gone stale but wrong
+    // about the better answer: the catalogue still sells the horse lick and the
+    // 45 lb bag, so those two URLs go to the product itself. What matters is that
+    // none of them lands on a 404 — either a live product page or a shelf.
+    const retired = [
       '/product/salt-licks-for-horses',
+      '/product/salt-licks',
       '/product/bag-of-salt-for-livestock-45-lbs',
+      '/product/himalayan-rock-salt-bag',
+      '/product/himalayan-koh-edible-salt-grain',
+      '/product/himalayan-edible-pink-salt',
+      '/product/pouches',
+      '/product/himalayan-salt-pouches',
       '/product/block-of-salt',
       '/product/rock-of-salt',
     ];
 
-    for (const source of livestock) {
+    for (const source of retired) {
       const rule = LEGACY_REDIRECTS.find((entry) => entry.source === source);
       expect(rule, `${source} should be mapped`).toBeDefined();
-      expect(rule?.destination.startsWith('/products?category=')).toBe(true);
+
+      const destination = rule!.destination;
+      const slug = destination.startsWith('/products/') ? destination.replace('/products/', '') : null;
+      const category = destination.startsWith('/products?category=')
+        ? new URLSearchParams(destination.split('?')[1]).get('category')
+        : null;
+
+      const landsOnLiveProduct = slug !== null && LIVE_PRODUCT_SLUGS.has(slug);
+      const landsOnShelf = category !== null && SHELF_KEYS.has(category);
+      expect(
+        landsOnLiveProduct || landsOnShelf,
+        `${source} -> ${destination} is neither a live product nor a shelf`
+      ).toBe(true);
     }
+  });
+
+  it('maps the app-spelled URL beside every WordPress product URL that lands on a product', () => {
+    // WordPress served `/product/<slug>`; this app's own earlier catalogue served
+    // `/products/<slug>`, and a crawl of this site indexed the second spelling. A
+    // product URL that is only mapped in its WordPress spelling still 404s for the
+    // visitor who followed the link that was actually indexed.
+    const missing: string[] = [];
+
+    for (const rule of LEGACY_REDIRECTS) {
+      if (!rule.source.startsWith('/product/') || rule.source.includes(':')) continue;
+      if (!rule.destination.startsWith('/products/')) continue;
+
+      const slug = rule.source.replace('/product/', '');
+      const twin = LEGACY_REDIRECTS.find((entry) => entry.source === `/products/${slug}`);
+      if (!twin || twin.destination !== rule.destination) missing.push(slug);
+    }
+
+    expect(missing).toEqual([]);
+  });
+
+  it('never shadows a product the catalogue still sells', () => {
+    // A redirect source naming a live slug would replace the product page with a
+    // redirect — the same class of mistake as `/checkout` being listed as a legacy
+    // URL, and one this map can only avoid by being checked against the live slugs.
+    const shadowed = LEGACY_REDIRECTS.filter(
+      (rule) =>
+        rule.source.startsWith('/products/') &&
+        LIVE_PRODUCT_SLUGS.has(rule.source.replace('/products/', ''))
+    );
+
+    expect(shadowed.map((rule) => rule.source)).toEqual([]);
   });
 });

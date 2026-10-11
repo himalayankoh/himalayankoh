@@ -41,14 +41,22 @@ const nextConfig: NextConfig = {
       // Both pouch products were renamed to fix a typo ("Eidible" ->
       // "Edible") and correct their weight labeling — old slugs redirect so
       // existing links/bookmarks/search rankings aren't lost.
+      //
+      // Their destinations were Supabase-era slugs, and the preview catalog
+      // replacement retired those products, so the 3 lb and 6 lb rules both pointed
+      // at a 404. They now name the live catalogue's own equivalents: the 3 lb
+      // fine-grain salt and the 6 lb fine-or-coarse pouch. Slugs are the ones
+      // `LEGACY_REDIRECTS` carries, read back from `GET /api/catalog` on 2026-10-11.
       {
         source: '/products/himalayan-pink-eidible-salt-fine-grain-pouche',
-        destination: '/products/himalayan-pink-edible-salt-fine-grain-pouch-3-lb',
+        destination:
+          '/products/himalayan-koh-authentic-pure-natural-halal-unprocessed-himalayan-edible-pink-cooking-salt-fine-grain-0-5mm-to-1mm-himalayan-koh',
         permanent: true,
       },
       {
         source: '/products/himalayan-pink-eidible-salt-fine-grain-pouche-',
-        destination: '/products/himalayan-pink-edible-salt-fine-grain-pouch-6-lb',
+        destination:
+          '/products/himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh',
         permanent: true,
       },
       // The standalone Quality page was folded into About Us. The route is gone, so

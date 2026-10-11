@@ -48,6 +48,84 @@ const SHELF = {
 
 const shelf = (key: (typeof SHELF)[keyof typeof SHELF]) => `/products?category=${key}`;
 
+/**
+ * The six products the live catalogue sells, read from `GET /api/catalog` on
+ * 2026-10-11. Kept here as names rather than as bare strings because the slug of
+ * the 3 lb fine-grain product is a hundred characters long and appears twice.
+ */
+const LIVE_PRODUCT = {
+  licks2lb: 'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh',
+  cattle30lb: 'himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh',
+  livestock45lb: 'bag-of-himalayan-pink-salt-for-livestock-45-lbs-himalayan-koh',
+  pouches6lb: 'himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh',
+  fine3lb:
+    'himalayan-koh-authentic-pure-natural-halal-unprocessed-himalayan-edible-pink-cooking-salt-fine-grain-0-5mm-to-1mm-himalayan-koh',
+  jar16oz: 'himalayan-edible-pink-salt-16-oz-jar-fine-grain',
+} as const;
+
+const product = (slug: string) => `/products/${slug}`;
+
+/**
+ * One retired slug, in both spellings, pointed at wherever that product lives now.
+ *
+ * Both spellings because the two failures are separate: WordPress served
+ * `/product/<slug>`, and this app's own earlier catalogue served
+ * `/products/<slug>` — and an earlier crawl of *this* site indexed the second
+ * form, so a visitor can arrive by either. `/products/<slug>` is also what the
+ * `/product/:slug` catch-all rewrites to, which is why the destinations here are
+ * current slugs read back from the live catalogue and not hand-written ones.
+ */
+const retiredProduct = (slug: string, destination: string): LegacyRedirect[] => [
+  { source: `/product/${slug}`, destination, permanent: true },
+  { source: `/products/${slug}`, destination, permanent: true },
+];
+
+/**
+ * Products that used to be sold under these slugs, and where a shopper should land
+ * now. Retired by the preview catalog replacement
+ * (`docs/production/PREVIEW-CATALOG-REPLACEMENT-2026-10-11.md`), which lists the
+ * retired parent ids 2520, 2461, 2446, 2372, 2367, 2352, 2321, 271 and 281.
+ */
+const RETIRED_PRODUCTS: LegacyRedirect[] = [
+  // The horse lick line: the retired aggregate "SALT LICKS" listing (2352) and the
+  // 281 pink lick both became the one 2 lb lick the catalogue sells today.
+  ...retiredProduct('salt-licks-for-horses', product(LIVE_PRODUCT.licks2lb)),
+  ...retiredProduct('salt-licks', product(LIVE_PRODUCT.licks2lb)),
+  // The 45 lb livestock bag kept its identity and its pack size, under a slug that
+  // gained the brand suffix.
+  ...retiredProduct('bag-of-salt-for-livestock-45-lbs', product(LIVE_PRODUCT.livestock45lb)),
+  // An earlier 45 lb rock listing of the same bag.
+  ...retiredProduct('himalayan-rock-salt-45-lbs-2-3-large-chunks', product(LIVE_PRODUCT.livestock45lb)),
+  // The retired 18 lb rock-salt bag (2372): this line's live pack size is the 45 lb
+  // livestock bag, so that is the nearest equivalent a shopper can actually buy.
+  ...retiredProduct('himalayan-rock-salt-bag', product(LIVE_PRODUCT.livestock45lb)),
+  // The live-apex cattle rock (id 291, "Himalayan Salt Rock for Cattle 18 Lbs
+  // Bag", animal feed) is no longer sold; the cattle rock the catalogue carries is
+  // the 30 lb one. Its WordPress slug is not recorded in the comparison document
+  // and WP slugs are not reliably derived from titles (286's is `block-of-salt`,
+  // not `himalayan-pink-salt-block-for-deer`), so this maps the one spelling the
+  // title supports. If it never fires, nothing is lost — the catch-all below still
+  // covers the URL, which is exactly the case this rule improves on.
+  ...retiredProduct('himalayan-salt-rock-for-cattle-18-lbs-bag', product(LIVE_PRODUCT.cattle30lb)),
+  // The granular pouch line: "pouches" (2321) and "HIMALAYAN SALT POUCHES" (2367)
+  // are the live 6 lb fine-or-coarse pouch.
+  ...retiredProduct('pouches', product(LIVE_PRODUCT.pouches6lb)),
+  ...retiredProduct('himalayan-salt-pouches', product(LIVE_PRODUCT.pouches6lb)),
+  // 2461 (SKU HK-ESF-3lbs) and 2446 (the 16 oz jar) are the two edible lines that
+  // survive with different slugs.
+  ...retiredProduct('himalayan-koh-edible-salt-grain', product(LIVE_PRODUCT.fine3lb)),
+  ...retiredProduct('himalayan-edible-pink-salt', product(LIVE_PRODUCT.jar16oz)),
+  // The two third-party "Himalayan Chef" jars are not in the public catalogue (a
+  // competing brand, kept unpublished), so their URLs go to the edible shelf rather
+  // than to a product page this storefront does not render.
+  ...retiredProduct('chef-himalayan-pink-salt', shelf(SHELF.edible)),
+  ...retiredProduct('himalayan-chef-himalayan-pink-salt-coarse-grain-jar-1-lbs', shelf(SHELF.edible)),
+  // The salt lamp is not sold here at all, and no shelf holds one, so the catalogue
+  // is the honest destination. (The lamp's own title is on the list of commercial
+  // copy that still needs an owner decision — it is not being advertised by this.)
+  ...retiredProduct('himalayan-crystal-rock-salt-lamp-ionizer-air-purifier-with-dimmable-control', '/products'),
+];
+
 export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   // --- Core pages -----------------------------------------------------------
   { source: '/shop', destination: '/products', permanent: true },
@@ -133,40 +211,33 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   // The wholesale programme has its own module on this site.
   { source: '/whole-sale', destination: '/wholesale', permanent: true },
 
-  // --- WooCommerce products: live pink-salt products keep their slug ---------
-  // These products still exist in WooCommerce under the same slug, so the old URL
-  // resolves to the same product on its new URL rather than to a shelf.
-  { source: '/product/himalayan-koh-edible-salt-grain', destination: '/products/himalayan-koh-edible-salt-grain', permanent: true },
-  { source: '/product/himalayan-edible-pink-salt', destination: '/products/himalayan-edible-pink-salt', permanent: true },
-  { source: '/product/pouches', destination: '/products/pouches', permanent: true },
-  { source: '/product/himalayan-salt-pouches', destination: '/products/himalayan-salt-pouches', permanent: true },
-  { source: '/product/himalayan-rock-salt-bag', destination: '/products/himalayan-rock-salt-bag', permanent: true },
-  { source: '/product/chef-himalayan-pink-salt', destination: '/products/chef-himalayan-pink-salt', permanent: true },
-  {
-    source: '/product/himalayan-chef-himalayan-pink-salt-coarse-grain-jar-1-lbs',
-    destination: '/products/himalayan-chef-himalayan-pink-salt-coarse-grain-jar-1-lbs',
-    permanent: true,
-  },
-  {
-    source: '/product/himalayan-crystal-rock-salt-lamp-ionizer-air-purifier-with-dimmable-control',
-    destination: '/products/himalayan-crystal-rock-salt-lamp-ionizer-air-purifier-with-dimmable-control',
-    permanent: true,
-  },
+  // --- The live catalogue's own product URLs ----------------------------------
+  //
+  // The owner-approved preview catalog replacement retired the old listings and
+  // re-created each one under a new slug, so *every* hand-written product
+  // destination this map used to carry became a redirect to a 404 — the exact
+  // failure mode rule 1 above exists to prevent, and the reason the sources below
+  // are grouped by where the product lives now rather than by where it used to.
+  //
+  // Every slug here was read back from the live production catalogue
+  // (`GET https://himalayankoh.com/api/catalog`, 2026-10-11) and each one answers
+  // 200; the replacement itself is documented in
+  // `docs/production/PREVIEW-CATALOG-REPLACEMENT-2026-10-11.md`. A retired slug is
+  // added in *both* spellings — `/product/<slug>` (WordPress) and
+  // `/products/<slug>` (this app, which is what an earlier crawl of this site
+  // indexed) — because a URL that answers 404 either way sheds the same link.
+  ...RETIRED_PRODUCTS,
 
   // --- Retired livestock SKUs ------------------------------------------------
-  // Indexed URLs whose either product or slug is gone. Each lands on the shelf
-  // that now holds the nearest equivalent, not on a 404.
-  { source: '/product/salt-licks-for-horses', destination: shelf(SHELF.licks), permanent: true },
-  { source: '/product/bag-of-salt-for-livestock-45-lbs', destination: shelf(SHELF.livestock), permanent: true },
+  // Indexed URLs whose product is gone from the catalogue entirely, with no
+  // current pack size to point at. Each lands on the shelf that holds the nearest
+  // equivalent, not on a 404.
   { source: '/product/bag-of-salt-for-livestock-55-lbs', destination: shelf(SHELF.livestock), permanent: true },
   // "Block of salt" and "lump of salt" were the animal blocks and lumps; the
   // salt-lick shelf carries the live equivalents.
   { source: '/product/block-of-salt', destination: shelf(SHELF.licks), permanent: true },
   { source: '/product/lump-of-salt', destination: shelf(SHELF.licks), permanent: true },
   { source: '/product/rock-of-salt', destination: shelf(SHELF.livestock), permanent: true },
-  // `salt-licks` is the retired aggregate lick listing; the current lick line is
-  // what replaced it.
-  { source: '/product/salt-licks', destination: shelf(SHELF.licks), permanent: true },
 
   // --- Catch-alls (must stay last) ------------------------------------------
   // Any WooCommerce URL not mapped above still lands somewhere relevant
