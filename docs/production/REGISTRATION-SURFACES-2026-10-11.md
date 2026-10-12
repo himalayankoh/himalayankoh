@@ -139,3 +139,36 @@ domains, and independent of the legacy forms.
 **WORDPRESS NATIVE REGISTRATION: OPEN — NOT SECURED.** It cannot be closed from this machine, and
 the abuse path that produced the 2,704 accounts is therefore still partly open at the WordPress
 level. **Owner action required:** untick *Anyone can register* (one click, §4).
+
+---
+
+## 7. Re-measured 2026-10-11 — same answers, one new fact about where the form lives
+
+`node scripts/check-registration-surfaces.mjs` was run again on 2026-10-11 (exit **1**), and every
+row reproduced: **WooCommerce My Account registration CLOSED** (setting read live as
+`woocommerce_enable_myaccount_registration = "no"`, no register form in `/my-account/`),
+**WordPress native registration OPEN** (`registerform` served), **storefront sign-up alive** (an
+empty-body POST → `400 {"error":"Enter your email address."}`, nothing created). The WooCommerce
+half of §2 was therefore closed by the change recorded in §4's rollback note, and the WordPress
+half is the one that remains.
+
+**The new fact: the apex belongs to the storefront, so the open form is reached at
+`wp.himalayankoh.com`, not at `himalayankoh.com`.** Measured today — `https://himalayankoh.com/api/version`
+returns the Worker's build SHA, `https://himalayankoh.com/wp-login.php` answers **404**, and
+`?post_type=product` renders no WooCommerce markup: the cutover has happened. This does not change
+the severity (the WordPress installation, and therefore `wp-login.php?action=register`, is public)
+but it does change who can reach it — a shopper never sees it, a scanner does.
+
+**Two further write routes were tried today and both refused**, extending §3: an application
+password against core REST (`/wp/v2/settings`, `/wp/v2/users/me` → **401**; the credential held
+locally is a login password, not in application-password form), and the stored WooCommerce
+read/write key pair (`/wc/v3/settings/account` → **401 `woocommerce_rest_cannot_view`**). Neither
+is a path to `users_can_register`.
+
+**One correction to §4's "alternatively".** The plugin route works, but only for the reason it is
+written that way: `hk_storefront_close_legacy_registration()` fires when
+`hk_storefront_db_version` differs from `HK_STOREFRONT_VERSION`, and that constant is bumped
+**1.5.4 → 1.5.5 in the same commit that adds the closer**. A server running the 1.5.4 file will
+therefore close the option on its first request after the 1.5.5 file is uploaded. Uploading an
+"updated" file that kept the same version number would do nothing — the version bump *is* the
+trigger, which is why a plugin upload and the checkbox are genuinely equivalent here.

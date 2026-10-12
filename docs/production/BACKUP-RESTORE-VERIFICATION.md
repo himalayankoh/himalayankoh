@@ -1,11 +1,25 @@
 # Backup and restore verification — the precondition for all catalogue work
 
-> **Status: FAIL. No verified backup of the live installation exists.**
+> **Status: reconciled 2026-10-11 — PASS for the 2026-10-08 state; the rule below still governs.**
 >
-> This is not a warning about a risk that has been mitigated; it is the current, measured
-> state. Nothing in the catalogue plan, the `wp.himalayankoh.com` work, or the cutover may run
-> before this document's rule is satisfied, and no agent or engineer may record this item as
-> PASS on the strength of anything in §7 below.
+> This header read *FAIL — no verified backup of the live installation exists* when it was written,
+> and that was true then: no dump of the live installation had been taken. It is not true of the
+> 2026-10-08 backup set, which has now been **independently re-verified**: every digest recomputed
+> and matching, and a restore re-performed into a fresh scratch schema on an isolated MariaDB
+> (320 tables, exit 0). The full measurement is
+> `BACKUP-RESTORE-EVIDENCE-2026-10-11.md`, and the contradiction between this header and
+> `CUTOVER-READINESS.md`'s PASS is resolved in §6 of that document — the earlier PASS was recorded
+> as the verifier reported it, and this FAIL was recorded as the state actually was.
+>
+> Two things this does **not** license. First, the rule below is unchanged and remains the only
+> standard a backup is accepted by; a PASS here is a statement about the 2026-10-08 artefacts, not
+> a standing permission. Second, that backup **does not cover the current production state**: the
+> five listings the store sells today were created after it was taken. A fresh backup, restore-tested
+> the same way, is still required — and it needs database access this machine does not have.
+>
+> Nothing in the catalogue plan, the `wp.himalayankoh.com` work, or the cutover may run before this
+> document's rule is satisfied, and no agent or engineer may record this item as PASS on the
+> strength of anything in §7 below.
 
 This document exists because "we have a backup" is the most over-claimed sentence in a
 migration. It is claimed from a product CSV, from a DNS export, from a `.wpress` file whose own
