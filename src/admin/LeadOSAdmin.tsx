@@ -257,6 +257,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   // Find Leads state
   const [category, setCategory] = useState('Feed Store');
   const [customCategory, setCustomCategory] = useState('');
+  const [keyword, setKeyword] = useState('');
   const [location, setLocation] = useState('Houston, TX');
   const [researchRegion, setResearchRegion] = useState('Texas');
   const [maxResults, setMaxResults] = useState(15);
@@ -437,6 +438,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         body: JSON.stringify({
           category: effectiveCategory,
           location,
+          keyword: keyword.trim(),
           projectId: selectedProjectId,
           maxResults,
           requireWebsite,
@@ -1015,6 +1017,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   {category === 'custom' && (
                     <input type="text" placeholder="e.g. Grain Elevator, Tack Shop" value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} className="w-full px-3 py-2 mt-1 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500" />
                   )}
+                  <input type="text" placeholder="Keyword (optional) e.g. organic feed, tack" value={keyword} onChange={(e) => setKeyword(e.target.value)} className="w-full px-3 py-2 mt-1 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500" />
                 </div>
 
                 <div className="space-y-1.5">
@@ -1081,6 +1084,15 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   <div><span className="text-slate-400">Raw OSM:</span> <span className="font-medium text-slate-800">{diagnostics.rawResultsCount}</span></div>
                   <div><span className="text-slate-400">Duplicates:</span> <span className="font-medium text-slate-800">{diagnostics.duplicatesRemoved}</span></div>
                   <div><span className="text-slate-400">Scored:</span> <span className="font-medium text-slate-800">{diagnostics.normalizedCount}</span></div>
+                  {diagnostics.sources && (
+                    <div className="col-span-2 md:col-span-4 flex flex-wrap gap-1.5 pt-0.5">
+                      {Object.entries(diagnostics.sources).map(([name, s]) => (
+                        <span key={name} className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${s.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                          {name === 'overpass' ? 'Map data' : 'Keyword index'}: {s.error ? 'unavailable' : `${s.normalized} found`}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

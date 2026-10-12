@@ -1,7 +1,20 @@
 import { geocodeDetailed } from './geo';
 import type { NormalizedLead, LeadSearchInput, SearchDiagnostics } from './types';
 
-const OVERPASS_URL = process.env.OVERPASS_API_URL || 'https://overpass-api.de/api/interpreter';
+/**
+ * Overpass mirrors, tried in order. The primary de instance rate-limits and
+ * times out under load (measured: HTTP 429/504 + dispatcher timeouts), so a
+ * single endpoint means every search dies with it. An env override still wins
+ * when set, and becomes the first mirror rather than the only one.
+ */
+const OVERPASS_URLS = [
+  process.env.OVERPASS_API_URL || 'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+].filter((u, i, all) => u && all.indexOf(u) === i);
+
+const NOMINATIM_URL = process.env.NOMINATIM_BASE_URL || 'https://nominatim.openstreetmap.org';
+const NOMINATIM_UA = 'LeadOS-HimalayanKoh/1.0 (lead-discovery-tool)';
 
 export interface OsmTag {
   key: string;
@@ -149,37 +162,45 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
   let lastError: string | null = null;
   let rateLimited = false;
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      res = await fetch(OVERPASS_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-          'User-Agent': 'LeadOS-HimalayanKoh/1.0',
-        },
-        body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(25000),
-      });
+  // NOTE: no `Accept` header on purpose. overpass-api.de answers
+  // `Accept: application/json` with HTTP 406, which used to fail every search.
+  // The `[out:json]` query parameter already selects the JSON representation.
+  mirrorLoop:
+  for (const mirror of OVERPASS_URLS) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        res = await fetch(mirror, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'LeadOS-HimalayanKoh/1.0',
+          },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: AbortSignal.timeout(25000),
+        });
 
-      if (res.ok) break;
+        if (res.ok) break mirrorLoop;
 
-      if (res.status === 429 || res.status === 503 || res.status === 504) {
-        rateLimited = true;
-        lastError = `Overpass rate limited (${res.status})`;
-        if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, 2000));
-          continue;
+        if (res.status === 429 || res.status === 503 || res.status === 504) {
+          rateLimited = true;
+          lastError = `Overpass rate limited (${res.status})`;
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 2000));
+            continue;
+          }
+        } else {
+          lastError = `Overpass API error HTTP ${res.status}`;
+          break;
         }
-      } else {
-        lastError = `Overpass API error HTTP ${res.status}`;
-      }
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-      if (attempt < 2) {
-        await new Promise((r) => setTimeout(r, 1500));
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1500));
+        }
       }
     }
+    // This mirror is exhausted (or errored non-transiently): try the next one.
+    res = null;
   }
 
   if (!res || !res.ok) {
@@ -256,6 +277,76 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
   }
 }
 
+/**
+ * Free-text keyword search against the Nominatim index (`<keyword> near
+ * <location>`), constrained to the geocoded area's viewbox. This is the
+ * Yellow-Pages-like half of a search: it finds businesses by name words
+ * ("tack shop", "organic feed") that no OSM tag query can express, needs no
+ * API key, and keeps working when every Overpass mirror is down. Polite by
+ * design: one request, after a 1s pause (Nominatim allows 1 req/s).
+ */
+export async function searchNominatimKeywords(
+  keyword: string,
+  location: string,
+  viewbox: [number, number, number, number] | null,
+  maxResults: number,
+  category: string
+): Promise<{ leads: NormalizedLead[]; rawCount: number; error: string | null }> {
+  const q = `${keyword.trim()} near ${location.trim()}`;
+  try {
+    // Nominatim usage policy: at most 1 request/second per client.
+    await new Promise((r) => setTimeout(r, 1100));
+    const params = new URLSearchParams({
+      q,
+      format: 'json',
+      addressdetails: '1',
+      extratags: '1',
+      limit: String(Math.min(Math.max(maxResults, 1), 40)),
+    });
+    if (viewbox) {
+      // viewbox = left,top,right,bottom = west,north,east,south.
+      params.set('viewbox', `${viewbox[2]},${viewbox[1]},${viewbox[3]},${viewbox[0]}`);
+    }
+    const res = await fetch(`${NOMINATIM_URL}/search?${params.toString()}`, {
+      headers: { 'User-Agent': NOMINATIM_UA },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) {
+      return { leads: [], rawCount: 0, error: `Keyword index error HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    if (!Array.isArray(data)) return { leads: [], rawCount: 0, error: 'Keyword index returned an unexpected response.' };
+
+    const leads: NormalizedLead[] = [];
+    for (const r of data) {
+      const name = String(r.name || '').trim() || String(r.display_name || '').split(',')[0].trim();
+      if (!name) continue;
+      const addr = r.address || {};
+      leads.push({
+        businessName: name,
+        category,
+        address: [addr.house_number, addr.road].filter(Boolean).join(' ') || null,
+        city: addr.city || addr.town || addr.village || addr.hamlet || null,
+        region: addr.state || null,
+        country: addr.country || null,
+        website: r.extratags?.website || null,
+        phone: r.extratags?.phone || r.extratags?.['contact:phone'] || null,
+        email: null,
+        latitude: r.lat ? parseFloat(r.lat) : null,
+        longitude: r.lon ? parseFloat(r.lon) : null,
+        osmType: r.osm_type || null,
+        osmId: r.osm_id != null ? String(r.osm_id) : null,
+        osmUrl: r.osm_type && r.osm_id != null ? `https://www.openstreetmap.org/${r.osm_type}/${r.osm_id}` : null,
+        dataSource: 'nominatim-keyword',
+      });
+      if (leads.length >= maxResults) break;
+    }
+    return { leads, rawCount: data.length, error: null };
+  } catch (err) {
+    return { leads: [], rawCount: 0, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function searchOpenStreetMap(input: LeadSearchInput): Promise<{
   leads: NormalizedLead[];
   diagnostics: SearchDiagnostics;
@@ -290,24 +381,59 @@ export async function searchOpenStreetMap(input: LeadSearchInput): Promise<{
 
   const { tags } = await resolveOsmTags(input.category);
   const maxResults = Math.min(input.maxResults || 15, 50);
+  const keyword = input.keyword?.trim() || '';
 
-  const result = await queryOverpass({
-    tags,
-    lat: geo.lat,
-    lon: geo.lon,
-    radiusKm: input.radiusKm || 25,
-    maxResults,
-    nodeOnly: input.nodeOnly || false,
-    requireWebsite: input.requireWebsite,
-    requirePhone: input.requirePhone,
-    category: input.category,
-  });
+  // Tag search (map data) and keyword search (name index) run together so one
+  // dead source never means zero results. Each half filters its own leads;
+  // the merge below dedupes across both.
+  const [overpass, keywordRes] = await Promise.all([
+    queryOverpass({
+      tags,
+      lat: geo.lat,
+      lon: geo.lon,
+      radiusKm: input.radiusKm || 25,
+      maxResults,
+      nodeOnly: input.nodeOnly || false,
+      requireWebsite: input.requireWebsite,
+      requirePhone: input.requirePhone,
+      category: input.category,
+    }),
+    keyword
+      ? searchNominatimKeywords(keyword, input.location, geo.boundingBox, maxResults, input.category)
+      : Promise.resolve({ leads: [] as NormalizedLead[], rawCount: 0, error: null as string | null }),
+  ]);
 
-  diagnostics.rawResultsCount = result.rawCount;
-  diagnostics.normalizedCount = result.leads.length;
-  diagnostics.duplicatesRemoved = Math.max(0, result.rawCount - result.leads.length);
+  const seen = new Set<string>();
+  const merged: NormalizedLead[] = [];
+  for (const lead of [...overpass.leads, ...keywordRes.leads]) {
+    if (input.requireWebsite && !lead.website) continue;
+    if (input.requirePhone && !lead.phone) continue;
+    const key = lead.osmType && lead.osmId
+      ? `${lead.osmType}/${lead.osmId}`
+      : `${lead.businessName.toLowerCase()}-${(lead.latitude ?? 0).toFixed(4)}-${(lead.longitude ?? 0).toFixed(4)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(lead);
+    if (merged.length >= maxResults) break;
+  }
+
+  const rawTotal = overpass.rawCount + keywordRes.rawCount;
+  diagnostics.rawResultsCount = rawTotal;
+  diagnostics.normalizedCount = merged.length;
+  diagnostics.duplicatesRemoved = Math.max(0, rawTotal - merged.length);
   diagnostics.responseTimeMs = Date.now() - startTime;
-  diagnostics.errorSummary = result.error;
+  diagnostics.sources = {
+    overpass: { raw: overpass.rawCount, normalized: overpass.leads.length, error: overpass.error },
+    ...(keyword
+      ? { keyword: { raw: keywordRes.rawCount, normalized: keywordRes.leads.length, error: keywordRes.error } }
+      : {}),
+  };
+  // Only a total blackout is an error: one live source is a successful search.
+  diagnostics.errorSummary = overpass.error && keywordRes.error
+    ? `Map data: ${overpass.error} · Keyword index: ${keywordRes.error}`
+    : !keyword && overpass.error
+      ? overpass.error
+      : null;
 
-  return { leads: result.leads, diagnostics };
+  return { leads: merged, diagnostics };
 }

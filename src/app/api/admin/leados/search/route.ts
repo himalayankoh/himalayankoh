@@ -17,6 +17,7 @@ export async function POST(request: Request) {
     const {
       category = 'Feed Store',
       location,
+      keyword = '',
       projectId,
       maxResults = 15,
       requireWebsite = false,
@@ -32,10 +33,11 @@ export async function POST(request: Request) {
     // Fetch target project for ICP fit scoring
     const project = projectId ? await getProjectById(projectId) : await getProjectById('00000000-0000-0000-0000-000000000002');
 
-    // Run OSM Nominatim & Overpass query
+    // Run OSM tag query + Nominatim keyword query together
     const { leads: rawLeads, diagnostics } = await searchOpenStreetMap({
       category: category.trim(),
       location: location.trim(),
+      keyword: typeof keyword === 'string' ? keyword.trim() : '',
       maxResults: Number(maxResults) || 15,
       requireWebsite: Boolean(requireWebsite),
       requirePhone: Boolean(requirePhone),

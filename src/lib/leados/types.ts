@@ -20,6 +20,8 @@ export interface NormalizedLead {
 export interface LeadSearchInput {
   category: string;
   location: string;
+  /** Free-text keyword ("tack shop", "organic feed") — Nominatim name-index half. */
+  keyword?: string;
   maxResults?: number;
   requireWebsite?: boolean;
   requirePhone?: boolean;
@@ -66,6 +68,8 @@ export interface SearchDiagnostics {
   boundingArea: { lat: number; lon: number; radiusKm: number } | null;
   categoriesQueried: string[];
   perCategory?: Record<string, { raw: number; normalized: number; error: string | null }>;
+  /** Per-source outcome: `overpass` (map data) and, when a keyword was given, `keyword`. */
+  sources?: Record<string, { raw: number; normalized: number; error: string | null }>;
   rawResultsCount: number;
   normalizedCount: number;
   duplicatesRemoved: number;

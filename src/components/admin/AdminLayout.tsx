@@ -148,15 +148,20 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     // What to sell next — pulled out of AI Studio, where it was buried under the
     // tools that build a listing rather than the work that decides one.
     items: [
-      { to: '/admin/scout', icon: Target, label: 'Product Scout', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
-      { to: '/admin/product-research', icon: TrendUp, label: 'Product Research', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
+      // Hidden for the private-label storefront (owner decision 2026-10-12):
+      // Product Scout + Product Research do not fit a private-label catalogue.
+      // Uncomment to restore — routes and code are untouched.
+      // { to: '/admin/scout', icon: Target, label: 'Product Scout', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
+      // { to: '/admin/product-research', icon: TrendUp, label: 'Product Research', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
       { to: '/admin/ai-intelligence', icon: Sparkle, label: 'AI Intelligence', g: 'linear-gradient(145deg,#B08CAA,#805D81)', dot: '#B86452' },
     ],
   },
   {
     title: 'AI Studio',
     items: [
-      { to: '/admin/variant-gen', icon: Stack, label: 'Variant Gen', g: 'linear-gradient(145deg,#8AA38F,#526F68)', dot: '#C98745' },
+      // Hidden for the private-label storefront (owner decision 2026-10-12).
+      // Uncomment to restore — route and code are untouched.
+      // { to: '/admin/variant-gen', icon: Stack, label: 'Variant Gen', g: 'linear-gradient(145deg,#8AA38F,#526F68)', dot: '#C98745' },
       { to: '/admin/ai', icon: Robot, label: 'AI Hub', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
       { to: '/admin/ai-import', icon: Robot, label: 'AI Import', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
       { to: '/admin/listing-task', icon: List, label: 'Listing Task', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
