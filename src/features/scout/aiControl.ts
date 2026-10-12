@@ -156,10 +156,10 @@ export const DEFAULT_AI_CONTROL_CONFIG: AiControlConfig = {
   costStrategy: 'BALANCED',
   secondOpinion: 'IMPORTANT_ONLY',
   providers: [
-    { id: 'openrouter', name: 'OpenRouter', enabled: true, tasks: [...AI_TASKS], costRank: 1, dailyCallLimit: 0 },
-    { id: 'deepseek', name: 'DeepSeek', enabled: false, tasks: [...AI_TASKS], costRank: 2, dailyCallLimit: 0 },
-    { id: 'openai', name: 'OpenAI', enabled: false, tasks: [...AI_TASKS], costRank: 3, dailyCallLimit: 0 },
-    { id: 'gemini', name: 'Google Gemini', enabled: false, tasks: [...AI_TASKS], costRank: 4, dailyCallLimit: 0 },
+    { id: 'gemini', name: 'Google Gemini', enabled: true, tasks: [...AI_TASKS], costRank: 1, dailyCallLimit: 0 },
+    { id: 'openrouter', name: 'OpenRouter', enabled: true, tasks: [...AI_TASKS], costRank: 2, dailyCallLimit: 0 },
+    { id: 'deepseek', name: 'DeepSeek', enabled: false, tasks: [...AI_TASKS], costRank: 3, dailyCallLimit: 0 },
+    { id: 'openai', name: 'OpenAI', enabled: false, tasks: [...AI_TASKS], costRank: 4, dailyCallLimit: 0 },
     { id: 'anthropic', name: 'Anthropic Claude', enabled: false, tasks: [...AI_TASKS], costRank: 5, dailyCallLimit: 0 },
   ],
   features: {
@@ -173,15 +173,15 @@ export const DEFAULT_AI_CONTROL_CONFIG: AiControlConfig = {
     optimization: true,
   },
   routing: [
-    { task: 'MARKET_INTELLIGENCE', primary: 'openrouter', fallback: 'openrouter' },
-    { task: 'PRODUCT_ANALYSIS', primary: 'openrouter', fallback: 'openrouter' },
-    { task: 'LISTING_GENERATE', primary: 'openrouter', fallback: 'openrouter' },
-    { task: 'FACTUAL_QA', primary: 'openrouter', fallback: 'openrouter' },
-    { task: 'SECOND_OPINION', primary: 'openrouter', fallback: 'openrouter' },
-    { task: 'PRODUCT_DISCOVERY', primary: 'openrouter', fallback: 'openrouter' },
-    { task: 'PRICING', primary: 'openrouter', fallback: 'openrouter' },
-    { task: 'CREATIVE', primary: 'openrouter', fallback: 'openrouter' },
-    { task: 'OPTIMIZATION', primary: 'openrouter', fallback: 'openrouter' },
+    { task: 'MARKET_INTELLIGENCE', primary: 'gemini', fallback: 'openrouter' },
+    { task: 'PRODUCT_ANALYSIS', primary: 'gemini', fallback: 'openrouter' },
+    { task: 'LISTING_GENERATE', primary: 'gemini', fallback: 'openrouter' },
+    { task: 'FACTUAL_QA', primary: 'gemini', fallback: 'openrouter' },
+    { task: 'SECOND_OPINION', primary: 'gemini', fallback: 'openrouter' },
+    { task: 'PRODUCT_DISCOVERY', primary: 'gemini', fallback: 'openrouter' },
+    { task: 'PRICING', primary: 'gemini', fallback: 'openrouter' },
+    { task: 'CREATIVE', primary: 'gemini', fallback: 'openrouter' },
+    { task: 'OPTIMIZATION', primary: 'gemini', fallback: 'openrouter' },
   ],
   disagreementThreshold: 10,
 };
@@ -227,13 +227,40 @@ export function loadAiControlConfig(storage?: Pick<Storage, 'getItem'>): AiContr
           ? parsed.routing.map((r) => ({ task: r.task, primary: 'openrouter' as ProviderId, fallback: 'deepseek' as ProviderId }))
           : parsed.routing)
       : base.routing;
+    // Migrate the openrouter-everywhere shipped default to Gemini primary.
+    // A browser that never customized routing still holds primary openrouter
+    // on every rule, so repoint it at the owner's AI Studio key with
+    // OpenRouter as fallback. Any rule the owner pointed elsewhere breaks the
+    // `every` check and the whole saved routing is kept as-is.
+    let migratedProviders = providers;
+    let migratedRouting = routing;
+    const untouchedOpenRouterDefault =
+      Array.isArray(migratedRouting) &&
+      migratedRouting.length > 0 &&
+      migratedRouting.every((r) => r && r.primary === 'openrouter');
+    if (untouchedOpenRouterDefault) {
+      migratedRouting = migratedRouting.map((r) => ({
+        ...r,
+        primary: 'gemini' as ProviderId,
+        fallback: 'openrouter' as ProviderId,
+      }));
+      // Same generation of untouched default shipped Gemini OFF: enable it as
+      // cheapest rank, OpenRouter stays ON as fallback at rank 2.
+      migratedProviders = migratedProviders.map((p) =>
+        p.id === 'gemini'
+          ? { ...p, enabled: true, costRank: 1 }
+          : p.id === 'openrouter'
+            ? { ...p, costRank: 2 }
+            : p
+      );
+    }
     return {
       ...base,
       ...parsed,
       emergencyPause: base.emergencyPause,
-      providers,
+      providers: migratedProviders,
       features: parsed.features ? { ...base.features, ...parsed.features } : base.features,
-      routing,
+      routing: migratedRouting,
     };
   } catch {
     return base;
@@ -325,7 +352,7 @@ export const DEFAULT_MODEL_HELP: Record<ProviderId, string> = {
   openai: 'gpt-4o-mini',
   anthropic: 'claude-haiku-4-5-20251001',
   openrouter: 'nvidia/nemotron-3-super-120b-a12b:free',
-  gemini: 'gemini-2.0-flash-exp',
+  gemini: 'gemini-2.5-flash',
 };
 
 /** Premium model used under QUALITY strategy for important decisions. */
@@ -334,7 +361,7 @@ const PREMIUM_MODEL: Record<ProviderId, string> = {
   openai: 'gpt-4o',
   anthropic: 'claude-sonnet-4-6',
   openrouter: 'openrouter/free',
-  gemini: 'gemini-1.5-pro',
+  gemini: 'gemini-2.5-pro',
 };
 
 /** Count of AI calls a provider made today (from the decision log). */

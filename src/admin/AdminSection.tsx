@@ -2518,7 +2518,7 @@ const [open, setOpen] = useState<Record<string, boolean>>({
               </select>
             </div>
           </div>
-          <p className="text-xs text-gray-400">Recommended: DeepSeek (deepseek-v4-flash) for fast research + Codex for complex reasoning/fallback. Neither provider key is ever stored or shown in the browser.</p>
+          <p className="text-xs text-gray-400">Recommended: Google AI Studio (Gemini) as default + OpenRouter as fallback. Neither provider key is ever stored or shown in the browser.</p>
           <div className="flex items-center gap-3 flex-wrap">
             <button type="button" onClick={() => { saveProviderSettings(providerSettings); notify('Provider routing saved.'); }}
               className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors">

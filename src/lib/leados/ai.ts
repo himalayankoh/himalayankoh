@@ -1,4 +1,5 @@
 import type { NormalizedLead, ProjectFitResult, LeadOSProject } from './types';
+import { getSetting } from '@/lib/settings/serverSettings';
 
 export interface AIAnalysisResult {
   summary: string;
@@ -13,12 +14,86 @@ export interface AIProjectFitResult {
   outreachAngles: string[];
 }
 
+/**
+ * LeadOS AI providers.
+ *
+ * - `gemini` uses the Google key the owner saved in Admin → Settings → API Keys
+ *   (category `gemini`, env fallback `GEMINI_API_KEY`). Primary, because that is
+ *   the key that is actually configured.
+ * - `openrouter` / `deepseek` are the legacy paths, kept working.
+ * - `auto` (default) tries gemini → openrouter → deepseek and uses the first
+ *   one that answers, so enrichment keeps working when any single provider is
+ *   down or unconfigured. Search itself never needs AI: it stays deterministic
+ *   (OSM Nominatim + Overpass) and AI only enriches on demand.
+ */
+export type LeadOSAIProvider = 'auto' | 'gemini' | 'openrouter' | 'deepseek';
+
 function getOpenRouterApiKey(): string | null {
   return process.env.OPENROUTER_API_KEY || null;
 }
 
 function getDeepSeekApiKey(): string | null {
   return process.env.DEEPSEEK_API_KEY || null;
+}
+
+async function getGeminiApiKey(): Promise<string | null> {
+  if (process.env.GEMINI_API_KEY?.trim()) return process.env.GEMINI_API_KEY.trim();
+  try {
+    const stored = await getSetting('gemini', 'api_key');
+    return stored?.trim() ? stored.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getGeminiModel(): Promise<string> {
+  try {
+    const stored = await getSetting('gemini', 'model');
+    if (stored?.trim()) return stored.trim();
+  } catch {
+    /* fall through to env/default */
+  }
+  return process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+}
+
+/** Provider status for the AI Engine "Test Connection" buttons. Never leaks keys. */
+export async function getAIProviderStatus(): Promise<
+  Record<'gemini' | 'openrouter' | 'deepseek', { configured: boolean; model: string }>
+> {
+  const [geminiKey, openRouterKey, deepSeekKey, geminiModel] = await Promise.all([
+    getGeminiApiKey(),
+    (async () => {
+      if (getOpenRouterApiKey()) return getOpenRouterApiKey();
+      try {
+        const stored = await getSetting('openrouter', 'api_key');
+        return stored?.trim() ? stored.trim() : null;
+      } catch {
+        return null;
+      }
+    })(),
+    (async () => {
+      if (getDeepSeekApiKey()) return getDeepSeekApiKey();
+      try {
+        const stored = await getSetting('deepseek', 'api_key');
+        return stored?.trim() ? stored.trim() : null;
+      } catch {
+        return null;
+      }
+    })(),
+    getGeminiModel(),
+  ]);
+  let openRouterModel = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat';
+  try {
+    const stored = await getSetting('openrouter', 'model');
+    if (stored?.trim()) openRouterModel = stored.trim();
+  } catch {
+    /* keep env/default */
+  }
+  return {
+    gemini: { configured: Boolean(geminiKey), model: geminiModel },
+    openrouter: { configured: Boolean(openRouterKey), model: openRouterModel },
+    deepseek: { configured: Boolean(deepSeekKey), model: 'deepseek-chat' },
+  };
 }
 
 /**
@@ -30,7 +105,17 @@ async function callChatCompletions(
   modelOverride?: string
 ): Promise<string> {
   const isDeepSeek = provider === 'deepseek';
-  const apiKey = isDeepSeek ? getDeepSeekApiKey() : getOpenRouterApiKey();
+  let apiKey = isDeepSeek ? getDeepSeekApiKey() : getOpenRouterApiKey();
+
+  // Fall back to the key saved in Admin → Settings when no env key exists.
+  if (!apiKey) {
+    try {
+      const stored = await getSetting(isDeepSeek ? 'deepseek' : 'openrouter', 'api_key');
+      if (stored?.trim()) apiKey = stored.trim();
+    } catch {
+      /* keep null → throws below */
+    }
+  }
 
   if (!apiKey) {
     throw new Error(`${isDeepSeek ? 'DeepSeek' : 'OpenRouter'} API key is not configured on the server.`);
@@ -40,7 +125,15 @@ async function callChatCompletions(
     ? 'https://api.deepseek.com/v1/chat/completions'
     : 'https://openrouter.ai/api/v1/chat/completions';
 
-  const defaultModel = isDeepSeek ? 'deepseek-chat' : (process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat');
+  let defaultModel = isDeepSeek ? 'deepseek-chat' : (process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat');
+  if (!isDeepSeek) {
+    try {
+      const stored = await getSetting('openrouter', 'model');
+      if (stored?.trim()) defaultModel = stored.trim();
+    } catch {
+      /* keep env/default */
+    }
+  }
   const model = modelOverride || defaultModel;
 
   const res = await fetch(endpoint, {
@@ -64,7 +157,65 @@ async function callChatCompletions(
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  const text = data.choices?.[0]?.message?.content || '';
+  if (!text.trim()) throw new Error('AI API returned an empty response.');
+  return text;
+}
+
+/** Calls Google Gemini (generateContent) with the owner's saved Google key. */
+async function callGemini(prompt: string, modelOverride?: string): Promise<string> {
+  const apiKey = await getGeminiApiKey();
+  if (!apiKey) {
+    throw new Error('Gemini API key is not configured on the server.');
+  }
+  const model = modelOverride || (await getGeminiModel());
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) {
+    throw new Error(`Gemini API error ${res.status}: ${res.statusText}`);
+  }
+  const data = await res.json();
+  const parts = data.candidates?.[0]?.content?.parts;
+  const text = Array.isArray(parts) ? parts.map((p: any) => String(p?.text ?? '')).join('').trim() : '';
+  if (!text) throw new Error('Gemini API returned an empty response.');
+  return text;
+}
+
+function orderedProviders(requested: LeadOSAIProvider): Array<'gemini' | 'openrouter' | 'deepseek'> {
+  if (requested === 'gemini') return ['gemini', 'openrouter', 'deepseek'];
+  if (requested === 'openrouter') return ['openrouter', 'gemini', 'deepseek'];
+  if (requested === 'deepseek') return ['deepseek', 'gemini', 'openrouter'];
+  return ['gemini', 'openrouter', 'deepseek'];
+}
+
+/** Runs one prompt against the first provider that answers. Remembers who answered. */
+async function runPromptWithFallback(
+  prompt: string,
+  provider: LeadOSAIProvider = 'auto'
+): Promise<{ text: string; providerUsed: 'gemini' | 'openrouter' | 'deepseek' }> {
+  let lastError: unknown = null;
+  for (const candidate of orderedProviders(provider)) {
+    try {
+      if (candidate === 'gemini') {
+        return { text: await callGemini(prompt), providerUsed: 'gemini' };
+      }
+      return {
+        text: await callChatCompletions(candidate, [{ role: 'user', content: prompt }]),
+        providerUsed: candidate,
+      };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('All AI providers failed.');
 }
 
 /**
@@ -73,7 +224,7 @@ async function callChatCompletions(
  */
 export async function analyzeLeadWithAI(
   lead: NormalizedLead,
-  provider: 'openrouter' | 'deepseek' = 'openrouter'
+  provider: LeadOSAIProvider = 'auto'
 ): Promise<AIAnalysisResult> {
   const prompt = `You are an enterprise B2B lead intelligence assistant for Himalayan Koh.
 Analyze this business lead strictly based on the verifiable facts provided.
@@ -96,7 +247,7 @@ Return ONLY a valid JSON object:
 }`;
 
   try {
-    const raw = await callChatCompletions(provider, [{ role: 'user', content: prompt }]);
+    const { text: raw } = await runPromptWithFallback(prompt, provider);
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleaned);
     return {
@@ -122,7 +273,7 @@ Return ONLY a valid JSON object:
 export async function scoreProjectFitWithAI(
   lead: NormalizedLead,
   project: LeadOSProject,
-  provider: 'openrouter' | 'deepseek' = 'openrouter'
+  provider: LeadOSAIProvider = 'auto'
 ): Promise<ProjectFitResult | null> {
   const prompt = `Evaluate how well this business fits the project ICP.
 Only use verified facts. Do not invent details.
@@ -147,7 +298,7 @@ Return ONLY valid JSON:
 }`;
 
   try {
-    const raw = await callChatCompletions(provider, [{ role: 'user', content: prompt }]);
+    const { text: raw } = await runPromptWithFallback(prompt, provider);
     const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleaned);
     return {

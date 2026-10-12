@@ -512,7 +512,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           action: 'analyze',
           lead,
           projectId: selectedProjectId,
-          provider: 'openrouter',
+          provider: 'auto',
         }),
       });
 
@@ -1447,12 +1447,17 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
             <div>
               <h3 className="text-sm font-bold text-slate-900">AI Intelligence Configuration</h3>
-              <p className="text-[11px] text-slate-500">Server-side DeepSeek and OpenRouter models enrich discovered leads on-demand.</p>
+              <p className="text-[11px] text-slate-500">Server-side Google Gemini (primary, from Admin → Settings → API Keys) with OpenRouter / DeepSeek fallback enriches discovered leads on-demand. Search itself is deterministic and needs no AI key.</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
               <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between"><span className="font-bold text-slate-900">OpenRouter Integration</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-100 text-emerald-800">Active</span></div>
-                <p className="text-slate-600">Model: deepseek/deepseek-chat or custom configured LLM.</p>
+                <div className="flex items-center justify-between"><span className="font-bold text-slate-900">Google Gemini (Primary)</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-100 text-emerald-800">Recommended</span></div>
+                <p className="text-slate-600">Uses the Google key saved in Admin → Settings → API Keys. No extra setup.</p>
+                <button onClick={async () => { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ action: 'test', provider: 'gemini' }) }); const d = await res.json(); alert(d.configured ? `Gemini connection verified (${d.model})` : 'Gemini API key not configured — add it in Admin → Settings → API Keys'); }} className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100">Test Connection</button>
+              </div>
+              <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between"><span className="font-bold text-slate-900">OpenRouter (Fallback)</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-slate-200 text-slate-700">Fallback</span></div>
+                <p className="text-slate-600">Used automatically only when Gemini is unavailable.</p>
                 <button onClick={async () => { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ action: 'test', provider: 'openrouter' }) }); const d = await res.json(); alert(d.configured ? `OpenRouter connection verified (${d.model})` : 'API key not configured'); }} className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100">Test Connection</button>
               </div>
               <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">

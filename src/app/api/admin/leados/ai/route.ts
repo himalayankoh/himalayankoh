@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { analyzeLeadWithAI, scoreProjectFitWithAI } from '@/lib/leados/ai';
+import { analyzeLeadWithAI, scoreProjectFitWithAI, getAIProviderStatus, type LeadOSAIProvider } from '@/lib/leados/ai';
 import { getProjectById } from '@/lib/leados/db';
+
+const VALID_PROVIDERS: LeadOSAIProvider[] = ['auto', 'gemini', 'openrouter', 'deepseek'];
 
 export async function POST(request: Request) {
   const auth = await verifyAdminRequest(request);
@@ -11,15 +13,28 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { action = 'analyze', lead, projectId, provider = 'openrouter' } = body;
+    const { action = 'analyze', lead, projectId } = body;
+    const provider: LeadOSAIProvider = VALID_PROVIDERS.includes(body.provider) ? body.provider : 'auto';
 
     if (action === 'test') {
-      const apiKey = provider === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.OPENROUTER_API_KEY;
+      const status = await getAIProviderStatus();
+      // Backwards-compatible single-provider shape (older UI expects
+      // `{ configured, model }`), plus the full per-provider map.
+      if (provider !== 'auto') {
+        return NextResponse.json({
+          ok: true,
+          provider,
+          configured: status[provider].configured,
+          model: status[provider].model,
+          providers: status,
+        });
+      }
       return NextResponse.json({
         ok: true,
-        provider,
-        configured: Boolean(apiKey),
-        model: provider === 'deepseek' ? 'deepseek-chat' : (process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat'),
+        provider: 'auto',
+        configured: status.gemini.configured || status.openrouter.configured || status.deepseek.configured,
+        model: status.gemini.configured ? status.gemini.model : status.openrouter.model,
+        providers: status,
       });
     }
 
