@@ -83,6 +83,7 @@ export default async function Page({ params }: { params: Promise<Params> }) {
               publishedAt: post.published_at,
               updatedAt: post.updated_at,
               authorName: post.author?.full_name,
+              authorType: post.author?.full_name?.startsWith('Himalayan Koh') ? 'Organization' : 'Person',
             })}
           />
           <JsonLd

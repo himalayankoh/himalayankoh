@@ -22,6 +22,9 @@ interface ArticleLdInput {
   publishedAt?: string | null;
   updatedAt?: string | null;
   authorName?: string | null;
+  authorType?: 'Person' | 'Organization';
+  /** Canonical article path; resources must not claim a /blog/resources/ identity. */
+  path?: string;
 }
 
 export function articleJsonLd(input: ArticleLdInput): Record<string, unknown> {
@@ -34,14 +37,14 @@ export function articleJsonLd(input: ArticleLdInput): Record<string, unknown> {
     datePublished: input.publishedAt || undefined,
     dateModified: input.updatedAt || input.publishedAt || undefined,
     author: input.authorName
-      ? { '@type': 'Person', name: input.authorName }
+      ? { '@type': input.authorType ?? 'Person', name: input.authorName }
       : { '@type': 'Organization', name: SITE_NAME },
     publisher: {
       '@type': 'Organization',
       name: SITE_NAME,
       logo: { '@type': 'ImageObject', url: absoluteUrl('/logo.svg') },
     },
-    mainEntityOfPage: absoluteUrl(`/blog/${input.slug}`),
+    mainEntityOfPage: absoluteUrl(input.path ?? `/blog/${input.slug}`),
   };
 }
 

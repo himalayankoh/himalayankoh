@@ -19,6 +19,7 @@ const aboutLinks = [
   { label: 'About Himalayan Koh', to: '/about' },
   { label: 'Shop Products', to: '/products' },
   { label: 'Guides & Articles', to: '/blog' },
+  { label: 'Salt Resource Library', to: '/resources' },
   { label: 'Contact Us', to: '/contact' },
   { label: 'FAQs', to: '/faqs' },
 ];

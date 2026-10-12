@@ -66,7 +66,7 @@ export default async function Page({ params }: { params: Promise<Params> }) {
   let relatedProducts: RelatedProductRef[] = [];
   try {
     const { products } = await getCatalogProducts();
-    relatedProducts = resolveRelatedProducts(article.relatedProductSlugs, products);
+    relatedProducts = resolveRelatedProducts(article.relatedProductSlugs, products, article.productUse);
   } catch (err) {
     console.error('Could not resolve related products for /resources:', err);
   }
@@ -77,11 +77,13 @@ export default async function Page({ params }: { params: Promise<Params> }) {
         data={articleJsonLd({
           title: article.title,
           description: article.metaDescription || article.summary,
-          slug: `resources/${article.slug}`,
+          slug: article.slug,
+          path: `/resources/${article.slug}`,
           image: article.featuredImage,
           publishedAt: article.publishedAt,
           updatedAt: article.updatedAt,
-          authorName: author?.name || 'Himalayan Koh Editorial Board',
+          authorName: author?.name || 'Himalayan Koh Editorial Team',
+          authorType: 'Organization',
         })}
       />
       <JsonLd

@@ -161,7 +161,7 @@ export default function EditorialPolicyPage() {
             <a href="mailto:sales@himalayankoh.com" className="text-himalayan hover:underline font-semibold">
               sales@himalayankoh.com
             </a>{' '}
-            or call (832) 224-6466, Monday–Friday, 9AM–6PM CT.
+            or call (832) 224-6466. See our <Link href="/contact" className="underline">Contact page</Link> for customer-service hours.
           </p>
         </div>
       </div>

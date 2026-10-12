@@ -54,6 +54,9 @@ const DISPLAY_TITLE_BY_SLUG: Record<string, string> = {
   // The owner's approved visible name for the 45 lb livestock salt.
   'bag-of-himalayan-pink-salt-for-livestock-45-lbs-himalayan-koh':
     'Himalayan Rock Salt for Livestock (45 lb)',
+  // This single SKU has no grain variations. Do not advertise an unavailable choice.
+  'himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh':
+    'Himalayan Pink Salt for Livestock - 6 lb Pouch',
 };
 
 /**

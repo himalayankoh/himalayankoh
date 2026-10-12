@@ -24,6 +24,10 @@ describe('normalizeWeightUnits', () => {
 });
 
 describe('cleanProductName', () => {
+  it('does not promise an unselectable grain for the single 6 lb livestock SKU', () => {
+    expect(cleanProductName('Himalayan Pink Salt for Livestock - 6 lb Fine or Coarse Grain Pouches', 'himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh'))
+      .toBe('Himalayan Pink Salt for Livestock - 6 lb Pouch');
+  });
   it('removes a brand suffix appended to the end of the visible name', () => {
     expect(cleanProductName('Himalayan Salt Rock for Cattle (30 lbs) Bag - Himalayan Koh')).toBe(
       'Himalayan Salt Rock for Cattle (30 lb) Bag',

@@ -1,16 +1,16 @@
 // ============================================================================
-// LUXEDGE — shared /about copy (single source of truth)
+// HIMALAYAN KOH — shared /about copy
 //
 // Used by BOTH the client AboutPage (src/App.tsx) and the worker pre-render
 // (worker/seo-meta.ts) so the initial server HTML and the hydrated page can
 // never drift. Every statement here is drawn from the live catalog or the
-// published Luxedge policies — nothing invented.
+// published Himalayan Koh policies — nothing invented.
 // ============================================================================
 
 export const ABOUT_QUOTE = 'Authentic Himalayan pink rock salt, mined from ancient seams and packed in Houston, Texas.';
 
 export const ABOUT_LEAD =
-  'Himalayan Koh provides authentic, unrefined Himalayan pink salt for horses, cattle, wildlife, and culinary wellness — ' +
+  'Himalayan Koh provides Himalayan pink salt for horses, cattle, livestock, and everyday cooking — ' +
   'sourced directly from the Khewra Salt Range and dispatched from Houston, Texas.';
 
 export interface AboutSection {
@@ -22,17 +22,17 @@ export const ABOUT_SECTIONS: AboutSection[] = [
   {
     title: 'What we sell',
     body:
-      'Our catalog focuses on natural, unrefined Himalayan pink salt products: pure mineral salt licks on durable ropes, dense animal salt blocks for pastures and stables, and fine culinary salts for human consumption. Every product is 100% natural with no artificial anti-caking agents.',
+      'Our catalog includes a fine-grain edible jar, horse licks, cattle rock salt and livestock bags or pouches. Choose the intended use and size stated on each listing.',
   },
   {
     title: 'How we source and curate',
     body:
-      'Direct geological sourcing from the Salt Range in Pakistan. Each batch is inspected for purity, moisture protection, and uniform grain sorting before dispatch from our facility in Houston, Texas.',
+      'Our pink salt is sourced from Pakistan\'s Salt Range. Contact our Houston team before ordering when you need a particular specification or lot document; we will confirm what is available.',
   },
   {
     title: 'Our mineral guides',
     body:
-      'Our guides explain mineral supplementation, proper placement for livestock, and culinary uses. Product information reflects verified physical attributes and geological origin.',
+      'Our guides discuss salt handling, storage and culinary or livestock uses. General information does not replace a product label, a lot-specific report or professional dietary advice.',
   },
   {
     title: 'Who we are',
@@ -52,6 +52,6 @@ export const ABOUT_SECTIONS: AboutSection[] = [
   {
     title: 'Customer support',
     body:
-      'Our team is available Monday to Friday, 9AM–6PM CT. We offer 30-day return support for damaged or defective items. Questions? Contact sales@himalayankoh.com or call (832) 224-6466.',
+      'See our Contact page for customer-service hours and our Return Policy for eligibility. Questions? Contact sales@himalayankoh.com or call (832) 224-6466.',
   },
 ];

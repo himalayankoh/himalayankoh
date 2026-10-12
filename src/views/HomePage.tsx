@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Check, Truck, RotateCcw, Phone } from 'lucide-react';
-import { legacyImage } from '@/lib/images/legacyAssets';
+import { legacyHeroImage } from '@/lib/images/legacyAssets';
 import type { Product } from '@/data/products';
 import ProductCard from '@/components/ProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
@@ -100,8 +100,8 @@ export default function HomePage({ initialProducts }: HomePageProps = {}) {
             </nav>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            <img src={legacyImage('horseLicking')} alt="Horse licking Himalayan salt" width={500} height={500} fetchPriority="high" className="aspect-[5/4] w-full rounded-xl object-cover" />
-            <img src={legacyImage('bowlOfSalt')} alt="Bowls of Himalayan salt" width={500} height={500} decoding="async" className="aspect-[5/4] w-full rounded-xl object-cover" />
+            <img {...legacyHeroImage('horseLicking')} alt="Horse licking Himalayan salt" fetchPriority="high" className="aspect-[5/4] w-full rounded-xl object-cover" />
+            <img {...legacyHeroImage('bowlOfSalt')} alt="Bowls of Himalayan salt" fetchPriority="high" decoding="async" className="aspect-[5/4] w-full rounded-xl object-cover" />
           </div>
         </div>
       </section>

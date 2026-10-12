@@ -25,11 +25,11 @@ export interface ProductContent {
 const SHARED_TRUST: TrustIndicator[] = [
   { label: '100% natural', detail: 'Unrefined rock salt with no anti-caking agents, bleaches, or additives.' },
   { label: 'Trace minerals', detail: 'Naturally occurring iron, potassium, magnesium, and calcium from ancient halite beds.' },
-  { label: 'Houston distribution', detail: 'Stocked and inspected at our Texas distribution facility.' },
+  { label: 'Houston distribution', detail: 'Sold by Himalayan Koh in Houston, Texas.' },
 ];
 
 const SHARED_SHIPPING: string[] = [
-  'Orders dispatch within 1–2 business days from our Houston, Texas facility.',
+  'Shipping services and available delivery estimates are quoted for your address at checkout.',
   'Carrier-calculated shipping rates at checkout based on package weight and destination.',
   'Bulk pallet freight and wholesale delivery available across the continental United States.',
 ];
@@ -311,7 +311,7 @@ const GENERIC_DEFAULTS: Omit<ProductContent, 'displayName'> = {
     {
       question: 'Where does Himalayan Koh salt come from?',
       answer:
-        'Our salt is sourced from Himalayan deposits and selected for purity, mineral content, and consistent grain quality.',
+        'Our listings describe Himalayan pink salt from Pakistan. Check the individual product label and ask us about available specifications.',
     },
     {
       question: 'Do you offer bulk pricing?',

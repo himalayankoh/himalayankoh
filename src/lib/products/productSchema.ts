@@ -29,7 +29,7 @@ export function buildProductStructuredData(product: Product) {
     publisher: {
       '@type': 'Organization',
       name: ORGANIZATION_JSON_LD.name,
-      url: SITE_URL,
+      url: `${SITE_URL}/`,
     },
   };
 
@@ -91,7 +91,7 @@ export function buildProductStructuredData(product: Product) {
     url: productUrl,
     name: title,
     description,
-    isPartOf: { '@type': 'WebSite', url: SITE_URL, name: ORGANIZATION_JSON_LD.name },
+    isPartOf: { '@type': 'WebSite', url: `${SITE_URL}/`, name: ORGANIZATION_JSON_LD.name },
     publisher: buildOrganizationRef(),
     mainEntity: { '@id': `${productUrl}#product` },
   };

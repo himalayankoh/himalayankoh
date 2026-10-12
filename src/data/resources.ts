@@ -12,6 +12,8 @@ export interface ResourceArticle {
   metaDescription: string;
   featuredImage: string;
   relatedProductSlugs: string[];
+  /** Kitchen and human-nutrition recommendations require an explicitly edible item. */
+  productUse?: 'food';
   relatedArticleSlugs: string[];
   sources: { title: string; publication: string; year?: string; link?: string }[];
   sections: {
@@ -36,7 +38,8 @@ export interface ResourceArticle {
  * - `himalayan-rock-salt-45-lbs-large-chunks` -> 45 lb livestock bag
  * - `himalayan-salt-block-30-lbs` -> 30 lb cattle rock salt (bulk-storage
  *   guide only; never in cooking guides)
- * - `himalayan-pink-edible-salt-fine-grain-pouch-6-lbs` -> 6 lb pouches
+ * The old edible 6 lb pouch has no food-use equivalent: the active 6 lb SKU
+ * is livestock salt. Food guides recommend the actual 16 oz edible jar.
  * - `himalayan-pink-edible-salt-16-oz-jar` -> 16 oz jar
  *
  * `resolveRelatedProductSlugs` (lib/resources/relatedProducts) drops any slug
@@ -342,48 +345,35 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
   {
     id: 'res-7',
     slug: 'fine-vs-medium-vs-coarse-grain-salt',
-    title: 'Fine vs. Medium vs. Coarse Grain Salt: Applications & Mesh Sizing',
+    title: 'Fine vs. Medium vs. Coarse Grain Salt: Cooking and Measuring',
     category: 'Mineral Science',
     readTime: '6 min read',
     publishedAt: '2026-02-18T14:30:00Z',
-    updatedAt: '2026-03-06T09:00:00Z',
+    updatedAt: '2026-10-12T14:37:27Z',
     authorId: 'sourcing-team',
     reviewerId: 'editorial-board',
     summary:
-      'A technical breakdown of Himalayan salt particle sizing (granulometry) from 0.2 mm fine shaker grind to 4.0 mm coarse brining crystal, matching each to culinary and industrial needs.',
+      'Choose culinary salt by its label and grain size, understand volume measurements, and distinguish food-grade salt from livestock products.',
     metaDescription:
-      'Guide to Himalayan pink salt grain sizes: fine grain (0.2–0.8 mm), medium coarse (1.0–2.0 mm), and extra coarse (2.0–4.0 mm). Selection for cooking, brining, and grinders.',
-    featuredImage: '/images/legacy/salt-pouch-6lb.webp',
-    relatedProductSlugs: ['himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh'],
+      'A practical guide to fine, medium and coarse culinary salt: choosing the listed grain, measuring by weight, and checking the food-use label.',
+    featuredImage: '/images/legacy/bowl-of-salt.jpg',
+    relatedProductSlugs: ['himalayan-edible-pink-salt-16-oz-jar-fine-grain'],
+    productUse: 'food',
     relatedArticleSlugs: ['using-himalayan-salt-blocks-for-cooking', 'himalayan-pink-salt-vs-regular-salt-practical-differences'],
-    sources: [
-      { title: 'Standard Specification for Sodium Chloride (ASTM D632)', publication: 'ASTM International', year: '2020' },
-      { title: 'Salt Particle Size Distribution and Sensory Perception in Food Systems', publication: 'Journal of Food Science', year: '2018' },
-    ],
+    sources: [{ title: 'Is there a best salt for baking?', publication: 'King Arthur Baking - Rossi Anastopoulo', year: '2021', link: 'https://www.kingarthurbaking.com/blog/2021/06/17/kosher-salt-best-salts-for-baking' }],
     sections: [
-      {
-        heading: 'Granulometry: Why Grain Size Governs Function',
-        body: [
-          'In food science and bulk mineral trade, salt is classified by particle diameter distribution, determined by vibrating mechanical sieves with standardized wire mesh ratings. Because unrefined Himalayan salt contains no artificial anti-caking agents (such as yellow prussiate of soda or sodium aluminosilicate), matching grain size to the specific application is essential.',
-        ],
-      },
-      {
-        heading: 'Sieve Profiles & Optimal Uses',
-        body: [
-          '1. Fine Grain (0.2 mm – 0.8 mm / 20–40 mesh):',
-          'Dissolves rapidly in liquids, doughs, and sauces. Ideal for table shakers, baking formulations, dry spice rubs, and direct kitchen seasoning where immediate dissolution is required.',
-          '2. Medium Grain (1.0 mm – 2.0 mm / 10–18 mesh):',
-          'Provides a distinct crunchy texture when sprinkled over roasted proteins, crusty breads, or artisanal chocolates. Also serves as an excellent texture for coarse-blend meat cures.',
-          '3. Coarse Grain (2.0 mm – 4.0 mm / 5–10 mesh):',
-          'Engineered specifically for refillable ceramic and stainless steel salt mills and grinders. Also the standard size for wet brining poultry and smoking operations, where slow, uniform brine release is advantageous.',
-        ],
-      },
-      {
-        heading: 'Measuring Conversions Caution',
-        body: [
-          'Because fine salt packs much more densely than coarse crystals, a volume tablespoon of fine pink salt can weigh up to 50% more than a tablespoon of coarse salt. Always measure by weight in commercial recipes.',
-        ],
-      },
+      { heading: 'Start with the food-use label', body: [
+        'For cooking, choose a product explicitly sold as edible salt. Pink color and bag weight alone do not establish suitability for food. Livestock salt is a separate product range.',
+        'Fine, medium and coarse describe grain size, but the names do not establish one universal mesh specification. Use the individual product label or a supplied specification for exact sizing.',
+      ] },
+      { heading: 'Match the grain to the recipe', body: [
+        'Small crystals distribute readily in doughs and liquids. Larger crystals give a more noticeable finishing texture. A grinder needs crystals compatible with its instructions.',
+        'The current edible jar contains fine grain. This guide does not offer a medium or coarse variation of that jar.',
+      ] },
+      { heading: 'Measure carefully', body: [
+        'Different crystal sizes pack differently into a spoon. Follow the recipe\'s specified salt and measure by weight when substituting; a volume-for-volume swap can change the seasoning.',
+        'Keep culinary salt in a clean, dry, closed container. Follow its label for ingredients and storage.',
+      ] },
     ],
   },
   {
@@ -524,7 +514,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     category: 'Mineral Science',
     readTime: '7 min read',
     publishedAt: '2026-03-05T11:00:00Z',
-    updatedAt: '2026-03-12T16:00:00Z',
+    updatedAt: '2026-10-12T14:37:27Z',
     authorId: 'editorial-board',
     reviewerId: 'sourcing-team',
     summary:
@@ -532,36 +522,19 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Scientific analysis of trace minerals in Himalayan pink salt. What spectroscopy reveals, why it has pink color, and what trace amounts mean for human and animal diets.',
     featuredImage: '/images/products/bowl-of-salt.jpg',
-    relatedProductSlugs: ['himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh'],
+    relatedProductSlugs: ['himalayan-edible-pink-salt-16-oz-jar-fine-grain'],
+    productUse: 'food',
     relatedArticleSlugs: ['himalayan-pink-salt-vs-regular-salt-practical-differences', 'quality'],
-    sources: [
-      { title: 'Mineral Analysis of Pink Himalayan Salt: An Australian Consumer Survey', publication: 'Foods Journal (MDPI)', year: '2020' },
-      { title: 'Codex Standard for Food Grade Salt (CXS 150-1985)', publication: 'Codex Alimentarius Commission', year: '2019' },
-      { title: 'Dietary Reference Intakes for Sodium and Potassium', publication: 'National Academies of Sciences, Engineering, and Medicine', year: '2019' },
-    ],
+    sources: [{ title: 'An Analysis of the Mineral Composition of Pink Salt Available in Australia', publication: 'Fayet-Moore et al., Foods 9(10), 1490', year: '2020', link: 'https://doi.org/10.3390/foods9101490' }],
     sections: [
-      {
-        heading: 'Deconstructing the "84 Minerals" Marketing Trope',
-        body: [
-          'Few consumer food claims are repeated as widely—or understood as poorly—as the assertion that Himalayan pink salt contains "84 nutritious minerals." At Himalayan Koh, we prioritize scientific precision over marketing hyperbole.',
-          'Chemically, Himalayan rock salt is halite: roughly 96% to 99% pure sodium chloride (NaCl). The remaining 1% to 4% consists of naturally occurring mineral impurities embedded within the halite crystal lattice when ancient inland waters evaporated during the Cambrian era.',
-        ],
-      },
-      {
-        heading: 'What Trace Elements Are Actually Present?',
-        body: [
-          'Modern inductively coupled plasma mass spectrometry (ICP-MS) tests confirm that the predominant trace elements are:',
-          '• Iron (Fe): The microscopic presence of iron oxide (ferric iron compounds) within the crystal lattice is what refracts light to produce the spectrum of peach, rose, and deep coral pink hues.',
-          '• Potassium (K), Magnesium (Mg), Calcium (Ca), and Sulfur (S): Present in fractions of parts per million (ppm) or small milligrams per gram.',
-          'While mass spectrometers can register dozens of elements at infinitesimal parts-per-billion (ppb) detection thresholds, their dietary contribution at standard daily salt intake levels is minute compared to whole food vegetables, meats, and grains.',
-        ],
-      },
-      {
-        heading: 'Nutritional Reality & Compliance Boundaries',
-        body: [
-          'Himalayan salt is celebrated for its natural geological extraction, clean crunchy texture, unrefined state, and lack of synthetic bleaching chemicals or flow additives. However, it should NOT be promoted as a cure for mineral deficiencies or a replacement for a comprehensive balanced diet or veterinary mineral ration.',
-        ],
-      },
+      { heading: 'What the mineral claim means', body: [
+        'Pink salt is mainly sodium chloride. Trace-element composition varies; a list of detected elements does not show a nutritionally useful serving or certify the purity of a particular jar.',
+        'A 2020 study of 31 pink salts sold in Australia found substantial variation in mineral composition. It did not test Himalayan Koh products and is not a laboratory report for our stock.',
+      ] },
+      { heading: 'Keep product facts separate from general research', body: [
+        'Use edible salt as a seasoning, not as a treatment or a mineral supplement. Read the ingredient and iodization information on the product label.',
+        'Ask for lot-specific documentation when you need a composition or contaminant specification. The color, geological origin and an unrelated study cannot replace that document.',
+      ] },
     ],
   },
   {
@@ -571,50 +544,30 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     category: 'Mineral Science',
     readTime: '6 min read',
     publishedAt: '2026-03-08T15:00:00Z',
-    updatedAt: '2026-03-14T10:00:00Z',
+    updatedAt: '2026-10-12T14:37:27Z',
     authorId: 'editorial-board',
     reviewerId: 'sourcing-team',
     summary:
       'A head-to-head comparison between mined Himalayan rock salt and refined vacuum-evaporated table salt—covering processing methods, additives, moisture, and culinary performance.',
     metaDescription:
-      'Himalayan pink salt vs regular white table salt: understand chemical processing, anti-caking additives, unrefined crystal texture, and culinary taste differences.',
+      'Himalayan pink salt vs regular white table salt: compare grain, ingredient labels, iodization and recipe measurements without assuming a health advantage.',
     featuredImage: '/images/legacy/bowl-of-salt.jpg',
-    relatedProductSlugs: [
-      'himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh',
-      'himalayan-edible-pink-salt-16-oz-jar-fine-grain',
-    ],
+    relatedProductSlugs: ['himalayan-edible-pink-salt-16-oz-jar-fine-grain'],
+    productUse: 'food',
     relatedArticleSlugs: ['what-trace-minerals-in-himalayan-salt-actually-mean', 'fine-vs-medium-vs-coarse-grain-salt'],
-    sources: [
-      { title: 'Food Chemistry: Principles of Salt Refinement and Iodization', publication: 'CRC Press', year: '2018' },
-      { title: 'Sensory and Textural Comparison of Commercial Cooking Salts', publication: 'Culinary Science Digest', year: '2021' },
-    ],
+    sources: [{ title: 'Is there a best salt for baking?', publication: 'King Arthur Baking - Rossi Anastopoulo', year: '2021', link: 'https://www.kingarthurbaking.com/blog/2021/06/17/kosher-salt-best-salts-for-baking' }],
     sections: [
-      {
-        heading: 'Extraction and Processing Differences',
-        body: [
-          'The fundamental difference between unrefined Himalayan salt and standard industrial table salt lies in how each is extracted and processed.',
-          'Standard White Table Salt: Sourced primarily from solution mining—pumping high-pressure water underground to dissolve salt deposits into saturated brine. The brine is treated with chemical precipitants to strip away magnesium and calcium, boiled in multi-stage vacuum evaporators, and kiln-dried at extreme temperatures. Finally, anti-caking agents such as sodium silicoaluminate, tricalcium phosphate, or sodium ferrocyanide (yellow prussiate of soda) are added to keep the salt free-flowing in humid conditions.',
-          'Himalayan Pink Rock Salt: Extracted through mechanical room-and-pillar mining directly from subterranean dry salt beds in Pakistan. The raw rock is brought to the surface, visually inspected, washed with pure saturated brine, crushed to size, and air-dried. No chemical bleaches, no anti-caking chemicals, and no artificial dyes are introduced at any stage.',
-        ],
-      },
-      {
-        heading: 'Culinary Texture and Flavor Perception',
-        body: [
-          'While both salts deliver sodium and chloride, their physical mouthfeel differs dramatically. Standard table salt consists of uniform microscopic cube crystals that dissolve instantaneously on the tongue, creating a sharp, stinging salt punch.',
-          'Himalayan salt features irregular geometric crystal fractures. When coarse or medium grains are crushed over food, they dissolve at varying rates on the palate, creating a smoother, more layered seasoning profile without harsh metallic notes.',
-        ],
-      },
-      {
-        heading: 'Summary Comparison Table',
-        body: [
-          '• Origin: Ancient marine seabed (Khewra, Pakistan) vs. Modern solution mining or sea brine',
-          '• Additives: 100% additive-free vs. Anti-caking agents (E535, E554) typically added',
-          '• Color: Naturally pink/rose from trace iron oxides vs. Chemically bleached stark white',
-          '• Processing: Mechanically crushed and graded vs. Chemical precipitation and vacuum boiling',
-        ],
-      },
+      { heading: 'Compare the label, not a purity promise', body: [
+        'Himalayan pink salt and table salt both supply sodium chloride. Compare the stated grain, ingredients and iodization on each package. White color alone is not evidence that salt was chemically bleached.',
+        'The Himalayan Koh edible jar is sold as fine-grain, non-iodized salt. Livestock bags and pouches are not kitchen alternatives.',
+      ] },
+      { heading: 'Use the grain your recipe expects', body: [
+        'Crystal size affects how much fits in a measuring spoon and the texture of a finishing sprinkle. Match the recipe\'s stated salt or substitute by weight.',
+        'A different color or a trace-mineral claim does not establish that one salt is healthier. Choose an edible product and use it as a seasoning.',
+      ] },
     ],
   },
+
 ];
 
 export function getAllResourceArticles(): ResourceArticle[] {

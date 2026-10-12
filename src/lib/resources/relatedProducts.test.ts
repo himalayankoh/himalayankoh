@@ -13,7 +13,7 @@ const ACTIVE_CATALOG = [
   { slug: 'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh', name: 'Himalayan Pink Salt Licks for Horses 2 lb' },
   { slug: 'bag-of-himalayan-pink-salt-for-livestock-45-lbs-himalayan-koh', name: 'Himalayan Rock Salt for Livestock (45 lb)' },
   { slug: 'himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh', name: 'Himalayan Pink Salt for Livestock - 6 lb Fine or Coarse Grain Pouches' },
-  { slug: 'himalayan-edible-pink-salt-16-oz-jar-fine-grain', name: 'Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain' },
+  { slug: 'himalayan-edible-pink-salt-16-oz-jar-fine-grain', name: 'Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain', category: 'Edible Pink Salt' },
 ];
 
 /** Every slug that has ever been observed answering 404. Must never return. */
@@ -77,7 +77,7 @@ describe('resolveRelatedProducts', () => {
 describe('resource guide product links', () => {
   it('every static slug resolves against the active catalogue', () => {
     for (const article of RESOURCE_ARTICLES) {
-      const resolved = resolveRelatedProducts(article.relatedProductSlugs, ACTIVE_CATALOG);
+      const resolved = resolveRelatedProducts(article.relatedProductSlugs, ACTIVE_CATALOG, article.productUse);
       expect(
         resolved.map((ref) => ref.slug),
         `Guide ${article.slug} references a slug outside the active catalogue`
@@ -93,6 +93,27 @@ describe('resource guide product links', () => {
           `Guide ${article.slug} references retired slug ${dead}`
         ).not.toContain(dead);
       }
+    }
+  });
+});
+
+describe('food-guide recommendations', () => {
+  it('rejects animal copy even if an owner accidentally files it as edible', () => {
+    const catalog = [
+      { slug: 'feed', name: 'Pink Salt', category: 'Edible Pink Salt', description: 'Loose salt for livestock' },
+      { slug: 'unknown', name: 'Pink Salt', category: 'Uncategorized' },
+      { slug: 'missing-category', name: 'Edible Pink Salt' },
+      ACTIVE_CATALOG[4],
+    ];
+    expect(resolveRelatedProducts(catalog.map(p => p.slug), catalog, 'food'))
+      .toEqual([{ slug: ACTIVE_CATALOG[4].slug, name: ACTIVE_CATALOG[4].name }]);
+  });
+
+  it('all human-food guides require the food guard and recommend the actual edible SKU', () => {
+    for (const slug of ['fine-vs-medium-vs-coarse-grain-salt', 'what-trace-minerals-in-himalayan-salt-actually-mean', 'himalayan-pink-salt-vs-regular-salt-practical-differences']) {
+      const article = RESOURCE_ARTICLES.find(a => a.slug === slug)!;
+      expect(article.productUse).toBe('food');
+      expect(article.relatedProductSlugs).toEqual([ACTIVE_CATALOG[4].slug]);
     }
   });
 });

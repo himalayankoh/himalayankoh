@@ -23,6 +23,7 @@ interface ResourceDetailPageProps {
 }
 
 export default function ResourceDetailPage({ article, relatedProducts }: ResourceDetailPageProps) {
+  const foodGuide = article.productUse === 'food' || article.category === 'Culinary & Kitchen';
   const relatedArticles = article.relatedArticleSlugs
     .map((slug) => getResourceArticleBySlug(slug))
     .filter((a): a is ResourceArticle => Boolean(a));
@@ -102,10 +103,12 @@ export default function ResourceDetailPage({ article, relatedProducts }: Resourc
           <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-6 md:p-8 space-y-3">
             <div className="flex items-center gap-2 text-amber-800 font-bold text-base">
               <ShieldAlert className="w-5 h-5 flex-shrink-0 text-amber-600" />
-              <span>Veterinary & Nutritional Advisory Note</span>
+              <span>{foodGuide ? 'Food-use note' : 'Veterinary & Nutritional Advisory Note'}</span>
             </div>
             <p className="text-amber-950/80 text-sm leading-relaxed">
-              This educational guide is provided strictly for informational and management purposes. Salt licks and mineral blocks deliver essential sodium and chloride alongside naturally occurring trace minerals, but do NOT replace complete veterinary-formulated mineral programs, vitamin supplementation, or geographic-specific forage balancing. Always consult a licensed veterinarian or livestock nutritionist for custom herd regimens. For additional guidelines, view our{' '}
+              {foodGuide
+                ? 'Choose salt explicitly sold for edible use and follow its label. Livestock salt is a separate range. Salt is a seasoning, not a medicine or a complete mineral supplement. For additional information, view our '
+                : 'This educational guide is for general information. Salt supplies sodium and chloride, but does not replace a complete livestock mineral program. Ask your veterinarian or livestock nutritionist about your animals\' needs. For additional information, view our '}
               <Link href="/disclaimer" className="font-bold underline text-amber-900 hover:text-amber-700">
                 full product disclaimer
               </Link>
@@ -117,14 +120,18 @@ export default function ResourceDetailPage({ article, relatedProducts }: Resourc
           {article.sources.length > 0 && (
             <div className="pt-8 border-t border-gray-100 space-y-4">
               <h3 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-himalayan" /> Scientific Sources & Literature
+                <BookOpen className="w-4 h-4 text-himalayan" /> Sources & Further Reading
               </h3>
               <ul className="space-y-2 text-sm text-charcoal/70">
                 {article.sources.map((src, sIdx) => (
                   <li key={sIdx} className="flex items-start gap-2">
                     <span className="text-himalayan font-bold">•</span>
                     <span>
-                      <strong className="text-charcoal">{src.title}</strong> — {src.publication}{' '}
+                      {src.link?.startsWith('https://') ? (
+                        <a href={src.link} className="font-semibold text-charcoal underline underline-offset-2 hover:text-himalayan">
+                          {src.title}
+                        </a>
+                      ) : <strong className="text-charcoal">{src.title}</strong>} — {src.publication}{' '}
                       {src.year && <span className="text-charcoal/50">({src.year})</span>}
                     </span>
                   </li>
@@ -141,7 +148,7 @@ export default function ResourceDetailPage({ article, relatedProducts }: Resourc
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-himalayan">
-                  Verified Catalog
+                  Current Catalog
                 </span>
                 <h3 className="font-serif text-2xl font-bold text-charcoal">
                   Related Salt Products

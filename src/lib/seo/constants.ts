@@ -72,8 +72,8 @@ export const ORGANIZATION_JSON_LD = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
   name: SITE_NAME,
-  url: SITE_URL,
-  logo: '/logo.svg',
+  url: `${SITE_URL}/`,
+  logo: `${SITE_URL}/logo.svg`,
   contactPoint: {
     '@type': 'ContactPoint',
     telephone: '+1-832-224-6466',

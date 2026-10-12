@@ -14,7 +14,7 @@ import { legacyImage } from '@/lib/images/legacyAssets';
 const bulletPoints = [
   'Naturally occurring trace minerals including iron, potassium, and magnesium',
   'Unrefined — no anti-caking chemicals, artificial bleaches, or synthetic additives',
-  'Precise grain sizing: fine, medium, coarse, plus carved salt blocks and licks',
+  'A fine-grain edible jar, horse licks and livestock bags in the sizes listed',
   'Moisture-protective packaging dispatched directly from Houston, Texas',
 ];
 
@@ -30,13 +30,13 @@ const benefits = [
     icon: Heart,
   },
   {
-    title: 'Uniform Grain Sorting',
-    description: 'Carefully screened for consistency: fine for culinary baking, medium for table grinders, and coarse for curing.',
+    title: 'Listed Grain Sizes',
+    description: 'Choose the grain stated on each product; ask us for a specification when exact sizing matters.',
     icon: Droplets,
   },
   {
-    title: 'Zero Chemical Additives',
-    description: '100% natural unrefined rock salt. Free of artificial anti-caking agents (such as sodium ferrocyanide or aluminosilicate).',
+    title: 'Ingredient Information',
+    description: 'Read the individual product label for ingredients, intended use and iodization information.',
     icon: Leaf,
   },
   {
@@ -115,7 +115,7 @@ export default function AboutPage() {
             transition={{ delay: 0.2 }}
             className="text-white/75 text-base md:text-lg max-w-2xl mx-auto leading-relaxed"
           >
-            Authentic Himalayan pink rock salt, inspected, packed, and dispatched from Houston, Texas.
+            Himalayan pink salt for cooking and livestock, sold by our Houston, Texas team.
           </motion.p>
         </div>
       </div>
@@ -157,13 +157,13 @@ export default function AboutPage() {
               </h2>
               <div className="space-y-3 text-charcoal-light leading-relaxed text-sm md:text-base">
                 <p>
-                  Himalayan pink salt was deposited over 250 million years ago during the Precambrian era as ancient ocean beds evaporated. Protected beneath tectonic mountain strata in Pakistan&apos;s Salt Range, this mineral deposit remained shielded from modern industrial pollutants.
+                  Himalayan pink salt is rock salt sourced from Pakistan&apos;s Salt Range, including the Khewra region. Geological origin describes where it comes from; it is not a test of a finished product&apos;s purity.
                 </p>
                 <p>
-                  At Himalayan Koh, we preserve this natural geological mineral in its unrefined state. We never chemically bleach, strip, or alter our salt crystals. What the rock naturally holds — essential sodium chloride balanced with trace minerals like iron, potassium, and magnesium — is exactly what reaches your home or farm.
+                  Our catalog describes unrefined pink salt for two separate uses: edible salt for the kitchen and salt licks or loose salt for animals. Use the product label to choose the right item.
                 </p>
                 <p>
-                  We supply salt the way chefs, ranchers, and families actually use it: fine grain for balanced culinary seasoning, medium for table grinders, coarse crystals for brining, and weather-hardy blocks for equine and livestock herds.
+                  Our retail range includes a fine-grain 16 oz edible jar, a 2 lb horse lick, a 30 lb cattle block, and 6 lb and 45 lb livestock salt. Current prices and availability are shown on each listing.
                 </p>
               </div>
 
@@ -249,13 +249,13 @@ export default function AboutPage() {
               Geological Sourcing from the Khewra Salt Range
             </h2>
             <p className="text-white/80 text-base leading-relaxed mb-4">
-              Our Himalayan rose pink salt originates from the ancient Khewra salt mines, situated in the foothills of the Salt Range in Punjab, Pakistan. We work directly with licensed mining partners who practice ethical extraction and traditional craftsmanship.
+              Our Himalayan pink salt is sourced from the Salt Range in Punjab, Pakistan, and sold by Himalayan Koh from Houston, Texas.
             </p>
             <p className="text-white/80 text-base leading-relaxed mb-4">
-              Upon maritime arrival in the United States, every batch is received at our facility in Houston, Texas. Our team conducts physical inspections for moisture barriers, granulometry consistency, and purity before packaging into sealed, food-safe containers.
+              Packaging and intended use differ by item. Check the product description and label, and contact our team before ordering if you need a particular packaging or quality specification.
             </p>
             <p className="text-white/80 text-base leading-relaxed mb-6">
-              We welcome wholesale, retail distribution, and bulk commercial inquiries. Our quality-assurance framework and sourcing standards are set out below.
+              We welcome retail, wholesale and bulk inquiries. The information below explains how to choose a product and request supporting documentation.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <a
@@ -287,71 +287,71 @@ export default function AboutPage() {
               Quality, Sourcing &amp; Verification Standards
             </h2>
             <p className="text-charcoal-light max-w-2xl mx-auto text-base">
-              Ethical geological extraction in Pakistan, transatlantic shipping, rigorous incoming inspection, and Houston warehouse packing protocols.
+              Product labels, appropriate uses, storage guidance and documentation requests.
             </p>
           </div>
 
           <div className="space-y-7">
             <div>
-              <h3 className="font-serif text-xl font-bold text-charcoal mb-2">Geological Provenance &amp; Mining Ethics</h3>
+              <h3 className="font-serif text-xl font-bold text-charcoal mb-2">Origin and Product Evidence</h3>
               <p className="text-charcoal-light text-sm md:text-base leading-relaxed">
-                All Himalayan pink salt distributed by Himalayan Koh originates from the Salt Range of northern Punjab, Pakistan — principally the historic Khewra mining region, in the Jhelum district. These subterranean formations are the remnants of the ancient Tethys Sea, which evaporated in the late Precambrian to early Cambrian periods more than 250 million years ago, and were then uplifted and sealed beneath hundreds of metres of protective rock — sheltering the salt from surface pollutants, microplastics and modern industrial effluent.
+                Our listings describe Himalayan pink salt from Pakistan. A claim about origin does not establish the mineral or contaminant content of a specific shipment; that requires appropriate lot-specific evidence.
               </p>
               <p className="text-charcoal-light text-sm md:text-base leading-relaxed mt-2">
-                We work only with licensed and vetted operators who use traditional room-and-pillar extraction, which keeps the workings stable without the explosive blasting that can fracture the crystal structure. The miners and artisans who cut, carve and grade our salt work in safe, ventilated conditions and are fairly compensated.
+                We do not present general descriptions of mining as proof of a supplier audit, worker certification or laboratory result. Ask our team about documentation available for the item you need.
               </p>
             </div>
 
             <div>
               <h3 className="font-serif text-xl font-bold text-charcoal mb-2">Supplier Vetting &amp; Traceability</h3>
               <ul className="list-disc list-outside pl-6 space-y-2 text-charcoal-light text-sm md:text-base">
-                <li><strong className="text-charcoal">Facility auditing:</strong> processing facilities must operate dedicated sorting areas with stainless-steel handling and optical sorting tables to prevent cross-contamination.</li>
-                <li><strong className="text-charcoal">Hygiene &amp; PPE:</strong> handlers must follow strict sanitation practices during grading, milling and bagging.</li>
-                <li><strong className="text-charcoal">Chain of custody:</strong> every container is tracked from the mine head to Port Qasim, Karachi, with verified bills of lading, customs declarations and phytosanitary clearance.</li>
+                <li><strong className="text-charcoal">Product identity:</strong> use the listing and SKU to identify the item you are ordering.</li>
+                <li><strong className="text-charcoal">Intended use:</strong> culinary salt and livestock products are separate ranges.</li>
+                <li><strong className="text-charcoal">Specifications:</strong> request the relevant documentation before ordering when a specification is essential.</li>
               </ul>
             </div>
 
             <div>
-              <h3 className="font-serif text-xl font-bold text-charcoal mb-3">Houston Receiving &amp; Quality Verification</h3>
+              <h3 className="font-serif text-xl font-bold text-charcoal mb-3">Checks for Your Delivery</h3>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="bg-cream p-5 rounded-2xl border border-gray-200/60">
                   <h4 className="font-bold text-charcoal text-base mb-1">Moisture &amp; Seal Integrity</h4>
-                  <p className="text-xs text-charcoal-light leading-relaxed">Bulk bags and consumer containers are checked for transit moisture barriers. Anything showing condensation, a compromised seal or carton damage is quarantined.</p>
+                  <p className="text-xs text-charcoal-light leading-relaxed">Check packaging on arrival. If it is damaged or incomplete, keep photographs and contact us under our return policy.</p>
                 </div>
                 <div className="bg-cream p-5 rounded-2xl border border-gray-200/60">
-                  <h4 className="font-bold text-charcoal text-base mb-1">Granulometry Calibration</h4>
-                  <p className="text-xs text-charcoal-light leading-relaxed">Milled grains undergo mechanical sieve testing to verify mesh size: Fine (0.5–1.0 mm), Medium (1.0–3.0 mm) and Coarse (3.0–6.0 mm).</p>
+                  <h4 className="font-bold text-charcoal text-base mb-1">Grain and Size</h4>
+                  <p className="text-xs text-charcoal-light leading-relaxed">Use the grain and size stated on the individual listing. We do not assign a universal mesh range to every product.</p>
                 </div>
                 <div className="bg-cream p-5 rounded-2xl border border-gray-200/60">
-                  <h4 className="font-bold text-charcoal text-base mb-1">Physical &amp; Visual Assay</h4>
-                  <p className="text-xs text-charcoal-light leading-relaxed">Crystals are evaluated on clean inspection surfaces under high-lumen illumination for clean translucency and absence of foreign debris.</p>
+                  <h4 className="font-bold text-charcoal text-base mb-1">Label and Use</h4>
+                  <p className="text-xs text-charcoal-light leading-relaxed">Read the label and choose edible salt for food preparation. Do not use livestock salt as a culinary substitute.</p>
                 </div>
                 <div className="bg-cream p-5 rounded-2xl border border-gray-200/60">
-                  <h4 className="font-bold text-charcoal text-base mb-1">Structural Integrity of Blocks</h4>
-                  <p className="text-xs text-charcoal-light leading-relaxed">Solid licks and cooking blocks are inspected for compressive strength, drilled rope-hole symmetry and the absence of micro-fractures.</p>
+                  <h4 className="font-bold text-charcoal text-base mb-1">Solid Salt Licks</h4>
+                  <p className="text-xs text-charcoal-light leading-relaxed">Use a lick for the animal use stated on its listing. A cattle block is not a cooking slab.</p>
                 </div>
               </div>
             </div>
 
             <div>
-              <h3 className="font-serif text-xl font-bold text-charcoal mb-2">Packaging &amp; Climate-Controlled Storage</h3>
+              <h3 className="font-serif text-xl font-bold text-charcoal mb-2">Packaging and Dry Storage</h3>
               <p className="text-charcoal-light text-sm md:text-base leading-relaxed mb-2">
-                Sodium chloride is hygroscopic: it absorbs ambient moisture, and in a humid climate that means clumping, dissolution and package degradation. Our packaging holds the moisture out:
+                Protect salt from moisture and keep unused products closed and dry. Follow the label and the requirements of the intended use:
               </p>
               <ul className="list-disc list-outside pl-6 space-y-2 text-charcoal-light text-sm md:text-base">
-                <li><strong className="text-charcoal">Retail pouches:</strong> multi-layer barrier laminates with an airtight closure.</li>
-                <li><strong className="text-charcoal">Culinary jars:</strong> heavyweight jars sealed with tamper-evident induction liners.</li>
-                <li><strong className="text-charcoal">Commercial 45 lb bags:</strong> heavy-gauge woven sacks with an internal polyethylene liner, built for agricultural handling and freight.</li>
-                <li><strong className="text-charcoal">Pasture salt licks:</strong> weatherproof wrap around durable natural jute ropes, arriving ready for stable or paddock mounting.</li>
+                <li><strong className="text-charcoal">Retail pouches:</strong> keep closed between uses.</li>
+                <li><strong className="text-charcoal">Culinary jars:</strong> use clean utensils and replace the lid.</li>
+                <li><strong className="text-charcoal">Commercial 45 lb bags:</strong> store off wet ground and protect from rain.</li>
+                <li><strong className="text-charcoal">Pasture salt licks:</strong> follow the listing for mounting and keep out of standing water.</li>
               </ul>
             </div>
 
             <div>
               <h3 className="font-serif text-xl font-bold text-charcoal mb-2">Understanding Natural Mineral Claims</h3>
               <ul className="list-disc list-outside pl-6 space-y-2 text-charcoal-light text-sm md:text-base">
-                <li><strong className="text-charcoal">Predominant composition:</strong> pink Himalayan salt is primarily sodium chloride, typically 96%–98% NaCl by dry weight.</li>
-                <li><strong className="text-charcoal">Trace elements:</strong> the remaining 2%–4% is naturally occurring mineral compounds — iron oxide (which gives the rose, coral and amber colour), calcium, magnesium, potassium and trace sulfate.</li>
-                <li><strong className="text-charcoal">Parts-per-million realities:</strong> the majority of the additional elements reported by spectroscopy are present at ppm or ppb levels. They give the salt its flavour and colour; salt should not be eaten in excess to chase a mineral target.</li>
+                <li><strong className="text-charcoal">Predominant composition:</strong> pink salt is primarily sodium chloride; a precise composition requires a product-specific report.</li>
+                <li><strong className="text-charcoal">Trace elements:</strong> mineral content can vary. A general list of trace elements is not a measurement of our stock.</li>
+                <li><strong className="text-charcoal">Parts-per-million realities:</strong> trace-mineral marketing does not turn salt into a medicine or a complete human or livestock mineral program.</li>
               </ul>
             </div>
 
@@ -360,7 +360,7 @@ export default function AboutPage() {
                 <AlertTriangle size={18} /> Quality documentation on request
               </p>
               <p className="text-sm text-amber-900 leading-relaxed mt-2">
-                We maintain documented lot tracing with our exporter network. Wholesale, feedlot and food-service partners needing lot-specific documentation or specification sheets should contact{' '}
+                For lot-specific documentation or a specification sheet, contact our team before ordering. We will confirm what is available for the item rather than imply that every product carries a laboratory report. Email{' '}
                 <a href="mailto:sales@himalayankoh.com" className="underline font-semibold">sales@himalayankoh.com</a>.
               </p>
             </div>
@@ -417,7 +417,7 @@ export default function AboutPage() {
                 <h3 className="font-serif text-lg font-bold text-charcoal mb-1">Operations & Sourcing Team</h3>
                 <p className="text-xs font-semibold text-himalayan uppercase tracking-wider mb-3">Supply Chain & Quality Control</p>
                 <p className="text-sm text-charcoal-light leading-relaxed mb-3">
-                  Oversees direct supplier auditing in the Salt Range, transatlantic freight logistics, and warehouse quality inspections at our Houston distribution center.
+                  Handles product and supply inquiries, order coordination and requests for available specifications.
                 </p>
               </div>
               <div className="pt-3 border-t border-gray-100 text-xs text-charcoal-light">

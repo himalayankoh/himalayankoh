@@ -16,6 +16,8 @@
  * fixture so the drift also fails loudly in CI.
  */
 
+import { nicheSectionKeyForWooCategory } from '@/lib/catalog/nicheSections';
+
 export interface RelatedProductRef {
   slug: string;
   /** The catalogue's own display name, so cards never title-case a slug. */
@@ -24,16 +26,24 @@ export interface RelatedProductRef {
 
 export function resolveRelatedProducts(
   slugs: readonly string[],
-  catalog: ReadonlyArray<{ slug: string; name: string }>
+  catalog: ReadonlyArray<{ slug: string; name: string; category?: string; description?: string }>,
+  productUse?: 'food'
 ): RelatedProductRef[] {
-  const bySlug = new Map(catalog.map((product) => [product.slug, product.name]));
+  const bySlug = new Map(catalog.map((product) => [product.slug, product]));
   const seen = new Set<string>();
   const resolved: RelatedProductRef[] = [];
   for (const raw of slugs) {
     const slug = (raw ?? '').trim();
     if (!slug || seen.has(slug)) continue;
     seen.add(slug);
-    const name = bySlug.get(slug);
+    const product = bySlug.get(slug);
+    // A reachable livestock listing is still a wrong recommendation in a kitchen
+    // guide. Require an explicit edible category and reject conflicting animal
+    // copy; a missing category cannot establish food-grade suitability.
+    if (productUse === 'food' && (!product || !product.category?.trim() ||
+      nicheSectionKeyForWooCategory(product.category, product.name) !== 'edible-pink-salt' ||
+      /\b(?:livestock|animals?|horses?|cattle|feed|licks?|wildlife)\b/i.test(`${product.name} ${product.description ?? ''}`))) continue;
+    const name = product?.name;
     if (typeof name === 'string' && name.trim()) {
       resolved.push({ slug, name });
     }

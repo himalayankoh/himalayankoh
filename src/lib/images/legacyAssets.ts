@@ -85,6 +85,19 @@ export const LEGACY_IMAGES: Record<LegacyImageKey, LegacyImage> = {
  */
 export const legacyImage = (key: LegacyImageKey): string => LEGACY_IMAGES[key].src;
 
+/** Smaller derivatives of the same authorized photos, with actual pixel widths. */
+export function legacyHeroImage(key: 'horseLicking' | 'bowlOfSalt') {
+  const name = key === 'horseLicking' ? 'horse-licking-salt' : 'bowl-of-salt';
+  const widths = key === 'horseLicking' ? [200, 332] : [200, 400, 549];
+  return {
+    src: `${LEGACY_DIR}/${name}-${widths.at(-1)}.webp`,
+    srcSet: widths.map(width => `${LEGACY_DIR}/${name}-${width}.webp ${width}w`).join(', '),
+    sizes: '(min-width: 1024px) 282px, (min-width: 640px) calc((100vw - 64px) / 2), calc((100vw - 44px) / 2)',
+    width: key === 'horseLicking' ? 332 : 549,
+    height: 332,
+  };
+}
+
 /**
  * Records that point at a legacy file this repository does not actually have.
  *
