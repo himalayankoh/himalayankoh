@@ -25,6 +25,6 @@ describe('sitemap uses actual storefront categories', () => {
     expect(categoryUrls.some((url) => url.endsWith('category=live-stock'))).toBe(true);
     expect(new Set(categoryUrls).size).toBe(categoryUrls.length);
     expect(categoryUrls.some((url) => url.endsWith('category=bulk'))).toBe(false);
-    expect(urls.some((url) => /\/resources(?:\/|$)|grain-size-guide/.test(url))).toBe(false);
+    expect(urls.some((url) => url.includes('grain-size-guide'))).toBe(false);
   });
 });

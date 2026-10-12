@@ -38,13 +38,13 @@ export const AUTHORS: Record<string, Author> = {
     id: 'author-1',
     slug: 'sourcing-team',
     name: 'Himalayan Koh Sourcing & Warehouse Team',
-    role: 'Sourcing, freight and warehouse packing',
+    role: 'Product and supply inquiries',
     expertise: [
-      'Rock salt sourcing from the Salt Range',
-      'Container freight and customs paperwork',
-      'Incoming inspection and packing at the Houston warehouse',
+      'Product identity and intended use',
+      'Order coordination and supply inquiries',
+      'Requests for available specifications',
     ],
-    bio: 'The Himalayan Koh team that selects suppliers in the Salt Range of northern Pakistan, arranges shipping, and inspects and packs incoming salt at the company’s Houston, Texas warehouse. Questions and documents go to sales@himalayankoh.com.',
+    bio: 'The Himalayan Koh team that handles product and supply inquiries, order coordination and requests for available specifications. This company profile is not a supplier-audit certification or a laboratory report. Questions and document requests go to sales@himalayankoh.com.',
     avatar: '',
     socials: {
       email: 'sales@himalayankoh.com',

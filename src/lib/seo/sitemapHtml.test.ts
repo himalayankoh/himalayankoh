@@ -20,9 +20,7 @@ describe('HTML sitemap links', () => {
     }
   });
 
-  it('does not link the retired resources library as if it still held the guides', () => {
-    // RESOURCE_ARTICLES still exists in the data layer, but the live guides are the
-    // blog posts; the sitemap must not present the retired library as the guides hub.
-    expect(STATIC_PAGES.some((page) => page.href === '/resources')).toBe(false);
+  it('links the active twelve-guide resources library alongside the blog', () => {
+    expect(STATIC_PAGES.filter((page) => page.href === '/resources')).toHaveLength(1);
   });
 });

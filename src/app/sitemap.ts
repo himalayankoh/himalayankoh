@@ -3,6 +3,7 @@ import { siteOrigin, fetchSeoBlogPosts } from '@/lib/seo/server';
 import { buildProductsCategoryPath, productsCategoryTabs } from '@/lib/categoryContent';
 import { getCatalogProducts } from '@/lib/backend/serverCatalog';
 import { getAllAuthors } from '@/data/authors';
+import { getAllResourceArticles } from '@/data/resources';
 
 type ChangeFrequency = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
 
@@ -10,6 +11,7 @@ type ChangeFrequency = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'y
 const STATIC_ROUTES: { path: string; priority: number; changeFrequency: ChangeFrequency }[] = [
   { path: '/', priority: 1.0, changeFrequency: 'weekly' },
   { path: '/products', priority: 0.9, changeFrequency: 'daily' },
+  { path: '/resources', priority: 0.7, changeFrequency: 'monthly' },
   { path: '/about', priority: 0.7, changeFrequency: 'monthly' },
   { path: '/gallery', priority: 0.6, changeFrequency: 'monthly' },
   { path: '/contact', priority: 0.6, changeFrequency: 'monthly' },
@@ -31,11 +33,9 @@ export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const origin = siteOrigin();
-  const now = new Date();
 
   const entries: MetadataRoute.Sitemap = STATIC_ROUTES.map((route) => ({
     url: `${origin}${route.path}`,
-    lastModified: now,
     changeFrequency: route.changeFrequency,
     priority: route.priority,
   }));
@@ -62,7 +62,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (posts.length > 0) {
     entries.push({
       url: `${origin}/blog`,
-      lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.8,
     });
@@ -79,7 +78,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     entries.push({
       url: `${origin}${buildProductsCategoryPath(tab.key)}`,
-      lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.85,
     });
@@ -88,7 +86,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   for (const product of realProducts) {
     entries.push({
       url: `${origin}/products/${product.slug}`,
-      lastModified: product.updatedAt ? new Date(product.updatedAt) : now,
+      lastModified: product.updatedAt ? new Date(product.updatedAt) : undefined,
       changeFrequency: 'weekly',
       priority: 0.8,
     });
@@ -98,7 +96,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     if (!post.slug) continue;
     entries.push({
       url: `${origin}/blog/${post.slug}`,
-      lastModified: post.updated_at ? new Date(post.updated_at) : post.published_at ? new Date(post.published_at) : now,
+      lastModified: post.updated_at ? new Date(post.updated_at) : post.published_at ? new Date(post.published_at) : undefined,
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    });
+  }
+
+  // These twelve published guides are indexable, canonical pages, independent
+  // of the WordPress blog. Their own recorded edits are the source of lastmod.
+  for (const article of getAllResourceArticles()) {
+    entries.push({
+      url: `${origin}/resources/${article.slug}`,
+      lastModified: new Date(article.updatedAt || article.publishedAt),
       changeFrequency: 'monthly',
       priority: 0.6,
     });
@@ -107,7 +116,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   for (const author of getAllAuthors()) {
     entries.push({
       url: `${origin}/author/${author.slug}`,
-      lastModified: now,
       changeFrequency: 'monthly',
       priority: 0.5,
     });

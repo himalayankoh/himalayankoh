@@ -9,6 +9,7 @@ vi.mock('@/lib/seo/server', () => ({
 }));
 
 import sitemap from '../../app/sitemap';
+import { RESOURCE_ARTICLES } from '@/data/resources';
 
 /**
  * `/editorial-policy` explains how the guides are researched, sourced, edited and
@@ -23,5 +24,16 @@ describe('XML sitemap trust pages', () => {
     const policyUrls = urls.filter((url) => url.endsWith('/editorial-policy'));
 
     expect(policyUrls).toEqual(['https://himalayankoh.com/editorial-policy']);
+  });
+
+  it('includes the active resource library and all twelve guides with recorded dates', async () => {
+    const entries = await sitemap();
+    expect(entries.filter(e => e.url.endsWith('/resources'))).toHaveLength(1);
+    for (const article of RESOURCE_ARTICLES) {
+      const matches = entries.filter(e => e.url === `https://himalayankoh.com/resources/${article.slug}`);
+      expect(matches).toHaveLength(1);
+      expect(matches[0].lastModified).toEqual(new Date(article.updatedAt));
+    }
+    expect(entries.find(e => e.url.endsWith('/about'))?.lastModified).toBeUndefined();
   });
 });

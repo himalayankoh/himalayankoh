@@ -30,6 +30,7 @@ export const STATIC_PAGES = [
   { name: 'About Himalayan Koh', href: '/about' },
   { name: 'All Products Shop', href: '/products' },
   { name: 'Guides & Articles', href: '/blog' },
+  { name: 'Salt Resource Library', href: '/resources' },
   { name: 'Visual Gallery', href: '/gallery' },
   { name: 'Frequently Asked Questions (FAQs)', href: '/faqs' },
   { name: 'Contact & Warehouse Support', href: '/contact' },
