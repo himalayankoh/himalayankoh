@@ -7,12 +7,23 @@
  *
  * ## Why this exists rather than a curl
  *
- * A settings group is replaced wholesale by a naive write: `PUT /settings/account`
- * with one key can reset its siblings. So this script fetches the current group,
- * prints the single option it will change, sends only that option as a one-element
- * update, then re-reads the whole group and asserts that every *other* option is
- * byte-identical. If any sibling moved, it says so and names it — a settings write
- * that silently reset five options is how a store loses guest checkout.
+ * A settings group is replaced wholesale by a naive write: one key against a group
+ * endpoint can reset its siblings. So this script fetches the current group, prints
+ * the single option it will change, writes **only that option** through the
+ * per-option route, then re-reads the whole group and asserts that every *other*
+ * option is byte-identical. If any sibling moved, it says so and names it — a
+ * settings write that silently reset five options is how a store loses guest
+ * checkout.
+ *
+ * ## Why it asks the site which methods exist
+ *
+ * An earlier run of this change reported the store's registration setting as
+ * impossible to change over the API, because the write answered
+ * `404 rest_no_route`. Nothing was wrong with the credentials: on this store
+ * `/wc/v3/settings/account` is registered **GET only**, and the route that accepts a
+ * write is the per-option one, `/wc/v3/settings/account/<id>` (measured with OPTIONS:
+ * `GET, POST, PUT, PATCH`). So the method is discovered here rather than assumed, and
+ * a `rest_no_route` can only now mean something this script has already ruled out.
  *
  * `--apply` is required to write. Nothing else in the environment is touched, and
  * the before-state is recorded under `.git/` so a revert is a recorded decision.
@@ -44,9 +55,10 @@ for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
 const BASE = (argOf('base') || env.WOOCOMMERCE_BASE_URL || env.WORDPRESS_BASE_URL || 'https://wp.himalayankoh.com').replace(/\/+$/, '');
 const auth = 'Basic ' + Buffer.from(`${env.WOOCOMMERCE_CONSUMER_KEY}:${env.WOOCOMMERCE_CONSUMER_SECRET}`).toString('base64');
 const api = `${BASE}/wp-json/wc/v3/settings/${group}`;
+const apiOne = `${api}/${id}`;
 
-async function request(method = 'GET', body) {
-  const res = await fetch(api, {
+async function call(url, method = 'GET', body) {
+  const res = await fetch(url, {
     method,
     headers: { Authorization: auth, 'Content-Type': 'application/json', Accept: 'application/json' },
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -54,8 +66,37 @@ async function request(method = 'GET', body) {
     signal: AbortSignal.timeout(30000),
   });
   const text = await res.text();
+  return { res, text };
+}
+
+async function request(method = 'GET', body) {
+  const { res, text } = await call(api, method, body);
   if (!res.ok) throw new Error(`WooCommerce HTTP ${res.status} for settings/${group}: ${text.slice(0, 200)}`);
   return JSON.parse(text);
+}
+
+/** The methods the site actually registered for a route. OPTIONS writes nothing. */
+async function allowedMethods(url) {
+  const res = await fetch(url, { method: 'OPTIONS', headers: { Authorization: auth }, cache: 'no-store' });
+  return (res.headers.get('allow') || '').split(',').map((m) => m.trim().toUpperCase()).filter(Boolean);
+}
+
+/**
+ * Writes one option, through whichever write method this store registers for the
+ * per-option route. Returns the method used, so the log can say how it was done.
+ */
+async function writeOption(value) {
+  const methods = await allowedMethods(apiOne);
+  const method = ['PUT', 'PATCH', 'POST'].find((candidate) => methods.includes(candidate));
+  if (!method) {
+    throw new Error(
+      `This store registers no write method on ${apiOne} (Allow: ${methods.join(', ') || 'none'}). Nothing was written.`
+    );
+  }
+
+  const { res, text } = await call(apiOne, method, { value: String(value) });
+  if (!res.ok) throw new Error(`WooCommerce HTTP ${res.status} writing ${id} with ${method}: ${text.slice(0, 200)}`);
+  return method;
 }
 
 /** Every option's value, keyed by id — what "nothing else moved" is measured against. */
@@ -85,7 +126,7 @@ if (alreadySet) {
   const backupFile = `.git/woo-setting-${group}-${id}-${Date.now()}.json`;
   fs.writeFileSync(backupFile, JSON.stringify({ origin: BASE, group, id, value: String(current.value ?? '') }, null, 2));
 
-  await request('PUT', [{ id, value: String(value) }]);
+  const method = await writeOption(value);
 
   const after = await request();
   const afterMap = snapshot(after);
@@ -94,7 +135,13 @@ if (alreadySet) {
 
   console.log(
     JSON.stringify(
-      { wrote: { group, option: id, from: beforeMap[id], to: target }, backup: backupFile, changedOptions: drifted, onlyTheTargetMoved: drifted.length === 1 && drifted[0] === id },
+      {
+        wrote: { group, option: id, from: beforeMap[id], to: target },
+        method,
+        backup: backupFile,
+        changedOptions: drifted,
+        onlyTheTargetMoved: drifted.length === 1 && drifted[0] === id,
+      },
       null,
       2
     )

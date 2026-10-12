@@ -201,6 +201,72 @@ describe('WordPress customer authentication', () => {
     });
   });
 
+  it("forwards the shopper's address so WordPress can hold the durable budget", async () => {
+    const wp = useWordPress([
+      {
+        method: 'POST',
+        path: '/hk-storefront/v1/customer/register',
+        body: { customer: { ...CUSTOMER, id: 44, username: 'newshopper' } },
+      },
+    ]);
+
+    await createWordPressCustomer({
+      email: 'new@himalayankoh.com',
+      password: 'hunter2!',
+      clientIp: '203.0.113.9',
+    });
+
+    // The Worker's own limiter is per-isolate memory, so the count that refuses a caller
+    // has to be kept where every isolate reads it — and this is what tells WordPress
+    // whose attempt it is.
+    const [call] = wp.callsTo('/hk-storefront/v1/customer/register', 'POST');
+    expect(call.headers['X-HK-Client-IP']).toBe('203.0.113.9');
+  });
+
+  it('omits the address header rather than sending an empty one', async () => {
+    const wp = useWordPress([
+      {
+        method: 'POST',
+        path: '/hk-storefront/v1/customer/register',
+        body: { customer: { ...CUSTOMER, id: 45, username: 'newshopper' } },
+      },
+    ]);
+
+    await createWordPressCustomer({ email: 'new@himalayankoh.com', password: 'hunter2!' });
+
+    const [call] = wp.callsTo('/hk-storefront/v1/customer/register', 'POST');
+    expect(call.headers['X-HK-Client-IP']).toBeUndefined();
+  });
+
+  it("reports the store's own rate limit as a 429 with a sentence a shopper can act on", async () => {
+    useWordPress([
+      {
+        method: 'POST',
+        path: '/hk-storefront/v1/customer/register',
+        status: 429,
+        body: {
+          code: 'hk_storefront_signup_rate_limited',
+          message: 'Too many accounts have been created from this connection.',
+        },
+      },
+    ]);
+
+    const result = await createWordPressCustomer({
+      email: 'new@himalayankoh.com',
+      password: 'hunter2!',
+      clientIp: '203.0.113.9',
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.status).toBe(429);
+    expect(result.error).toBe(
+      'Too many accounts have been created from this connection. Please try again later, or email sales@himalayankoh.com and we will help you directly.'
+    );
+    // The refusal must not read as an internal fault: the shopper can wait and retry.
+    expect(result.error).not.toMatch(/WordPress|plugin|variable|WORDPRESS_/);
+  });
+
   it('requires an email before creating anything', async () => {
     const wp = useWordPress([]);
 

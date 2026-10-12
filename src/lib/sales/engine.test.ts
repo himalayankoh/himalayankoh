@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildSalesDashboard } from './engine';
+import {
+  buildSalesDashboard,
+  classifyTestShapedOrder,
+  computeRevenueEvidence,
+  describeRevenueEvidence,
+  providerReference,
+} from './engine';
 import type { WooOrderLike } from '@/lib/woo/orders';
 
 describe('Sales Aggregation Engine', () => {
@@ -367,5 +373,114 @@ describe('partial refunds', () => {
     expect(row.refundedAmount).toBe(10);
     expect(row.netTotal).toBe(90);
     expect(row.paymentStatus).toBe('partially_refunded');
+  });
+});
+
+/**
+ * The evidence layer.
+ *
+ * The store's revenue line is WooCommerce's rule, and this suite separates *what the
+ * store asserts* from *what its records evidence* — the distinction the dashboard has to
+ * keep, because "the store says it was paid" and "a provider can confirm it" are the
+ * same sentence to a reader and different facts to an accountant.
+ */
+describe('payment evidence', () => {
+  const paid = (overrides: Partial<WooOrderLike> = {}): WooOrderLike => ({
+    id: 501,
+    number: '501',
+    status: 'completed',
+    date_created_gmt: new Date().toISOString(),
+    date_paid_gmt: new Date().toISOString(),
+    total: '100.00',
+    subtotal: '100.00',
+    discount_total: '0.00',
+    payment_method: 'stripe',
+    billing: { first_name: 'Real', last_name: 'Shopper', email: 'shopper@himalayankoh.com' },
+    ...overrides,
+  });
+
+  it('reads a provider reference from the order field or from the gateway meta the store uses', () => {
+    expect(providerReference(paid({ transaction_id: 'ch_123' }))).toBe('ch_123');
+    expect(providerReference(paid({ meta_data: [{ key: '_stripe_intent_id', value: 'pi_123' }] }))).toBe('pi_123');
+    expect(providerReference(paid({ meta_data: [{ key: 'amazon_capture_id', value: 'P01-1-C1' }] }))).toBe('P01-1-C1');
+    expect(providerReference(paid({ meta_data: [{ key: '_wc_square_credit_card_trans_id', value: 'ZEG1' }] }))).toBe('ZEG1');
+    expect(providerReference(paid())).toBeNull();
+  });
+
+  it('separates paid orders with a reference from paid orders without one', () => {
+    const evidence = computeRevenueEvidence([
+      paid({ id: 1, total: '249.90', meta_data: [{ key: '_stripe_intent_id', value: 'pi_1' }] }),
+      paid({ id: 2, total: '106.03', billing: { first_name: 'Ada', last_name: 'L', email: 'ada@himalayankoh.com' } }),
+    ]);
+
+    expect(evidence.storePaid).toEqual({ orders: 2, total: 355.93 });
+    expect(evidence.withProviderReference).toEqual({ orders: 1, total: 249.9 });
+    expect(evidence.withoutProviderReference).toEqual({ orders: 1, total: 106.03 });
+    // The buckets partition the paid set: nothing is counted in two of them.
+    expect(
+      evidence.withProviderReference.orders +
+        evidence.withoutProviderReference.orders +
+        evidence.testShaped.orders
+    ).toBe(evidence.storePaid.orders);
+  });
+
+  it('calls a placeholder billing name a gateway test, and keeps it in the paid total', () => {
+    const evidence = computeRevenueEvidence([
+      paid({ id: 3, total: '46.78', billing: { first_name: 'test', last_name: 'test', email: 't@himalayankoh.com' } }),
+      paid({ id: 4, total: '100.00' }),
+    ]);
+
+    expect(evidence.testShaped.orders).toBe(1);
+    expect(evidence.testShaped.ids).toEqual([3]);
+    expect(evidence.testShaped.reasons[0]).toMatch(/placeholder/);
+    // The store counts it, so `storePaid` includes it; `excludingTestShaped` is the
+    // figure a reader should use, and the two are never conflated.
+    expect(evidence.storePaid.total).toBe(146.78);
+    expect(evidence.excludingTestShaped).toBe(100);
+  });
+
+  it('treats a 99%-off coupon that leaves cents as a test, and a small real charge as a sale', () => {
+    // Measured on this store: an 8-cent and a 10-cent order came from a `99off` coupon.
+    const couponTest = classifyTestShapedOrder(
+      paid({ id: 5, total: '0.08', subtotal: '14.95', discount_total: '14.88' })
+    );
+    expect(couponTest.testShaped).toBe(true);
+
+    // ...and a 60-cent order that a provider still confirms as captured is a sale. An
+    // amount alone is deliberately not a test signal.
+    const smallReal = classifyTestShapedOrder(paid({ id: 6, total: '0.60', subtotal: '0.60', discount_total: '0.00' }));
+    expect(smallReal.testShaped).toBe(false);
+  });
+
+  it('keeps what is not revenue out of the paid total, each with its own reason', () => {
+    const evidence = computeRevenueEvidence([
+      paid({ id: 7, total: '10.00' }),
+      paid({ id: 8, status: 'pending', total: '20.47', date_paid_gmt: undefined, transaction_id: undefined }),
+      paid({ id: 9, status: 'failed', total: '299.85', date_paid_gmt: undefined, transaction_id: undefined }),
+      paid({ id: 10, status: 'cancelled', total: '5.00', date_paid_gmt: undefined }),
+      paid({ id: 11, status: 'trash', total: '30.87', date_paid_gmt: undefined }),
+    ]);
+
+    expect(evidence.storePaid).toEqual({ orders: 1, total: 10 });
+    expect(evidence.awaitingPayment).toEqual({ orders: 1, total: 20.47 });
+    expect(evidence.failed).toEqual({ orders: 1, total: 299.85 });
+    expect(evidence.cancelled).toEqual({ orders: 1, total: 5 });
+    expect(evidence.archived).toEqual({ orders: 1, total: 30.87 });
+  });
+
+  it('says what a reference is and is not, in the sentences the payload carries', () => {
+    const lines = describeRevenueEvidence(
+      computeRevenueEvidence([
+        paid({ id: 12, total: '815.71', meta_data: [{ key: '_stripe_intent_id', value: 'pi_9' }] }),
+        paid({ id: 13, total: '106.03' }),
+        paid({ id: 14, total: '46.78', billing: { first_name: 'test', last_name: 'test', email: 't@himalayankoh.com' } }),
+      ])
+    );
+    const text = lines.join('\n');
+
+    expect(text).toContain('$968.52');
+    expect(text).toMatch(/not confirmation the money arrived/);
+    expect(text).toMatch(/shaped like gateway tests/);
+    expect(text).toMatch(/Without them the figure is \$921\.74/);
   });
 });

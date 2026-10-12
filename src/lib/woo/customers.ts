@@ -33,8 +33,12 @@ import { requireWooCredentials } from '../backend/credentials';
 import type { WooOrderAddress } from './orders';
 import {
   activityBasis,
+  accountKind,
+  suspiciousAccount,
   verifiedOrderCount,
+  type AccountKind,
   type ActivityBasis,
+  type LocalShape,
   type OrderActivityIndex,
 } from './customerActivity';
 
@@ -73,6 +77,14 @@ export interface WooCustomerQuery {
   payingOnly?: boolean;
   /** The order-derived buyer index, or null when the orders could not be read. */
   activity?: OrderActivityIndex | null;
+  /**
+   * Narrow to one kind of account. `all` (or omitted) leaves the list whole.
+   *
+   * `suspicious` is the census's review list — reserved domains and machine-shaped
+   * addresses with no name on the record — and is a *filter for looking*, never a
+   * delete: the console must be able to show the owner exactly which rows matched what.
+   */
+  kind?: AccountKind | 'all';
   /**
    * Which roles to list. Omitted means the store's own default, which is
    * **`customer` only** — and on this store that hides three accounts, one of which
@@ -125,6 +137,22 @@ export async function listWooCustomers(query: WooCustomerQuery = {}): Promise<Wo
 
     const rows = Array.isArray(response.data) ? response.data : [];
     const customers = rows.filter((row) => {
+      const kind = accountKind(
+        {
+          id: row.id,
+          email: row.email,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          username: row.username,
+          role: row.role,
+        },
+        query.activity
+      );
+
+      // The kind filter and the buyers-only toggle are the same decision seen two
+      // ways, so `kind` is applied first and `payingOnly` still stands on its own for
+      // callers that only want buyers.
+      if (query.kind && query.kind !== 'all' && kind !== query.kind) return false;
       if (!query.payingOnly) return true;
       if (query.activity) {
         // Verified against the store's orders. A customer whose history the index
@@ -223,6 +251,19 @@ export interface WooCustomerSummary {
   lastOrderAt: string | null;
   registeredAt: string | null;
   isPayingCustomer: boolean;
+  /**
+   * Which kind of account this is: staff, the census's suspicious review list, a verified
+   * buyer, or an account with no order against it.
+   *
+   * The fifth thing the screen distinguishes, a **guest customer**, is not a kind of
+   * account at all — those orders carry no account row — so it is reported by the route
+   * as `guests` rather than squeezed into this union.
+   */
+  accountKind: AccountKind;
+  /** The evidence for `accountKind === 'suspicious'`, in words. Null otherwise. */
+  suspiciousReason: string | null;
+  /** The address's local-part shape, shown as the evidence rather than as a verdict. */
+  addressShape: LocalShape;
 }
 
 function gmt(value: string | null | undefined): string | null {
@@ -245,6 +286,25 @@ export function summariseCustomer(
   customer: WooCustomerRecord,
   activity?: OrderActivityIndex | null
 ): WooCustomerSummary {
+  // Classified once: the verdict and its evidence are one decision about one record, and
+  // two calls would only invite a reader to wonder how they could ever disagree.
+  const suspicious = suspiciousAccount({
+    first_name: customer.first_name,
+    last_name: customer.last_name,
+    email: customer.email,
+    username: customer.username,
+  });
+  const kind = accountKind(
+    {
+      id: customer.id,
+      email: customer.email,
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      username: customer.username,
+      role: customer.role,
+    },
+    activity
+  );
   return {
     id: customer.id,
     name: customerDisplayName(customer),
@@ -269,5 +329,14 @@ export function summariseCustomer(
     lastOrderAt: gmt(customer.last_order?.date_created_gmt),
     registeredAt: gmt(customer.date_created_gmt),
     isPayingCustomer: Boolean(customer.is_paying_customer),
+    accountKind: kind,
+    // The reason explains the `suspicious` label, so it is reported only where that is
+    // the label: a staff account whose address happens to be on a reserved domain is
+    // classified `administrative`, and printing an accusation beside it would be a
+    // contradiction the owner has to reconcile by hand. The address's shape is still
+    // reported for every row in `addressShape` — that is the fact, and it is not a
+    // verdict, so it does not have to agree with the kind.
+    suspiciousReason: kind === 'suspicious' ? suspicious.reason : null,
+    addressShape: suspicious.shape,
   };
 }

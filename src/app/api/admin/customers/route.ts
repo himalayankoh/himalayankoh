@@ -19,7 +19,12 @@ import {
   summariseCustomer,
 } from '@/lib/woo/customers';
 import { listWooOrders } from '@/lib/woo/orders';
-import { buildOrderActivity, type OrderActivityIndex } from '@/lib/woo/customerActivity';
+import {
+  buildOrderActivity,
+  guestOrderSummary,
+  type AccountKind,
+  type OrderActivityIndex,
+} from '@/lib/woo/customerActivity';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +55,26 @@ async function readOrderActivity(): Promise<OrderActivityIndex | null> {
   }
 }
 
+/**
+ * The kinds of account this screen can be narrowed to, as the API accepts them.
+ *
+ * `guest` is not an account kind — a guest is an *order* with no account behind it, so
+ * it is answered from the order index and reported beside the list rather than filtered
+ * through it. Accepting it silently as "all" is the kind of quiet substitution that
+ * makes a filter look broken, so an unrecognised value is refused (400) instead.
+ */
+const ACCOUNT_KINDS: AccountKind[] = ['administrative', 'suspicious', 'buyer', 'registered'];
+const GUEST = 'guest';
+
+function parseKind(raw: string | null): { kind: AccountKind | 'all' } | { error: string } {
+  if (!raw || raw === 'all') return { kind: 'all' };
+  if (raw === GUEST) return { kind: 'all' };
+  if ((ACCOUNT_KINDS as string[]).includes(raw)) return { kind: raw as AccountKind };
+  return {
+    error: `Unknown account kind "${raw}". Use one of: all, ${ACCOUNT_KINDS.join(', ')}, ${GUEST}.`,
+  };
+}
+
 export async function GET(request: Request) {
   const auth = await verifyAdminRequest(request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -64,12 +89,16 @@ export async function GET(request: Request) {
     // with where it came from.
     const activity = await readOrderActivity();
 
+    const parsedKind = parseKind(params.get('kind'));
+    if ('error' in parsedKind) return NextResponse.json({ error: parsedKind.error }, { status: 400 });
+
     const page = await listWooCustomers({
       search: params.get('search') || undefined,
       page: Number(params.get('page') ?? '1') || 1,
       perPage: Number(params.get('limit') ?? '') || undefined,
       payingOnly,
       activity,
+      kind: parsedKind.kind,
       // Every account the store holds, not only role `customer`.
       //
       // The store's default list is role `customer`, which reports 2,704 accounts of
@@ -84,11 +113,29 @@ export async function GET(request: Request) {
 
     const customers = page.customers.map((customer) => summariseCustomer(customer, activity));
 
+    /*
+     * Counts of each kind, over the page that was read.
+     *
+     * Deliberately per page rather than store-wide: classifying every one of the
+     * store's 2,707 accounts would be 28 page reads on every load of this screen, and
+     * the figure would then be presented as if it had been checked against orders it
+     * never saw. The store's own total is returned separately as `count`, and the two
+     * are labelled apart so neither is mistaken for the other.
+     */
+    const kinds: Record<string, number> = { all: customers.length, buyer: 0, registered: 0, administrative: 0, suspicious: 0 };
+    for (const customer of customers) kinds[customer.accountKind] = (kinds[customer.accountKind] ?? 0) + 1;
+
     return NextResponse.json({
       customers,
       count: page.total,
       totalPages: page.totalPages,
       page: page.page,
+      /** The kind this page was narrowed to, so the screen can label the count. */
+      kind: params.get('kind') || 'all',
+      /** How many of the returned rows are each kind. Per page, not store-wide. */
+      kinds,
+      /** Orders with no customer account, from the same order read the buyers use. */
+      guests: guestOrderSummary(activity),
       // What the page's own figures rest on, so the console can label them instead
       // of implying it looked at the whole order book when it did not.
       activity: activity

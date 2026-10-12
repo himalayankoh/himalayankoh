@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — Storefront Account State
  * Description:       Custom tables and REST endpoints for the state WordPress does not already own: per-account storefront state (wishlist, saved addresses, cart binding), the customer operations WooCommerce exposes no REST route for (sign-in, account creation, password reset), and the app's site-content bridge (settings, category-hub overrides, first-party events, newsletter/contact submissions, HK blog fields). This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the hk-storefront/v1 namespace below.
- * Version:           1.5.4
+ * Version:           1.5.5
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -69,7 +69,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_STOREFRONT_VERSION', '1.5.4' );
+define( 'HK_STOREFRONT_VERSION', '1.5.5' );
 
 /**
  * WordPress builds REST URLs from home, which is the Next.js storefront in a
@@ -439,9 +439,38 @@ add_action(
 	function () {
 		if ( get_option( HK_STOREFRONT_DB_VERSION_OPTION ) !== HK_STOREFRONT_VERSION ) {
 			hk_storefront_install();
+			hk_storefront_close_legacy_registration();
 		}
 	}
 );
+
+/**
+ * Closes the registration forms this store does not use, once, on a version change.
+ *
+ * Both were found open on 2026-10-11: WordPress's own form
+ * (`wp-login.php?action=register`) and WooCommerce's My Account form. Neither is part
+ * of how this store signs anybody up — the app creates customer accounts through
+ * `/customer/register`, which `wc_create_new_customer` provides independently of both
+ * — and each one accepts nothing but an email address and generates the username from
+ * it, which is the shape of the 2,704 nameless accounts the store holds (see
+ * docs/production/CUSTOMER-DATA-AUDIT-2026-10-11.md and
+ * docs/production/REGISTRATION-SURFACES-2026-10-11.md).
+ *
+ * This is a setting change rather than a filter: `users_can_register` is written, so
+ * wp-admin's "Anyone can register" box reports what is actually true, and the owner
+ * can re-tick it deliberately — it is applied when this file's version changes, so a
+ * re-ticked box stays ticked until the next update rather than being silently undone
+ * on every request.
+ *
+ * The WooCommerce half of the same decision is its own setting
+ * (`woocommerce_enable_myaccount_registration`), changed through the store's API and
+ * recorded in that document's rollback section.
+ */
+function hk_storefront_close_legacy_registration() {
+	if ( get_option( 'users_can_register' ) ) {
+		update_option( 'users_can_register', 0 );
+	}
+}
 
 /* -------------------------------------------------------------------------
  * Retired product slugs
@@ -893,8 +922,130 @@ function hk_storefront_unique_username( $email ) {
 	return $username;
 }
 
+/* -------------------------------------------------------------------------
+ * Registration protection
+ * ---------------------------------------------------------------------- */
+
+/**
+ * How many accounts one address may create, and over what window.
+ *
+ * Five an hour is the budget the app applies to a signed-out visitor
+ * (`src/app/api/auth/customer/register/route.ts`). Generous for a household sharing
+ * one connection, and far below what filling a customer list takes.
+ */
+function hk_storefront_signup_budget() {
+	return array(
+		'limit'  => 5,
+		'window' => HOUR_IN_SECONDS,
+	);
+}
+
+/**
+ * The shopper's address, as far as this host can establish it.
+ *
+ * `X-HK-Client-IP` is set by the app, and is believed **only** because this route
+ * already requires an administrator application password: a caller able to set that
+ * header is a caller able to create accounts by other means anyway. Everything after
+ * it is what the web server recorded, which on this host is Cloudflare's edge.
+ *
+ * Every candidate is validated as a literal IP address before use, and an empty
+ * string is returned when none is: the caller then shares one bucket, which throttles
+ * harder rather than keys on something the caller chose.
+ */
+function hk_storefront_client_address() {
+	$candidates = array();
+	foreach ( array( 'HTTP_X_HK_CLIENT_IP', 'HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR' ) as $header ) {
+		if ( ! empty( $_SERVER[ $header ] ) ) {
+			$candidates[] = (string) $_SERVER[ $header ];
+		}
+	}
+	foreach ( $candidates as $raw ) {
+		foreach ( explode( ',', $raw ) as $piece ) {
+			$ip = trim( $piece );
+			if ( filter_var( $ip, FILTER_VALIDATE_IP ) !== false ) {
+				return $ip;
+			}
+		}
+	}
+	return '';
+}
+
+/**
+ * The counter key for one address.
+ *
+ * Hashed, so the store's option table records that *an* address is over budget
+ * without holding the address itself — the same reason the customer audit manifest
+ * carries a digest rather than a mailbox.
+ */
+function hk_storefront_signup_counter_key( $address ) {
+	if ( $address === '' ) {
+		return 'hk_signup_rl_shared';
+	}
+	return 'hk_signup_rl_' . md5( 'hk-storefront-signup|' . strtolower( $address ) );
+}
+
+/**
+ * Counts this attempt, or refuses it with `hk_storefront_signup_rate_limited`.
+ *
+ * ## Why the counter lives here rather than in the app
+ *
+ * The app has a rate limiter, and on a Cloudflare Worker it is per-isolate memory: a
+ * caller that reaches a second isolate gets a second budget, so it bounds one worker
+ * rather than one shopper. WordPress is the persistent store this architecture
+ * already has, and a transient is written where every isolate and every process reads
+ * it — which is what makes the budget real rather than local.
+ *
+ * The count is what refuses; the expiry is refreshed by each attempt, so the budget is
+ * five attempts per hour *of activity* from one address, and an address that stops is
+ * forgotten an hour later instead of leaving a row behind.
+ *
+ * What is counted is a request that reached the point of creating — or of colliding
+ * with — an account (see the call site), not every hit on the route.
+ */
+function hk_storefront_signup_budget_check( $address ) {
+	$budget = hk_storefront_signup_budget();
+	$key    = hk_storefront_signup_counter_key( $address );
+	$used   = (int) get_transient( $key );
+
+	if ( $used >= $budget['limit'] ) {
+		return new WP_Error(
+			'hk_storefront_signup_rate_limited',
+			'Too many accounts have been created from this connection. Please try again later, or email sales@himalayankoh.com and we will help you directly.',
+			array( 'status' => 429 )
+		);
+	}
+
+	set_transient( $key, $used + 1, $budget['window'] );
+	return null;
+}
+
+/**
+ * The same budget on WooCommerce's own registration handler.
+ *
+ * The store's My Account registration form is switched off (see
+ * `hk_storefront_close_legacy_registration`), so this listens for something that
+ * should not happen: it is what stops that form becoming an unmetered path again if
+ * the setting is ever re-enabled in wp-admin. The error is added to WooCommerce's own
+ * error list, so the shopper sees it in the form rather than as a bare status code.
+ */
+add_action(
+	'woocommerce_register_post',
+	function ( $username, $email, $errors ) {
+		$refusal = hk_storefront_signup_budget_check( hk_storefront_client_address() );
+		if ( $refusal instanceof WP_Error && is_object( $errors ) && method_exists( $errors, 'add' ) ) {
+			$errors->add( $refusal->get_error_code(), $refusal->get_error_message() );
+		}
+	},
+	10,
+	3
+);
+
 /**
  * Creates a customer account.
+ *
+ * Budgeted first (`hk_storefront_signup_budget_check`): this is the one public path
+ * that writes a new record, and the count that refuses a caller filling the customer
+ * list is held in WordPress rather than in the app's per-isolate memory.
  *
  * `wc_create_new_customer` is WooCommerce's own account creation: it makes the
  * WordPress user with the `customer` role, records the WooCommerce customer and
@@ -921,6 +1072,16 @@ function hk_storefront_customer_register( WP_REST_Request $request ) {
 			array( 'status' => 400 )
 		);
 	}
+	// Counted here rather than just before the account is created: everything past this
+	// point is an attempt that would end in an account, and *hammering one address that
+	// already exists* is the enumeration this also has to bound. Counted after the two
+	// shape checks above, so a mistyped address or a short password costs the shopper
+	// nothing — a retry that gets further is what spends budget.
+	$refusal = hk_storefront_signup_budget_check( hk_storefront_client_address() );
+	if ( $refusal instanceof WP_Error ) {
+		return $refusal;
+	}
+
 	if ( email_exists( $email ) ) {
 		return new WP_Error(
 			'hk_storefront_email_taken',

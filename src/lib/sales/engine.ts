@@ -123,6 +123,256 @@ function isOrderRefunded(order: WooOrderLike): boolean {
   return payStatus === 'refunded' || appStatus === 'refunded' || order.status === 'refunded';
 }
 
+/* ------------------------------------------------------------------ */
+/* Payment evidence: what the store's own "paid" total is made of     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Where a payment provider's reference can be recorded on an order.
+ *
+ * `transaction_id` is WooCommerce's own field and is what most gateways write. The
+ * meta keys are the ones this store's four gateways actually use — measured on its own
+ * orders, not guessed: Stripe `_stripe_intent_id`, PayPal `_ppcp_paypal_order_id` and
+ * `_paypal_order_id`, Amazon Pay `amazon_charge_id`/`amazon_capture_id`/
+ * `amazon_authorization_id`, Square `_wc_square_credit_card_trans_id`.
+ */
+const PROVIDER_REFERENCE_META = /(_transaction_id|_stripe_intent_id|_stripe_charge_id|_paypal_order_id|_ppcp_paypal_order_id|_paypal_transaction_id|amazon_charge_id|amazon_capture_id|amazon_authorization_id|_wc_square_credit_card_trans_id)$/i;
+
+/**
+ * The reference a provider left on this order, or null.
+ *
+ * This is evidence that a reference *exists* — it is not proof that the money arrived,
+ * because nothing here contacts the provider. The whole point of `RevenueEvidence` is to
+ * keep those two claims apart instead of letting them share the word "confirmed".
+ */
+export function providerReference(woo: WooOrderLike): string | null {
+  const direct = typeof woo.transaction_id === 'string' ? woo.transaction_id.trim() : '';
+  if (direct) return direct;
+  for (const item of woo.meta_data ?? []) {
+    if (!PROVIDER_REFERENCE_META.test(String(item?.key ?? ''))) continue;
+    const value = String(item?.value ?? '').trim();
+    if (value) return value;
+  }
+  return null;
+}
+
+/**
+ * Names a gateway test leaves behind.
+ *
+ * Measured, not guessed: three of this store's paid orders carry a billing name of
+ * literally `test test`, one of them on the administrator's own account, and a fourth
+ * was billed to the owner's own name at 99% off — an 8-cent Square charge and a 10-cent
+ * PayPal capture. A placeholder name is the store's own evidence that nobody was
+ * buying; it never decides an order on its own, and nothing here deletes or moves one.
+ */
+const PLACEHOLDER_BILLING_NAME = /^(test|tests|testing|test test|test user|test account|test customer|asdf|asdfasdf|aaa+|xxx+|qwerty|dummy|demo|sample|none|null|n\/?a)$/i;
+
+/** A discount that leaves cents of a real price — the coupon this store's tests used. */
+const NEAR_TOTAL_DISCOUNT = 0.9;
+const CENTS_CEILING = 1;
+
+/** The billing name as the store recorded it, trimmed; empty when there is none. */
+export function billingNameOf(woo: WooOrderLike): string {
+  return [woo.billing?.first_name, woo.billing?.last_name]
+    .map((part) => String(part ?? '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+}
+
+/**
+ * Is this order shaped like a gateway test rather than a sale?
+ *
+ * Two shapes, both of which the store's own records show, and neither of which is an
+ * amount on its own: a placeholder billing name, or a discount of at least 90% that
+ * leaves the order under a dollar. Amount alone is deliberately *not* a test signal —
+ * one of this store's smallest orders (60 cents) is a Stripe payment the provider still
+ * confirms as captured.
+ */
+export function classifyTestShapedOrder(woo: WooOrderLike): {
+  testShaped: boolean;
+  reason: string | null;
+} {
+  const name = billingNameOf(woo);
+  if (name && PLACEHOLDER_BILLING_NAME.test(name)) {
+    return { testShaped: true, reason: `the billing name is a placeholder ("${name}")` };
+  }
+
+  const subtotal = money(woo.subtotal);
+  const discount = money(woo.discount_total);
+  const total = money(woo.total);
+  if (discount > 0 && subtotal > 0 && total < CENTS_CEILING && discount / subtotal >= NEAR_TOTAL_DISCOUNT) {
+    return {
+      testShaped: true,
+      reason: `a ${Math.round((discount / subtotal) * 100)}% discount left the order at ${total.toFixed(2)}`,
+    };
+  }
+
+  return { testShaped: false, reason: null };
+}
+
+/** One class of orders, as the evidence counts it. */
+export interface RevenueEvidenceBucket {
+  orders: number;
+  total: number;
+}
+
+/**
+ * What the store's own paid total is actually made of.
+ *
+ * The console's revenue line is WooCommerce's rule — an order the store reports paid,
+ * with refunds subtracted — and that rule is exactly as trustworthy as the store's word.
+ * This decomposes it so no reader has to take the total on faith:
+ *
+ *   - `withProviderReference` / `withoutProviderReference`: paid, split by whether the
+ *     record names a provider transaction at all;
+ *   - `testShaped`: paid, and shaped like a gateway test — separated because the store
+ *     counts it as revenue and the operator should not;
+ *   - `awaitingPayment`, `failed`, `cancelled`, `archived`: not revenue, each for its
+ *     own reason, so a figure that is *missing* is never rendered as a zero;
+ *   - `excludingTestShaped`: the same paid rule with the test-shaped orders removed.
+ *
+ * The buckets partition the paid set: every order the store reports paid is in exactly
+ * one of `withProviderReference`, `withoutProviderReference` or `testShaped`.
+ */
+export interface RevenueEvidence {
+  storePaid: RevenueEvidenceBucket;
+  withProviderReference: RevenueEvidenceBucket;
+  withoutProviderReference: RevenueEvidenceBucket;
+  testShaped: RevenueEvidenceBucket & { ids: number[]; reasons: string[] };
+  awaitingPayment: RevenueEvidenceBucket;
+  failed: RevenueEvidenceBucket;
+  cancelled: RevenueEvidenceBucket;
+  archived: RevenueEvidenceBucket;
+  /** `storePaid.total` less the orders that are shaped like a gateway test. */
+  excludingTestShaped: number;
+  /** What may, and may not, be claimed about these figures. */
+  basis: string;
+}
+
+export function computeRevenueEvidence(orders: WooOrderLike[]): RevenueEvidence {
+  const empty = (): RevenueEvidenceBucket => ({ orders: 0, total: 0 });
+  const add = (bucket: RevenueEvidenceBucket, amount: number): void => {
+    bucket.orders += 1;
+    bucket.total = round2(bucket.total + amount);
+  };
+
+  const storePaid = empty();
+  const withProviderReference = empty();
+  const withoutProviderReference = empty();
+  const testShaped: RevenueEvidence['testShaped'] = { ...empty(), ids: [], reasons: [] };
+  const awaitingPayment = empty();
+  const failed = empty();
+  const cancelled = empty();
+  const archived = empty();
+
+  for (const order of orders ?? []) {
+    const total = money(order.total);
+    const status = String(order.status ?? '').toLowerCase();
+
+    if (status === 'trash') {
+      add(archived, total);
+      continue;
+    }
+
+    if (isOrderPaid(order)) {
+      add(storePaid, total);
+      const shape = classifyTestShapedOrder(order);
+      if (shape.testShaped) {
+        add(testShaped, total);
+        const id = Number(order.id);
+        if (Number.isFinite(id) && id > 0) testShaped.ids.push(id);
+        if (shape.reason) testShaped.reasons.push(shape.reason);
+      } else if (providerReference(order)) {
+        add(withProviderReference, total);
+      } else {
+        add(withoutProviderReference, total);
+      }
+      continue;
+    }
+
+    if (status === 'failed') add(failed, total);
+    else if (status === 'cancelled') add(cancelled, total);
+    else add(awaitingPayment, total);
+  }
+
+  return {
+    storePaid,
+    withProviderReference,
+    withoutProviderReference,
+    testShaped,
+    awaitingPayment,
+    failed,
+    cancelled,
+    archived,
+    excludingTestShaped: round2(storePaid.total - testShaped.total),
+    basis:
+      'WooCommerce is the source: an order counts as paid when the store reports a paid date, ' +
+      'or a completed/processing status with no failed payment. A provider reference is evidence ' +
+      'that one was recorded, not proof the money arrived — nothing in this console contacts a ' +
+      'gateway. Provider-level confirmation is a separate check, recorded in ' +
+      'docs/production/CUSTOMER-DATA-AUDIT-2026-10-11.md.',
+  };
+}
+
+/**
+ * The evidence as sentences, for the payload the Sales screen renders.
+ *
+ * Only non-empty classes are named: a sentence that says "0 orders" for a class the
+ * store does not have would add noise, and the point of these lines is which figures a
+ * reader must not add together.
+ */
+export function describeRevenueEvidence(evidence: RevenueEvidence): string[] {
+  const money2 = (value: number) => `$${value.toFixed(2)}`;
+  const lines: string[] = [];
+
+  lines.push(
+    `Revenue is the store's own rule — orders WooCommerce reports as paid, refunds subtracted: ` +
+      `${money2(evidence.storePaid.total)} across ${evidence.storePaid.orders} order(s).`
+  );
+
+  if (evidence.withProviderReference.orders > 0) {
+    lines.push(
+      `${evidence.withProviderReference.orders} of them (${money2(evidence.withProviderReference.total)}) carry a ` +
+        `provider transaction reference. A reference records that one was written down; it is not ` +
+        `confirmation the money arrived, and this console contacts no gateway.`
+    );
+  }
+  if (evidence.withoutProviderReference.orders > 0) {
+    lines.push(
+      `${evidence.withoutProviderReference.orders} paid order(s) ` +
+        `(${money2(evidence.withoutProviderReference.total)}) carry no provider reference at all — the store ` +
+        `asserts payment and nothing in the record evidences it.`
+    );
+  }
+  if (evidence.testShaped.orders > 0) {
+    lines.push(
+      `${evidence.testShaped.orders} order(s) (${money2(evidence.testShaped.total)}) are shaped like gateway tests ` +
+        `— ${evidence.testShaped.reasons[0] ?? 'a placeholder billing name or a 99% discount'} — and the store ` +
+        `counts them as revenue. Without them the figure is ${money2(evidence.excludingTestShaped)}. They have not ` +
+        `been moved or deleted.`
+    );
+  }
+  if (evidence.awaitingPayment.orders > 0) {
+    lines.push(`Awaiting payment, not revenue: ${evidence.awaitingPayment.orders} order(s) (${money2(evidence.awaitingPayment.total)}).`);
+  }
+  if (evidence.failed.orders > 0) {
+    lines.push(`Failed attempts, not revenue: ${evidence.failed.orders} order(s) (${money2(evidence.failed.total)}).`);
+  }
+  if (evidence.cancelled.orders > 0) {
+    lines.push(`Cancelled, not revenue: ${evidence.cancelled.orders} order(s) (${money2(evidence.cancelled.total)}).`);
+  }
+  if (evidence.archived.orders > 0) {
+    lines.push(
+      `In the bin, outside this list until restored: ${evidence.archived.orders} order(s) ` +
+        `(${money2(evidence.archived.total)}) — see the Orders screen's Trashed view.`
+    );
+  }
+
+  lines.push(evidence.basis);
+  return lines;
+}
+
 function computeRevenue(orders: WooOrderLike[]): RevenueSummary {
   let grossRevenue = 0;
   let refunds = 0;
@@ -729,6 +979,10 @@ export function buildSalesDashboard(
     topProducts,
     topCustomers,
     channelBreakdown,
+    // Where the money figure came from, in the payload's own words. `warnings` is the
+    // field the Sales payload already carries for exactly this: sentences the operator
+    // has to read before believing a total.
+    warnings: describeRevenueEvidence(computeRevenueEvidence(filtered)),
     wholesaleSummary,
     todayKpis,
     ordersScanned,

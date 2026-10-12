@@ -178,6 +178,13 @@ export interface WooOrderLike {
   date_modified_gmt?: string;
   date_paid_gmt?: string | null;
   date_completed_gmt?: string | null;
+  /**
+   * Line-item total before shipping, tax and discount. WooCommerce always reports it
+   * (`/orders` and `/orders/<id>` both carry it), and the payment-evidence check needs
+   * it to tell a heavily discounted order from a small real one: `total` alone cannot
+   * separate a $0.08 gateway test from a genuine 60-cent sale.
+   */
+  subtotal?: string;
   discount_total?: string;
   shipping_total?: string;
   total?: string;

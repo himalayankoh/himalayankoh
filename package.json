@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:clean": "node scripts/clean-next.mjs && next dev",
-    "prebuild": "node scripts/clean-next-route-types.mjs && node scripts/check-legacy-images.mjs && npm run typecheck && npm run lint",
+    "prebuild": "node scripts/clean-next-route-types.mjs && node scripts/check-legacy-images.mjs && node scripts/check-tracked-customer-data.mjs && npm run typecheck && npm run lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -35,6 +35,8 @@
     "check:packing": "node scripts/check-shippo-packing.mjs",
     "check:packing-splits": "node scripts/check-packing-splits.mjs",
     "check:wordpress": "node scripts/check-wordpress-setup.mjs",
+    "check:registration": "node scripts/check-registration-surfaces.mjs",
+    "check:customer-data": "node scripts/check-tracked-customer-data.mjs",
     "check:email": "node scripts/check-email-delivery.mjs",
     "compare:catalogues": "node scripts/compare-catalogues.mjs",
     "plan:catalogue-migration": "node scripts/plan-catalogue-migration.mjs",

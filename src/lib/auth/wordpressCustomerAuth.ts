@@ -121,6 +121,14 @@ const PLUGIN_ERRORS: Record<string, { status: number; error: string }> = {
     status: 500,
     error: 'The storefront origin was missing, so the reset link could not be built.',
   },
+  // WordPress holds the durable budget (`hk_storefront_signup_budget_check`). Its own
+  // sentence is passed through rather than rewritten: it is the one a shopper reads when
+  // they have genuinely tried too often, and it names a way to reach a person.
+  hk_storefront_signup_rate_limited: {
+    status: 429,
+    error:
+      'Too many accounts have been created from this connection. Please try again later, or email sales@himalayankoh.com and we will help you directly.',
+  },
 };
 
 /** The plugin's route namespace, e.g. for a setup check to probe. */
@@ -379,6 +387,16 @@ export async function createWordPressCustomer(input: {
   email: string;
   password: string;
   name?: string;
+  /**
+   * The shopper's address, forwarded so WordPress can hold the durable sign-up budget.
+   *
+   * The route in front of this is rate limited in the Worker, and on Cloudflare that is
+   * per-isolate memory: a caller that lands on a second isolate gets a second budget.
+   * WordPress is the persistent store this architecture already has, so the count that
+   * actually refuses is kept there, keyed by this address. It is believed because the
+   * route it is sent to already requires an administrator application password.
+   */
+  clientIp?: string;
 }): Promise<CustomerAccountResult> {
   const email = (input.email || '').trim();
   if (!email) return { ok: false, status: 400, error: 'Enter your email address.' };
@@ -388,6 +406,7 @@ export async function createWordPressCustomer(input: {
       method: 'POST',
       body: { email, password: input.password, name: input.name || '' },
       credentials: requireWordPressCredentials(),
+      ...(input.clientIp ? { headers: { 'X-HK-Client-IP': input.clientIp } } : {}),
       timeoutMs: TIMEOUT_MS,
     });
 

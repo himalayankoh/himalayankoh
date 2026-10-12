@@ -311,6 +311,36 @@ interface DashOrderRow { id: string; order_number: string; customer_email: strin
 // Trashed view). The Dashboard sets neither and is unaffected.
 interface DashStats { revenue: number; paidCount: number; aov: number; days: { label: string; total: number }[]; pending?: number; shipped?: number; }
 
+/**
+ * What a money figure is made of, as `/api/admin/analytics` reports it.
+ *
+ * Declared structurally rather than imported: this view reads six named buckets and
+ * ignores the rest of that payload, and a view that imports a server module's whole
+ * shape ends up re-rendering whenever an unrelated field changes. The buckets are
+ * never added together here — each is shown with its own label, because the sum of
+ * "paid with a provider reference" and "gateway-test shaped" is not "collected" in
+ * any sense a shop owner can use.
+ */
+interface MoneyBucket { orders: number; total: number }
+interface DashboardMoneyEvidence {
+  totalCustomers?: number;
+  revenueBasis?: string;
+  testShapedOrdersInWindow?: number;
+  notCountedInRevenue?: { orders: number; total: number; statuses: Record<string, number> };
+  paymentEvidence?: {
+    storePaid: MoneyBucket;
+    withProviderReference: MoneyBucket;
+    withoutProviderReference: MoneyBucket;
+    testShaped: MoneyBucket & { reasons: string[]; ids: number[] };
+    awaitingPayment: MoneyBucket;
+    failed: MoneyBucket;
+    cancelled: MoneyBucket;
+    archived: MoneyBucket;
+    excludingTestShaped: number;
+    basis: string;
+  };
+}
+
 export function ADashboard() {
   const { users } = useApp();
   const [realOrders, setRealOrders] = useState<DashOrderRow[]>([]);
@@ -320,6 +350,7 @@ export function ADashboard() {
   const [gift] = useState<{ active: boolean; remaining: number; total: number; claimsToday: number } | null>(null);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const [range, setRange] = useState<7 | 30 | 90>(7);
+  const [money, setMoney] = useState<DashboardMoneyEvidence | null>(null);
 
   // WooCommerce is the dashboard's commerce source. Keep this read on the
   // authenticated admin route rather than probing removed Gift Drop / legacy
@@ -360,6 +391,14 @@ export function ADashboard() {
     refresh();
     listProducts().then(setCatalog).catch(() => setCatalog([]));
     fetchInventory().then(setInventoryReport).catch(() => setInventoryReport(null));
+    // The basis of the money figures, from the same read the Analytics screen makes.
+    // Without it this dashboard can only assert a revenue number; with it, it can say
+    // what the number is (store-reported paid), what it excludes, and which part of it
+    // carries a provider reference.
+    fetch('/api/admin/analytics', { headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => setMoney((body as { analytics?: DashboardMoneyEvidence } | null)?.analytics ?? null))
+      .catch(() => setMoney(null));
   }, [refresh]);
 
   // Server-aggregated, paid-only metrics (refunds subtracted, no page cap).
@@ -379,7 +418,11 @@ export function ADashboard() {
   const lowStock = inventoryReport ? inventoryReport.lowStock : 0;
 
   // Daily revenue + order counts for the last 90 days (paid-only rows).
-  const isPaidRow = (o: DashOrderRow) => ['paid', 'processing', 'shipped', 'delivered', 'partially_refunded'].includes(String(o.status || ''));
+  // Money only where the store says the order was paid. The previous rule read a
+  // *fulfilment* status (`processing`, `shipped`, `delivered`), so an order that was
+  // being packed while its payment had never arrived still added its total to the
+  // revenue chart — the store's own payment status is the honest signal here.
+  const isPaidRow = (o: DashOrderRow) => String(o.payment_status ?? '') === 'paid';
   const netRowTotal = (o: DashOrderRow) => Math.max(0, Number(o.total || 0) - Number((o as unknown as { refunded_amount?: number | null }).refunded_amount || 0));
   const buildSeries = (n: number): { label: string; total: number; orders: number }[] => {
     const out: { label: string; total: number; orders: number }[] = [];
@@ -421,10 +464,16 @@ export function ADashboard() {
   const statusTotal = statusCounts.reduce((a, b) => a + b.n, 0);
 
   const kpis = [
-    { l: 'Revenue (7 days)', v: `$${weekRev.toFixed(2)}`, sub: weekRev > 0 ? (revTrend === null ? '— vs prior week' : `${revTrend >= 0 ? '▲' : '▼'} ${Math.abs(revTrend).toFixed(0)}% vs prior week`) : 'No paid orders yet', i: CurrencyDollar, to: '/admin/orders', iconCls: 'bg-[#faf0eb] text-[#b86452]' },
-    { l: 'Orders', v: paidCount, sub: paidCount ? `${rev.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} all-time` : 'No paid orders yet', i: ShoppingCart, to: '/admin/orders', iconCls: 'bg-[#fdf5ea] text-[#c98745]' },
-    { l: 'Avg order value', v: paidCount ? `$${aov.toFixed(2)}` : '—', sub: paidCount ? 'per paid order' : 'No paid orders yet', i: TrendUp, to: '/admin/orders', iconCls: 'bg-[#e8f0eb] text-[#3f6550]' },
-    { l: 'Customers', v: users.length, sub: users.length ? 'registered accounts' : 'No customers yet', i: UsersIcon, to: '/admin/users', iconCls: 'bg-[#faf0eb] text-[#b86452]' },
+    { l: 'Revenue (7 days)', v: `$${weekRev.toFixed(2)}`, sub: (weekRev > 0 ? (revTrend === null ? '— vs prior week' : `${revTrend >= 0 ? '▲' : '▼'} ${Math.abs(revTrend).toFixed(0)}% vs prior week`) : 'No order the store reports paid') + ' · store-reported paid', i: CurrencyDollar, to: '/admin/orders', iconCls: 'bg-[#faf0eb] text-[#b86452]' },
+    // `paidCount` is the store's order count as the orders route reports it — every
+    // order, paid or not — so the label says that rather than implying they all paid.
+    { l: 'Orders', v: paidCount, sub: paidCount ? `orders in the store, paid or not · ${rev.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} reported paid` : 'The store reports no orders', i: ShoppingCart, to: '/admin/orders', iconCls: 'bg-[#fdf5ea] text-[#c98745]' },
+    // Paired with the total it is derived from — the store's own paid total over the
+    // orders the store reports paid — rather than divided by a different denominator.
+    { l: 'Avg paid order', v: money?.paymentEvidence && money.paymentEvidence.storePaid.orders > 0 ? `$${(money.paymentEvidence.storePaid.total / money.paymentEvidence.storePaid.orders).toFixed(2)}` : (paidCount ? `$${aov.toFixed(2)}` : '—'), sub: money?.paymentEvidence ? `across ${money.paymentEvidence.storePaid.orders} order(s) the store reports paid` : paidCount ? 'per paid order, this window' : 'No order the store reports paid', i: TrendUp, to: '/admin/orders', iconCls: 'bg-[#e8f0eb] text-[#3f6550]' },
+    // The store's own account count, not this app's user list: the two are different
+    // systems, and the tile used to show the app's (usually empty) list as "Customers".
+    { l: 'Customers', v: money?.totalCustomers ?? users.length, sub: money ? 'accounts the store holds' : 'store account count not reported', i: UsersIcon, to: '/admin/customers', iconCls: 'bg-[#faf0eb] text-[#b86452]' },
     { l: 'Active products', v: activeProducts, sub: `${totalProducts} total · ${commerceReady} commerce-ready`, i: Package, to: '/admin/products', iconCls: 'bg-[#fdf5ea] text-[#c98745]' },
     {
       l: 'Low-stock products',
@@ -492,6 +541,49 @@ export function ADashboard() {
             <p className="text-[9px] text-[#8d8276] mt-0.5 truncate">{k.sub}</p>
           </Link>
         ))}
+      </div>
+
+      {/* The basis of every money figure above, on the dashboard itself.
+
+          A dashboard that shows one revenue number and no basis is asking to be trusted;
+          this names the classes the number is made of and never adds two of them together.
+          "Carries a provider reference" is not "confirmed" — a reference records that one
+          was written down, and nothing on this screen contacts a gateway. A missing payload
+          says so rather than showing zeroes. */}
+      <div className="rounded-xl border border-[#e0d6c8] bg-white px-4 py-3">
+        <p className="text-xs font-bold text-[#26211c]">What the money figure is made of</p>
+        {money?.paymentEvidence ? (
+          <>
+            <p className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-[#6d6258]">
+              {[
+                { l: 'the store reports paid', b: money.paymentEvidence.storePaid },
+                { l: 'carries a provider reference', b: money.paymentEvidence.withProviderReference },
+                { l: 'paid, no reference at all', b: money.paymentEvidence.withoutProviderReference },
+                { l: 'shaped like a gateway test', b: money.paymentEvidence.testShaped },
+                { l: 'awaiting payment (not revenue)', b: money.paymentEvidence.awaitingPayment },
+                { l: 'failed (not revenue)', b: money.paymentEvidence.failed },
+              ].map((bucket) => (
+                <span key={bucket.l}>
+                  <span className="font-bold text-[#26211c]">${bucket.b.total.toFixed(2)}</span>{' '}
+                  {bucket.l} ({bucket.b.orders})
+                </span>
+              ))}
+            </p>
+            {money.paymentEvidence.testShaped.orders > 0 ? (
+              <p className="mt-1 text-[10px] text-[#8d5a16]">
+                Gateway-test-shaped orders are counted by the store and excluded from the chart and best sellers; nothing
+                has been moved or deleted. Without them the store's paid total is
+                ${money.paymentEvidence.excludingTestShaped.toFixed(2)}.
+              </p>
+            ) : null}
+            <p className="mt-1 text-[10px] text-[#8d8276]">{money.paymentEvidence.basis}</p>
+          </>
+        ) : (
+          <p className="mt-1 text-[10px] text-[#8d8276]">
+            Not reported — the analytics read did not answer, so the basis of the revenue figure above is unknown rather
+            than empty.
+          </p>
+        )}
       </div>
 
       {/* Main grid — left: performance + orders, right: operations */}
@@ -1046,6 +1138,14 @@ export function AOrders() {
   // fake order history — the legacy demo table was removed for truthfulness.
   // Paid-only stats come from the server (full order set); refresh near-real-time.
   const [orderStats, setOrderStats] = useState<DashStats | null>(null);
+  // The basis of the Revenue figure, from the server-aggregated analytics read.
+  //
+  // Not computed from the rows on screen: this list is one page (the route caps it),
+  // so a sum of what is visible would understate the store and quietly become a
+  // different number from the Dashboard's — the same class of mistake as showing a
+  // page count beside a store-wide total. The analytics route reads the whole order
+  // set, which is the only figure worth labelling "the store reports paid".
+  const [money, setMoney] = useState<DashboardMoneyEvidence | null>(null);
   // The order book has two views: the orders in play, and the ones moved out of
   // the way. Trashing is reversible from the second view, which is why nothing
   // here offers a permanent delete — nothing in this console can verify that an
@@ -1108,6 +1208,12 @@ export function AOrders() {
   // not finished. Through the guard, that switch was dropped and the table kept showing
   // the other view's rows. The guard still governs the focus/interval refresh.
   useEffect(() => { void loadOrders(); }, [loadOrders]);
+  useEffect(() => {
+    fetch('/api/admin/analytics', { headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => setMoney((body as { analytics?: DashboardMoneyEvidence } | null)?.analytics ?? null))
+      .catch(() => setMoney(null));
+  }, []);
   // A selection belongs to the view it was made in.
   useEffect(() => { setPicked(new Set()); }, [orderView]);
   useEffect(() => {
@@ -1470,8 +1576,8 @@ export function AOrders() {
       {/* KPI row — 4-across desktop, 2x2 tablet, single column mobile */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { l: 'Total Orders', v: String(stats.total), icon: ShoppingCart, tint: 'bg-[#f6efdd] text-[#9a6f16]', sub: stats.total ? 'real orders' : 'No orders yet' },
-          { l: 'Revenue', v: `$${stats.revenue.toFixed(2)}`, icon: CurrencyDollar, tint: 'bg-[#f6efdd] text-[#9a6f16]', sub: stats.total ? 'from real orders' : 'No revenue yet' },
+          { l: 'Total Orders', v: String(stats.total), icon: ShoppingCart, tint: 'bg-[#f6efdd] text-[#9a6f16]', sub: stats.total ? 'orders in the store, paid or not' : 'No orders yet' },
+          { l: 'Revenue', v: `$${stats.revenue.toFixed(2)}`, icon: CurrencyDollar, tint: 'bg-[#f6efdd] text-[#9a6f16]', sub: stats.total ? 'orders the store reports paid — see the basis below' : 'No order the store reports paid' },
           { l: 'Needs Fulfilment', v: String(stats.pending), icon: Warning, tint: 'bg-amber-50 text-amber-600', sub: stats.pending ? 'awaiting fulfilment' : 'All fulfilled' },
           { l: 'Shipped / Delivered', v: String(stats.shipped), icon: Truck, tint: 'bg-emerald-50 text-emerald-600', sub: stats.shipped ? 'on the way or delivered' : 'Nothing shipped yet' },
         ].map((k, i) => (
@@ -1485,6 +1591,77 @@ export function AOrders() {
           </div>
         ))}
       </div>
+
+      {/* What the money figure is made of.
+
+          Each bucket is labelled and none is added into another. The three ways an order
+          can be "paid" here are not interchangeable — a total that mixes paid-with-a-
+          provider-reference, paid-with-nothing-on-the-record and gateway-test-shaped is
+          exactly what must not be read as collected cash. Provider-level confirmation is
+          a separate check (docs/production/CUSTOMER-DATA-AUDIT-2026-10-11.md): nothing on
+          this screen contacts a gateway.
+
+          A missing payload says so instead of showing zeroes: an unknown revenue and a
+          revenue of zero are different claims. */}
+      {money ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(27,31,39,0.04)]">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-sm font-bold text-gray-900">What the money figure is made of</p>
+            <p className="text-[10px] text-gray-500">
+              every figure from the store&apos;s own order records
+            </p>
+          </div>
+          <p className="mt-1 text-[11px] text-gray-500">{money.revenueBasis ?? 'Basis not reported by this deployment.'}</p>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              { l: 'Store reports paid', b: money.paymentEvidence?.storePaid, tone: 'text-gray-900' },
+              { l: 'Carries a provider reference', b: money.paymentEvidence?.withProviderReference, tone: 'text-emerald-700' },
+              { l: 'Paid, no reference', b: money.paymentEvidence?.withoutProviderReference, tone: 'text-amber-700' },
+              { l: 'Gateway-test shaped', b: money.paymentEvidence?.testShaped, tone: 'text-amber-700' },
+              { l: 'Awaiting payment', b: money.paymentEvidence?.awaitingPayment, tone: 'text-gray-500' },
+              { l: 'Failed', b: money.paymentEvidence?.failed, tone: 'text-red-600' },
+            ].map((bucket) => (
+              <div key={bucket.l} className="rounded-lg border border-gray-100 bg-gray-50/60 px-2.5 py-2">
+                <p className={`text-sm font-bold ${bucket.tone}`}>
+                  {bucket.b ? `$${bucket.b.total.toFixed(2)}` : 'Not reported'}
+                </p>
+                <p className="text-[10px] font-medium text-gray-600">{bucket.l}</p>
+                <p className="text-[10px] text-gray-400">{bucket.b ? `${bucket.b.orders} order(s)` : '—'}</p>
+              </div>
+            ))}
+          </div>
+          {money.paymentEvidence && money.paymentEvidence.testShaped.orders > 0 ? (
+            <p className="mt-3 text-[11px] text-amber-800">
+              {money.paymentEvidence.testShaped.orders} order(s) are shaped like gateway tests and the store counts
+              them as paid: they are excluded from the chart and from best sellers, and nothing has been moved or
+              deleted. Without them the store&apos;s paid total is
+              ${money.paymentEvidence.excludingTestShaped.toFixed(2)}.
+            </p>
+          ) : null}
+          {money.notCountedInRevenue && money.notCountedInRevenue.orders > 0 ? (
+            <p className="mt-2 text-[11px] text-gray-500">
+              Not counted as revenue in the last 30 days: {money.notCountedInRevenue.orders} order(s)
+              (${money.notCountedInRevenue.total.toFixed(2)}) —{' '}
+              {Object.entries(money.notCountedInRevenue.statuses)
+                .map(([status, count]) => `${count} ${status}`)
+                .join(', ')}
+              .
+            </p>
+          ) : null}
+          <p className="mt-2 text-[11px] text-gray-500">
+            A provider reference records that a reference was written onto the order; it is not confirmation the
+            money arrived. Provider-level confirmation, refunds and disputes are a separate check.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(27,31,39,0.04)]">
+          <p className="text-sm font-bold text-gray-900">What the money figure is made of</p>
+          <p className="mt-1 text-[11px] text-gray-500">
+            Not reported — the analytics read did not answer, so the basis of the revenue figure above is unknown
+            rather than empty. Refresh, or open Analytics.
+          </p>
+        </div>
+      )}
 
       {/* ERP Sync — Embani LLC. There is no server-side ERP endpoint in this
           deployment, so this used to fetch a missing route on every mount and

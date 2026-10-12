@@ -18,7 +18,7 @@
 
 import { getAccessToken } from '@/services/wordpressAdminAuth';
 import type { Order, OrderItem, Profile } from '@/lib/commerce/types';
-import type { ActivityBasis } from '@/lib/woo/customerActivity';
+import type { AccountKind, ActivityBasis, LocalShape } from '@/lib/woo/customerActivity';
 
 async function authHeaders(): Promise<Record<string, string>> {
   const token = getAccessToken();
@@ -204,15 +204,36 @@ export interface AdminCustomer {
   lastOrderAt: string | null;
   registeredAt: string | null;
   isPayingCustomer: boolean;
+  /** Staff, the census's suspicious review list, a verified buyer, or an account with no order. */
+  accountKind: AccountKind;
+  /** The evidence for a `suspicious` row, in words. Null when nothing matched. */
+  suspiciousReason: string | null;
+  /** The address's local-part shape — the evidence, not a verdict. */
+  addressShape: LocalShape;
 }
 
+/** The kinds the Customers screen can be narrowed to, guests included. */
+export type AdminCustomerKind = AccountKind | 'all' | 'guest';
+
 export async function fetchAdminCustomers(
-  options: { search?: string; page?: number; limit?: number; payingOnly?: boolean } = {}
+  options: {
+    search?: string;
+    page?: number;
+    limit?: number;
+    payingOnly?: boolean;
+    kind?: AdminCustomerKind;
+  } = {}
 ): Promise<{
   customers: AdminCustomer[];
   count: number;
   totalPages: number;
   page: number;
+  /** The kind this page was narrowed to. */
+  kind?: AdminCustomerKind;
+  /** How many of the returned rows are each kind — per page, not store-wide. */
+  kinds?: Record<string, number>;
+  /** Orders with no customer account attached, from the same order read. */
+  guests?: { addresses: number; orders: number };
   /** Buyers among the returned page, verified against the store's orders. */
   buyersVerified?: number;
   /** How far the order read reached, when a buyer filter was applied. */
@@ -223,6 +244,7 @@ export async function fetchAdminCustomers(
   if (options.page) params.set('page', String(options.page));
   if (options.limit) params.set('limit', String(options.limit));
   if (options.payingOnly) params.set('payingOnly', '1');
+  if (options.kind && options.kind !== 'all') params.set('kind', options.kind);
   const query = params.toString();
   return getJson(`/api/admin/customers${query ? `?${query}` : ''}`);
 }

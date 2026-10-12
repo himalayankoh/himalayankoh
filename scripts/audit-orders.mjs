@@ -81,6 +81,163 @@ async function stripeGet(pathname) {
   return { status: res.status, body };
 }
 
+/**
+ * Order notes, as the store's own staff and gateways wrote them.
+ *
+ * This is where a payment leaves its own trace when the meta did not: WooCommerce
+ * gateways add a note such as "PayPal Transaction ID: 5O1..." or "Amazon Pay
+ * authorization … settled", and an owner marking an order paid by hand leaves a
+ * note saying so. Read-only, one request per order.
+ */
+async function orderNotes(id) {
+  const res = await fetch(`${BASE}/wp-json/wc/v3/orders/${id}/notes?per_page=100`, {
+    headers: { Authorization: wooAuth, Accept: 'application/json' },
+    cache: 'no-store',
+  });
+  if (!res.ok) return { error: `HTTP ${res.status}`, notes: [] };
+  const rows = await res.json();
+  return {
+    error: null,
+    notes: (Array.isArray(rows) ? rows : []).map((note) => ({
+      added: note.date_created_gmt ? `${note.date_created_gmt}Z` : null,
+      author: note.author || null,
+      // `customer_note: false` means an internal note — the kind a gateway or an
+      // administrator leaves, which is the evidence this is looking for.
+      internal: note.customer_note === false,
+      text: String(note.note || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    })),
+  };
+}
+
+/**
+ * Every charge and payment intent this Stripe account has ever recorded.
+ *
+ * Read once, for the reason the unverified orders are hard: an order whose
+ * transaction reference was never written down still has a counterpart on the
+ * provider's side, and the only way to find it is to look at what the account
+ * actually holds — by amount, by date, and by the metadata the checkout attached.
+ *
+ * Both collections are read because age decides which one holds the record:
+ * PaymentIntents cover the current checkout, while older charges predate it.
+ */
+async function stripeHistory(limit = 100) {
+  if (!stripeKey) {
+    return { available: false, charges: [], intents: [], errors: ['no Stripe key in the environment'] };
+  }
+
+  const charges = [];
+  const intents = [];
+  const errors = [];
+
+  for (const [collection, sink] of [
+    ['charges', charges],
+    ['payment_intents', intents],
+  ]) {
+    // `charges` hides failed/uncaptured rows unless asked for them, and those are
+    // exactly the rows that explain an order that looks paid and is not.
+    for (const query of [`?limit=${limit}`, `?limit=${limit}&status=all`]) {
+      const { status, body } = await stripeGet(`${collection}${query}`);
+      if (status !== 200) {
+        errors.push(`${collection}${query}: HTTP ${status} ${body?.error?.message || ''}`.trim());
+        break;
+      }
+      for (const row of body.data || []) sink.push(row);
+      if ((body.data || []).length < limit) break;
+    }
+  }
+
+  return { available: !errors.length, charges, intents, errors };
+}
+
+/**
+ * The order as the app's own store held it before the migration to WooCommerce.
+ *
+ * Fourteen orders were imported from the app's Supabase `orders` table, and that row
+ * carries `stripe_payment_intent_id` and its own `payment_status` — historical
+ * evidence that exists nowhere in WooCommerce. The export is gitignored
+ * (`supabase-backup/legacy-orders.archive.json`) and may be absent on another
+ * machine, which is reported rather than assumed.
+ */
+function legacyOrderArchive() {
+  const file = path.join(process.cwd(), 'supabase-backup', 'legacy-orders.archive.json');
+  if (!fs.existsSync(file)) {
+    return { available: false, bySupabaseId: new Map(), count: 0, note: `${file} is not present` };
+  }
+  const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const bySupabaseId = new Map();
+  for (const order of parsed.orders || []) bySupabaseId.set(String(order.id), order);
+  return { available: true, exportedAt: parsed.exportedAt, bySupabaseId, count: bySupabaseId.size };
+}
+
+/**
+ * Does the provider's own record match this order?
+ *
+ * Two kinds of match, and they are not equally strong, so they are labelled
+ * separately: a **reference** the order's own metadata names, and a **candidate**
+ * found by amount, currency and date. A candidate is evidence, not proof — two orders
+ * for $20.09 in one afternoon would both match the same charge — so it never settles
+ * an order on its own.
+ */
+function matchAgainstStripe(order, history) {
+  const wanted = Number(order.total);
+  const currency = String(order.currency || 'usd').toLowerCase();
+  const placed = new Date(order.date_created_gmt ? `${order.date_created_gmt}Z` : order.date_created);
+  const email = String(order.billing?.email || '').toLowerCase();
+
+  const rows = [
+    ...history.charges.map((row) => ({ kind: 'charge', row })),
+    ...history.intents.map((row) => ({ kind: 'payment_intent', row })),
+  ];
+
+  const reference = [];
+  const candidates = [];
+
+  for (const { kind, row } of rows) {
+    const amount = Number(row.amount ?? 0) / 100;
+    const created = row.created ? new Date(row.created * 1000) : null;
+    const days = created && !Number.isNaN(placed.getTime()) ? Math.abs(created - placed) / 86400000 : null;
+    const sameMoney = Math.abs(amount - wanted) < 0.005 && String(row.currency || currency).toLowerCase() === currency;
+    const sameWindow = days !== null && days <= 3;
+
+    // The metadata the checkout attached is the strongest link available when no
+    // reference was stored: it names the store's own order or invoice number.
+    const metaText = JSON.stringify(row.metadata || {}).toLowerCase();
+    const namesThisOrder =
+      metaText.includes(String(order.number).toLowerCase()) ||
+      (String(order.id).length > 3 && metaText.includes(String(order.id)));
+
+    const summary = {
+      kind,
+      id: row.id,
+      amount,
+      currency: row.currency,
+      created: created ? created.toISOString() : null,
+      status: row.status,
+      livemode: row.livemode,
+    };
+
+    if (namesThisOrder && sameMoney) {
+      reference.push({ ...summary, via: 'provider metadata names this order' });
+      continue;
+    }
+
+    if (sameMoney && sameWindow) {
+      candidates.push({
+        ...summary,
+        receiptEmailMatches:
+          Boolean(email) &&
+          String(row.receipt_email || row.billing_details?.email || '').toLowerCase() === email,
+        daysFromOrder: days === null ? null : Math.round(days * 10) / 10,
+      });
+    }
+  }
+
+  return { reference, candidates };
+}
+
 console.log(`Order reconciliation against ${BASE} (read-only)`);
 console.log(`Stripe: ${stripeMode}\n`);
 
@@ -93,6 +250,14 @@ if (!res.ok) {
   process.exit(1);
 }
 const orders = await res.json();
+
+const history = await stripeHistory();
+const legacy = legacyOrderArchive();
+
+console.log(`Stripe history: ${history.available ? `${history.charges.length} charge(s), ${history.intents.length} payment intent(s)` : `unavailable (${(history.errors || []).join('; ')})`}`);
+console.log(
+  `App-era order archive: ${legacy.available ? `${legacy.count} order(s), exported ${legacy.exportedAt}` : `not available (${legacy.note})`}\n`
+);
 
 const report = [];
 
@@ -116,6 +281,25 @@ for (const o of orders) {
     } else if (/^txn_/.test(value) || value.length > 6) {
       providerFindings.push({ key, value, via: 'unrecognised-reference', status: null });
     }
+  }
+
+  /* The order's own history, and the provider's own records. */
+  const notes = await orderNotes(o.id);
+  const stripe = matchAgainstStripe(o, history);
+  const supabaseId = String(meta._hk_legacy_supabase_order_id || '');
+  const source = supabaseId && legacy.available ? legacy.bySupabaseId.get(supabaseId) || null : null;
+  if (source?.stripe_payment_intent_id) {
+    const { status: httpStatus, body } = await stripeGet(`payment_intents/${encodeURIComponent(source.stripe_payment_intent_id)}`);
+    providerFindings.push({
+      key: 'legacy_orders.stripe_payment_intent_id',
+      value: source.stripe_payment_intent_id,
+      via: 'stripe/payment_intents (app-era record)',
+      status: httpStatus,
+      livemode: body?.livemode,
+      state: body?.status,
+      amount: body?.amount_received ?? body?.amount,
+      currency: body?.currency,
+    });
   }
 
   const paidViaProvider = providerFindings.some((f) => f.paid === true || f.state === 'succeeded' || f.state === 'captured');
@@ -179,6 +363,19 @@ for (const o of orders) {
     items: (o.line_items || []).map((li) => `${li.name}×${li.quantity}`),
     txnKeys,
     providerFindings,
+    notes,
+    stripe,
+    appEraSource: source
+      ? {
+          supabaseId,
+          orderNumber: source.order_number,
+          status: source.status,
+          paymentStatus: source.payment_status,
+          paymentMethod: source.payment_method,
+          stripePaymentIntentId: source.stripe_payment_intent_id || null,
+          createdAt: source.created_at,
+        }
+      : null,
     classification,
     reasons,
   });
@@ -200,6 +397,25 @@ for (const r of report.sort((a, b) => a.created.localeCompare(b.created))) {
   console.log(`     txn keys: ${r.txnKeys.join(', ') || '(none)'}`);
   for (const f of r.providerFindings) {
     console.log(`     provider[${f.via}] ${f.key} → HTTP ${f.status} livemode=${f.livemode} state=${f.state} amount=${f.amount} refunded=${f.refunded ?? '-'}`);
+  }
+  if (r.appEraSource) {
+    console.log(
+      `     app-era row: ${r.appEraSource.orderNumber} status=${r.appEraSource.status} payment=${r.appEraSource.paymentStatus} ` +
+        `method=${r.appEraSource.paymentMethod || '(none)'} intent=${r.appEraSource.stripePaymentIntentId || '(none)'}`
+    );
+  }
+  for (const note of r.notes.notes || []) {
+    console.log(`     note ${note.added} ${note.internal ? '[internal]' : '[to customer]'} ${note.author || ''}: ${note.text.slice(0, 220)}`);
+  }
+  if (r.notes.error) console.log(`     notes could not be read: ${r.notes.error}`);
+  for (const hit of r.stripe.reference) {
+    console.log(`     stripe reference: ${hit.kind} ${hit.id} ${hit.amount} ${hit.currency} ${hit.status} livemode=${hit.livemode} — ${hit.via}`);
+  }
+  for (const hit of r.stripe.candidates) {
+    console.log(
+      `     stripe candidate: ${hit.kind} ${hit.id} ${hit.amount} ${hit.currency} ${hit.status} livemode=${hit.livemode} ` +
+        `±${hit.daysFromOrder}d emailMatches=${hit.receiptEmailMatches}`
+    );
   }
   if (r.reasons.length) console.log(`     why: ${r.reasons.join('; ')}`);
   console.log('');

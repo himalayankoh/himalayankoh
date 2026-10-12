@@ -23,22 +23,29 @@ import { publicMessage } from '@/lib/http/publicError';
 import { readCartSession, writeCartSession } from '@/lib/cart/cookies';
 import { adoptAccountCart } from '@/lib/cart/accountCart';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { clientIp } from '@/lib/http/clientIp';
 import { signupAbuseSignal, signupRefusal } from '@/lib/auth/signupGuard';
 
 /**
  * Sign-up is the one public endpoint on this site that *creates a record* in the
  * store, so it is the one a bot can use to fill the customer list — which is how
  * the store's 2,700-account list grew (see the census in
- * `docs/production/CUSTOMER-DATA-AUDIT-2026-10-11.md`). The two cheap controls
- * below are what stops that here: a per-IP budget, and a shape check on the
- * address before WordPress is asked to create anything.
+ * `docs/production/CUSTOMER-DATA-AUDIT-2026-10-11.md`). Three controls stand in the
+ * way, and they are deliberately not the same control three times:
+ *
+ *   1. a shape check on the address, before WordPress is asked for anything;
+ *   2. this per-IP budget, which is per-isolate Worker memory — it bounds one worker,
+ *      not one shopper, and it refuses an obvious flood in the cheapest place there is;
+ *   3. the durable budget in WordPress (`X-HK-Client-IP` above,
+ *      `hk_storefront_signup_budget_check` in the plugin), which is the count that a
+ *      caller cannot escape by arriving on a different isolate.
  */
 const SIGNUP_RATE_LIMIT = { limit: 5, windowMs: 60 * 60 * 1000 };
 
 export async function POST(request: Request) {
   // Rate limit first: it costs nothing and it must apply even to a deployment
   // that cannot create accounts at all, because the attempt itself is the signal.
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  const ip = clientIp(request);
   const rl = checkRateLimit(`signup:${ip}`, SIGNUP_RATE_LIMIT);
   if (!rl.allowed) {
     console.warn(`[signup] rate limited ${ip} (${SIGNUP_RATE_LIMIT.limit} per hour)`);
@@ -91,7 +98,7 @@ export async function POST(request: Request) {
   const signal = signupAbuseSignal(email);
   if (signal) console.warn(`[signup] abuse signal ${signal} from ${ip}`);
 
-  const created = await createWordPressCustomer({ email, password, name });
+  const created = await createWordPressCustomer({ email, password, name, clientIp: ip });
   if (!created.ok) {
     return NextResponse.json({ error: created.error }, { status: created.status });
   }

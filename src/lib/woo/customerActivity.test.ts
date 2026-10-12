@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  accountKind,
   activityBasis,
   buildOrderActivity,
+  guestOrderSummary,
   isVerifiedBuyer,
+  localShape,
+  suspiciousAccount,
   verifiedOrderCount,
 } from './customerActivity';
 
@@ -114,5 +118,108 @@ describe('activityBasis', () => {
     // ...as does a partial read, where the absence of an order proves nothing.
     const partial = buildOrderActivity({ orders: [{ customer_id: 20 }], ordersReported: 900 });
     expect(activityBasis(partial, { id: 999, email: 'nobody@example.net' })).toBe('not-verifiable');
+  });
+});
+
+describe('guest orders', () => {
+  it('counts only the orders that carry no customer account', () => {
+    const index = buildOrderActivity({
+      orders: [
+        { customer_id: 0, billing: { email: 'guest@example.net' } },
+        { customer_id: 0, billing: { email: 'guest@example.net' } },
+        { customer_id: 20, billing: { email: 'account@example.net' } },
+      ],
+      ordersReported: 3,
+    });
+
+    expect(index.guestOrdersByEmail.get('guest@example.net')).toBe(2);
+    // An account's order is in the buyer index but never in the guest half.
+    expect(index.ordersByEmail.get('account@example.net')).toBe(1);
+    expect(index.guestOrdersByEmail.has('account@example.net')).toBe(false);
+    expect(guestOrderSummary(index)).toEqual({ addresses: 1, orders: 2 });
+  });
+
+  it('reports nothing rather than zero when there is no order index at all', () => {
+    expect(guestOrderSummary(null)).toEqual({ addresses: 0, orders: 0 });
+  });
+});
+
+describe('suspicious accounts', () => {
+  it('names a reserved domain as certain, because no customer can own one', () => {
+    const flags = suspiciousAccount({ email: 'a9f3aedfbbed4baf@example.com' });
+    expect(flags.suspicious).toBe(true);
+    expect(flags.reason).toMatch(/reserved for testing/);
+  });
+
+  it('names a machine-generated address with no name, in the census\u2019s own vocabulary', () => {
+    const flags = suspiciousAccount({ email: 'a9f3aedfbbed4baf@gmail.com' });
+    expect(flags.suspicious).toBe(true);
+    expect(flags.shape).toBe('hex-run');
+    expect(flags.reason).toMatch(/machine-generated/);
+  });
+
+  it('calls a machine-shaped address unproven rather than proven', () => {
+    const flags = suspiciousAccount({ email: 'zx9k2m4p7q1w@gmail.com' });
+    expect(flags.shape).toBe('long-mixed');
+    expect(flags.suspicious).toBe(true);
+    expect(flags.reason).toMatch(/unproven/);
+  });
+
+  it('does not call a nameless human-shaped address suspicious: the form collected no name from anybody', () => {
+    const flags = suspiciousAccount({ email: 'ayaz.bashir@gmail.com' });
+    expect(flags.shape).toBe('first.last');
+    expect(flags.suspicious).toBe(false);
+    expect(flags.reason).toBeNull();
+  });
+
+  it('never calls a named account suspicious, however odd its address looks', () => {
+    expect(suspiciousAccount({ first_name: 'Ada', email: 'a9f3aedfbbed4baf@gmail.com' }).suspicious).toBe(false);
+  });
+
+  it('reads the same address shapes the cleanup census does', () => {
+    expect(localShape('413c4d502c')).toBe('hex-run');
+    // Hex first, exactly as the census does it: a run of ten digits is also a run of
+    // hex characters, so `digits-only` is what is left once the hex rule has had its
+    // say — a short numeric local part. The order matters, because a console that
+    // classified these two the other way round would put them in different buckets
+    // from the manifest it is reviewing.
+    expect(localShape('9123456789')).toBe('hex-run');
+    expect(localShape('1234567')).toBe('digits-only');
+    expect(localShape('ayaz')).toBe('letters-only');
+    expect(localShape('ayaz99')).toBe('letters+digits');
+    expect(localShape('')).toBe('empty');
+  });
+});
+
+describe('accountKind', () => {
+  const index = buildOrderActivity({
+    orders: [{ customer_id: 16 }, { customer_id: 0, billing: { email: 'guest@himalayankoh.com' } }],
+    ordersReported: 2,
+  });
+
+  it('puts staff first, so a paying administrator is never presented as a shopper', () => {
+    expect(accountKind({ id: 16, role: 'administrator', email: 'owner@himalayankoh.com' }, index)).toBe(
+      'administrative'
+    );
+    expect(accountKind({ id: 26, role: 'shop_manager', email: 'staff@himalayankoh.com' }, index)).toBe(
+      'administrative'
+    );
+    expect(accountKind({ id: 26, role: null, email: 'plain@himalayankoh.com' }, index)).toBe('registered');
+  });
+
+  it('separates a verified buyer from an account with no order against it', () => {
+    expect(accountKind({ id: 16, role: 'customer', email: 'buyer@himalayankoh.com' }, index)).toBe('buyer');
+    expect(accountKind({ id: 999, role: 'customer', email: 'nobody@himalayankoh.com' }, index)).toBe(
+      'registered'
+    );
+  });
+
+  it('ranks suspicious ahead of registered, because that is the review list', () => {
+    expect(accountKind({ id: 2035, role: 'customer', email: '413c4d502c@gmail.com' }, index)).toBe('suspicious');
+  });
+
+  it('never calls an account a buyer when the order book could not be read', () => {
+    const partial = buildOrderActivity({ orders: [{ customer_id: 20 }], ordersReported: 900 });
+    expect(accountKind({ id: 999, role: 'customer', email: 'x@himalayankoh.com' }, partial)).toBe('registered');
   });
 });

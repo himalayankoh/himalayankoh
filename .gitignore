@@ -61,3 +61,14 @@ public/qa-screenshots/
 supabase-backup/
 preview-*.png
 sales-*.png
+
+# Per-record customer exports. Rows about people belong in backups/, never in docs/:
+# `customer-cleanup-manifest-2026-10-11.csv` was committed here once, and a digest of an
+# address's local part beside the domain in clear is not anonymous. The counts go in the
+# document; `scripts/check-tracked-customer-data.mjs` fails the build if a tracked export
+# reappears.
+docs/production/*-cleanup-*.csv
+docs/production/*-manifest-*.csv
+docs/production/*-census-*.csv
+docs/production/*-export-*.csv
+docs/production/*customer*.csv

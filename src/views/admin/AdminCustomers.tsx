@@ -14,8 +14,43 @@ import {
   AdminTableSkeleton,
 } from '../../components/admin/AdminUI';
 import { ICON_TILE, ICON_TILE_TONES, INPUT } from '../../components/admin/adminTheme';
-import { fetchAdminCustomers, type AdminCustomer } from '../../lib/admin/consoleApi';
+import {
+  fetchAdminCustomers,
+  type AdminCustomer,
+  type AdminCustomerKind,
+} from '../../lib/admin/consoleApi';
 import { getErrorMessage } from '../../lib/errors';
+
+/**
+ * The kinds of account this screen can be narrowed to.
+ *
+ * "Guest orders" is here because leaving it out would hide a real part of the order
+ * book: those orders carry no account at all, so they cannot appear in a list of
+ * accounts. Choosing it shows the guest panel rather than silently returning every
+ * account as if that were the answer.
+ *
+ * "Suspicious (review)" is the census's review list — reserved domains, and nameless
+ * records with a machine-generated address — and it is a way to *look* at rows, never a
+ * way to remove them. Choosing it changes what is listed and nothing else.
+ */
+const KIND_OPTIONS: { value: AdminCustomerKind; label: string }[] = [
+  { value: 'all', label: 'All accounts' },
+  { value: 'buyer', label: 'Verified buyers' },
+  { value: 'registered', label: 'Registered, no order' },
+  { value: 'administrative', label: 'Staff accounts' },
+  { value: 'suspicious', label: 'Suspicious (review)' },
+  { value: 'guest', label: 'Guest orders (no account)' },
+];
+
+/** The chip a row carries, so a row's kind is never implied by its position. */
+const KIND_LABEL: Record<AdminCustomerKind, string> = {
+  all: 'Account',
+  buyer: 'Verified buyer',
+  registered: 'No order',
+  administrative: 'Staff',
+  suspicious: 'Suspicious',
+  guest: 'Guest order',
+};
 
 const COLUMNS = [
   { key: 'customer', label: 'Customer', width: '32%' },
@@ -52,6 +87,10 @@ export default function AdminCustomers() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [buyersOnly, setBuyersOnly] = useState(false);
+  const [kind, setKind] = useState<AdminCustomerKind>('all');
+  /** Per-page counts by kind, and the guest-order summary, both from the same read. */
+  const [kinds, setKinds] = useState<Record<string, number> | null>(null);
+  const [guests, setGuests] = useState<{ addresses: number; orders: number } | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -65,8 +104,11 @@ export default function AdminCustomers() {
         page,
         limit: 25,
         payingOnly: buyersOnly,
+        kind,
       });
       setCustomers(result.customers);
+      setKinds(result.kinds ?? null);
+      setGuests(result.guests ?? null);
       setTotalPages(result.totalPages || 1);
       setTotalCount(result.count);
     } catch (err) {
@@ -75,7 +117,7 @@ export default function AdminCustomers() {
     } finally {
       setLoading(false);
     }
-  }, [search, page, buyersOnly]);
+  }, [search, page, buyersOnly, kind]);
 
   useEffect(() => {
     void fetchCustomers();
@@ -121,6 +163,29 @@ export default function AdminCustomers() {
         showing a zero. Individual orders are on the Orders screen, which reads the same store.
       </AdminNotice>
 
+      <AdminNotice tone="info" title="What each row's kind means">
+        <strong>Verified buyer</strong> — an order exists, matched by customer id or by a guest order&apos;s billing
+        address. <strong>No order</strong> — the account exists and no order carries it; that is a checked answer only
+        when the order read covered every order, and the row says so when it did not.
+        <strong>Staff</strong> — a role that is not <em>customer</em>; the store&apos;s own administrator account carries
+        two completed orders, so it is a buyer <em>and</em> staff, and the chip says which it is being shown as.
+        <strong>Suspicious</strong> — the cleanup census&apos;s review list: a reserved domain (which no customer can
+        own), or no name on the record with a machine-generated address local part. This filter only looks; nothing
+        here disables, moves or deletes an account, and the reasons come from
+        {' '}
+        <code>docs/production/CUSTOMER-DATA-AUDIT-2026-10-11.md</code>.
+      </AdminNotice>
+
+      {kind === 'guest' && (
+        <AdminNotice tone="info" title="Guest orders have no account row">
+          {guests
+            ? `${guests.orders} order(s) in the store carry no customer account — ${guests.addresses} distinct billing ` +
+              'address(es) between them. They cannot appear in a list of accounts, so this filter reports the count ' +
+              'rather than showing every account as if it were the answer. The orders themselves are on the Orders screen.'
+            : 'The order book could not be read, so the guest order count is not reported — it is not shown as zero.'}
+        </AdminNotice>
+      )}
+
       <AdminNotice tone="info" title="This list is WooCommerce, and it is read-only">
         WooCommerce owns customer records, order counts and spend. Accounts and roles — who can sign in, and as
         what — live on the{' '}
@@ -163,16 +228,44 @@ export default function AdminCustomers() {
           <label className="flex items-center gap-2 text-sm text-admin-ink">
             <input
               type="checkbox"
-              checked={buyersOnly}
+              checked={kind === 'buyer'}
               onChange={(event) => {
                 setBuyersOnly(event.target.checked);
+                setKind(event.target.checked ? 'buyer' : 'all');
                 setPage(1);
               }}
             />
             Buyers only
           </label>
+          <label className="flex items-center gap-2 text-sm text-admin-ink">
+            <span className="text-admin-muted">Show</span>
+            <select
+              value={kind}
+              onChange={(event) => {
+                const next = event.target.value as AdminCustomerKind;
+                setKind(next);
+                setBuyersOnly(next === 'buyer');
+                setPage(1);
+              }}
+              aria-label="Filter accounts by kind"
+              className="rounded-lg border border-admin-line bg-white px-2 py-1 text-sm text-admin-ink"
+            >
+              {KIND_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <span className="ml-auto text-[11px] font-semibold uppercase tracking-[0.08em] text-admin-muted">
-            {loading ? 'Reading…' : `${totalCount} customer${totalCount === 1 ? '' : 's'}`}
+            {loading
+              ? 'Reading…'
+              : `${totalCount} account${totalCount === 1 ? '' : 's'} in the store` +
+                (kind !== 'all' && kinds
+                  ? ` · ${kinds[kind] ?? 0} of ${customers.length} on this page match "${KIND_LABEL[kind]}"`
+                  : kinds
+                    ? ` · this page: ${kinds.buyer ?? 0} buyer(s), ${kinds.registered ?? 0} no order, ${kinds.administrative ?? 0} staff, ${kinds.suspicious ?? 0} suspicious`
+                    : '')}
           </span>
         </div>
 
@@ -187,11 +280,13 @@ export default function AdminCustomers() {
                     <Users size={20} />
                   </span>
                   <p className="text-sm font-semibold text-admin-ink">
-                    {search || buyersOnly ? 'No customer in the store matches this' : 'The store reports no customers yet'}
+                    {search || buyersOnly || kind !== 'all'
+                      ? 'No account in the store matches this'
+                      : 'The store reports no accounts yet'}
                   </p>
                   <p className="text-sm text-admin-muted">
-                    {search || buyersOnly
-                      ? 'Try a different name or email, or clear the buyers-only filter.'
+                    {search || buyersOnly || kind !== 'all'
+                      ? 'Try a different name or email, or set the filter back to All accounts.'
                       : 'Customer records appear here as accounts are created in WooCommerce.'}
                   </p>
                 </div>
@@ -209,6 +304,7 @@ export default function AdminCustomers() {
                       <p className="truncate font-medium text-admin-ink">{customer.name}</p>
                       <p className="flex items-center gap-2 text-[11px] text-admin-muted">
                         <span>#{customer.id}</span>
+                        <AdminChip tone="muted">{KIND_LABEL[customer.accountKind] ?? 'Account'}</AdminChip>
                         {customer.role && customer.role !== 'customer' && (
                           <AdminChip tone="muted">{customer.role}</AdminChip>
                         )}

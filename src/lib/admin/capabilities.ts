@@ -34,6 +34,7 @@ export type CapabilityId =
   | 'search-console'
   | 'adsense'
   /* Operations */
+  | 'payment-provider-verification'
   | 'payments'
   | 'shipping-labels'
   | 'crm-sync'
@@ -65,15 +66,20 @@ export const CAPABILITIES: Record<CapabilityId, Capability> = {
     // the setup docs. They are deliberately not spelled out here: this record is
     // rendered in the browser, and a bundle naming the credential variables is
     // how the next component ends up reading the source directly.
+    // This used to say "read scope on the staging store ... never the production key",
+    // which stopped describing this deployment the moment the console was pointed at
+    // the live store: it reads the 2,700-account customer list and the real order book
+    // from there, and a sentence promising otherwise is a sentence a reviewer cannot
+    // trust. What is true of every deployment is the server-side boundary.
     requires:
-      'A WooCommerce REST API key with read scope on the staging store, configured server-side for this deployment — never in a public variable, and never the production key.',
+      'A WooCommerce REST API key with read scope on the store this deployment is pointed at — the live store, on production — held server-side and never in a public variable.',
   },
   'woo-write': {
     id: 'woo-write',
     label: 'WooCommerce write',
     enables: 'Creating and editing products, prices, stock, categories and coupons from the console.',
     requires:
-      'The same key with read/write scope on the staging store. Every write on the products console goes to the store; nothing falls back to another database.',
+      'The same key with read/write scope on that store. Every write on the products console goes to the store; nothing falls back to another database.',
   },
   'ai-text': {
     id: 'ai-text',
@@ -115,6 +121,23 @@ export const CAPABILITIES: Record<CapabilityId, Capability> = {
     enables: 'Ad placements on public content pages, reserved with fixed dimensions so they add no layout shift.',
     requires:
       'An AdSense publisher ID and ads.txt for himalayankoh.com. Never rendered on /admin, /login, /account, /cart or /checkout.',
+  },
+  /**
+   * Why a paid order is reported as "the store says so" rather than "confirmed".
+   *
+   * This capability is deliberately separate from `payments`: taking a payment and being
+   * able to *prove* one was taken are different things, and the console's honesty about
+   * revenue depends on which gateway credentials exist. Stripe is configured; the
+   * historical gateways are not, which is exactly why two Amazon Pay orders and one
+   * PayPal order are reported as unverifiable rather than counted as collected.
+   */
+  'payment-provider-verification': {
+    id: 'payment-provider-verification',
+    label: 'Provider verification',
+    enables:
+      'Whether each paid order was actually collected — Stripe charges and payment intents, PayPal captures, Amazon Pay captures, Square transactions — read back from the provider rather than inferred from the order.',
+    requires:
+      'A live Stripe secret key (configured) plus read credentials for every other gateway this store has taken money through: PayPal REST client id and secret, Amazon Pay (Login with Amazon client id and merchant id), Square access token. Until those exist, the console reports what the order record carries — a reference, or nothing — and never calls it confirmed.',
   },
   payments: {
     id: 'payments',

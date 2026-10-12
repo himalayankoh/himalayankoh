@@ -137,3 +137,49 @@ describe('the console row', () => {
     expect(row.activityBasis).toBe('customer-id');
   });
 });
+
+/**
+ * The kinds of account, and the filter that narrows to them.
+ *
+ * The point of the separation is that four different things were sharing one word on
+ * this screen: an account that has bought, an account that has not, a staff account, and
+ * a record from the cleanup census. Each is now a kind a caller can ask for by name.
+ */
+describe('account kinds', () => {
+  const index = buildOrderActivity({ orders: [{ customer_id: 16 }], ordersReported: 1 });
+
+  it('narrows the store list to one kind, and only to the rows it matches', async () => {
+    response.mockResolvedValueOnce(
+      pageOf([
+        customer({ id: 2035, email: '413c4d502c@gmail.com' }),
+        customer({ id: 17, email: 'buyer@himalayankoh.com' }),
+      ])
+    );
+
+    const page = await listWooCustomers({ kind: 'suspicious', activity: index });
+
+    expect(page.customers.map((row) => row.id)).toEqual([2035]);
+  });
+
+  it('leaves the list whole for kind=all', async () => {
+    response.mockResolvedValueOnce(pageOf([customer({ id: 2035, email: '413c4d502c@gmail.com' }), customer({ id: 17 })]));
+
+    const page = await listWooCustomers({ kind: 'all', activity: index, role: 'all' });
+
+    expect(page.customers).toHaveLength(2);
+  });
+
+  it('carries the kind and its evidence on the row rather than implying it', () => {
+    const junk = summariseCustomer(customer({ id: 2035, email: '413c4d502c@gmail.com' }), index);
+    expect(junk.accountKind).toBe('suspicious');
+    expect(junk.suspiciousReason).toMatch(/machine-generated/);
+    expect(junk.addressShape).toBe('hex-run');
+
+    const staff = summariseCustomer(customer({ id: 16, role: 'administrator' }), index);
+    expect(staff.accountKind).toBe('administrative');
+    expect(staff.suspiciousReason).toBeNull();
+    // The buyer fact is still reported beside the staff kind, because both are true and
+    // the screen must not have to pick one.
+    expect(staff.verifiedOrders).toBe(1);
+  });
+});

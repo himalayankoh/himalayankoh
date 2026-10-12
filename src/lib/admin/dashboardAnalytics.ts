@@ -9,8 +9,20 @@
  *
  * ## What each figure is, and where it stops
  *
- *   - revenue series (7 days) and order counts: from orders in the read window;
- *   - best sellers: from those orders' line items, by the store's own totals;
+ *   - revenue series (7 days) and order counts: from orders in the read window **that
+ *     the store reports as paid**, which is WooCommerce's own payment status and not a
+ *     fulfilment status. A pending or failed order contributes no money to this
+ *     chart — it used to, because a `processing` order was counted whether or not
+ *     payment had happened;
+ *   - `testShapedOrdersInWindow`: paid orders that are shaped like a gateway test
+ *     (placeholder billing name, or a 99%-off coupon). They are *excluded* from revenue
+ *     and from best sellers and reported here instead, because the store counts them
+ *     and an operator reading a revenue tile should not;
+ *   - `notCountedInRevenue`: orders in the window that contributed nothing, so a small
+ *     revenue figure beside a large order count explains itself;
+ *   - `paymentEvidence`: what the store's paid total is made of, counted by
+ *     `computeRevenueEvidence` — the same decomposition the Sales payload carries;
+ *   - best sellers: from those orders' line items, at the store's own totals;
  *   - customers / repeats: from the customer records WooCommerce reports;
  *   - low stock: from `readInventoryReport()`, the same read the Inventory screen uses.
  *
@@ -32,6 +44,11 @@ import {
 } from '@/lib/woo/orders';
 import { listWooCustomers } from '@/lib/woo/customers';
 import { readInventoryReport } from '@/lib/woo/inventory';
+import {
+  classifyTestShapedOrder,
+  computeRevenueEvidence,
+  type RevenueEvidence,
+} from '@/lib/sales/engine';
 
 /** One point of the revenue chart. */
 export interface AnalyticsPoint {
@@ -65,6 +82,27 @@ export interface AdminDashboardAnalytics {
   ordersScanned: number;
   /** True when the store held more orders than one window, so the totals are a floor. */
   windowCapped: boolean;
+  /**
+   * The basis of every money figure above, in one sentence. A revenue total handed to
+   * a screen without its basis is how a store's own claim about payment becomes a
+   * console's claim about cash.
+   */
+  revenueBasis: string;
+  /** Order lines excluded from the chart and best sellers because they are test-shaped. */
+  testShapedOrdersInWindow: number;
+  /** Orders in the window that contributed no revenue, and why, so the two never disagree. */
+  notCountedInRevenue: {
+    orders: number;
+    total: number;
+    /** The store statuses that made them not-revenue, in the window's own words. */
+    statuses: Record<string, number>;
+  };
+  /**
+   * What the store's paid total is made of — provider references, no reference at all,
+   * test-shaped orders, awaiting payment, failed. Counted over every order this read
+   * reached, which is why it is separate from `ordersScanned` (the window's orders).
+   */
+  paymentEvidence: RevenueEvidence;
 }
 
 const DAY_MS = 86_400_000;
@@ -96,7 +134,12 @@ type OrderWithItems = Order & { order_items: OrderItem[] };
  * they run together rather than one after the next — measured on staging, a store
  * with more than one page of orders paid a serial round trip for each.
  */
-async function readOrders(): Promise<{ orders: OrderWithItems[]; total: number }> {
+async function readOrders(): Promise<{
+  orders: OrderWithItems[];
+  /** The store's own records, kept so the evidence is counted from what it said. */
+  raw: WooOrderLike[];
+  total: number;
+}> {
   const first = await listWooOrders({ perPage: PER_PAGE, page: 1 });
   const total = first.total;
   const collected: WooOrderLike[] = [...first.orders];
@@ -111,7 +154,7 @@ async function readOrders(): Promise<{ orders: OrderWithItems[]; total: number }
     for (const response of rest) collected.push(...response.orders);
   }
 
-  return { orders: collected.map((order) => orderWithItemsFromWoo(order)), total };
+  return { orders: collected.map((order) => orderWithItemsFromWoo(order)), raw: collected, total };
 }
 
 /** The dashboard's figures. */
@@ -143,13 +186,38 @@ export async function readDashboardAnalytics(): Promise<AdminDashboardAnalytics>
   const productTotals = new Map<string, ProductAnalytics>();
   const customerOrderCounts = new Map<string, number>();
 
+  /* Which of the paid orders are shaped like a gateway test, by id, as the store's own
+   * record shows it. Read from the raw Woo rows rather than re-derived here, so this
+   * screen and the Sales screen cannot disagree about what a test order is. */
+  const testShapedIds = new Set<number>();
+  for (const raw of orderRead.raw) {
+    const id = Number(raw.id);
+    if (Number.isFinite(id) && id > 0 && classifyTestShapedOrder(raw).testShaped) testShapedIds.add(id);
+  }
+
+  let testShapedOrdersInWindow = 0;
+  const notCountedInRevenue = { orders: 0, total: 0, statuses: {} as Record<string, number> };
+
   for (const order of recent) {
     const day = series.get(new Date(order.created_at).toISOString().slice(0, 10));
+    const isPaid = order.payment_status === 'paid';
+    const isTestShaped = testShapedIds.has(Number(order.id));
+
     if (day) {
+      // Every order that happened is counted as an order, whatever it did with money.
       day.orders += 1;
-      // Cancelled and refunded orders stay in the count (they happened) but their
-      // money does not, which is the same rule the orders screen's totals use.
-      if (order.status !== 'cancelled' && order.status !== 'refunded') day.revenue += order.total;
+      // Money only when the store says the order was paid, and never for a test-shaped
+      // one: a $0.10 capture is a passed gateway check, not a sale.
+      if (isPaid && !isTestShaped) day.revenue += order.total;
+    }
+
+    if (isPaid && isTestShaped) {
+      testShapedOrdersInWindow += 1;
+    } else if (!isPaid) {
+      notCountedInRevenue.orders += 1;
+      notCountedInRevenue.total += order.total;
+      const key = `${order.status} (${order.payment_status})`;
+      notCountedInRevenue.statuses[key] = (notCountedInRevenue.statuses[key] ?? 0) + 1;
     }
 
     orderStatusCounts[order.status] = (orderStatusCounts[order.status] ?? 0) + 1;
@@ -158,6 +226,9 @@ export async function readDashboardAnalytics(): Promise<AdminDashboardAnalytics>
       const key = order.email.trim().toLowerCase();
       customerOrderCounts.set(key, (customerOrderCounts.get(key) ?? 0) + 1);
     }
+
+    // A test-shaped order sells nothing, so it is not a best seller either.
+    if (isTestShaped) continue;
 
     for (const item of order.order_items) {
       const name = item.product_name || 'Unnamed product';
@@ -200,5 +271,17 @@ export async function readDashboardAnalytics(): Promise<AdminDashboardAnalytics>
     inventoryAlerts,
     ordersScanned: recent.length,
     windowCapped: orderRead.total > orderRead.orders.length,
+    revenueBasis:
+      'Money is counted only for orders the store reports as paid (WooCommerce\u2019s payment ' +
+      'status), and never for an order shaped like a gateway test. Zero revenue here means the ' +
+      'store reports no paid order in the window \u2014 not that the read failed, which is stated ' +
+      'separately as a window limit.',
+    testShapedOrdersInWindow,
+    notCountedInRevenue: {
+      orders: notCountedInRevenue.orders,
+      total: Math.round(notCountedInRevenue.total * 100) / 100,
+      statuses: notCountedInRevenue.statuses,
+    },
+    paymentEvidence: computeRevenueEvidence(orderRead.raw),
   };
 }

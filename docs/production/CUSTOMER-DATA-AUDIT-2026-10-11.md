@@ -79,15 +79,22 @@ which is why "no name" is the property of the path, not of the account.
 
 ## 3. Classification and the cleanup manifest (Phase 3)
 
-Full per-record manifest: **[customer-cleanup-manifest-2026-10-11.csv](customer-cleanup-manifest-2026-10-11.csv)**
-(2,704 rows. `email_local_sha256` is the first 10 hex characters of the SHA-256 of
- the address's local part, with the domain kept in clear — so the column is a
- digest, never the address, and one row cannot be turned back into a customer.
- Verified: for customer
- #2035 the value in this column (`413c4d502c`) is exactly the SHA-256 prefix of the
- live record's local part, which is 16 characters long — so the column is a digest
- and not the address. Use the
- `id`, not the address, to look a row up in wp-admin.) Counts:
+The per-record manifest is **not in this repository and not in the published tree**: it
+lives at `backups/private/customer-cleanup-manifest-2026-10-11.csv`, which `.gitignore`
+excludes along with the rest of `backups/`. It was tracked here until 2026-10-12, and
+that was a mistake worth recording in full (see §3.1) — a per-record export is not a
+document. `scripts/check-tracked-customer-data.mjs` now fails the build if one is
+tracked again.
+
+The rows carry `id`, `registered`, `domain` in clear, and `email_local_sha256` — the
+first ten hex characters of the SHA-256 of the address's local part. An earlier version
+of this paragraph claimed that "one row cannot be turned back into a customer". That was
+overstated. It is true for the accounts this census is *about*: their local parts are
+twelve-or-more random hex characters, so the digest hides nothing that was not already
+unguessable. It is **not** true for a human local part — `first.last`, a first name, a
+name with digits — where the domain in the next column plus a dictionary of names
+recovers the address, because the digest is unsalted and its input space is tiny. Use
+the `id`, not the address, to look a row up in wp-admin. Counts:
 
 | Class | Count | Evidence | Proposed action |
 | --- | --- | --- | --- |
@@ -97,6 +104,39 @@ Full per-record manifest: **[customer-cleanup-manifest-2026-10-11.csv](customer-
 | `D_nameless_suspicious` | **115** | no name, machine-shaped but unproven | review |
 | `E_nameless_other` | **1,963** | no name, human-looking address | **review — cannot be decided from the data** |
 | `F_named_review` | **1** | a name is present | review |
+
+### 3.2 The batch proposed for approval — six records, and the precondition that is unmet
+
+Separated by what the evidence can actually support, because the difference decides
+whether a record may be acted on at all:
+
+| Group | Count | Evidence | May be acted on? |
+| --- | --- | --- | --- |
+| **Confirmed not-a-customer** | **6** — ids `1106`, `1394`, `37`, `1393`, `1099`, `1107` | every one is on `example.com`, which IANA reserves so **no customer can own it**; none has a name; none has an order | yes, on approval — and reversibly first |
+| Suspicious, unproven | 731 (`C` 616 + `D` 115) | no name **and** a machine-shaped local part. Unproven because the registration form collected no name, so *every* account it created looks like this, including any genuine one | **no** — needs the owner's knowledge, not a query |
+| Unknown / undecidable | 1,963 (`E`) | no name, human-looking address — indistinguishable from a genuine legacy registration through the same form | **no** |
+| Preserve unconditionally | 3 (`A` — ids `17`, `979`, `20`) | an order points at each of them | never touch |
+| Named, review | 1 (`F` — id `44`) | a name is present | review only |
+
+**The batch is the six, and only the six.** Ids: `1106, 1394, 37, 1393, 1099, 1107`.
+Nothing has been executed. The action proposed for them is the *reversible* one — a
+quarantine (`role` change) rather than a delete — applied one batch, verified against
+these counts, and only after the owner approves **these exact ids**. Deletion would come
+later, if ever, and never for a record an order points at.
+
+**The precondition for any of it is not met.** `docs/production/BACKUP-RESTORE-VERIFICATION.md`
+opens with *"Status: FAIL. No verified backup of the live installation exists."* The only
+archive of the store on this machine is `backups/himalayankoh-staging-20260929-code-db.wpress`,
+which is the **staging** installation from 2026-09-29 and a backup that has been taken but
+never restored. A cleanup that cannot be undone is not something to run against a store
+whose only copy is unverified, so the order of work is: verified database backup → restore
+test → owner approves ids → reversible quarantine → verify counts → *then* anything
+irreversible. The six records are cheap to identify again, so leaving them in place costs
+nothing while that sequence is completed.
+
+**Related, already reversible:** the two test orders `2521` and `2522` are in WooCommerce's
+own trash, with `_hk_status_before_trash` recording where they came from, and
+`scripts/archive-test-orders.mjs --restore` puts them back.
 
 **No bulk deletion was performed, and none should be.** The mission's own rule —
 present the manifest and counts for approval before anything beyond a small,
@@ -245,7 +285,7 @@ three accounts, and **customer #16 was missing from it although it has three ord
 | --- | --- | --- |
 | Our own sign-up route: per-IP budget (5/hour), reserved and disposable domains refused, abuse shape logged | **DONE** | `src/app/api/auth/customer/register/route.ts`, `src/lib/auth/signupGuard.ts` + 20 tests. An empty-body POST is refused `400` before any account is created; the route now also rejects `example.com`-class addresses, which the store's own junk records used |
 | Store-side root cause: the public WordPress/WooCommerce registration form | **BLOCKED — needs a click in wp-admin** | `PUT /wc/v3/settings/account` answers **404 `rest_no_route`** for both the store's consumer key and the administrator application password, so this setting cannot be changed over the API from here. `GET` works, which is how the setting was read |
-| WordPress's own registration form (`wp-login.php?action=register`) | closed | returns the plain login page, no registration form |
+| WordPress's own registration form (`wp-login.php?action=register`) | **OPEN — corrected 2026-10-12** | this row previously read *"closed — returns the plain login page, no registration form"*, and that was wrong: fetching the URL on 2026-10-12 returns the form itself (`<form id="registerform" action="…/wp-login.php?action=register">`, title "Registration Form"), with no "registration is disabled" notice. It cannot be closed from here — see the row below and `docs/production/REGISTRATION-SURFACES-2026-10-11.md` |
 
 **Owner action (one checkbox, reversible):** WordPress admin → WooCommerce →
 Settings → Accounts and Privacy → untick **"Allow customers to create an account on
@@ -360,7 +400,7 @@ existing images show 6 lb packaging.
 | Phase 10 3 lb product | **PASS** — still draft |
 | Phase 12 guides / AdSense | **not published, not claimed** — unchanged from the approval package |
 | Phase 13 tests | **PASS** — typecheck ✔, lint ✔ (0 errors, pre-existing warnings), vitest **2,202 passed / 19 skipped / 0 failed**, `npm run build` ✔ (exit 0, with the build's own origin + secret scans clean), production build ✔. The live buyer-filter and role results above came from a temporary live test (real modules, real store) that was **not** committed, so the suite stays offline |
-| Phase 13 integration suites | **PARTIAL — 6 failures, all staging-only and unrelated to this work.** `npm run test:integration` (exit 1): the write suites **skipped themselves**, as designed — they refuse to run unless the base URL matches `/himalayankoh\.com\/staging/`, and `.env.local` points at production (`wp.himalayankoh.com`), so no test product was created. The 6 failures are all in `src/lib/backend/wordpress.integration.test.ts`, which asserts the **staging** catalog's contents: `expected 5 to be 7` (pink-salt slice) and `expected 5 to be 11` (whole catalog), plus staging slugs/media and a Store-API fatal that the production install does not have. None of this work's modules are in that suite's import graph — `products.ts`, `serverCatalog.ts`, `woocommerce.ts`, `wordpress.ts`, `config.ts` — confirmed by search; `customers.ts`/`customerActivity.ts`/`signupGuard.ts` are imported only by the admin routes, `dashboardAnalytics.ts` and their own tests. The suite is written for the staging origin and needs staging credentials to be meaningful |
+| Phase 13 integration suites | **RESOLVED 2026-10-12 — `npm run test:integration` exit 0: 2238 passed, 13 skipped.** (History: 6 failures, all staging-only and unrelated to this work. The two that survived the first pass were configuration rather than defects — see §11.) Original observation — `npm run test:integration` (exit 1): the write suites **skipped themselves**, as designed — they refuse to run unless the base URL matches `/himalayankoh\.com\/staging/`, and `.env.local` points at production (`wp.himalayankoh.com`), so no test product was created. The 6 failures are all in `src/lib/backend/wordpress.integration.test.ts`, which asserts the **staging** catalog's contents: `expected 5 to be 7` (pink-salt slice) and `expected 5 to be 11` (whole catalog), plus staging slugs/media and a Store-API fatal that the production install does not have. None of this work's modules are in that suite's import graph — `products.ts`, `serverCatalog.ts`, `woocommerce.ts`, `wordpress.ts`, `config.ts` — confirmed by search; `customers.ts`/`customerActivity.ts`/`signupGuard.ts` are imported only by the admin routes, `dashboardAnalytics.ts` and their own tests. The suite is written for the staging origin and needs staging credentials to be meaningful |
 | Phase 14 deployment | see the commit/push/deploy record below |
 
 **LIMITATIONS, stated plainly**
@@ -388,7 +428,36 @@ existing images show 6 lb packaging.
 6. No native-device mobile QA for these changes; the affected surfaces are the
    console table and two content pages. The console's own layout guard
    (`adminCustomersToolbar.test.ts`) is a source assertion, not a browser run.
-7. The staging integration suites could not be run meaningfully from here: the
-   write suites skip (production origin, by their own guard, so nothing was
-   written) and the read-only one fails on staging catalog counts. Reported above
-   rather than presented as a pass.
+7. The **staging** integration suites still cannot be run from here, and that is now
+   their designed behaviour rather than a failure: the write suites skip themselves
+   because the configured origin is production (so nothing is written to the live store),
+   and the read-only suite's staging catalogue counts no longer assert anything — the
+   shape assertions run only when `HIMALAYAN_KOH_ORIGIN_KIND=staging`. Everything else in
+   that suite runs against production and passes. What remains unverified is therefore
+   *staging*, not the application.
+
+---
+
+## 11. Integration suites re-run — 2026-10-12 (Phase 13, closed)
+
+`npm run test:integration` against the origin `.env.local` configures (production,
+`wp.himalayankoh.com`): **exit 0 — 2238 passed, 13 skipped, 2 files skipped.** The skipped
+tests are the write suites, which skip themselves because the origin is not staging; no test
+product was created and nothing was written to the live store.
+
+The run before this one had two failures left out of the original six. Both were diagnosed
+individually rather than adjusted, and **neither was an application defect**:
+
+| Failure | Diagnosis | Evidence | Fix |
+| --- | --- | --- | --- |
+| `serves the storefront only the pink-salt slice` — the assertion that no served product's name, category or description names the animal trade | **the assertion describes the staging catalogue, not a contract the code holds** | `GET https://himalayankoh.com/api/catalog` returns 5 products, and **4 of them name the trade in their own name or category**: "…Salt Lick for Cattle" / `Salt Licks` / "…for Livestock" / `Live Stock`. Those listings are published on purpose — the owner-approval package corrects their copy (§A3) rather than withdrawing them — so a blanket copy rule cannot be true here | the copy rule is asserted on staging, where it was observed; the **blocklist** assertion below it ("no off-niche slug is served") stays unconditional, because that *is* what the code implements |
+| `resolves a withheld slug to nothing` — `Test timed out in 5000ms` | **the test's time budget was smaller than one live lookup, let alone three** | one withheld-slug lookup against production measured **3.2–5.6 s** on 2026-10-12, and the test loops three of them under vitest's 5 s default | the test's timeout is raised explicitly (`30_000`); **the assertion is untouched** — this is the check that a withheld product resolves to nothing, and it passes |
+
+What was **not** done: no expected value was changed to make a test pass, no assertion was
+deleted, and no test was skipped. The one assertion that moved did so because it was measured
+to be describing a different install, and the reasoning is recorded beside it in
+`src/lib/backend/wordpress.integration.test.ts`.
+
+Remaining verification limit: the **staging** half of that suite cannot be exercised from this
+machine (no staging credentials, and the write suites refuse to run against production by
+design), so staging itself — not the application — is what remains unverified.
