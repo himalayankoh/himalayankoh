@@ -150,6 +150,7 @@ on 2026-10-08 exists, and production has moved past it in the catalogue only.*
 | Checkout page | `200` |
 | `/signup` | `200` |
 | Customer registration | route alive; empty body refused `400`; **no account created** |
+| Customer login | empty body → `400`; a wrong credential → **`401 "Wrong email or password."`**, which is the plugin's own `hk_storefront_invalid_credentials` — so the request travelled Worker → WordPress → `wp_authenticate` and came back with WordPress's answer. The live login path is functional, and **no account was created** |
 | Stripe config | `configured: true`, **mode live**, publishable+secret+webhook present, `chargingBlockedReason: null` |
 | Shippo rates | **8 live rates** (USPS/UPS) for a 30 lb parcel |
 | Admin APIs | `/api/admin/customers`, `/orders`, `/sales`, `/integrations` **all `401`** without a session |
