@@ -20,6 +20,30 @@ export interface ResourceArticle {
   }[];
 }
 
+/**
+ * Related-product policy (verified 2026-10-12 against the live WooCommerce
+ * catalogue of five active products).
+ *
+ * A guide links ONLY a purchasable product of the same weight, use and
+ * species. The retired livestock-era slugs (`animal-salt-lick-3-4-kg`,
+ * `salt-lick-5-6-kg`, `compressed-salt-block-20kg`, `cooking-salt-plate`,
+ * `himalayan-salt-chunks`) and the inactive 3 lb SKU (`HK-ESF-3lbs`, slug
+ * `himalayan-salt-fine-grain-3-lbs`) have no equivalent and were removed —
+ * never substituted — so guides without a verified product carry no
+ * "Related Salt Products" bar at all.
+ *
+ * Verified renames (same weight, use and species):
+ * - `himalayan-rock-salt-45-lbs-large-chunks` -> 45 lb livestock bag
+ * - `himalayan-salt-block-30-lbs` -> 30 lb cattle rock salt (bulk-storage
+ *   guide only; never in cooking guides)
+ * - `himalayan-pink-edible-salt-fine-grain-pouch-6-lbs` -> 6 lb pouches
+ * - `himalayan-pink-edible-salt-16-oz-jar` -> 16 oz jar
+ *
+ * `resolveRelatedProductSlugs` (lib/resources/relatedProducts) drops any slug
+ * missing from the active catalogue at render time, so a future catalogue
+ * change cannot silently serve a 404 card. The regression test pins this list
+ * to the catalogue fixture.
+ */
 export const RESOURCE_ARTICLES: ResourceArticle[] = [
   {
     id: 'res-1',
@@ -36,7 +60,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Compare solid salt blocks vs loose granular salt for cattle and horses. Understand intake rates, weather erosion, pasture management, and herd behavior.',
     featuredImage: '/images/products/salt-lick-3-4kg.jpg',
-    relatedProductSlugs: ['animal-salt-lick-3-4-kg', 'salt-lick-5-6-kg', 'compressed-salt-block-20kg'],
+    relatedProductSlugs: [],
     relatedArticleSlugs: ['how-horses-use-salt-and-electrolytes', 'salt-needs-for-cattle-practical-farm-guide', 'livestock-salt-placement-and-weather-protection'],
     sources: [
       { title: 'Nutrient Requirements of Beef Cattle: Eighth Revised Edition', publication: 'National Academies of Sciences, Engineering, and Medicine (NASEM)', year: '2016' },
@@ -93,7 +117,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Learn how horses regulate electrolyte balance, why sweat depletes sodium and chloride, and how free-choice salt licks maintain vital hydration in equine care.',
     featuredImage: '/images/products/animal-salt-lick-3-4-kg.jpg',
-    relatedProductSlugs: ['animal-salt-lick-3-4-kg', 'salt-lick-5-6-kg'],
+    relatedProductSlugs: [],
     relatedArticleSlugs: ['salt-block-vs-loose-salt-for-livestock', 'how-to-choose-salt-block-size-for-horses-and-cattle'],
     sources: [
       { title: 'Nutrient Requirements of Horses: Sixth Revised Edition', publication: 'National Research Council (NRC)', year: '2007' },
@@ -145,7 +169,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Quantitative farm guide to sodium chloride requirements for beef and dairy cattle. Manage seasonal fluctuations, grazing distribution, and pasture mineral intake.',
     featuredImage: '/images/products/compressed-salt-block-20kg.jpg',
-    relatedProductSlugs: ['compressed-salt-block-20kg', 'salt-lick-5-6-kg', 'animal-salt-lick-3-4-kg'],
+    relatedProductSlugs: [],
     relatedArticleSlugs: ['salt-block-vs-loose-salt-for-livestock', 'livestock-salt-placement-and-weather-protection'],
     sources: [
       { title: 'Nutrient Requirements of Beef Cattle', publication: 'NASEM Publications', year: '2016' },
@@ -196,7 +220,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'What are Himalayan rock salt licks? Learn about their natural crystal structure, zero chemical binders, rope-hanging techniques, and pasture longevity.',
     featuredImage: '/images/products/salt-lick-5-6kg.jpg',
-    relatedProductSlugs: ['animal-salt-lick-3-4-kg', 'salt-lick-5-6-kg'],
+    relatedProductSlugs: [],
     relatedArticleSlugs: ['salt-block-vs-loose-salt-for-livestock', 'how-to-choose-salt-block-size-for-horses-and-cattle'],
     sources: [
       { title: 'Geological Survey of Pakistan: Khewra Salt Range Formations', publication: 'GSP Special Report', year: '2014' },
@@ -243,7 +267,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Sizing guide for livestock salt blocks: choose between 3-4 kg, 5-6 kg rope licks, and 20 kg blocks based on herd size, pasture acreage, and replacement frequency.',
     featuredImage: '/images/products/animal-salt-lick-3-4-kg.jpg',
-    relatedProductSlugs: ['animal-salt-lick-3-4-kg', 'salt-lick-5-6-kg', 'compressed-salt-block-20kg'],
+    relatedProductSlugs: [],
     relatedArticleSlugs: ['salt-needs-for-cattle-practical-farm-guide', 'himalayan-salt-licks-what-they-are-and-how-to-use-them'],
     sources: [
       { title: 'Beef Cattle Mineral Management', publication: 'Kansas State University Agricultural Experiment Station', year: '2021' },
@@ -287,7 +311,10 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Best practices for storing bulk Himalayan salt bags and blocks. Control relative humidity, prevent pallet caking, manage floor elevation, and avoid product loss.',
     featuredImage: '/images/legacy/salt-rock-bag.jpg',
-    relatedProductSlugs: ['himalayan-rock-salt-45-lbs-large-chunks', 'himalayan-salt-block-30-lbs'],
+    relatedProductSlugs: [
+      'bag-of-himalayan-pink-salt-for-livestock-45-lbs-himalayan-koh',
+      'himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh',
+    ],
     relatedArticleSlugs: ['fine-vs-medium-vs-coarse-grain-salt', 'what-trace-minerals-in-himalayan-salt-actually-mean'],
     sources: [
       { title: 'The Chemistry and Technology of Salt', publication: 'American Chemical Society Monograph Series', year: '2012' },
@@ -327,7 +354,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Guide to Himalayan pink salt grain sizes: fine grain (0.2–0.8 mm), medium coarse (1.0–2.0 mm), and extra coarse (2.0–4.0 mm). Selection for cooking, brining, and grinders.',
     featuredImage: '/images/legacy/salt-pouch-6lb.webp',
-    relatedProductSlugs: ['himalayan-salt-fine-grain-3-lbs', 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs'],
+    relatedProductSlugs: ['himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh'],
     relatedArticleSlugs: ['using-himalayan-salt-blocks-for-cooking', 'himalayan-pink-salt-vs-regular-salt-practical-differences'],
     sources: [
       { title: 'Standard Specification for Sodium Chloride (ASTM D632)', publication: 'ASTM International', year: '2020' },
@@ -374,7 +401,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Master cooking on Himalayan salt plates and blocks. Learn safe heating steps, high-heat steak searing, cold charcuterie serving, and temperature shock prevention.',
     featuredImage: '/images/products/cooking-salt-plate.jpg',
-    relatedProductSlugs: ['cooking-salt-plate', 'himalayan-salt-block-30-lbs'],
+    relatedProductSlugs: [],
     relatedArticleSlugs: ['how-to-clean-and-maintain-a-cooking-salt-block', 'himalayan-pink-salt-vs-regular-salt-practical-differences'],
     sources: [
       { title: 'Salt Block Cooking: 70 Recipes for Grilling, Chilling, Searing, and Serving', publication: 'Bitterman Press', year: '2013' },
@@ -420,7 +447,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Learn how to clean and care for a Himalayan salt cooking plate. Avoid soap damage, scrape residues correctly, dry completely, and extend slab lifespan.',
     featuredImage: '/images/products/cooking-salt-plate.jpg',
-    relatedProductSlugs: ['cooking-salt-plate'],
+    relatedProductSlugs: [],
     relatedArticleSlugs: ['using-himalayan-salt-blocks-for-cooking', 'safe-storage-of-bulk-salt'],
     sources: [
       { title: 'Antimicrobial Properties of Halite Surfaces and High Osmotic Environments', publication: 'International Journal of Food Microbiology', year: '2019' },
@@ -466,7 +493,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Pasture guide to protecting livestock salt licks from heavy rain, mud contamination, and rapid weather dissolution. Strategic paddock placement advice.',
     featuredImage: '/images/products/salt-lick-5-6kg.jpg',
-    relatedProductSlugs: ['animal-salt-lick-3-4-kg', 'salt-lick-5-6-kg', 'compressed-salt-block-20kg'],
+    relatedProductSlugs: [],
     relatedArticleSlugs: ['salt-block-vs-loose-salt-for-livestock', 'salt-needs-for-cattle-practical-farm-guide'],
     sources: [
       { title: 'Grazing Distribution and Pasture Infrastructure', publication: 'USDA Natural Resources Conservation Service (NRCS)', year: '2019' },
@@ -505,7 +532,7 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Scientific analysis of trace minerals in Himalayan pink salt. What spectroscopy reveals, why it has pink color, and what trace amounts mean for human and animal diets.',
     featuredImage: '/images/products/bowl-of-salt.jpg',
-    relatedProductSlugs: ['himalayan-pink-edible-salt-fine-grain-pouch-6-lbs', 'himalayan-salt-chunks'],
+    relatedProductSlugs: ['himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh'],
     relatedArticleSlugs: ['himalayan-pink-salt-vs-regular-salt-practical-differences', 'quality'],
     sources: [
       { title: 'Mineral Analysis of Pink Himalayan Salt: An Australian Consumer Survey', publication: 'Foods Journal (MDPI)', year: '2020' },
@@ -552,7 +579,10 @@ export const RESOURCE_ARTICLES: ResourceArticle[] = [
     metaDescription:
       'Himalayan pink salt vs regular white table salt: understand chemical processing, anti-caking additives, unrefined crystal texture, and culinary taste differences.',
     featuredImage: '/images/legacy/bowl-of-salt.jpg',
-    relatedProductSlugs: ['himalayan-pink-edible-salt-fine-grain-pouch-6-lbs', 'himalayan-pink-edible-salt-16-oz-jar'],
+    relatedProductSlugs: [
+      'himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh',
+      'himalayan-edible-pink-salt-16-oz-jar-fine-grain',
+    ],
     relatedArticleSlugs: ['what-trace-minerals-in-himalayan-salt-actually-mean', 'fine-vs-medium-vs-coarse-grain-salt'],
     sources: [
       { title: 'Food Chemistry: Principles of Salt Refinement and Iodization', publication: 'CRC Press', year: '2018' },

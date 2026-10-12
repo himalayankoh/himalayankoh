@@ -7,6 +7,11 @@ import {
   getAllResourceArticles,
   getResourceArticleBySlug,
 } from '@/data/resources';
+import { getCatalogProducts } from '@/lib/backend/serverCatalog';
+import {
+  resolveRelatedProducts,
+  type RelatedProductRef,
+} from '@/lib/resources/relatedProducts';
 import { AUTHORS } from '@/data/authors';
 import ResourceDetailClient from './ResourceDetailClient';
 
@@ -53,6 +58,19 @@ export default async function Page({ params }: { params: Promise<Params> }) {
 
   const author = AUTHORS[article.authorId];
 
+  // Resolve the guide's product links against the active catalogue at
+  // prerender: a slug the catalogue no longer carries renders nothing instead
+  // of a 404 card, and a failed catalogue read resolves to none for the same
+  // reason — the bar is decorative, and a transient backend failure must not
+  // publish dead links.
+  let relatedProducts: RelatedProductRef[] = [];
+  try {
+    const { products } = await getCatalogProducts();
+    relatedProducts = resolveRelatedProducts(article.relatedProductSlugs, products);
+  } catch (err) {
+    console.error('Could not resolve related products for /resources:', err);
+  }
+
   return (
     <>
       <JsonLd
@@ -73,7 +91,7 @@ export default async function Page({ params }: { params: Promise<Params> }) {
           { name: article.title, path: `/resources/${article.slug}` },
         ])}
       />
-      <ResourceDetailClient article={article} />
+      <ResourceDetailClient article={article} relatedProducts={relatedProducts} />
     </>
   );
 }

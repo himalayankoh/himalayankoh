@@ -42,9 +42,13 @@ import ProductsClient from './ProductsClient';
 export const revalidate = 60;
 
 const DEFAULT_PRODUCTS_SEO = {
-  title: 'Shop Himalayan Pink Salt — Edible, Blocks & Lamps | Himalayan Koh',
+  // Names only what the catalogue actually stocks: the five active products
+  // are an edible jar, horse licks, cattle rock salt and livestock bags and
+  // pouches. Lamps, serving plates and cooking blocks are not for sale, so
+  // the shop title must not advertise them.
+  title: 'Shop Himalayan Pink Salt — Edible Jar, Licks & Livestock | Himalayan Koh',
   description:
-    'Shop Himalayan pink salt: fine and coarse edible grades, salt blocks and serving plates, lamps and décor, and bulk bags. Unrefined and mineral-rich.',
+    'Shop Himalayan pink salt: fine-grain edible jar, horse licks, cattle rock salt, and livestock bags and pouches. Unrefined and mineral-rich.',
 };
 
 export function generateMetadata(): Metadata {

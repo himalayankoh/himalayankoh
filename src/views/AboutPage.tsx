@@ -255,7 +255,7 @@ export default function AboutPage() {
               Upon maritime arrival in the United States, every batch is received at our facility in Houston, Texas. Our team conducts physical inspections for moisture barriers, granulometry consistency, and purity before packaging into sealed, food-safe containers.
             </p>
             <p className="text-white/80 text-base leading-relaxed mb-6">
-              We welcome wholesale, retail distribution, and bulk commercial inquiries. Our full quality-assurance framework and laboratory protocols are set out below.
+              We welcome wholesale, retail distribution, and bulk commercial inquiries. Our quality-assurance framework and sourcing standards are set out below.
             </p>
             <div className="flex flex-wrap justify-center gap-3">
               <a
@@ -357,10 +357,10 @@ export default function AboutPage() {
 
             <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-5">
               <p className="flex items-center gap-2 text-amber-800 font-bold text-sm uppercase tracking-wide">
-                <AlertTriangle size={18} /> Lab report / COA available on request
+                <AlertTriangle size={18} /> Quality documentation on request
               </p>
               <p className="text-sm text-amber-900 leading-relaxed mt-2">
-                We maintain documented lot tracing with our exporter network and are consolidating third-party spectroscopic results and heavy-metal screening (lead, cadmium, arsenic and mercury) into an online portal. Wholesale, feedlot and food-service partners needing lot-specific Certificates of Analysis or specification sheets should contact{' '}
+                We maintain documented lot tracing with our exporter network. Wholesale, feedlot and food-service partners needing lot-specific documentation or specification sheets should contact{' '}
                 <a href="mailto:sales@himalayankoh.com" className="underline font-semibold">sales@himalayankoh.com</a>.
               </p>
             </div>

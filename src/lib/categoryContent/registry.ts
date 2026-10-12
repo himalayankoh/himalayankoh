@@ -50,13 +50,15 @@ export const CATEGORY_CONTENT_REGISTRY: Partial<
     },
     seo: {
       title: 'Edible Himalayan Pink Salt — Fine Grain | Himalayan Koh',
+      // The edible shelf stocks exactly one product — the 16 oz fine-grain jar —
+      // so the description must not promise pouches or bulk bags.
       description:
-        'Shop edible Himalayan pink salt in fine grain — mineral-rich and unprocessed, in jars, pouches and bulk bags for the kitchen.',
+        'Shop edible Himalayan pink salt in fine grain — mineral-rich and unprocessed, in a 16 oz jar for the kitchen.',
     },
     trustPoints: [
       { label: 'Unrefined crystals', detail: 'No anti-caking agents, no bleaching, nothing added.' },
       { label: 'Natural mineral colour', detail: 'The pink is iron the rock already held.' },
-      { label: 'Packed for the kitchen', detail: 'Resealable jars, pouches and bags that keep salt dry.' },
+      { label: 'Packed for the kitchen', detail: 'Resealable 16 oz jar that keeps salt dry.' },
     ],
     gallery: [
       { id: 'edible-bowl', src: IMG.saltBowl, alt: 'Bowl of pink Himalayan cooking salt crystals', width: 600, height: 450 },
@@ -203,8 +205,8 @@ export const CATEGORY_CONTENT_REGISTRY: Partial<
         id: 'lick-management',
         title: 'Pasture & Stall Management',
         bullets: [
-          'Hang 3–4 kg rope licks at shoulder height in individual horse stalls to provide behavioral enrichment.',
-          'Place 20 kg blocks on pallets or rubber mats in cattle pastures to prevent mud contamination.',
+          'Hang the 2 lb rope lick at shoulder height in individual horse stalls to provide behavioral enrichment.',
+          'Place the 30 lb rock salt bag on pallets or rubber mats in cattle pastures to prevent mud contamination.',
           'Locate salt stations 100 to 300 yards away from water troughs to encourage uniform pasture grazing.',
           'Always verify herd water access: never restrict water when supplementing free-choice salt.',
         ],

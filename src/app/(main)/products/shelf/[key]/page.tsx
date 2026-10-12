@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { buildMetadata } from '@/lib/seo/metadata';
-import { breadcrumbJsonLd } from '@/lib/seo/jsonLd';
+import { aggregateOfferJsonLd, breadcrumbJsonLd } from '@/lib/seo/jsonLd';
 import { getCatalogProducts } from '@/lib/backend/serverCatalog';
 import {
   buildProductsCategoryPath,
@@ -63,9 +63,12 @@ function shelfFromKey(raw: string): CategoryFilterKey | null {
 }
 
 const DEFAULT_PRODUCTS_SEO = {
-  title: 'Shop Himalayan Pink Salt — Edible, Blocks & Lamps | Himalayan Koh',
+  // Kept identical to the shelf-free page: the catalogue stocks an edible jar,
+  // horse licks, cattle rock salt and livestock bags and pouches — no lamps,
+  // serving plates or cooking blocks.
+  title: 'Shop Himalayan Pink Salt — Edible Jar, Licks & Livestock | Himalayan Koh',
   description:
-    'Shop Himalayan pink salt: fine and coarse edible grades, salt blocks and serving plates, lamps and décor, and bulk bags. Unrefined and mineral-rich.',
+    'Shop Himalayan pink salt: fine-grain edible jar, horse licks, cattle rock salt, and livestock bags and pouches. Unrefined and mineral-rich.',
 };
 
 export async function generateMetadata({ params }: { params: Promise<Params> }): Promise<Metadata> {
@@ -130,9 +133,34 @@ export default async function Page({ params }: { params: Promise<Params> }) {
     console.error('Could not read the catalog for /products (shelf):', err);
   }
 
+  // The shelf's own offer summary, mirroring the shelf-free page: only a real
+  // shelf with priced products advertises offers. `all` is covered by
+  // `/products` itself (its canonical), and an empty shelf has nothing to
+  // price, so both stay quiet — the same silence the failed read already gets.
+  let aggregateOffer = null;
+  if (categoryKey && catalogProducts) {
+    const priced = catalogProducts.filter(
+      (product) =>
+        productCategoryFilterKey(product) === categoryKey &&
+        typeof product.priceMin === 'number' &&
+        Number.isFinite(product.priceMin)
+    );
+    if (priced.length > 0) {
+      const prices = priced.map((product) => product.priceMin as number);
+      aggregateOffer = aggregateOfferJsonLd({
+        minPrice: Math.min(...prices),
+        maxPrice: Math.max(...prices),
+        priceCurrency: 'USD',
+        offerCount: priced.length,
+        availability: priced.some((product) => product.inStock) ? 'InStock' : 'OutOfStock',
+      });
+    }
+  }
+
   return (
     <>
       <JsonLd data={breadcrumbJsonLd(breadcrumb)} />
+      {aggregateOffer && <JsonLd data={aggregateOffer} />}
       <ProductsClient initialProducts={catalogProducts} initialCategoryKey={categoryKey} />
     </>
   );

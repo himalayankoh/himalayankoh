@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { buildMetadata } from '@/lib/seo/metadata';
-import { breadcrumbJsonLd, faqJsonLd } from '@/lib/seo/jsonLd';
+import { breadcrumbJsonLd } from '@/lib/seo/jsonLd';
 import { fetchSeoProductModel, seoFetchDeadline } from '@/lib/seo/server';
 import { lookupCatalogProduct } from '@/lib/backend/serverCatalog';
 import { buildProductStructuredData } from '@/lib/products/productSchema';
@@ -59,38 +59,6 @@ export async function generateMetadata({
 }
 
 /**
- * FAQs emitted as FAQPage structured data on every product page.
- *
- * Generic by design, and about the salt rather than about a health outcome:
- * what the pink colour is, which grain to pick, what is (and is not) added, and
- * how to keep it. No medical or veterinary advice is asserted here, because
- * structured data is quoted verbatim by search engines and a shop is not a
- * clinician.
- */
-const PRODUCT_FAQs = faqJsonLd([
-  {
-    question: 'Why is Himalayan pink salt pink?',
-    answer:
-      'The colour comes from iron and other trace minerals the rock already contains. Unrefined Himalayan salt keeps them; salt washed to pure white sodium chloride does not.',
-  },
-  {
-    question: 'Which grain size should I choose?',
-    answer:
-      'Fine grain dissolves quickly and suits baking and brines. Medium grain fills a grinder for everyday cooking. Coarse grain is for finishing, rimming a glass and slow cooks.',
-  },
-  {
-    question: 'Does this salt contain additives?',
-    answer:
-      'No. Our Himalayan pink salt is unrefined and contains no anti-caking agents, bleaching or added iodine.',
-  },
-  {
-    question: 'How should I store it?',
-    answer:
-      'Keep it sealed and dry, away from the stove and from anything strongly scented. Salt does not spoil; it only takes on moisture or odours.',
-  },
-]);
-
-/**
  * A slug that resolves no product is a real 404, not a page that says so.
  *
  * It used to answer 200 with the generic title "Product - Himalayan Koh", a
@@ -136,7 +104,6 @@ export default async function Page({ params, searchParams }: {
           { name: getProductDisplayName(product), path: `/products/${product.slug}` },
         ])}
       />
-      <JsonLd data={PRODUCT_FAQs} />
       {/* key remounts the view when navigating product-to-product, so the
           seeded server data is picked up instead of the previous product's. */}
       <ProductDetailClient

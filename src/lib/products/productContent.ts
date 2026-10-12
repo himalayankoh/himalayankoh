@@ -52,7 +52,7 @@ const SHELF_DEFAULTS: Record<NicheSectionKey, Omit<ProductContent, 'displayName'
     ],
     mineralHighlights: [
       'Naturally pink color from iron and trace minerals',
-      'Lower sodium perception with fuller mineral flavor',
+      'Mellow mineral flavor for everyday seasoning',
       'Unprocessed crystals — no bleaching or chemical refining',
     ],
     shippingInfo: SHARED_SHIPPING,
@@ -69,7 +69,7 @@ const SHELF_DEFAULTS: Record<NicheSectionKey, Omit<ProductContent, 'displayName'
       {
         question: 'Which grain size should I choose?',
         answer:
-          'Fine grain dissolves quickly for cooking and baking. Medium and coarse grains work well in grinders and finishing salt.',
+          'This jar holds fine grain, which dissolves quickly for cooking and baking. Medium and coarse grades, where stocked, work well in grinders and as finishing salt.',
       },
       {
         question: 'How should I store it?',

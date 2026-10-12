@@ -9,13 +9,20 @@ import {
 } from 'lucide-react';
 import type { ResourceArticle } from '@/data/resources';
 import { getResourceArticleBySlug } from '@/data/resources';
+import type { RelatedProductRef } from '@/lib/resources/relatedProducts';
 import AuthorByline from '@/components/AuthorByline';
 
 interface ResourceDetailPageProps {
   article: ResourceArticle;
+  /**
+   * Products resolved against the active catalogue by the route (see
+   * `lib/resources/relatedProducts`). Rendered verbatim: a slug the catalogue
+   * no longer carries never reaches this list, so no card can 404.
+   */
+  relatedProducts: RelatedProductRef[];
 }
 
-export default function ResourceDetailPage({ article }: ResourceDetailPageProps) {
+export default function ResourceDetailPage({ article, relatedProducts }: ResourceDetailPageProps) {
   const relatedArticles = article.relatedArticleSlugs
     .map((slug) => getResourceArticleBySlug(slug))
     .filter((a): a is ResourceArticle => Boolean(a));
@@ -127,8 +134,9 @@ export default function ResourceDetailPage({ article }: ResourceDetailPageProps)
           )}
         </article>
 
-        {/* Related Products Bar */}
-        {article.relatedProductSlugs.length > 0 && (
+        {/* Related Products Bar — only catalogue-verified products, with the
+            catalogue's own names rather than title-cased slugs. */}
+        {relatedProducts.length > 0 && (
           <div className="bg-white rounded-3xl p-8 border border-gray-100 shadow-sm space-y-6">
             <div className="flex items-center justify-between">
               <div>
@@ -148,11 +156,7 @@ export default function ResourceDetailPage({ article }: ResourceDetailPageProps)
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {article.relatedProductSlugs.map((slug) => {
-                const formattedName = slug
-                  .split('-')
-                  .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                  .join(' ');
+              {relatedProducts.map(({ slug, name }) => {
                 return (
                   <Link
                     key={slug}
@@ -164,7 +168,7 @@ export default function ResourceDetailPage({ article }: ResourceDetailPageProps)
                         <PackageCheck className="w-4 h-4" />
                       </div>
                       <h4 className="font-medium text-charcoal group-hover:text-himalayan text-sm transition-colors line-clamp-2">
-                        {formattedName}
+                        {name}
                       </h4>
                     </div>
                     <span className="text-xs font-semibold text-himalayan flex items-center gap-1">
