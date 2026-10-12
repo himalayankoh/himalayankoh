@@ -309,6 +309,14 @@ const CATEGORY_PARAM = 'category';
  */
 const SHELF_PATH = '/products/shelf';
 
+// Attribution and the opt-in lab probe do not select a different catalogue.
+// Sending these visitors through the dynamic shelf added an avoidable origin
+// read even though they see the same products as the cacheable default page.
+const ATTRIBUTION_PARAMS = new Set(['gclid', 'dclid', 'fbclid', 'msclkid', 'gbraid', 'wbraid']);
+function onlyAttributionParams(params: URLSearchParams): boolean {
+  return [...params.keys()].every(key => key.startsWith('utm_') || ATTRIBUTION_PARAMS.has(key) || key === 'hk-performance');
+}
+
 /** The shelf the catalogue request actually names, or `all` for any other query. */
 function shelfRouteFor(params: URLSearchParams): string {
   const shelf = params.get(CATEGORY_PARAM);
@@ -409,11 +417,11 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(url, 308);
   }
 
-  // A bare `/products` is the cacheable default shelf and is served as-is. Any
-  // query string rides to the shelf route, which owns the per-shelf title,
+  // A bare catalogue or attribution-only link uses the cacheable default shelf.
+  // Content-changing query strings ride to the shelf route, which owns the per-shelf title,
   // canonical and breadcrumb — and which keeps the bare page's edge cache entry
   // free of one entry per search term.
-  if (pathname !== CATALOG_PATH || !query) return NextResponse.next();
+  if (pathname !== CATALOG_PATH || !query || onlyAttributionParams(params)) return NextResponse.next();
 
   const shelfUrl = request.nextUrl.clone();
   shelfUrl.pathname = shelfRouteFor(params);

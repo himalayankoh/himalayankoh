@@ -128,6 +128,24 @@ describe('middleware — browse query strings', () => {
     expect((await run('/products?search=salt')).rewriteTo).toBe('/products/shelf/all');
   });
 
+  it('keeps attribution-only visits on the default catalogue without losing the URL', async () => {
+    for (const query of ['hk-performance=1', 'utm_source=newsletter&utm_campaign=salt', 'gclid=campaign123&fbclid=click456']) {
+      const res = await run(`/products?${query}`);
+      expect(res.passesThrough).toBe(true);
+      expect(res.location).toBeNull();
+      expect(res.rewriteTo).toBeNull();
+    }
+  });
+
+  it('preserves real filters and attribution together on the shelf route', async () => {
+    const res = await run('/products?category=edible-pink-salt&utm_source=newsletter&hk-performance=1');
+    expect(res.rewriteTo).toBe('/products/shelf/edible-pink-salt');
+    expect(res.rewriteSearch).toBe('?category=edible-pink-salt&utm_source=newsletter&hk-performance=1');
+    expect((await run('/products?search=salt&gclid=campaign123')).rewriteTo).toBe('/products/shelf/all');
+    expect((await run('/products?sort=price&utm_source=email')).rewriteTo).toBe('/products/shelf/all');
+    expect((await run('/products?unknown_filter=1')).rewriteTo).toBe('/products/shelf/all');
+  });
+
   it('applies the same rule to the blog index', async () => {
     expect((await run('/blog?search=cows')).location).toBe('https://himalayankoh.com/blog');
     expect((await run('/blog?page=2')).passesThrough).toBe(true);
