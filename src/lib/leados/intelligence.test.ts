@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createIntroduction, deduplicateLeads, leadIdentity, OFFER_PROFILES, publicCompanyUrl, qualifyLead } from './intelligence';
-import { normalizeSearchResults } from './discovery';
+import { discoveryQuery, normalizeSearchResults } from './discovery';
 import { outreachReadiness, dispatchApprovedDraft } from './n8n';
 import { searchNominatimKeywords } from './osm-provider';
 import type { NormalizedLead } from './types';
@@ -47,6 +47,21 @@ describe('LeadOS 2 evidence and identity', () => {
   it('never harvests POIs from public Nominatim', async () => {
     const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
     expect((await searchNominatimKeywords('feed','Texas',null,20,'Feed Store')).error).toContain('disabled');expect(fetch).not.toHaveBeenCalled();
+  });
+  it('merges a generic web title into one known company location but preserves multiple branches',()=>{
+    const generic={...lead,businessName:'Houston Feed Store | Feed and Garden',address:null,city:null,region:null,osmUrl:null,dataSource:'searxng'};
+    const merged=deduplicateLeads([generic,lead]);expect(merged.leads).toHaveLength(1);expect(merged.leads[0].businessName).toBe(lead.businessName);
+    expect(deduplicateLeads([generic,lead,{...lead,address:'2 Main St',city:'Dallas'}]).leads).toHaveLength(3);
+  });
+  it('excludes observed travel-directory and review-directory results',()=>{
+    expect(normalizeSearchResults([{title:'Wabash Feed',url:'https://www.visithoustontexas.com/listings/wabash/123/',content:'Feed store'},{title:'Feed Supply',url:'https://www.loc8nearme.com/texas/feed/1/',content:'Feed'}],{category:'Feed Store',location:'Houston'},'2026-10-13')).toHaveLength(0);
+  });
+  it('uses the observed published company name in introductions',()=>{
+    const intro=createIntroduction({...lead,research:{publicCompanyName:'Verified Feed Company'}},'horse_salt');expect(intro.subject).toContain('Verified Feed Company');expect(intro.message).toContain('Hello Verified Feed Company team');
+  });
+  it('narrows private-label and distributor queries to the actual salt/feed niche',()=>{
+    expect(discoveryQuery({category:'Private Label Buyer',location:'USA'})).toContain('Himalayan pink salt private label wholesale');
+    expect(discoveryQuery({category:'Livestock Distributor',location:'Texas'})).toContain('livestock feed agricultural supply distributor');
   });
 });
 describe('Outbound configuration fails closed', () => {

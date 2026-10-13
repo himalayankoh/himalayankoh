@@ -40,9 +40,25 @@ export function leadIdentity(lead: Pick<NormalizedLead, 'businessName' | 'websit
 }
 
 export function deduplicateLeads<T extends NormalizedLead>(leads: T[]): { leads: T[]; duplicatesRemoved: number } {
-  const groups = new Map<string, T>();
+  const located = new Map<string, Set<string>>();
   for (const lead of leads) {
-    const key = leadIdentity(lead), prior = groups.get(key);
+    const site = lead.website && publicCompanyUrl(lead.website);
+    if (site && [lead.address,lead.city,lead.region].some(Boolean)) {
+      const domain = new URL(site).hostname.replace(/^www\./,'');
+      const keys = located.get(domain) || new Set<string>(); keys.add(leadIdentity(lead)); located.set(domain,keys);
+    }
+  }
+  const groups = new Map<string, T>();
+  // Prefer known locations as representatives; a generic same-domain search
+  // snippet can join only one unambiguous location, never collapse branches.
+  for (const lead of [...leads].sort((a,b)=>Number([b.address,b.city,b.region].some(Boolean))-Number([a.address,a.city,a.region].some(Boolean)))) {
+    let key = leadIdentity(lead);
+    const site = lead.website && publicCompanyUrl(lead.website);
+    if (site && ![lead.address,lead.city,lead.region].some(Boolean)) {
+      const url = new URL(site), keys = located.get(url.hostname.replace(/^www\./,''));
+      if (keys?.size===1 && !/\/(?:locations?|stores?|branches?)(?:\/|[-_])/i.test(url.pathname)) key=[...keys][0];
+    }
+    const prior = groups.get(key);
     if (!prior) { groups.set(key, { ...lead }); continue; }
     const sources = [...(prior.research?.sources || []), ...(lead.research?.sources || [])];
     prior.research = { ...prior.research, sources: sources.filter((s, i) => sources.findIndex((p) => p.url === s.url && p.kind === s.kind && p.retrievedAt === s.retrievedAt) === i).slice(-40) };
@@ -88,10 +104,11 @@ export function qualifyLead(lead: NormalizedLead, interest: ProductInterest = 'h
 }
 
 export function createIntroduction(lead: { businessName: string; city?: string | null; category?: string | null; research?: LeadResearch }, interest: ProductInterest) {
+  const name = lead.research?.publicCompanyName || lead.businessName;
   const offer = OFFER_PROFILES[interest];
   const product = interest === 'horse_salt' ? 'our listed 2 lb horse salt lick and 30 lb salt lick' : interest === 'livestock_salt' ? 'our listed 6 lb livestock pouch, 45 lb livestock bag and 30 lb lick' : interest === 'culinary_salt' ? 'our listed 16 oz edible pink salt jar' : interest === 'bulk_wholesale' ? 'our listed livestock bags and salt licks' : 'a potential private-label salt opportunity, subject to confirming our capabilities and your requirements';
   return {
-    subject: `Himalayan Koh ${offer.label.toLowerCase()} inquiry — ${lead.businessName}`,
-    message: `Hello ${lead.businessName} team,\n\nI am reaching out from Himalayan Koh while researching ${lead.category || 'relevant businesses'}${lead.city ? ` in ${lead.city}` : ''}.\n\nWe would welcome a conversation about ${product}. Would this be relevant to your purchasing team? We can share current product details for review. Packaging, availability, pricing, minimum quantities and freight would be confirmed in a separate quote.\n\nIf you are not the right contact, please let us know. To opt out of further outreach, reply “unsubscribe”.\n\nHimalayan Koh\nsales@himalayankoh.com\nhttps://himalayankoh.com`,
+    subject: `Himalayan Koh ${offer.label.toLowerCase()} inquiry — ${name}`,
+    message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh while researching ${lead.category || 'relevant businesses'}${lead.city ? ` in ${lead.city}` : ''}.\n\nWe would welcome a conversation about ${product}. Would this be relevant to your purchasing team? We can share current product details for review. Packaging, availability, pricing, minimum quantities and freight would be confirmed in a separate quote.\n\nIf you are not the right contact, please let us know. To opt out of further outreach, reply “unsubscribe”.\n\nHimalayan Koh\nsales@himalayankoh.com\nhttps://himalayankoh.com`,
   };
 }

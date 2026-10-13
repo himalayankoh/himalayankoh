@@ -18,6 +18,7 @@ export default function LeadIntelligencePanel({ headers, initialLeadId, onSavedS
   const [interest, setInterest] = useState<ProductInterest>('horse_salt');
   const [editing, setEditing] = useState<WorkflowItem | null>(null), [subject, setSubject] = useState(''), [message, setMessage] = useState('');
   const [metadata, setMetadata] = useState<Record<string, string>>({});
+  const [browserSource, setBrowserSource] = useState(''), [browserText, setBrowserText] = useState(''), [browserEmail, setBrowserEmail] = useState(''), [browserReviewed, setBrowserReviewed] = useState(false);
   const [bulk, setBulk] = useState<string[]>([]), [pipeline, setPipeline] = useState('researched');
   const request = useCallback(async (url: string, body?: unknown) => {
     const res = await fetch(url, { method: body ? 'POST' : 'GET', headers: { ...await headers(), 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
@@ -37,6 +38,7 @@ export default function LeadIntelligencePanel({ headers, initialLeadId, onSavedS
   const lead = leads.find((l) => l.id === selected);
   useEffect(() => {
     setPolicyReviewed(false);
+    setBrowserReviewed(false); setBrowserText(''); setBrowserEmail(''); setBrowserSource(leads.find((l)=>l.id===selected)?.website || '');
     const research = leads.find((l) => l.id === selected)?.research || {};
     setMetadata(Object.fromEntries(['assignedOwner','nextFollowUp','requestedQuantity','packagingPreference','buyerQuestions'].map((key) => [key, String(research[key as keyof typeof research] || '')])));
   }, [selected, leads]);
@@ -75,6 +77,14 @@ export default function LeadIntelligencePanel({ headers, initialLeadId, onSavedS
           <label className="flex gap-2 text-xs"><input type="checkbox" checked={policyReviewed} onChange={(e) => setPolicyReviewed(e.target.checked)} />I reviewed this company’s public-site terms for permitted research.</label>
           <button className={btn} disabled={busy || !policyReviewed || !lead.website} onClick={async () => { setBusy(true); try { await request('/api/admin/leados/research', { id: lead.id, policyReviewed, productInterest: interest }); await load(); setNotice('Research complete; source errors and missing contacts remain visible below.'); } catch (e) { setNotice(e instanceof Error ? e.message : 'Research failed.'); } finally { setBusy(false); } }}>Research public pages</button>
           <p className="text-xs">Last verified: {lead.research?.lastVerifiedAt || 'not verified'} · Fit: {lead.research?.qualification?.score ?? 'not assessed'}/100</p>
+          <details className="text-xs border rounded p-3 space-y-2"><summary>Record a public browser observation</summary>
+            <p>For pages that need JavaScript, open the company website in your browser. Quote visible public facts and the exact contact page. This records a staff observation; an unattended browser crawler is not configured.</p>
+            <label className="block">Observed page URL<input className={field} value={browserSource} onChange={(e)=>setBrowserSource(e.target.value)} /></label>
+            <label className="block">Visible company evidence<textarea className={field} rows={5} maxLength={4000} value={browserText} onChange={(e)=>setBrowserText(e.target.value)} /></label>
+            <label className="block">Published role email (optional)<input className={field} type="email" value={browserEmail} onChange={(e)=>setBrowserEmail(e.target.value)} /></label>
+            <label className="flex gap-2"><input type="checkbox" checked={browserReviewed} onChange={(e)=>setBrowserReviewed(e.target.checked)} />I read this public page in a browser and the quoted facts are visibly published; I encountered no login or access restriction.</label>
+            <button className={btn} disabled={busy || !policyReviewed || !browserReviewed || browserText.trim().length<40} onClick={async()=>{setBusy(true);try{await request('/api/admin/leados/research',{id:lead.id,method:'browser',policyReviewed,browserReviewed,sourceUrl:browserSource,observedText:browserText,observedEmail:browserEmail,productInterest:interest});await load();setNotice('Staff browser evidence saved; qualification updated. No email sent.');}catch(e){setNotice(e instanceof Error?e.message:'Browser evidence could not be saved.');}finally{setBusy(false);}}}>Save browser observation</button>
+          </details>
           {lead.research?.qualification?.reasons.map((reason) => <p key={reason} className="text-xs">{reason}</p>)}
           {(lead.research?.sources || []).map((s, i) => <details key={`${s.url}-${i}`} className="text-xs border rounded p-2"><summary>{s.status} · {s.kind} · {s.retrievedAt}</summary><a href={s.url} target="_blank" rel="noopener noreferrer" className="break-all underline">{s.url}</a><p>{s.excerpt}</p></details>)}
           {lead.research?.errors?.map((e) => <p key={e} className="text-xs text-amber-800">{e}</p>)}

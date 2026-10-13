@@ -15,13 +15,16 @@ const EXPANSIONS: Record<string, string[]> = {
 };
 
 interface WebSearchResult { title?: string; url?: string; content?: string; }
+export function discoveryQuery(input: LeadSearchInput, expansion = (EXPANSIONS[input.category] || [input.category])[0]) {
+  return `${expansion} ${input.keyword || ''} ${input.location} ${input.privateLabelOnly ? 'private label' : ''} ${input.wholesaleOnly ? 'wholesale distributor' : ''}`.trim().slice(0,500);
+}
 export function normalizeSearchResults(results: WebSearchResult[], input: LeadSearchInput, retrievedAt: string): NormalizedLead[] {
   const leads: NormalizedLead[] = [];
   for (const result of results) {
     const website = result.url ? publicCompanyUrl(result.url) : null;
     if (!website || !result.title || /directory|top \d|best \d|near me|yellow pages|mapquest/i.test(result.title)) continue;
     const candidateUrl = new URL(website);
-    if (/(^|\.)(?:whereorg|macraesbluebook|chamberofcommerce|manta)\.com$/i.test(candidateUrl.hostname) || /\/(?:directory|businesses)(?:\/|$)/i.test(candidateUrl.pathname) || /\/service\/.*\/location\//i.test(candidateUrl.pathname)) continue;
+    if (/(^|\.)(?:whereorg|macraesbluebook|chamberofcommerce|manta|loc8nearme|visithoustontexas)\.com$/i.test(candidateUrl.hostname) || /\/(?:directory|businesses|listings)(?:\/|$)/i.test(candidateUrl.pathname) || /\/service\/.*\/location\//i.test(candidateUrl.pathname)) continue;
     const text = `${result.title} ${result.content || ''}`;
     if (!/feed|farm|ranch|equestrian|livestock|salt|spice|seasoning|food distribut/i.test(text)) continue;
     if (/software|marketing agency|restaurant/i.test(result.title)) continue;
@@ -57,7 +60,7 @@ async function searchSearxng(input: LeadSearchInput) {
   let raw = 0, error: string | null = null;
   for (const expansion of queries) {
     const url = new URL('search', safe.endsWith('/') ? safe : `${safe}/`);
-    url.search = new URLSearchParams({ q: `${expansion} ${input.keyword || ''} ${input.location} ${input.privateLabelOnly ? 'private label' : ''} ${input.wholesaleOnly ? 'wholesale distributor' : ''}`, format: 'json', language: 'en-US', safesearch: '1' }).toString();
+    url.search = new URLSearchParams({ q: discoveryQuery(input,expansion), format: 'json', language: 'en-US', safesearch: '1' }).toString();
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(12000), cache: 'no-store' });
       if (!res.ok) { error = `SearXNG HTTP ${res.status}`; break; }
@@ -101,7 +104,7 @@ export async function discoverLeads(input: LeadSearchInput): Promise<{ leads: No
   };
   if (!process.env.LEADOS_SEARXNG_URL && process.env.LEADOS_RESEARCH_WORKER_TOKEN) {
     try {
-      const queued = await leadosRequest<{ item: { id: string } }>('/workflow', { method: 'POST', body: { action: 'queue_discovery', input } });
+      const queued = await leadosRequest<{ item: { id: string } }>('/workflow', { method: 'POST', body: { action: 'queue_discovery', input, query:discoveryQuery(input) } });
       diagnostics.queuedJobId = queued.item.id;
       diagnostics.sources!.searxng.error = 'Queued for the private n8n research worker.';
       diagnostics.errorSummary = null;

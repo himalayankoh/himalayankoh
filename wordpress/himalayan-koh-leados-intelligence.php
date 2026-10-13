@@ -89,7 +89,7 @@ function hk_leados2_research_website( WP_REST_Request $request ) {
  $parts = wp_parse_url( $url );
  if ( ! $parts || ! wp_http_validate_url( $url ) || ! in_array( $parts['scheme'] ?? '', array( 'http', 'https' ), true ) || isset( $parts['user'] ) || isset( $parts['pass'] ) || ( isset( $parts['port'] ) && ! in_array( $parts['port'], array( 80,443 ), true ) ) ) { return hk_leados2_error( 'Public company URL required.', 400 ); }
  $origin = $parts['scheme'] . '://' . $parts['host'];
- $cache_key = 'hklo2_site_' . hash( 'sha256', $origin ); $cached = get_transient( $cache_key );
+ $cache_key = 'hklo2_site_v2_' . hash( 'sha256', $origin ); $cached = get_transient( $cache_key );
  if ( $cached ) { return $cached; }
  $gate_key = 'hklo2_site_gate_' . hash( 'sha256', $origin );
  if ( get_transient( $gate_key ) ) { return hk_leados2_error( 'Site research is already running. Retry later.', 429 ); }
@@ -121,7 +121,7 @@ function hk_leados2_research_website( WP_REST_Request $request ) {
      if (!is_array($company)) { continue; }
      $types = (array)($company['@type'] ?? array()); $declared_url = $company['url'] ?? '';
      if (!is_string($declared_url) || !array_intersect($types,array('Organization','LocalBusiness','Store','WholesaleStore','PetStore')) || wp_parse_url($declared_url,PHP_URL_HOST) !== $parts['host']) { continue; }
-     if (!empty($company['name'])) { $facts['publicCompanyName'] = sanitize_text_field($company['name']); }
+     if (!empty($company['name'])) { $facts['publicCompanyName'] = sanitize_text_field(html_entity_decode($company['name'],ENT_QUOTES,'UTF-8')); }
      $address = $company['address'] ?? array();
      if (is_array($address) && !isset($address[0])) {
       foreach (array('streetAddress'=>'address','addressLocality'=>'city','addressRegion'=>'region','addressCountry'=>'country') as $source_key=>$dest_key) {
@@ -198,8 +198,10 @@ function hk_leados2_workflow( WP_REST_Request $request ) {
    $clean['maxResults'] = min( 40, max( 1, (int) ( $input['maxResults'] ?? 15 ) ) );
    $clean['searchDepth'] = min( 2, max( 1, (int) ( $input['searchDepth'] ?? 1 ) ) );
    $clean['radiusKm'] = min( 50, max( 1, (int) ( $input['radiusKm'] ?? 25 ) ) );
-   $payload = array( 'input' => $clean, 'query' => $clean['category'] . ' ' . $clean['location'] . ' ' . $clean['keyword'] . ( $clean['privateLabelOnly'] ? ' private label' : '' ) . ( $clean['wholesaleOnly'] ? ' wholesale distributor' : '' ), 'retrievedAt' => gmdate('c'), 'attempts' => 0 );
-   $fingerprint = hash( 'sha256', wp_json_encode( $clean ) );
+   $query = substr(sanitize_text_field($body['query'] ?? ''),0,500);
+   if (!$query) { $query = $clean['category'] . ' ' . $clean['location'] . ' ' . $clean['keyword'] . ( $clean['privateLabelOnly'] ? ' private label' : '' ) . ( $clean['wholesaleOnly'] ? ' wholesale distributor' : '' ); }
+   $payload = array( 'input' => $clean, 'query' => $query, 'retrievedAt' => gmdate('c'), 'attempts' => 0 );
+   $fingerprint = hash( 'sha256', wp_json_encode( array($clean,$query) ) );
    $cached = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE kind = 'discovery' AND workspace_id = %s AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.fingerprint')) = %s AND created_at >= %s AND state IN ('pending','processing','complete') ORDER BY created_at DESC LIMIT 1", HK_LEADOS_WORKSPACE_ID, $fingerprint, gmdate('Y-m-d H:i:s', time()-600) ), ARRAY_A );
    if ( $cached ) { return array( 'item' => hk_leados2_workflow_row( $cached ), 'cached' => true ); }
    if ( (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table WHERE kind = 'discovery' AND state IN ('pending','processing')" ) >= 20 ) { return hk_leados2_error( 'Research queue full.', 429 ); }

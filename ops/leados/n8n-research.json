@@ -71,7 +71,7 @@
       "name": "Private SearXNG",
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
-        "url": "http://hk-leados-research-gateway-1:8890/search",
+        "url": "http://127.0.0.1:8891/search",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendQuery": true,

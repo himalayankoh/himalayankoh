@@ -14,7 +14,7 @@ Use `settings.example.yml` as a configuration template, replacing its secret
 privately. `LEADOS_SEARXNG_CONFIG`, `SEARXNG_IMAGE`, `CADDY_IMAGE` and
 `LEADOS_RESEARCH_TOKEN` are the compose inputs.
 
-The existing `salman-n8n` container joins the research Docker network. It polls
+For Docker-hosted n8n, join its existing container to the research network. It polls
 the authenticated storefront `/api/leados/research-worker` endpoint, searches
 the private gateway, then returns bounded titles, URLs and snippets. It cannot
 write products, orders, customer records, company emails or qualification scores.
@@ -24,6 +24,15 @@ completed. The UI exposes source failures and the worker heartbeat.
 The PC/WSL host must remain online. A temporary WSL keepalive was used during
 setup; this is not evidence of automatic restart after a Windows reboot. A
 permanent host/service can be selected later without exposing SearXNG publicly.
+
+The owner's authenticated n8n API currently belongs to a Windows process on
+port 5678; the separate Docker instance on 5680 does not accept that credential.
+Use `node ops/leados/windows-search-bridge.mjs --token-file <private token file>`
+for this topology and pass `--windows-bridge` to workflow setup. This authenticated
+bridge binds only Windows loopback 8891, uses WSL Python to reach the existing
+loopback gateway and accepts bounded queries only. It has no arbitrary URL or
+command input and no new credential. Start it in a hidden owner-managed process;
+PC uptime and restart after reboot remain requirements, not proven availability.
 
 ## Workflows and secrets
 
@@ -56,6 +65,10 @@ contacts and confirmed company locations survive rediscovery.
 Rendered browser research is **not configured as an unattended service** in this
 release. JS-only pages explicitly report that limitation; they are not silently
 treated as verified. Public company pages can be checked in the owner's browser.
+The LeadOS evidence panel can save a staff-attested browser observation with a
+first-party page URL, visible quote and optional published role mailbox. It
+explicitly requires page/policy review, recalculates qualification and preserves
+manual contacts; this is not represented as an automated crawler result.
 Crawlee/Crawl4AI research and licensing decisions are in
 `docs/LEADOS-2-RESEARCH.md`; a protected browser companion needs separate runtime
 and network-isolation verification before its readiness can be asserted.
