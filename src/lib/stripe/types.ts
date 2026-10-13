@@ -1,3 +1,4 @@
+import type { OrderTotals } from '../orders/totals';
 /** Stripe + order payment metadata stored on PaymentIntent and orders table. */
 export interface StripePaymentMetadata {
   email: string;
@@ -17,6 +18,8 @@ export interface StripePaymentIntentResult {
   mode: 'test' | 'live';
   /** The WooCommerce order this payment is for — reserved before the payment. */
   reservedOrderId: string;
+  /** Breakdown saved by WooCommerce; the amount remains Stripe's minor units. */
+  totals?: OrderTotals;
 }
 
 export interface StripeVerifyPaymentResult {

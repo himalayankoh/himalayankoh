@@ -6,7 +6,7 @@ import {
   useStripe,
 } from '@stripe/react-stripe-js';
 import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
-import { LockKeyhole, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { getStripeSuccessUrl } from '../../lib/payments/checkoutUrls';
 
 interface StripePaymentFormProps {
@@ -68,15 +68,6 @@ function PaymentFormInner({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-3 rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3">
-        <LockKeyhole size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-himalayan" />
-        <div>
-          <p className="text-sm font-semibold text-charcoal">Choose a secure payment method</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-charcoal-light">
-            Stripe shows the card and pay-over-time options available for this order and location.
-          </p>
-        </div>
-      </div>
       {!elementReady && !elementError && (
         <div role="status" aria-live="polite" className="rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3 text-sm text-charcoal-light">
           Loading available payment methods…
@@ -97,7 +88,7 @@ function PaymentFormInner({
           setElementError(event.error?.message || 'Stripe was unable to load the available payment methods.');
         }}
         options={{
-          layout: 'accordion',
+          layout: 'tabs',
           paymentMethodOrder: ['card', 'klarna', 'afterpay_clearpay', 'affirm'],
           fields: {
             billingDetails: {
@@ -113,7 +104,7 @@ function PaymentFormInner({
         className="w-full flex items-center justify-center gap-2 rounded-xl bg-himalayan px-4 py-4 font-semibold text-white shadow-sm transition-colors hover:bg-himalayan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-himalayan disabled:cursor-not-allowed disabled:bg-gray-300"
       >
         {paying && <Loader2 size={18} className="animate-spin" />}
-        {paying ? 'Confirming payment…' : `Continue securely · ${amountLabel}`}
+        {paying ? 'Confirming payment…' : `Pay ${amountLabel}`}
       </button>
     </div>
   );

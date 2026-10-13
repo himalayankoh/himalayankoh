@@ -43,7 +43,7 @@ import {
   validateCheckoutCartItems,
 } from '@/lib/orders/serverCreateOrder';
 import type { CreateOrderData } from '@/lib/orders/totals';
-import { checkoutTotalsFromWoo } from '@/lib/woo/checkoutPricing';
+import { checkoutTotalsFromWoo, stripeAmountMatchesWooOrder } from '@/lib/woo/checkoutPricing';
 import { HK_META, readWooOrderMeta, setWooOrderPaymentIntent } from '@/lib/woo/orders';
 
 const MIN_AMOUNT_CENTS = 50;
@@ -121,6 +121,9 @@ export async function POST(request: Request) {
       try {
         const existing = await stripe.paymentIntents.retrieve(recordedIntentId);
         if (REUSABLE_INTENT_STATES.has(existing.status)) {
+          if (!stripeAmountMatchesWooOrder(reserved.raw, existing.amount, existing.currency)) {
+            return NextResponse.json({ error: 'The payment amount has changed. Review your checkout and try again.' }, { status: 409 });
+          }
           return NextResponse.json({
             clientSecret: existing.client_secret,
             paymentIntentId: existing.id,
@@ -128,6 +131,7 @@ export async function POST(request: Request) {
             currency: existing.currency,
             mode: await getStripeMode(),
             reservedOrderId: String(orderId),
+            totals: authoritative,
           });
         }
       } catch (error) {
@@ -178,6 +182,7 @@ export async function POST(request: Request) {
       currency: paymentIntent.currency,
       mode: await getStripeMode(),
       reservedOrderId: String(orderId),
+      totals: authoritative,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to create payment intent.';

@@ -166,6 +166,21 @@ describe('POST /api/stripe/create-payment-intent', () => {
     expect(stripeCalls.create[0].automatic_payment_methods).toEqual({ enabled: true });
   });
 
+  it('returns the saved coupon, shipping and zero-tax breakdown with the exact charge', async () => {
+    state.order = {...state.order,total:'0.50',discount_total:'49.45',shipping_total:'0.00',total_tax:'0.00',line_items:[{quantity:1,price:'49.95',subtotal:'49.95',total:'0.50'}]};
+    const response = await POST(request(body({couponCode:'QA-COUPON'})));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({amount:50,totals:{subtotal:49.95,discountAmount:49.45,shippingCost:0,taxAmount:0,total:0.50}});
+  });
+
+  it('refuses to reuse a payment whose amount no longer matches the saved order', async () => {
+    state.recordedIntentId='pi_old';
+    state.order={...state.order,total:'0.50'};
+    const response=await POST(request());
+    expect(response.status).toBe(409);
+    expect(stripeCalls.create).toEqual([]);
+  });
+
   it('idempotency key is scoped to the order and cart so two first attempts collapse', async () => {
     await POST(request());
 

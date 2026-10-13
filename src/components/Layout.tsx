@@ -47,6 +47,7 @@ export default function Layout({ children }: LayoutProps) {
   const mobileDialog = useDialogFocus(mobileOpen, () => setMobileOpen(false));
   const headerRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname() ?? '/';
+  const isCheckout = pathname === '/checkout';
   // Respected rather than assumed: a page that slides in is motion sickness for
   // some readers, and the transition is decoration, not information.
   const reduceMotion = useReducedMotion();
@@ -72,7 +73,7 @@ export default function Layout({ children }: LayoutProps) {
 
   useEffect(() => {
     const el = headerRef.current;
-    if (!el) return;
+    if (!el) { document.documentElement.style.setProperty('--header-height', '0px'); return; }
     const observer = new ResizeObserver(([entry]) => {
       document.documentElement.style.setProperty(
         '--header-height',
@@ -81,7 +82,7 @@ export default function Layout({ children }: LayoutProps) {
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [isCheckout]);
 
   const handleSignOut = () => {
     // Both credentials this browser holds are cleared synchronously by their one
@@ -92,6 +93,13 @@ export default function Layout({ children }: LayoutProps) {
     window.location.assign('/');
   };
 
+  if (isCheckout) return (
+    <div className="flex min-h-screen flex-col pb-[var(--consent-space,0px)]">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:p-3">Skip to main content</a>
+      <main id="main-content" tabIndex={-1} className="flex-1">{children}</main>
+      <Footer compact />
+    </div>
+  );
   return (
     <div className="min-h-screen flex flex-col pb-[var(--consent-space,0px)]">
       <a

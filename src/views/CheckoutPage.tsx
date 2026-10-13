@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
-  BadgeCheck,
   CheckCircle,
   ChevronDown,
   CreditCard,
@@ -18,7 +17,8 @@ import { useAuthContext } from '../context/AuthContext';
 import StripePaymentForm from '../components/checkout/StripePaymentForm';
 import StagingTestPaymentForm from '../components/checkout/StagingTestPaymentForm';
 import PayOverTimeOptions from '../components/checkout/PayOverTimeOptions';
-import CheckoutAddOns from '../components/checkout/CheckoutAddOns';
+import { checkoutPaymentKey, checkoutPaymentPrompt } from '../lib/payments/checkoutState';
+import type { OrderTotals } from '../lib/orders/totals';
 import { submitStagingSimulatorPayment } from '../lib/payments/stagingSimulatorClient';
 import {
   STAGING_SIMULATOR_UNAVAILABLE_MESSAGE,
@@ -63,7 +63,7 @@ function pickDefaultShippoRateId(rates: ShippoRate[]): string | null {
 // Compact by design: the checkout is dense so an order is reviewable without a
 // long scroll. Fields keep a comfortable 40px hit area and 14px text — the
 // savings come from padding, not from shrinking anything a finger has to hit.
-const inputClass = 'w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all';
+const inputClass = 'w-full min-h-11 px-3 py-2 bg-white border border-gray-200 rounded-lg text-base sm:text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all';
 const labelClass = 'block text-xs font-semibold text-charcoal mb-1';
 
 const initialForm = {
@@ -94,6 +94,8 @@ interface StripeCheckoutSession {
   order: OrderWithItems;
   clientSecret: string;
   paymentIntentId: string;
+  checkoutKey: string;
+  totals: OrderTotals;
 }
 
 export default function CheckoutPage({ retailOnly = false }: { retailOnly?: boolean }) {
@@ -125,7 +127,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [couponCode, setCouponCode] = useState('');
   const [couponApplying, setCouponApplying] = useState(false);
   /** Whether the summary's promo-code box is unfolded (the reference layout's "Enter"). */
-  const [promoOpen, setPromoOpen] = useState(false);
+  const [promoOpen, setPromoOpen] = useState(true);
+  const [shippingOptionsExpanded, setShippingOptionsExpanded] = useState(false);
   /**
    * The delivery method recorded on the order. Only a deployment without Shippo lets
    * the customer choose it.
@@ -190,7 +193,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       postalCode: form.postalCode,
     })
       .then((res) => {
-        if (!cancelled && res && typeof res.totalTax === 'number' && res.totalTax > 0) {
+        if (!cancelled && res && typeof res.totalTax === 'number' && res.totalTax >= 0) {
           setAuthoritativeTax(res.totalTax);
         } else if (!cancelled) {
           setAuthoritativeTax(null);
@@ -201,7 +204,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     return () => {
       cancelled = true;
     };
-  }, [normalizedState, form.city, form.postalCode, form.country, updateCustomerAddress]);
+  }, [normalizedState, form.city, form.postalCode, form.country, couponCode, updateCustomerAddress]);
 
   const shippoEnabled = shippoRuntimeEnabled ?? publicEnv.shippoEnabled;
   const showShippoPanel = shippoEnabled && (
@@ -320,14 +323,25 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       .join(' · ');
   }, [form]);
 
-  const canAutoPreparePayment =
-    retailOnly &&
-    paymentMethod === 'stripe' &&
-    stripeEnabled &&
-    items.length > 0 &&
-    shippingSelected &&
-    shippingReadyForPayment &&
-    paymentDetailsReady;
+  const checkoutPayload = useMemo(() => ({
+    email: form.email,
+    phone: form.phone || undefined,
+    shippingAddress: buildShippingAddress(form),
+    billingAddress: billingSameAsShipping ? buildShippingAddress(form) : buildBillingAddress(form),
+    couponCode,
+    shippingMethod,
+    shippoRateId: useLiveShippoRates ? selectedShippoRate?.objectId : undefined,
+    shippingCarrier: useLiveShippoRates ? selectedShippoRate?.provider : undefined,
+    shippingService: useLiveShippoRates ? selectedShippoRate?.serviceName : undefined,
+    notes: form.notes || undefined,
+    userId: user?.id,
+    items,
+  }), [form, billingSameAsShipping, couponCode, shippingMethod, useLiveShippoRates, selectedShippoRate, user?.id, items]);
+  const checkoutInputKey = checkoutPaymentKey(checkoutPayload);
+  // A coupon, address, rate or quantity edit immediately unmounts the old intent.
+  const activeStripeSession = !couponApplying && !shippoRatesLoading && paymentDetailsReady && shippingReadyForPayment && stripeSession?.checkoutKey === checkoutInputKey ? stripeSession : null;
+  const displayTotals = activeStripeSession?.totals ?? totals;
+  const paymentPrompt = checkoutPaymentPrompt({ email: form.email, addressReady, billingReady: paymentDetailsReady || billingSameAsShipping, shippingReady: shippingSelected && shippingReadyForPayment });
 
   useEffect(() => {
     const onCartWarning = (event: Event) => {
@@ -515,8 +529,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   // `Change` while the address is already valid must not slam it shut again on the
   // next render.
   useEffect(() => {
-    if (addressReady) setAddressEditing(false);
-  }, [addressReady]);
+    if (addressValidation?.isValid && !addressValidation.recommendedAddress) setAddressEditing(false);
+  }, [addressValidation?.isValid, addressValidation?.recommendedAddress]);
 
   const applySuggestedAddress = () => {
     if (!addressValidation?.recommendedAddress) return;
@@ -585,7 +599,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       } catch (err: unknown) {
         // 2. Fallback for offline demo coupon (HKWELCOME10) if store API is local/unavailable
         const upper = nextCoupon.toUpperCase();
-        if (supportedCoupons[upper]) {
+        if (!retailOnly && supportedCoupons[upper]) {
           setCouponCode(upper);
           setFieldErrors((current) => ({ ...current, coupon: undefined }));
         } else {
@@ -597,7 +611,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         setCouponApplying(false);
       }
     },
-    [couponInput, setCoupon]
+    [couponInput, setCoupon, retailOnly]
   );
 
   const removeCoupon = useCallback(async () => {
@@ -676,31 +690,14 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   };
 
   const prepareStripePayment = useCallback(async () => {
-    if (stripeSession || preparingPaymentRef.current) return;
+    if (activeStripeSession || preparingPaymentRef.current || couponApplying) return;
 
     preparingPaymentRef.current = true;
     setSubmitting(true);
     setError(null);
 
     try {
-      const shippingAddress = buildShippingAddress(form);
-      const billingAddress = billingSameAsShipping
-        ? shippingAddress
-        : buildBillingAddress(form);
-      const paymentIntent = await createStripePaymentIntent({
-        email: form.email,
-        phone: form.phone || undefined,
-        shippingAddress,
-        billingAddress,
-        couponCode,
-        shippingMethod,
-        shippoRateId: useLiveShippoRates ? selectedShippoRate?.objectId : undefined,
-        shippingCarrier: useLiveShippoRates ? selectedShippoRate?.provider : undefined,
-        shippingService: useLiveShippoRates ? selectedShippoRate?.serviceName : undefined,
-        notes: form.notes || undefined,
-        userId: user?.id,
-        items,
-      });
+      const paymentIntent = await createStripePaymentIntent(checkoutPayload);
 
       // The order is the store's own, reserved before this payment — so the id
       // shown here is already the real one, not a placeholder the webhook swaps
@@ -714,6 +711,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         order: pendingOrder,
         clientSecret: paymentIntent.clientSecret,
         paymentIntentId: paymentIntent.paymentIntentId,
+        checkoutKey: checkoutInputKey,
+        totals: { ...(paymentIntent.totals ?? totals), total: paymentIntent.amount / 100 },
       });
       savePendingStripeCheckout({
         reservedOrderId: paymentIntent.reservedOrderId,
@@ -729,24 +728,8 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       setSubmitting(false);
     }
   }, [
-    billingSameAsShipping,
-    couponCode,
-    form,
-    items,
-    selectedShippoRate?.amount,
-    selectedShippoRate?.objectId,
-    selectedShippoRate?.provider,
-    selectedShippoRate?.serviceName,
-    shippingMethod,
-    stripeSession,
-    useLiveShippoRates,
-    user?.id,
+    activeStripeSession, checkoutPayload, checkoutInputKey, couponApplying, totals,
   ]);
-
-  useEffect(() => {
-    if (!canAutoPreparePayment || stripeSession || submitting) return;
-    void prepareStripePayment();
-  }, [canAutoPreparePayment, prepareStripePayment, stripeSession, submitting]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -766,7 +749,12 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     // button, or the simulator's Test pay button. Reaching here means there is no
     // payment path at all, which is the one case that must say so.
     if (retailOnly) {
-      if (stripeEnabled || stagingSimulatorEnabled) return;
+      if (stripeEnabled) {
+        if (!shippingSelected || !shippingReadyForPayment) { setError('Choose a shipping option to continue.'); return; }
+        await prepareStripePayment();
+        return;
+      }
+      if (stagingSimulatorEnabled) return;
       setError(STAGING_SIMULATOR_UNAVAILABLE_MESSAGE);
       return;
     }
@@ -943,7 +931,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   }
 
   return (
-    <div className="min-h-screen bg-warm-white">
+    <div className="bg-warm-white">
       {/*
         One slim bar with the shop's own identity on it — the shape the owner
         asked for, minus the marketplace: the wordmark is Himalayan Koh's, the
@@ -951,7 +939,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         payment section below actually keeps (Stripe hosts the card fields).
       */}
       <header className="border-b border-himalayan-line bg-cream">
-        <div className="mx-auto flex max-w-[100rem] items-center justify-between gap-4 px-4 py-2 sm:px-6">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link
             to="/products"
             className="inline-flex items-center gap-2 text-sm font-medium text-charcoal-light transition-colors hover:text-charcoal"
@@ -960,7 +948,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
             Continue shopping
           </Link>
           <div className="flex items-center gap-2">
-            <span className="font-serif text-lg font-bold tracking-tight text-charcoal">Himalayan Koh</span>
+            <Link to="/" aria-label="Himalayan Koh home"><img src="/logo.svg" alt="Himalayan Koh" className="h-9 w-auto max-w-[145px]" /></Link>
             <span className="hidden items-center gap-1 rounded-full border border-himalayan-line bg-white px-2.5 py-1 text-[11px] font-semibold text-charcoal-light sm:inline-flex">
               <Lock size={11} />
               Secure checkout
@@ -970,7 +958,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       </header>
 
       <div className="border-b border-himalayan-line/70 bg-white">
-        <div className="mx-auto flex max-w-[100rem] flex-wrap items-baseline gap-x-4 gap-y-1 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6">
           <motion.h1
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -978,13 +966,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
           >
             Checkout
           </motion.h1>
-          <p className="text-xs text-charcoal-light sm:text-sm">
-            Review your order, confirm where it is going, and pay securely — fulfilled by Himalayan Koh.
-          </p>
+          <ol aria-label="Checkout steps" className="flex items-center gap-3 text-xs text-charcoal-light sm:text-sm"><li>1. Address</li><li>2. Shipping</li><li className={activeStripeSession ? 'font-semibold text-himalayan' : ''}>3. Payment</li></ol>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="mx-auto max-w-[100rem] px-4 py-4 sm:px-6 md:py-6">
+      <form onSubmit={handleSubmit} className="mx-auto max-w-6xl px-4 py-4 sm:px-6 md:py-6">
         {/*
           Legacy checkout only. Retail has exactly one payment path, so the Payment
           section owns that message rather than two banners saying it at once.
@@ -1001,21 +987,21 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               <h2 className="mb-1 font-serif text-base font-bold text-charcoal sm:text-lg">Contact information</h2>
               {!user && (
                 <p className="mb-3 text-xs text-charcoal-light">
-                  Checking out as a guest — no account needed. You&rsquo;ll get an email confirmation and order tracking link once you pay.
+                  Guest checkout · No account needed.
                 </p>
               )}
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label="Email address" error={fieldErrors.email}>
                   <input required type="email" name="email" autoComplete="email" value={form.email} onChange={(event) => handleChange('email', event.target.value)} placeholder="you@example.com" className={inputClass} />
                 </Field>
-                <Field label="Phone number">
+                <Field label="Phone number (optional)">
                   <input type="tel" name="phone" autoComplete="tel" value={form.phone} onChange={(event) => handleChange('phone', event.target.value)} placeholder="(832) 224-6466" className={inputClass} />
                 </Field>
               </div>
             </section>
 
             {/* Shipping choices appear after an address, without a premature error. */}
-            <div className="grid gap-3 xl:grid-cols-2">
+            <div className="flex flex-col gap-3">
 
             {/*
               1 — Delivery service. The choice this shop really has is which carrier
@@ -1024,6 +1010,118 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               delivery prices on the page. Nothing here is priced by hand, and no
               transit window is promised that a carrier did not give us.
             */}
+            {/*
+              2 — Shipping address. The fields collapse to the address they
+              produced once it is complete, with `Change` to reopen them, which is
+              the reviewed-address shape of the reference page.
+            */}
+            <section className="order-1 rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <MapPin size={18} className="text-himalayan" />
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Shipping address</h2>
+                </div>
+                {addressReady && (
+                  <button
+                    type="button"
+                    onClick={() => setAddressEditing((open) => !open)}
+                    className="text-sm font-semibold text-himalayan transition-colors hover:text-himalayan-dark"
+                  >
+                    {addressEditing ? 'Done' : 'Change'}
+                  </button>
+                )}
+              </div>
+
+              {addressReady && !addressEditing && (
+                <div className="rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3">
+                  <p className="text-sm font-semibold text-charcoal">
+                    {form.fullName}
+                    {form.phone ? <span className="font-normal text-charcoal-light"> · {form.phone}</span> : null}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-charcoal-light">{shippingAddressSummary}</p>
+                </div>
+              )}
+
+              {(addressEditing || !addressReady) && (
+              <div className="grid md:grid-cols-2 gap-4">
+                <Field label="Full name" error={fieldErrors.fullName}>
+                  <input required name="fullName" autoComplete="shipping name" value={form.fullName} onChange={(event) => handleChange('fullName', event.target.value)} placeholder="Full name" className={inputClass} />
+                </Field>
+                <Field label="Address line 1" error={fieldErrors.addressLine1}>
+                  <input required name="addressLine1" autoComplete="shipping address-line1" value={form.addressLine1} onChange={(event) => handleChange('addressLine1', event.target.value)} placeholder="Street address" className={inputClass} />
+                </Field>
+                <Field label="Address line 2">
+                  <input name="addressLine2" autoComplete="shipping address-line2" value={form.addressLine2} onChange={(event) => handleChange('addressLine2', event.target.value)} placeholder="Suite, building, ranch name" className={inputClass} />
+                </Field>
+                <Field label="City" error={fieldErrors.city}>
+                  <input required name="city" autoComplete="shipping address-level2" value={form.city} onChange={(event) => handleChange('city', event.target.value)} placeholder="City" className={inputClass} />
+                </Field>
+                <Field label="State" error={fieldErrors.state}>
+                  <input required name="state" autoComplete="shipping address-level1" value={form.state} onChange={(event) => handleChange('state', event.target.value)} placeholder="State" className={inputClass} />
+                </Field>
+                <Field label="Postal code" error={fieldErrors.postalCode}>
+                  <input required name="postalCode" autoComplete="shipping postal-code" value={form.postalCode} onChange={(event) => handleChange('postalCode', event.target.value)} placeholder="Postal code" className={inputClass} />
+                </Field>
+                <Field label="Country" error={fieldErrors.country}>
+                  <input required name="country" autoComplete="shipping country-name" value={form.country} onChange={(event) => handleChange('country', event.target.value)} placeholder="Country" className={inputClass} />
+                </Field>
+              </div>
+              )}
+
+              {(addressValidating || addressValidation) && (
+                <div className="mt-4">
+                  {addressValidating && (
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-charcoal-light flex items-center gap-2">
+                      <Loader2 size={16} className="animate-spin text-himalayan" />
+                      Verifying your shipping address…
+                    </div>
+                  )}
+                  {!addressValidating && addressValidation?.isValid && !addressValidation.recommendedAddress && (
+                    <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900 flex items-start gap-2">
+                      <CheckCircle size={18} className="text-green-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold">Address verified</p>
+                      </div>
+                    </div>
+                  )}
+                  {!addressValidating && addressValidation?.recommendedAddress && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                      <div className="flex items-start gap-2">
+                        <MapPin size={18} className="text-himalayan flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="font-semibold">Did you mean this address?</p>
+                          <p className="mt-2 leading-6">
+                            {formatAddressLines(addressValidation.recommendedAddress)}
+                          </p>
+                          {addressValidation.messages.length > 0 && (
+                            <p className="mt-2 text-amber-900/90">{addressValidation.messages[0]}</p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={applySuggestedAddress}
+                            className="mt-3 inline-flex items-center justify-center px-4 py-2 bg-himalayan text-white rounded-lg text-sm font-semibold hover:bg-himalayan-dark transition-colors"
+                          >
+                            Use suggested address
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {!addressValidating &&
+                    addressValidation &&
+                    !addressValidation.isValid &&
+                    !addressValidation.recommendedAddress && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                        <p className="font-semibold">Please double-check your address</p>
+                        <p className="mt-1">
+                          {addressValidation.messages[0] ||
+                            'We could not fully verify this address. Fix any typos or use standard USPS formatting.'}
+                        </p>
+                      </div>
+                    )}
+                </div>
+              )}
+            </section>
             {addressReady && <section className="order-2 rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
@@ -1032,7 +1130,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 </div>
                 {useLiveShippoRates && (
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-light">
-                    Live carrier rates
+                    {shippoRates.length > 1 && <button type="button" onClick={() => setShippingOptionsExpanded(value => !value)} aria-expanded={shippingOptionsExpanded} className="min-h-10 text-xs font-semibold normal-case text-himalayan">{shippingOptionsExpanded ? 'Show selected option' : 'Change shipping'}</button>}
                   </span>
                 )}
               </div>
@@ -1055,7 +1153,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                   )}
                   {!shippoRatesLoading && shippoRates.length > 0 && (
                     <div className="space-y-3">
-                      {shippoRates.map((rate) => {
+                      {(shippingOptionsExpanded ? shippoRates : selectedShippoRate ? [selectedShippoRate] : shippoRates.slice(0, 1)).map((rate) => {
                         const selected = selectedShippoRateId === rate.objectId;
                         return (
                           <button
@@ -1066,6 +1164,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                             onClick={() => {
                               setSelectedShippoRateId(rate.objectId);
                               setShippingSelected(true);
+                              setShippingOptionsExpanded(false);
                             }}
                             className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
                               selected
@@ -1138,121 +1237,6 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               )}
             </section>}
 
-            {/*
-              2 — Shipping address. The fields collapse to the address they
-              produced once it is complete, with `Change` to reopen them, which is
-              the reviewed-address shape of the reference page.
-            */}
-            <section className="order-1 rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <MapPin size={18} className="text-himalayan" />
-                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Shipping address</h2>
-                </div>
-                {addressReady && (
-                  <button
-                    type="button"
-                    onClick={() => setAddressEditing((open) => !open)}
-                    className="text-sm font-semibold text-himalayan transition-colors hover:text-himalayan-dark"
-                  >
-                    {addressEditing ? 'Done' : 'Change'}
-                  </button>
-                )}
-              </div>
-
-              {addressReady && !addressEditing && (
-                <div className="rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3">
-                  <p className="text-sm font-semibold text-charcoal">
-                    {form.fullName}
-                    {form.phone ? <span className="font-normal text-charcoal-light"> · {form.phone}</span> : null}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-charcoal-light">{shippingAddressSummary}</p>
-                </div>
-              )}
-
-              {(addressEditing || !addressReady) && (
-              <div className="grid md:grid-cols-2 gap-4">
-                <Field label="Full name" error={fieldErrors.fullName}>
-                  <input required name="fullName" autoComplete="shipping name" value={form.fullName} onChange={(event) => handleChange('fullName', event.target.value)} placeholder="Full name" className={inputClass} />
-                </Field>
-                <Field label="Address line 1" error={fieldErrors.addressLine1}>
-                  <input required name="addressLine1" autoComplete="shipping address-line1" value={form.addressLine1} onChange={(event) => handleChange('addressLine1', event.target.value)} placeholder="Street address" className={inputClass} />
-                </Field>
-                <Field label="Address line 2">
-                  <input name="addressLine2" autoComplete="shipping address-line2" value={form.addressLine2} onChange={(event) => handleChange('addressLine2', event.target.value)} placeholder="Suite, building, ranch name" className={inputClass} />
-                </Field>
-                <Field label="City" error={fieldErrors.city}>
-                  <input required name="city" autoComplete="shipping address-level2" value={form.city} onChange={(event) => handleChange('city', event.target.value)} placeholder="City" className={inputClass} />
-                </Field>
-                <Field label="State" error={fieldErrors.state}>
-                  <input required name="state" autoComplete="shipping address-level1" value={form.state} onChange={(event) => handleChange('state', event.target.value)} placeholder="State" className={inputClass} />
-                </Field>
-                <Field label="Postal code" error={fieldErrors.postalCode}>
-                  <input required name="postalCode" autoComplete="shipping postal-code" value={form.postalCode} onChange={(event) => handleChange('postalCode', event.target.value)} placeholder="Postal code" className={inputClass} />
-                </Field>
-                <Field label="Country" error={fieldErrors.country}>
-                  <input required name="country" autoComplete="shipping country-name" value={form.country} onChange={(event) => handleChange('country', event.target.value)} placeholder="Country" className={inputClass} />
-                </Field>
-              </div>
-              )}
-
-              {(addressValidating || addressValidation) && (
-                <div className="mt-4">
-                  {addressValidating && (
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-charcoal-light flex items-center gap-2">
-                      <Loader2 size={16} className="animate-spin text-himalayan" />
-                      Verifying your shipping address…
-                    </div>
-                  )}
-                  {!addressValidating && addressValidation?.isValid && !addressValidation.recommendedAddress && (
-                    <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900 flex items-start gap-2">
-                      <CheckCircle size={18} className="text-green-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold">Address verified</p>
-                        <p className="mt-1 text-green-800/90">
-                          Your shipping address is confirmed{addressValidation.source === 'shippo' ? ' with USPS' : ''}. Live carrier rates use this address.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  {!addressValidating && addressValidation?.recommendedAddress && (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                      <div className="flex items-start gap-2">
-                        <MapPin size={18} className="text-himalayan flex-shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="font-semibold">Did you mean this address?</p>
-                          <p className="mt-2 leading-6">
-                            {formatAddressLines(addressValidation.recommendedAddress)}
-                          </p>
-                          {addressValidation.messages.length > 0 && (
-                            <p className="mt-2 text-amber-900/90">{addressValidation.messages[0]}</p>
-                          )}
-                          <button
-                            type="button"
-                            onClick={applySuggestedAddress}
-                            className="mt-3 inline-flex items-center justify-center px-4 py-2 bg-himalayan text-white rounded-lg text-sm font-semibold hover:bg-himalayan-dark transition-colors"
-                          >
-                            Use suggested address
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {!addressValidating &&
-                    addressValidation &&
-                    !addressValidation.isValid &&
-                    !addressValidation.recommendedAddress && (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                        <p className="font-semibold">Please double-check your address</p>
-                        <p className="mt-1">
-                          {addressValidation.messages[0] ||
-                            'We could not fully verify this address. Fix any typos or use standard USPS formatting.'}
-                        </p>
-                      </div>
-                    )}
-                </div>
-              )}
-            </section>
             </div>
 
             {/* One Stripe form presents the methods available for this order. */}
@@ -1260,7 +1244,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <CreditCard size={18} className="text-himalayan" />
-                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Payment methods</h2>
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Payment</h2>
                 </div>
                 <span className="hidden items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-charcoal-light sm:inline-flex">
                   <ShieldCheck size={12} /> Encrypted
@@ -1284,34 +1268,30 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       <RadioDot selected={stripeEnabled || stagingSimulatorEnabled} />
                       <CreditCard size={18} className="flex-shrink-0 text-himalayan" />
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-charcoal">Secure payment</p>
+                        <p className="font-semibold text-charcoal">Card or other payment method</p>
                         <p className="mt-0.5 text-xs text-charcoal-light">
-                          {stripeMode === 'test'
+                          {stagingSimulatorEnabled
+                            ? 'Test checkout — no charge.'
+                            : stripeMode === 'test'
                             ? 'Test mode — Stripe test cards only. No real money is charged.'
-                            : 'Cards, Klarna, Afterpay, Affirm and supported wallets.'}
+                            : 'Secure checkout with Stripe.'}
                         </p>
                       </div>
-                      {stripeEnabled && (
-                        <span className="hidden flex-shrink-0 rounded-full bg-himalayan px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white sm:inline">
-                          Recommended
-                        </span>
-                      )}
                     </div>
 
-                    {stripeSession ? (
+                    {activeStripeSession ? (
                       <div
                         ref={stripePaymentRef}
-                        className="mt-4 rounded-xl border-2 border-himalayan/50 bg-white p-5 shadow-lg shadow-himalayan/10"
+                        className="mt-3 bg-white"
                       >
                         <p className="mb-4 text-sm text-charcoal-light">
-                          Secure payment for order {stripeSession.order.order_number} ·{' '}
-                          <strong className="text-charcoal">${totals.total.toFixed(2)}</strong>
+                          Total to pay <strong className="text-charcoal">${displayTotals.total.toFixed(2)}</strong>
                         </p>
                         <StripePaymentForm
-                          clientSecret={stripeSession.clientSecret}
+                          clientSecret={activeStripeSession.clientSecret}
                           publishableKey={stripePublishableKey}
-                          amountLabel={`$${totals.total.toFixed(2)}`}
-                          disabled={submitting || paymentCompleting}
+                          amountLabel={`$${displayTotals.total.toFixed(2)}`}
+                          disabled={submitting || paymentCompleting || couponApplying}
                           onSuccess={handleStripePaymentSuccess}
                           onError={(message) => toast.error(message)}
                         />
@@ -1342,7 +1322,14 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                             </p>
                           </div>
                         ) : (
-                          'Complete your shipping address and select a shipping method to load payment options.'
+                          <div className="space-y-3">
+                            <p>{error || paymentPrompt}</p>
+                            <button type="button" disabled={submitting || couponApplying || shippoRatesLoading} onClick={() => {
+                              if (!validateForm()) { document.querySelector<HTMLInputElement>('input:invalid')?.focus(); return; }
+                              if (!shippingSelected || !shippingReadyForPayment) { setError('Choose a shipping option to continue.'); return; }
+                              void prepareStripePayment();
+                            }} className="min-h-11 w-full rounded-lg bg-himalayan px-4 py-3 font-semibold text-white hover:bg-himalayan-dark disabled:opacity-50">Continue to payment</button>
+                          </div>
                         )}
                       </div>
                     )}
@@ -1394,7 +1381,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                     </button>
                   </div>
 
-                  {paymentMethod === 'stripe' && stripeEnabled && !stripeSession && (
+                  {paymentMethod === 'stripe' && stripeEnabled && !activeStripeSession && (
                     <div className="mt-4 rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3 text-sm text-charcoal-light">
                       <p className="mb-1 font-semibold text-charcoal">How secure checkout works</p>
                       <ol className="list-decimal space-y-1 pl-5">
@@ -1459,22 +1446,18 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
               </div>
             </section>
 
-            <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
-              <div className="mb-2 flex items-baseline justify-between gap-3">
-                <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Delivery notes</h2>
-                <span className="text-xs text-charcoal-light">Optional</span>
-              </div>
+            <details className="rounded-xl border border-himalayan-line/60 bg-white px-3 sm:px-4">
+              <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-charcoal">Delivery notes (optional)</summary>
               <textarea
                 value={form.notes}
                 onChange={(event) => handleChange('notes', event.target.value)}
-                aria-label="Delivery notes" name="deliveryNotes" placeholder="Gate code, delivery instructions, ranch drop-off notes, or product preferences"
+                aria-label="Delivery notes" name="deliveryNotes" placeholder="Gate code or delivery instructions"
                 className={`${inputClass} min-h-20 resize-none`}
               />
-            </section>
+            </details>
 
             {/* The cross-sell row from the reference layout, fed by this shop's own
                 published catalogue rather than a stranger's. See CheckoutAddOns. */}
-            <CheckoutAddOns />
           </div>
 
           <aside className="lg:col-span-1">
@@ -1575,65 +1558,41 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 </div>
 
                 <div className="space-y-2 border-t border-himalayan-line/60 pt-4">
-                  <SummaryRow label="Subtotal" value={totals.subtotal} />
-                  {totals.discountAmount > 0 && (
+                  <SummaryRow label="Subtotal" value={displayTotals.subtotal} />
+                  {displayTotals.discountAmount > 0 && (
                     <SummaryRow
                       label={`Discount ${couponCode ? `(${couponCode})` : ''}`}
-                      value={-totals.discountAmount}
+                      value={-displayTotals.discountAmount}
                     />
                   )}
                   {/* A single line, two truths: a priced delivery reads as a number, and an
                       unpriced one says so rather than reading as a free delivery. */}
                   <SummaryRow
                     label="Delivery"
-                    value={totals.shippingCost}
+                    value={displayTotals.shippingCost}
                     text={
                       serverFreeShipping
                         ? 'Free (Coupon)'
                         : shippoEnabled && !useLiveShippoRates
                           ? 'Priced by the carrier'
-                          : totals.shippingCost === 0
+                          : displayTotals.shippingCost === 0
                             ? 'Free'
                             : undefined
                     }
                   />
-                  <SummaryRow label="Tax" value={totals.taxAmount} />
+                  <SummaryRow label="Tax" value={displayTotals.taxAmount} />
                   <div className="flex items-baseline justify-between border-t border-himalayan-line/60 pt-3">
                     <span className="font-bold text-charcoal">Total</span>
-                    <span className="text-lg font-bold text-himalayan">${totals.total.toFixed(2)}</span>
+                    <span className="text-lg font-bold text-himalayan">${displayTotals.total.toFixed(2)}</span>
                   </div>
                 </div>
-
-                {/*
-                  Where the payment actually happens, said once. When the payment
-                  section owns the action (every retail card order, and the staging
-                  simulator) this slot states the amount and points at it rather than
-                  rendering a second button that looks like "pay" — two of those is
-                  how one of them gets clicked for the wrong reason.
-                */}
-                {retailOnly && (stripeEnabled || stagingSimulatorEnabled) && (
-                  <div className="mt-4 rounded-xl border border-himalayan/30 bg-himalayan-lighter/60 px-4 py-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-semibold text-charcoal">Amount due now</span>
-                      <span className="font-bold text-himalayan">${totals.total.toFixed(2)}</span>
-                    </div>
-                    <p className="mt-1 flex items-start gap-2 text-xs text-charcoal-light">
-                      <Lock size={14} className="mt-0.5 flex-shrink-0 text-himalayan" />
-                      <span>
-                        Card details are entered in the Payment methods section above — that is
-                        where the payment is confirmed and this order is created
-                        {stripeSession ? ` (reserved as ${stripeSession.order.order_number})` : ''}.
-                      </span>
-                    </p>
-                  </div>
-                )}
 
                 {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
                 {(!retailOnly || (!stripeEnabled && !stagingSimulatorEnabled)) && (
                   <button
                     type="submit"
-                    disabled={submitting || (retailOnly && !stripeEnabled && !stagingSimulatorEnabled) || (paymentMethod === 'stripe' && Boolean(stripeSession))}
+                    disabled={submitting || (retailOnly && !stripeEnabled && !stagingSimulatorEnabled) || (paymentMethod === 'stripe' && Boolean(activeStripeSession))}
                     className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-himalayan py-3 font-semibold text-white shadow-lg shadow-himalayan/25 transition-colors hover:bg-himalayan-dark disabled:bg-gray-300"
                   >
                     {submitting && <Loader2 size={18} className="animate-spin" />}
@@ -1644,11 +1603,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                           ? 'Checking payment options…'
                           : !stripeEnabled
                             ? 'Online payment unavailable'
-                            : stripeSession
+                            : activeStripeSession
                               ? 'Choose a payment method above'
-                              : `Pay $${totals.total.toFixed(2)}`
+                              : `Pay $${displayTotals.total.toFixed(2)}`
                         : paymentMethod === 'stripe'
-                          ? stripeSession ? 'Enter card details above' : 'Continue to payment'
+                          ? activeStripeSession ? 'Enter card details above' : 'Continue to payment'
                           : 'Place order (invoice)'}
                   </button>
                 )}
@@ -1662,80 +1621,21 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 </p>
               </div>
 
-              {/*
-                The trust column under the summary. Every line is a fact about this
-                shop's own checkout — who fulfils it, how it ships, who processes the
-                card — rather than a marketplace's boilerplate.
-              */}
-              <div className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
-                <p className="flex items-center gap-2 font-serif text-sm font-bold text-charcoal">
-                  <BadgeCheck size={18} className="text-himalayan" />
-                  Sold and shipped by Himalayan Koh
-                </p>
-                <p className="mt-1.5 text-xs leading-5 text-charcoal-light">
-                  One supplier, one order: nothing here is fulfilled by a third-party marketplace,
-                  and every line ships from our own stock.
-                </p>
-              </div>
-
-              <div className="space-y-2 rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
-                <div>
-                  <p className="flex items-center gap-2 text-sm font-bold text-charcoal">
-                    <Truck size={16} className="text-himalayan" />
-                    Fast delivery
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-charcoal-light">
-                    {shippoEnabled
-                      ? 'Delivery is priced by the carrier from the parcels in your order, with tracking on every parcel.'
-                      : 'Free standard delivery over $50, packed and shipped from our own warehouse.'}
-                  </p>
-                </div>
-                <div className="border-t border-himalayan-line/60 pt-3">
-                  <p className="flex items-center gap-2 text-sm font-bold text-charcoal">
-                    <ShieldCheck size={16} className="text-himalayan" />
-                    Security &amp; privacy
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-charcoal-light">
-                    Card payments are processed by Stripe over an encrypted connection. Your card
-                    number never reaches this server, and we never sell your details.
-                  </p>
-                </div>
-                <div className="border-t border-himalayan-line/60 pt-3">
-                  <p className="flex items-center gap-2 text-sm font-bold text-charcoal">
-                    <Lock size={16} className="text-himalayan" />
-                    Safe payments
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-charcoal-light">
-                    Popular card networks, handled by our payment partner — your details stay
-                    protected end to end.
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {['Visa', 'Mastercard', 'Amex', 'Discover'].map((brand) => (
-                      <span
-                        key={brand}
-                        className="rounded-md border border-himalayan-line/70 bg-warm-white px-2 py-0.5 text-[11px] font-semibold text-charcoal-light"
-                      >
-                        {brand}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
             </div>
           </aside>
         </div>
       </form>
 
-      {!retailOnly && paymentMethod === 'stripe' && stripeSession && (
+      {!retailOnly && paymentMethod === 'stripe' && activeStripeSession && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-12">
           <div ref={stripePaymentRef} className="max-w-3xl rounded-2xl border-2 border-himalayan/50 bg-white p-6 shadow-xl shadow-himalayan/10">
             <h2 className="font-serif text-2xl font-bold text-charcoal mb-1">Secure payment</h2>
             <p className="text-sm text-charcoal-light mb-5">
-              Order {stripeSession.order.order_number} · Total due now:{' '}
+              Order {activeStripeSession.order.order_number} · Total due now:{' '}
               <strong className="text-charcoal">${totals.total.toFixed(2)}</strong>
             </p>
             <StripePaymentForm
-              clientSecret={stripeSession.clientSecret}
+              clientSecret={activeStripeSession.clientSecret}
               publishableKey={stripePublishableKey}
               amountLabel={`$${totals.total.toFixed(2)}`}
               disabled={submitting || paymentCompleting}

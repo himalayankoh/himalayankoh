@@ -64,7 +64,7 @@ function FooterSection({ title, children }: { title: string; children: ReactNode
   </section>;
 }
 
-export default function Footer() {
+export default function Footer({ compact = false }: { compact?: boolean }) {
   const [email, setEmail] = useState('');
   const [subscribing, setSubscribing] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
@@ -101,6 +101,21 @@ export default function Footer() {
     }
   };
 
+  if (compact) return (
+    <footer className="border-t border-himalayan-line bg-white px-4 py-4 text-xs text-charcoal-light">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-wrap items-center justify-center gap-x-4">
+          <a href="mailto:sales@himalayankoh.com" className="inline-flex min-h-11 items-center">sales@himalayankoh.com</a>
+          <a href="tel:8322246466" className="inline-flex min-h-11 items-center">(832) 224-6466</a>
+        </div>
+        <nav aria-label="Checkout policies" className="flex flex-wrap items-center justify-center gap-x-4">
+          {[['/terms','Terms'],['/privacy','Privacy'],['/returns','Returns'],['/shipping','Shipping'],['/disclaimer','Disclaimer'],['/editorial-policy','Editorial policy'],['/sitemap','Sitemap']].map(([to,label])=><Link key={to} prefetch={false} to={to} className="inline-flex min-h-11 items-center hover:text-himalayan">{label}</Link>)}
+          <button type="button" onClick={() => setConsent(null)} className="min-h-11">Cookie settings</button>
+        </nav>
+        <p className="mt-1 text-center">© 2026 Himalayan Koh</p>
+      </div>
+    </footer>
+  );
   return (
     <footer id="contact" className="bg-charcoal text-cream">
       {/* Newsletter Strip */}
