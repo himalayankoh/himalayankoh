@@ -317,7 +317,7 @@ export default function AdminCoupons() {
         </AdminNotice>
       )}
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <AdminStatTile
           label="Coupons in store"
           icon={Ticket}
@@ -354,13 +354,14 @@ export default function AdminCoupons() {
         action={<AdminChip tone="neutral">{coupons.length} in WooCommerce</AdminChip>}
       >
         <AdminTable
+          minWidth="860px"
           columns={[
-            { key: 'code', label: 'Code' },
-            { key: 'discount', label: 'Discount' },
-            { key: 'limits', label: 'Limits' },
-            { key: 'usage', label: 'Used', align: 'right' },
-            { key: 'state', label: 'State', align: 'right' },
-            { key: 'actions', label: '', align: 'right' },
+            { key: 'code', label: 'Code', width: '28%' },
+            { key: 'discount', label: 'Discount', width: '18%' },
+            { key: 'limits', label: 'Limits', width: '18%' },
+            { key: 'usage', label: 'Used', align: 'right', width: '12%' },
+            { key: 'state', label: 'State', align: 'right', width: '10%' },
+            { key: 'actions', label: '', align: 'right', width: '14%' },
           ]}
         >
           {loading ? (
@@ -381,35 +382,37 @@ export default function AdminCoupons() {
 
               return (
                 <tr key={coupon.id}>
-                  <td className={ADMIN_TD}>
+                  <td className={`${ADMIN_TD} whitespace-nowrap`}>
                     <div className="flex items-center gap-2">
-                      <p className="font-semibold text-admin-ink">{coupon.code}</p>
+                      <p className="font-mono font-bold text-admin-ink tracking-tight">{coupon.code}</p>
                       {isPrivate && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-500/30">
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-500/30 whitespace-nowrap">
                           <Lock size={10} />
                           Private {isSingleUse ? '(1 use)' : ''}
                         </span>
                       )}
                     </div>
                     {coupon.description && (
-                      <p className="text-[11px] text-admin-muted">{coupon.description}</p>
+                      <p className="text-[11px] text-admin-muted truncate max-w-[240px]" title={coupon.description}>
+                        {coupon.description}
+                      </p>
                     )}
                     {coupon.email_restrictions && coupon.email_restrictions.length > 0 && (
-                      <p className="mt-0.5 flex items-center gap-1 text-[11px] text-amber-700">
-                        <Mail size={11} />
+                      <p className="mt-0.5 flex items-center gap-1 text-[11px] text-amber-700 whitespace-nowrap">
+                        <Mail size={11} className="shrink-0" />
                         Locked to: {coupon.email_restrictions.join(', ')}
                       </p>
                     )}
                   </td>
-                  <td className={`${ADMIN_TD} text-admin-muted`}>
-                    {describeAmount(coupon)}
-                    {coupon.free_shipping && (
-                      <span className="ml-2">
+                  <td className={`${ADMIN_TD} whitespace-nowrap text-admin-muted`}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-admin-ink">{describeAmount(coupon)}</span>
+                      {coupon.free_shipping && (
                         <AdminChip tone="info">Free shipping</AdminChip>
-                      </span>
-                    )}
+                      )}
+                    </div>
                   </td>
-                  <td className={`${ADMIN_TD} text-admin-muted`}>
+                  <td className={`${ADMIN_TD} whitespace-nowrap text-admin-muted`}>
                     <p>
                       {money(coupon.minimum_amount) > 0
                         ? `Min $${money(coupon.minimum_amount).toFixed(2)}`
@@ -417,7 +420,7 @@ export default function AdminCoupons() {
                       {coupon.date_expires_gmt ? ` · Expires ${toDateInput(coupon.date_expires_gmt)}` : ''}
                     </p>
                   </td>
-                  <td className={`${ADMIN_TD} text-right`}>
+                  <td className={`${ADMIN_TD} text-right whitespace-nowrap`}>
                     {isSingleUse ? (
                       usedCount >= 1 ? (
                         <span className="font-semibold text-admin-muted">1 / 1 (Used)</span>
@@ -433,20 +436,23 @@ export default function AdminCoupons() {
                       </>
                     )}
                   </td>
-                  <td className={`${ADMIN_TD} text-right`}>
+                  <td className={`${ADMIN_TD} text-right whitespace-nowrap`}>
                     <AdminChip tone={STATE_TONES[coupon.state]}>{coupon.state}</AdminChip>
                   </td>
-                  <td className={`${ADMIN_TD} text-right`}>
-                    <div className="flex justify-end gap-1.5">
+                  <td className={`${ADMIN_TD} text-right whitespace-nowrap`}>
+                    <div className="flex items-center justify-end gap-1.5 whitespace-nowrap shrink-0">
                       <AdminButton
                         icon={Share2}
                         onClick={() => setSharing(coupon)}
                         title="Share private coupon link with customer"
+                        className="whitespace-nowrap shrink-0"
                       >
                         Share
                       </AdminButton>
-                      <AdminButton onClick={() => openEdit(coupon)}>Edit</AdminButton>
-                      <AdminButton icon={Trash2} onClick={() => setConfirmDelete(coupon)}>
+                      <AdminButton onClick={() => openEdit(coupon)} className="whitespace-nowrap shrink-0">
+                        Edit
+                      </AdminButton>
+                      <AdminButton icon={Trash2} onClick={() => setConfirmDelete(coupon)} className="whitespace-nowrap shrink-0">
                         Delete
                       </AdminButton>
                     </div>

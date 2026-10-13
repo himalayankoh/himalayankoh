@@ -42,7 +42,7 @@ export const MICRO_LABEL =
 /* ------------------------------------------------------------------ */
 
 export const CONTROL_BASE =
-  'inline-flex items-center justify-center gap-2 min-h-10 rounded-lg text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55';
+  'inline-flex items-center justify-center gap-2 min-h-10 rounded-lg text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-55 whitespace-nowrap shrink-0';
 
 export const BUTTON = {
   primary: `${CONTROL_BASE} admin-action-primary bg-himalayan px-4 py-2.5 text-white hover:bg-himalayan-dark`,
