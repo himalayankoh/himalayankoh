@@ -97,6 +97,12 @@
         },
         "options": {
           "timeout": 45000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          },
           "response": {
             "response": {
               "fullResponse": true,
@@ -147,6 +153,20 @@
         0
       ],
       "typeVersion": 4.2
+    },
+    {
+      "id": "Loop-research-queries",
+      "name": "Loop research queries",
+      "type": "n8n-nodes-base.splitInBatches",
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "position": [
+        630,
+        0
+      ],
+      "typeVersion": 3
     }
   ],
   "connections": {
@@ -187,7 +207,7 @@
       "main": [
         [
           {
-            "node": "Private SearXNG",
+            "node": "Loop research queries",
             "type": "main",
             "index": 0
           }
@@ -198,7 +218,7 @@
       "main": [
         [
           {
-            "node": "Source result",
+            "node": "Loop research queries",
             "type": "main",
             "index": 0
           }
@@ -210,6 +230,24 @@
         [
           {
             "node": "Store evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop research queries": {
+      "main": [
+        [
+          {
+            "node": "Source result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Private SearXNG",
             "type": "main",
             "index": 0
           }

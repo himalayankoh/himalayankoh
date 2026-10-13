@@ -25,6 +25,26 @@ The PC/WSL host must remain online. A temporary WSL keepalive was used during
 setup; this is not evidence of automatic restart after a Windows reboot. A
 permanent host/service can be selected later without exposing SearXNG publicly.
 
+### Signed-in Windows owner startup
+
+`powershell -NoProfile -File ops/leados/install-research-startup.ps1
+-RuntimeDirectory <existing private runtime directory>` installs and starts the
+single **HK LeadOS Research Supervisor** task for the current Windows user.
+The runtime directory must contain the existing `research-token.txt`. The task
+runs at that user's sign-in with limited privileges, needs no saved password,
+and does not change execution policy. It keeps WSL alive without the temporary
+six-hour limit and checks/restarts the existing loopback bridge every 30 seconds.
+It starts only the two existing named research containers; it does not recreate
+them, change n8n workflows, alter Hermes or enable email. Unexpected listeners
+on port 8891 are left untouched. Logs remain in the private runtime directory.
+
+This is sign-in startup, not unattended startup before Windows login. The PC
+must remain awake and the owner session must remain signed in. Inspect the task
+and `research-supervisor.log` after a real reboot before claiming reboot recovery
+tested. To stop supervision, stop/disable this one task; running private services
+are not deleted. It can be restarted with `Start-ScheduledTask -TaskName
+'HK LeadOS Research Supervisor'`.
+
 The owner's authenticated n8n API currently belongs to a Windows process on
 port 5678; the separate Docker instance on 5680 does not accept that credential.
 Use `node ops/leados/windows-search-bridge.mjs --token-file <private token file>`
@@ -46,6 +66,9 @@ Install the server-only `LEADOS_RESEARCH_WORKER_TOKEN` on the Worker before
 activating **HK LeadOS 2 — Private Research Worker**. The paired n8n credential
 must use that same private token. Expanded searches issue at most two queries;
 company snippets remain inferred until their actual website is researched.
+Expanded queries use an explicit one-item loop: the HTTP response returns to
+the loop before the next query starts, and completed responses are combined
+once. HTTP batching alone delays request starts without awaiting completion.
 
 `LEADOS_N8N_TOKEN` and `LEADOS_EVENT_TOKEN` authenticate dispatch and event
 transports. Their presence does not enable sending. **HK LeadOS 2 — Approved
