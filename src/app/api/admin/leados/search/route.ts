@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { discoverLeads, normalizeSearchResults } from '@/lib/leados/discovery';
-import { BUYER_CATEGORIES, leadIdentity, PRODUCT_INTERESTS, qualifyLead } from '@/lib/leados/intelligence';
+import { BUYER_CATEGORIES, leadIdentity, matchingKnownLead, PRODUCT_INTERESTS, qualifyLead } from '@/lib/leados/intelligence';
 import { calculateOpportunityScore } from '@/lib/leados/scoring';
 import { calculateDeterministicProjectFit } from '@/lib/leados/project-fit';
 import { getProjectById, recordSearchExecution, ensureDefaultProject, listSavedLeads, leadosRequest } from '@/lib/leados/db';
@@ -32,13 +32,13 @@ export async function GET(request: Request) {
     const stale = Date.now() - Date.parse(item.payload.retrievedAt || '') > 180000;
     if (!['complete','failed'].includes(item.state)) return NextResponse.json({ok:true,state:stale?'expired':item.state,leads:[]},{headers:{'Cache-Control':'private, no-store'}});
     const raw = normalizeSearchResults(item.payload.results || [],item.payload.input,item.payload.retrievedAt);
-    const saved = await savedLibraryForDiscovery(); const byKey = new Map(saved.map((l)=>[leadIdentity(l),l]));
+    const saved = await savedLibraryForDiscovery();
     const leads = raw.filter((l)=>{
-      const prior=byKey.get(leadIdentity(l));
+      const prior=matchingKnownLead(l,saved);
       if (item.payload.input.excludeSaved && prior) return false;
       if (item.payload.input.excludeContacted && prior && ['contacted','replied','interested','quote_requested','negotiating','won','do_not_contact'].includes(prior.status)) return false;
       return (!item.payload.input.requireWebsite || l.website) && (!item.payload.input.requirePhone || l.phone) && (!item.payload.input.requireEmail || l.emailSource==='company_website');
-    }).map((l)=>{ const q=qualifyLead(l,item.payload.input.productInterest || 'horse_salt'); return {...l,research:{...l.research,qualification:q},opportunityScore:q.score,opportunitySignals:q.reasons,alreadySaved:byKey.has(leadIdentity(l))}; }).slice(0,item.payload.input.maxResults || 15);
+    }).map((l)=>{ const q=qualifyLead(l,item.payload.input.productInterest || 'horse_salt'); return {...l,research:{...l.research,qualification:q},opportunityScore:q.score,opportunitySignals:q.reasons,alreadySaved:Boolean(matchingKnownLead(l,saved))}; }).slice(0,item.payload.input.maxResults || 15);
     const finalCount = Math.min(item.payload.input.maxResults || 15,new Set([...(item.payload.initialKeys || []),...leads.map(leadIdentity)]).size);
     await recordSearchExecution({category:item.payload.input.category,location:item.payload.input.location,resultsCount:finalCount,executionId:id});
     return NextResponse.json({ok:true,state:item.state,leads,rawCount:item.payload.results?.length || 0,error:item.payload.error || null,upstreamErrors:item.payload.upstreamErrors || []},{headers:{'Cache-Control':'private, no-store'}});
@@ -107,18 +107,17 @@ export async function POST(request: Request) {
 
     // Check saved leads to mark if already saved
     const existingSaved = await savedLibraryForDiscovery();
-    const savedByIdentity = new Map(existingSaved.map((s) => [leadIdentity(s), s]));
 
     // Score leads deterministically
     const scoredLeads: ScoredLead[] = rawLeads.filter((lead) => {
-      const existing = savedByIdentity.get(leadIdentity(lead));
+      const existing = matchingKnownLead(lead,existingSaved);
       if (body.excludeSaved && existing) return false;
       if (body.excludeContacted && existing && ['contacted','replied','interested','quote_requested','negotiating','won','do_not_contact'].includes(existing.status)) return false;
       return !body.requireEmail || (lead.email && lead.emailSource === 'company_website');
     }).map((lead) => {
       const fit = project ? calculateDeterministicProjectFit(lead, project) : undefined;
       const opp = calculateOpportunityScore(lead, undefined, fit?.score || 0);
-      const alreadySaved = savedByIdentity.has(leadIdentity(lead));
+      const alreadySaved = Boolean(matchingKnownLead(lead,existingSaved));
       const qualification = qualifyLead(lead, interest);
 
       return {

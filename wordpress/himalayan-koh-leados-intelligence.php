@@ -289,7 +289,8 @@ function hk_leados2_workflow( WP_REST_Request $request ) {
     $state = 'reject' === $action ? 'rejected' : 'paused'; $payload['approvedBy'] = null;
    } elseif ( 'reserve' === $action ) {
     if ( 'approved' !== $state || empty( $payload['approvedBy'] ) ) { return hk_leados2_error( 'Dispatch already reserved or not approved.' ); }
-    $count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE workspace_id = %s AND kind = 'draft' AND state IN ('queued','sent','delivered','unknown','bounced','replied') AND updated_at >= %s", HK_LEADOS_WORKSPACE_ID, gmdate( 'Y-m-d 00:00:00' ) ) );
+    // A delivery/reply/opt-out state change must not release a daily send slot.
+    $count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE workspace_id = %s AND kind = 'draft' AND JSON_UNQUOTE(JSON_EXTRACT(payload, '$.reservedAt')) >= %s", HK_LEADOS_WORKSPACE_ID, gmdate( 'Y-m-d' ) . 'T00:00:00+00:00' ) );
     if ( $count >= 20 ) { return hk_leados2_error( 'Daily maximum of 20 reached.', 429 ); }
     $state = 'queued'; $payload['reservedAt'] = gmdate( 'c' );
    } elseif ( 'dispatch_result' === $action ) {

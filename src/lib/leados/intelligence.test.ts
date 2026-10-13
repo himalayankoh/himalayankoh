@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createIntroduction, deduplicateLeads, leadIdentity, OFFER_PROFILES, publicCompanyUrl, qualifyLead } from './intelligence';
+import { createIntroduction, deduplicateLeads, leadIdentity, matchingKnownLead, OFFER_PROFILES, publicCompanyUrl, qualifyLead } from './intelligence';
 import { discoveryQuery, normalizeSearchResults } from './discovery';
 import { outreachReadiness, dispatchApprovedDraft } from './n8n';
 import { searchNominatimKeywords } from './osm-provider';
@@ -66,6 +66,13 @@ describe('LeadOS 2 evidence and identity', () => {
   it('keeps actual equestrian companies and excludes the directories seen in Dallas QA',()=>{
     const results=normalizeSearchResults([{title:'Dover Saddlery Dallas',url:'https://usa.wheretoride.horse/us/dallas/dover-saddlery',content:'Horse tack store'},{title:'Tack Shops in Dallas - NewHorse.com',url:'https://www.newhorse.com/page/tackshops/dallas',content:'Equestrian tack shops'},{title:'State - Texas',url:'https://stullfeeders.com/properties/list',content:'Feed suppliers'},{title:'Dover Saddlery English Tack',url:'https://www.doversaddlery.com/',content:'Horse tack supplier'}],{category:'Equestrian Store',location:'Dallas'},'2026-10-13');
     expect(results.map(r=>r.website)).toEqual(['https://www.doversaddlery.com/']);
+  });
+  it('recognizes a saved company behind a generic search title without guessing its branch',()=>{
+    const generic={...lead,businessName:'Himalayan Salt Supplier',address:null,city:null,region:null};
+    expect(matchingKnownLead(generic,[lead])).toBe(lead);
+    expect(matchingKnownLead(generic,[lead,{...lead,address:'2 Main St',city:'Dallas'}])).toBeUndefined();
+    expect(matchingKnownLead({...generic,website:lead.website+'/locations/dallas'},[lead])).toBeUndefined();
+    expect(matchingKnownLead({...lead,address:'Different address'},[lead])).toBeUndefined();
   });
 });
 describe('Outbound configuration fails closed', () => {

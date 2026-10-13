@@ -39,6 +39,21 @@ export function leadIdentity(lead: Pick<NormalizedLead, 'businessName' | 'websit
   return `name|${normalized(lead.businessName)}|${location}`;
 }
 
+type CompanyIdentity = Pick<NormalizedLead,'businessName'|'website'|'address'|'city'|'region'> & {osmType?:string|null;osmId?:string|null};
+/** A generic search title is not a new company when one saved location owns its site. */
+export function matchingKnownLead<T extends CompanyIdentity>(candidate: CompanyIdentity, known: T[]): T | undefined {
+  const exact = known.find(l=>leadIdentity(l)===leadIdentity(candidate));
+  if (exact) return exact;
+  if ([candidate.address,candidate.city,candidate.region].some(Boolean)) return undefined;
+  const site = candidate.website && publicCompanyUrl(candidate.website);
+  if (!site) return undefined;
+  const url = new URL(site);
+  if (/\/(?:locations?|stores?|branches?)(?:\/|[-_])/i.test(url.pathname)) return undefined;
+  const domain = url.hostname.replace(/^www\./,'');
+  const matches = known.filter(l=>{const s=l.website && publicCompanyUrl(l.website);return s && new URL(s).hostname.replace(/^www\./,'')===domain;});
+  return matches.length===1 ? matches[0] : undefined;
+}
+
 export function deduplicateLeads<T extends NormalizedLead>(leads: T[]): { leads: T[]; duplicatesRemoved: number } {
   const located = new Map<string, Set<string>>();
   for (const lead of leads) {
