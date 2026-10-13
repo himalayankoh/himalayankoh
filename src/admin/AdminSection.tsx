@@ -6955,7 +6955,7 @@ export default function AdminSection() {
       <Route path="ai-control" element={<AdminLayout><AiControlCenter /></AdminLayout>} />
       <Route path="hermes-intel" element={<AdminLayout><HermesIntel /></AdminLayout>} />
       <Route path="leados" element={<AdminLayout><LeadOSAdmin /></AdminLayout>} />
-      <Route path="client-outreach" element={<AdminLayout><LeadOSAdmin defaultTab="outreach" /></AdminLayout>} />
+      <Route path="client-outreach" element={<AdminLayout><LeadOSAdmin defaultTab="library" /></AdminLayout>} />
       <Route path="cj-setup" element={<AdminLayout><CJSetup /></AdminLayout>} />
       <Route path="payments" element={<AdminLayout><PaymentsSetup /></AdminLayout>} />
       <Route path="shipping" element={<AdminLayout><ShippingSetup /></AdminLayout>} />

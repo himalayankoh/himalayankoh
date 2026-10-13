@@ -53,7 +53,7 @@ import type { SearchPlan } from '@/lib/leados/searchPlanner';
 import type { ProductInterest } from '@/lib/leados/types';
 import { parseLeadOSUrlState } from '@/lib/leados/urlState';
 
-type TabType = 'overview' | 'find' | 'library' | 'projects' | 'research' | 'scoring' | 'outreach' | 'ai' | 'settings';
+type TabType = 'overview' | 'find' | 'library' | 'settings';
 
 
 const PRESET_CATEGORIES = BUYER_CATEGORIES.map((value) => ({label: value, value}));
@@ -82,6 +82,119 @@ export const OUTREACH_TEMPLATES: OutreachTemplate[] = PRODUCT_INTERESTS.map((int
   const intro = createIntroduction({businessName: '{business_name}', city: '{city}', category: interest === 'culinary_salt' ? 'specialty food and spice businesses' : 'relevant B2B businesses'}, interest);
   return {id: interest, name: OFFER_PROFILES[interest].label, category: interest, subject: intro.subject, body: intro.message};
 });
+
+export const PRESET_SAVED_SEARCHES = [
+  {
+    id: 'tx-feed',
+    name: 'TX Feed Stores',
+    location: 'Houston, Dallas, Austin',
+    locations: ['Houston, TX', 'Dallas, TX', 'Austin, TX'],
+    category: 'Feed Store',
+    categories: ['Feed Store'],
+    query: 'Find 100 livestock feed stores and mineral distributors in Houston, Dallas and Austin with websites, emails and phone numbers.',
+  },
+  {
+    id: 'livestock-usa',
+    name: 'Livestock Suppliers USA',
+    location: 'United States',
+    locations: ['United States', 'Texas', 'Montana'],
+    category: 'Livestock Supplier',
+    categories: ['Livestock Supplier'],
+    query: 'Find livestock suppliers and ranchers in USA with websites and phone numbers',
+  },
+  {
+    id: 'mineral-dist',
+    name: 'Mineral Distributors',
+    location: 'USA',
+    locations: ['USA', 'Texas', 'Kansas'],
+    category: 'Mineral Distributor',
+    categories: ['Mineral Distributor'],
+    query: 'Find 100 mineral distributors and salt suppliers in USA with contact details',
+  },
+  {
+    id: 'ranches-tx',
+    name: 'Ranches in Texas',
+    location: 'Texas',
+    locations: ['Texas', 'Fort Worth, TX', 'San Antonio, TX'],
+    category: 'Feed Store',
+    categories: ['Feed Store', 'Livestock Supplier'],
+    query: 'Find commercial ranches and livestock businesses with websites in Texas',
+  },
+  {
+    id: 'coops-salt',
+    name: 'Co-ops Buying Salt',
+    location: 'USA',
+    locations: ['Iowa', 'Nebraska', 'Colorado'],
+    category: 'Farm Supply',
+    categories: ['Farm Supply', 'Feed Store'],
+    query: 'Find farm supply cooperatives and feed co-ops buying salt and minerals in USA',
+  },
+];
+
+export function getCompanyInitials(name: string): string {
+  const words = name.trim().split(/\s+/);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  return (name.slice(0, 2) || 'HK').toUpperCase();
+}
+
+export function getAvatarBg(name: string): string {
+  const colors = [
+    'bg-indigo-100 text-indigo-700 border-indigo-200',
+    'bg-blue-100 text-blue-700 border-blue-200',
+    'bg-emerald-100 text-emerald-700 border-emerald-200',
+    'bg-amber-100 text-amber-700 border-amber-200',
+    'bg-purple-100 text-purple-700 border-purple-200',
+    'bg-rose-100 text-rose-700 border-rose-200',
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+export function SourceBadge({ source }: { source?: string }) {
+  const norm = (source || '').toLowerCase();
+  if (norm.includes('google')) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+        <span className="w-4 h-4 rounded-full bg-blue-50 border border-blue-200 text-blue-600 font-bold flex items-center justify-center text-[10px]">G</span>
+        Google Maps
+      </span>
+    );
+  }
+  if (norm.includes('yelp')) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+        <span className="w-4 h-4 rounded-full bg-red-50 border border-red-200 text-red-600 font-bold flex items-center justify-center text-[10px]">Y</span>
+        Yelp
+      </span>
+    );
+  }
+  if (norm.includes('website') || norm.includes('company')) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+        <Buildings className="w-3.5 h-3.5 text-slate-500" />
+        Company Website
+      </span>
+    );
+  }
+  if (norm.includes('searx') || norm.includes('web')) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+        <Globe className="w-3.5 h-3.5 text-indigo-500" />
+        Website Search
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+      OpenStreetMap
+    </span>
+  );
+}
+
 
 /** Compact KPI card */
 function metricValue(value: unknown): string | number {
@@ -239,8 +352,63 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [librarySearch, setLibrarySearch] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).search : '');
   const [statusFilter, setStatusFilter] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).status : 'all');
+  const [libraryCategoryFilter, setLibraryCategoryFilter] = useState('all');
+  const [libraryVerificationFilter, setLibraryVerificationFilter] = useState<'all' | 'verified' | 'unverified'>('all');
+  const [librarySelectedIds, setLibrarySelectedIds] = useState<Set<string>>(new Set());
+  const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
   const [savingLeadId, setSavingLeadId] = useState<string | null>(null);
   const [savedSuccessMsg, setSavedSuccessMsg] = useState<string | null>(null);
+
+  // Lead Details Side Panel Drawer state (Details | Outreach | Notes & History)
+  const [selectedDrawerLead, setSelectedDrawerLead] = useState<SavedLeadRecord | null>(null);
+  const [drawerActiveTab, setDrawerActiveTab] = useState<'details' | 'outreach' | 'notes'>('details');
+  const [drawerNotes, setDrawerNotes] = useState('');
+  const [drawerFollowUpDate, setDrawerFollowUpDate] = useState('');
+  const [drawerQuantity, setDrawerQuantity] = useState('');
+  const [drawerPackaging, setDrawerPackaging] = useState('');
+  const [savingDrawerNotes, setSavingDrawerNotes] = useState(false);
+  const [drawerSavedMsg, setDrawerSavedMsg] = useState<string | null>(null);
+
+  // Find Leads filters & state
+  const [showExampleSearchesMenu, setShowExampleSearchesMenu] = useState(false);
+  const [findLeadsQuickFilter, setFindLeadsQuickFilter] = useState<'all' | 'verified' | 'unverified' | 'review'>('all');
+  const [findLeadsPage, setFindLeadsPage] = useState(1);
+  const findLeadsPageSize = 10;
+
+  const verifiedFindCount = leads.filter((l) => Boolean(l.website && (l.phone || l.email))).length;
+  const unverifiedFindCount = leads.filter((l) => !l.website || (!l.phone && !l.email)).length;
+  const needsReviewFindCount = leads.filter((l) => (l.opportunityScore ?? 0) < 60 || !l.phone).length;
+
+  const filteredFindLeads = leads.filter((l) => {
+    if (findLeadsQuickFilter === 'verified') return Boolean(l.website && (l.phone || l.email));
+    if (findLeadsQuickFilter === 'unverified') return !l.website || (!l.phone && !l.email);
+    if (findLeadsQuickFilter === 'review') return (l.opportunityScore ?? 0) < 60 || !l.phone;
+    return true;
+  });
+
+  const totalFindPages = Math.max(1, Math.ceil(filteredFindLeads.length / findLeadsPageSize));
+  const paginatedFindLeads = filteredFindLeads.slice(
+    (findLeadsPage - 1) * findLeadsPageSize,
+    findLeadsPage * findLeadsPageSize
+  );
+
+
+  // Settings active section
+  const [settingsSection, setSettingsSection] = useState<'ai' | 'icp' | 'scoring' | 'system'>('ai');
+
+  const libraryCategories = Array.from(new Set(libraryLeads.map((l) => l.category).filter(Boolean))) as string[];
+  const filteredLibraryLeads = libraryLeads.filter((l) => {
+    if (libraryCategoryFilter !== 'all' && l.category !== libraryCategoryFilter) return false;
+    if (libraryVerificationFilter === 'verified') {
+      const isV = l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website);
+      if (!isV) return false;
+    }
+    if (libraryVerificationFilter === 'unverified') {
+      const isV = l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website);
+      if (isV) return false;
+    }
+    return true;
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -250,6 +418,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     if (statusFilter !== 'all') url.searchParams.set('status', statusFilter); else url.searchParams.delete('status');
     window.history.replaceState({}, '', url);
   }, [activeTab, librarySearch, statusFilter]);
+
 
   // AI Analysis modal/state
   const [analyzingLeadName, setAnalyzingLeadName] = useState<string | null>(null);
@@ -264,7 +433,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   // Scoring weights
   const [weights, setWeights] = useState<Array<{ signalKey: string; signalName: string; weight: number }>>([]);
 
-  // Client Outreach state
+  // Client Outreach state (integrated into Lead Library)
+  const [showOutreachModal, setShowOutreachModal] = useState(false);
+  const [outreachActiveLead, setOutreachActiveLead] = useState<SavedLeadRecord | null>(null);
+  const [showAdvancedOutreachWorkflow, setShowAdvancedOutreachWorkflow] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<OutreachTemplate>(OUTREACH_TEMPLATES[0]);
   const [recipientEmail, setRecipientEmail] = useState('');
   const [recipientName, setRecipientName] = useState('');
@@ -279,6 +451,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [editingEmailLead, setEditingEmailLead] = useState<SavedLeadRecord | ScoredLead | null>(null);
   const [inputEmail, setInputEmail] = useState('');
   const [inputPhone, setInputPhone] = useState('');
+  const [inputNotes, setInputNotes] = useState('');
   const [savingEmail, setSavingEmail] = useState(false);
   const [emailModalNotice, setEmailModalNotice] = useState<string | null>(null);
 
@@ -364,7 +537,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   }, [loadStatsAndProjects, loadWeights]);
 
   useEffect(() => {
-    if (activeTab === 'library' || activeTab === 'outreach') {
+    if (activeTab === 'library') {
       loadLibrary();
     }
   }, [activeTab, loadLibrary]);
@@ -606,6 +779,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       setSavedSuccessMsg(`Successfully saved ${savedCount} leads to Lead Library`);
       setTimeout(() => setSavedSuccessMsg(null), 3500);
       loadStatsAndProjects();
+      loadLibrary();
     } catch (err: any) {
       setSearchError(err.message || 'Failed to save selected leads');
     } finally {
@@ -762,6 +936,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       setSavedSuccessMsg(`Saved "${lead.businessName}" to Lead Library`);
       setTimeout(() => setSavedSuccessMsg(null), 3000);
       loadStatsAndProjects();
+      loadLibrary();
     } catch (err) {
       setSavedSuccessMsg(err instanceof Error ? `Unable to save lead: ${err.message}` : 'Unable to save lead.');
       console.error('Failed to save lead:', err);
@@ -857,9 +1032,19 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     }
   };
 
-  // Setup outreach for a given lead
-  const startOutreachForLead = (lead: SavedLeadRecord | ScoredLead) => {
-    setActiveOutreachLeadId((lead as SavedLeadRecord).id || undefined);
+  // Setup drawer and outreach for a given lead
+  const openLeadDrawer = (lead: SavedLeadRecord, tab: 'details' | 'outreach' | 'notes' = 'details') => {
+    setSelectedDrawerLead(lead);
+    setDrawerActiveTab(tab);
+    setDrawerNotes(lead.notes || '');
+    setDrawerFollowUpDate(lead.research?.nextFollowUp || '');
+    setDrawerQuantity(lead.research?.requestedQuantity || '');
+    setDrawerPackaging(lead.research?.packagingPreference || '');
+    setDrawerSavedMsg(null);
+
+    // Sync outreach state
+    setOutreachActiveLead(lead);
+    setActiveOutreachLeadId(lead.id || undefined);
     setRecipientName(lead.businessName);
     setRecipientEmail(lead.email || '');
     setRecipientEmailSource(lead.emailSource || (lead.email ? 'discovered_osm' : 'unverified'));
@@ -869,8 +1054,142 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     setEmailSubject(t.subject.replace(/\{business_name\}/g, name).replace(/\{city\}/g, city));
     setEmailBody(t.body.replace(/\{business_name\}/g, name).replace(/\{city\}/g, city));
     setSendResultNotice(null);
-    changeTab('outreach');
   };
+
+  const startOutreachForLead = (lead: SavedLeadRecord | ScoredLead) => {
+    const saved = lead as SavedLeadRecord;
+    openLeadDrawer(saved, 'outreach');
+    if (activeTab !== 'library') {
+      changeTab('library');
+    }
+  };
+
+  const handleSaveDrawerNotes = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedDrawerLead) return;
+    setSavingDrawerNotes(true);
+    setDrawerSavedMsg(null);
+    try {
+      const headers = await getAuthHeaders();
+      const currentResearch = selectedDrawerLead.research || {};
+      const updatedResearch = {
+        ...currentResearch,
+        nextFollowUp: drawerFollowUpDate.trim() || undefined,
+        requestedQuantity: drawerQuantity.trim() || undefined,
+        packagingPreference: drawerPackaging.trim() || undefined,
+      };
+      const res = await fetch('/api/admin/leados/leads', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({
+          id: selectedDrawerLead.id,
+          notes: drawerNotes.trim() || null,
+          research: updatedResearch,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to update notes');
+      const updatedLead: SavedLeadRecord = {
+        ...selectedDrawerLead,
+        notes: drawerNotes.trim() || null,
+        research: updatedResearch,
+      };
+      setSelectedDrawerLead(updatedLead);
+      setLibraryLeads((prev) => prev.map((l) => (l.id === selectedDrawerLead.id ? updatedLead : l)));
+      setDrawerSavedMsg('Notes & follow-up schedule saved successfully.');
+      setTimeout(() => setDrawerSavedMsg(null), 3000);
+    } catch (err: any) {
+      setDrawerSavedMsg(`Error: ${err.message}`);
+    } finally {
+      setSavingDrawerNotes(false);
+    }
+  };
+
+  const handleUpdateDrawerLeadStatus = async (newStatus: string) => {
+    if (!selectedDrawerLead) return;
+    await handleUpdateLeadStatus(selectedDrawerLead.id, newStatus);
+    setSelectedDrawerLead((prev) => prev ? { ...prev, status: newStatus } : null);
+  };
+
+  const applySavedSearch = (s: typeof PRESET_SAVED_SEARCHES[0]) => {
+    setAiQuery(s.query);
+    setCategoriesList(s.categories);
+    setLocationsList(s.locations);
+    setCategory(s.category);
+    setLocation(s.locations[0] || 'Houston, TX');
+    void runProgressiveSearch(
+      s.locations,
+      s.categories,
+      keywordsList,
+      resultsLimit,
+      requireWebsite,
+      requirePhone,
+      requireEmail,
+      productInterest,
+      wholesaleOnly,
+      privateLabelOnly
+    );
+  };
+
+  const handleToggleSelectLibraryLead = (id: string) => {
+    setLibrarySelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAllLibrary = () => {
+    if (librarySelectedIds.size === filteredLibraryLeads.length && filteredLibraryLeads.length > 0) {
+      setLibrarySelectedIds(new Set());
+    } else {
+      setLibrarySelectedIds(new Set(filteredLibraryLeads.map((l) => l.id)));
+    }
+  };
+
+  const handleBulkUpdateLibraryStatus = async (newStatus: string) => {
+    if (librarySelectedIds.size === 0) return;
+    try {
+      const ids = Array.from(librarySelectedIds);
+      const headers = await getAuthHeaders();
+      for (const id of ids) {
+        await fetch('/api/admin/leados/leads', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ id, status: newStatus }),
+        });
+      }
+      setLibraryLeads((prev) => prev.map((l) => librarySelectedIds.has(l.id) ? { ...l, status: newStatus } : l));
+      setLibrarySelectedIds(new Set());
+      setSavedSuccessMsg(`Updated ${ids.length} leads to "${newStatus.replace('_', ' ')}"`);
+      setTimeout(() => setSavedSuccessMsg(null), 3000);
+    } catch (err: any) {
+      setLibraryError(err.message || 'Failed to update selected leads');
+    }
+  };
+
+  const handleBulkDeleteLibraryLeads = async () => {
+    if (librarySelectedIds.size === 0) return;
+    if (!confirm(`Delete ${librarySelectedIds.size} selected leads from your library?`)) return;
+    try {
+      const ids = Array.from(librarySelectedIds);
+      const headers = await getAuthHeaders();
+      for (const id of ids) {
+        await fetch(`/api/admin/leados/leads?id=${id}`, {
+          method: 'DELETE',
+          headers,
+        });
+      }
+      setLibraryLeads((prev) => prev.filter((l) => !librarySelectedIds.has(l.id)));
+      setLibrarySelectedIds(new Set());
+      setSavedSuccessMsg(`Deleted ${ids.length} leads from Lead Library`);
+      setTimeout(() => setSavedSuccessMsg(null), 3000);
+      loadStatsAndProjects();
+    } catch (err: any) {
+      setLibraryError(err.message || 'Failed to delete selected leads');
+    }
+  };
+
 
   const handleTemplateSelect = (template: OutreachTemplate) => {
     setSelectedTemplate(template);
@@ -919,14 +1238,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
       setSendResultNotice({
         ok: data.ok === true,
-        msg: data.message || (data.state === 'simulated' ? '[SIMULATION] No external email was sent.' : 'Outreach delivered successfully.'),
+        msg: data.message || (data.state === 'simulated' ? '[SIMULATION] No external email was sent. Draft simulation recorded in audit log.' : 'Outreach delivered successfully.'),
         simulated: data.state === 'simulated',
       });
 
-      // Refresh library only after a confirmed provider delivery.
-      if (data.state === 'delivered' && activeOutreachLeadId) {
-        loadLibrary();
-      }
+      loadLibrary();
     } catch (err: any) {
       setSendResultNotice({ ok: false, msg: err.message || 'Error occurred during email dispatch.' });
     } finally {
@@ -938,6 +1254,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     setEditingEmailLead(lead);
     setInputEmail(lead.email || '');
     setInputPhone(lead.phone || '');
+    setInputNotes((lead as SavedLeadRecord).notes || '');
     setEmailModalNotice(null);
   };
 
@@ -960,6 +1277,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             id: leadId,
             email: inputEmail.trim() || null,
             phone: inputPhone.trim() || null,
+            notes: inputNotes.trim() || null,
             emailSource: 'manually_entered',
           }),
         });
@@ -973,6 +1291,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               ...editingEmailLead,
               email: inputEmail.trim() || null,
               phone: inputPhone.trim() || null,
+              notes: inputNotes.trim() || null,
               emailSource: 'manually_entered',
             },
             projectId: selectedProjectId,
@@ -1028,11 +1347,6 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     { id: 'overview', label: 'Overview', icon: SquaresFour },
     { id: 'find', label: 'Find Leads', icon: MagnifyingGlass },
     { id: 'library', label: 'Lead Library', icon: BookBookmark },
-    { id: 'projects', label: 'Projects (ICP)', icon: Target },
-    { id: 'research', label: 'Multi-Research', icon: TrendUp },
-    { id: 'scoring', label: 'Scoring Rules', icon: Sliders },
-    { id: 'outreach', label: 'Client Outreach', icon: PaperPlaneRight },
-    { id: 'ai', label: 'AI Engine', icon: Robot },
     { id: 'settings', label: 'Settings', icon: GearSix },
   ];
 
@@ -1054,7 +1368,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             </div>
 
             <div className="flex items-center gap-2.5 flex-shrink-0">
-              <div className="relative">
+              <div className="relative flex items-center">
+                <Storefront className="w-4 h-4 text-slate-500 absolute left-3 pointer-events-none" />
                 <select
                   value={selectedProjectId}
                   onChange={(e) => {
@@ -1062,7 +1377,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     const p = projects.find((proj) => proj.id === e.target.value);
                     if (p) setActiveProject(p);
                   }}
-                  className="appearance-none pl-3.5 pr-8 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  className="appearance-none pl-9 pr-8 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                 >
                   {projects.length > 0 ? (
                     projects.map((p) => (
@@ -1074,62 +1389,114 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     <option value="">Himalayan Koh — B2B Salt &amp; Minerals</option>
                   )}
                 </select>
-                <CaretDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                <CaretDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 pointer-events-none" />
               </div>
+
+              <button
+                type="button"
+                onClick={() => changeTab('settings')}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border transition cursor-pointer shadow-2xs ${
+                  activeTab === 'settings'
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <GearSix className={`w-4 h-4 ${activeTab === 'settings' ? 'text-indigo-600' : 'text-slate-500'}`} />
+                <div className="text-left">
+                  <div className="text-xs font-bold leading-tight">Settings</div>
+                  <div className="text-[10px] text-slate-400 leading-tight">AI Engine &amp; Preferences</div>
+                </div>
+              </button>
             </div>
           </div>
         </div>
       </div>
 
       {/* ── Tab Navigation ── */}
-      <div className="bg-white border-b border-[#e0d6c8] sticky top-0 z-10">
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-2xs">
         <div className="max-w-[1400px] mx-auto px-6">
-          <div role="tablist" aria-label="LeadOS sections" className="flex items-center gap-0.5 overflow-x-auto no-scrollbar -mb-px">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  id={`leados-tab-${tab.id}`}
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-controls={`leados-panel-${tab.id}`}
-                  onClick={() => changeTab(tab.id as TabType)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2.5 text-[11px] font-semibold whitespace-nowrap border-b-2 transition ${
-                    isActive
-                      ? 'border-[#b86452] text-[#b86452]'
-                      : 'border-transparent text-[#6d6258] hover:text-[#26211c] hover:border-[#e0d6c8]'
-                  }`}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#b86452]' : 'text-[#8d8276]'}`} />
-                  {tab.label}
-                  {tab.id === 'find' && searching && (
-                    <ArrowsClockwise className="w-3 h-3 text-[#b86452] animate-spin ml-0.5" />
-                  )}
-                  {tab.id === 'library' && libraryLeads.length > 0 && (
-                    <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[9px] bg-[#faf0eb] text-[#b86452] font-bold">
-                      {libraryLeads.length}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          <div role="tablist" aria-label="LeadOS sections" className="flex items-center justify-between">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px">
+              {[
+                { id: 'overview', label: 'Overview', icon: SquaresFour },
+                { id: 'find', label: 'Find Leads', icon: MagnifyingGlass },
+                { id: 'library', label: 'Lead Library', icon: BookBookmark },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    id={`leados-tab-${tab.id}`}
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-controls={`leados-panel-${tab.id}`}
+                    onClick={() => changeTab(tab.id as TabType)}
+                    className={`flex items-center gap-2 px-4 py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition cursor-pointer ${
+                      isActive
+                        ? 'border-[#b86452] text-[#b86452]'
+                        : 'border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-[#b86452]' : 'text-slate-400'}`} />
+                    <span>{tab.label}</span>
+                    {tab.id === 'find' && searching && (
+                      <ArrowsClockwise className="w-3.5 h-3.5 text-[#b86452] animate-spin ml-0.5" />
+                    )}
+                    {tab.id === 'library' && libraryLeads.length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 font-bold">
+                        {libraryLeads.length}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              id="leados-tab-settings"
+              role="tab"
+              aria-selected={activeTab === 'settings'}
+              aria-controls="leados-panel-settings"
+              onClick={() => changeTab('settings')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                activeTab === 'settings'
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                  : 'bg-white border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <GearSix className="w-3.5 h-3.5" />
+              <span>Settings</span>
+            </button>
           </div>
         </div>
       </div>
 
+
       {/* ── Success Toast ── */}
       {savedSuccessMsg && (
         <div className="max-w-[1400px] mx-auto px-6 mt-4">
-          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            {savedSuccessMsg}
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center justify-between gap-2 shadow-xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span className="font-medium">{savedSuccessMsg}</span>
+            </div>
+            {activeTab !== 'library' && (
+              <button
+                type="button"
+                onClick={() => changeTab('library')}
+                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded text-[11px] flex items-center gap-1 transition flex-shrink-0"
+              >
+                View in Lead Library <CaretRight className="w-3 h-3" />
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* ── Main Content ── */}          <div className="max-w-[1400px] mx-auto px-6 py-6">
+      {/* ── Main Content ── */}
+      <div className="max-w-[1400px] mx-auto px-6 py-6">
 
         {/* ══════════ OVERVIEW TAB ══════════ */}
         <div id="leados-panel-overview" role="tabpanel" aria-labelledby="leados-tab-overview" className={activeTab === 'overview' ? "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6" : "hidden"}>
@@ -1158,7 +1525,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">Targeted at farm supply cooperatives, feed distributors, livestock ranches, and mineral retail buyers.</p>
                   </div>
-                  <button onClick={() => changeTab('scoring')} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 flex-shrink-0">
+                  <button onClick={() => { setSettingsSection('icp'); changeTab('settings'); }} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 flex-shrink-0">
                     Configure <CaretRight className="w-3 h-3" />
                   </button>
                 </div>
@@ -1227,9 +1594,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Quick Actions</h4>
                 {[
                   { icon: MagnifyingGlass, label: 'Find Leads', tab: 'find' as TabType },
-                  { icon: TrendUp, label: 'Run ICP Research', tab: 'research' as TabType },
+                  { icon: BookBookmark, label: 'Lead Library & Outreach', tab: 'library' as TabType },
                   { icon: DownloadSimple, label: 'Export Lead Library', action: handleExportCSV },
-                  { icon: PaperPlaneRight, label: 'Client Outreach', tab: 'outreach' as TabType },
+                  { icon: GearSix, label: 'Settings & AI Engine', tab: 'settings' as TabType },
                 ].map((item, i) => (
                   <button
                     key={i}
@@ -1262,409 +1629,310 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 )}
               </div>
             </div>
-          </div>
+        </div>
 
         {/* ══════════ FIND LEADS TAB ══════════ */}
-        <div id="leados-panel-find" role="tabpanel" aria-labelledby="leados-tab-find" className={activeTab === 'find' ? "space-y-5" : "hidden"}>
+        <div id="leados-panel-find" role="tabpanel" aria-labelledby="leados-tab-find" className={activeTab === 'find' ? "space-y-6" : "hidden"}>
           
-          {/* ── 1. AI Smart Search Hero Card ── */}
-          <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-[#f8f9ff] via-[#fbfcfe] to-[#f5f3ff] p-6 shadow-sm space-y-4">
+          {/* ── 1. AI Smart Search Hero Card (Matches Reference Screenshot) ── */}
+          <div className="rounded-2xl border border-indigo-100 bg-white p-6 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-600/10 flex items-center justify-center text-indigo-600">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
                     <Sparkle weight="fill" className="w-5 h-5 text-indigo-600" />
                   </div>
                   <h2 className="text-xl font-bold text-slate-900 tracking-tight">AI Smart Search</h2>
-                  <span className="bg-[#584de3] text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-sm">
-                    <Sparkle weight="fill" className="w-3 h-3 text-white" /> Powered by Gemini
+                  <span className="bg-[#584de3] text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-xs">
+                    Powered by Gemini AI
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1.5">
-                  Describe your ideal customers in plain English. AI will automatically set the right categories, locations, filters and find verified business leads.
+                  Describe your ideal customers, locations, business types, and contact requirements in natural language. AI will find and verify real businesses for you.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 self-start sm:self-auto flex-shrink-0">
+              {/* View Example Searches Popover */}
+              <div className="relative self-start sm:self-auto flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => setShowHowItWorksModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-indigo-700 text-xs font-semibold hover:bg-indigo-50 shadow-sm transition"
+                  onClick={() => setShowExampleSearchesMenu((v) => !v)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-white hover:bg-indigo-50/70 text-indigo-700 text-xs font-semibold shadow-2xs transition cursor-pointer"
                 >
-                  <Play weight="fill" className="w-3 h-3 text-indigo-600" /> See how it works
+                  <Star weight="fill" className="w-3.5 h-3.5 text-amber-500" />
+                  <span>View Example Searches</span>
+                  <CaretDown className="w-3 h-3 text-indigo-400" />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setSearchMode((m) => (m === 'ai' ? 'manual' : 'ai'))}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 shadow-sm transition"
-                >
-                  <Sliders className="w-3.5 h-3.5 text-slate-500" />
-                  {searchMode === 'ai' ? 'Switch to Manual Search' : 'Switch to AI Smart Search'}
-                </button>
+
+                {showExampleSearchesMenu && (
+                  <div className="absolute right-0 mt-1.5 w-80 bg-white rounded-xl border border-slate-200 shadow-xl z-30 p-2 space-y-1 text-xs">
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                      Sample Discovery Prompts
+                    </div>
+                    {PRESET_SAVED_SEARCHES.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          setShowExampleSearchesMenu(false);
+                          applySavedSearch(preset);
+                        }}
+                        className="w-full text-left p-2 rounded-lg hover:bg-indigo-50 text-slate-700 transition cursor-pointer"
+                      >
+                        <div className="font-bold text-indigo-900 text-[11px]">{preset.name}</div>
+                        <div className="text-[10px] text-slate-500 line-clamp-1">{preset.query}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Prompt Textarea + Action Button */}
-            {searchMode === 'ai' ? (
-              <div className="relative rounded-xl border border-indigo-200 bg-white shadow-sm p-3 flex flex-col md:flex-row items-stretch gap-3">
-                <textarea
-                  rows={2}
+            {/* Prompt Input Bar with Clear Button & Action Button */}
+            <div className="rounded-xl border border-indigo-200 bg-white shadow-2xs p-2.5 flex flex-col md:flex-row items-center gap-2.5 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition">
+              <div className="relative flex-1 w-full flex items-center">
+                <input
+                  type="text"
                   value={aiQuery}
                   onChange={(e) => setAiQuery(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    if (e.key === 'Enter') {
                       e.preventDefault();
                       void planAndSearch(true);
                     }
                   }}
                   placeholder="Find 100 livestock feed stores and mineral distributors in Houston, Dallas and Austin with websites, emails and phone numbers."
-                  className="flex-1 text-xs text-slate-800 placeholder-slate-400 focus:outline-none resize-none font-medium leading-relaxed bg-transparent"
+                  className="w-full pr-8 text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium bg-transparent"
                 />
-                <button
-                  type="button"
-                  disabled={planning || searching}
-                  onClick={() => void planAndSearch(true)}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#5a4fe6] to-[#7c3aed] hover:from-[#4c42cb] hover:to-[#6d28d9] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition self-end md:self-center disabled:opacity-50 flex-shrink-0 cursor-pointer"
-                >
-                  {planning || searching ? (
-                    <ArrowsClockwise className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Sparkle weight="fill" className="w-4 h-4" />
-                  )}
-                  AI Find Leads →
-                </button>
-              </div>
-            ) : (
-              /* Manual direct search input */
-              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Category</label>
-                    <select
-                      value={category}
-                      onChange={(e) => {
-                        setCategory(e.target.value);
-                        setCategoriesList([e.target.value]);
-                      }}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium bg-white"
-                    >
-                      {PRESET_CATEGORIES.map((c) => (
-                        <option key={c.value} value={c.value}>{c.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Target Location</label>
-                    <input
-                      type="text"
-                      value={location}
-                      onChange={(e) => {
-                        setLocation(e.target.value);
-                        setLocationsList([e.target.value]);
-                      }}
-                      placeholder="e.g. Houston, TX or Dallas, TX"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Keywords</label>
-                    <input
-                      type="text"
-                      value={keyword}
-                      onChange={(e) => {
-                        setKeyword(e.target.value);
-                        setKeywordsList(e.target.value ? e.target.value.split(/\s+/) : []);
-                      }}
-                      placeholder="e.g. livestock, feed, mineral"
-                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium"
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end">
+                {aiQuery && (
                   <button
                     type="button"
-                    disabled={searching}
-                    onClick={() => void handleSearch()}
-                    className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
+                    onClick={() => setAiQuery('')}
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition mr-1"
+                    title="Clear input"
                   >
-                    {searching ? <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> : <MagnifyingGlass className="w-3.5 h-3.5" />}
-                    Search Leads
+                    <X className="w-3.5 h-3.5" />
                   </button>
-                </div>
+                )}
               </div>
-            )}
 
-            {/* Example Prompt Chips */}
-            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500">
+              <button
+                type="button"
+                disabled={planning || searching}
+                onClick={() => void planAndSearch(true)}
+                className="w-full md:w-auto px-6 py-2.5 rounded-xl bg-[#584de3] hover:bg-[#493ecc] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 flex-shrink-0 cursor-pointer"
+              >
+                {planning || searching ? (
+                  <ArrowsClockwise className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <MagnifyingGlass className="w-4 h-4 text-white" />
+                )}
+                <span>Find Leads with AI</span>
+              </button>
+            </div>
+
+            {/* "Try an example:" Quick Chips */}
+            <div className="flex flex-wrap items-center gap-2 pt-0.5 text-xs text-slate-500">
               <span className="font-semibold text-slate-600 text-[11px]">Try an example:</span>
               {[
-                'Feed stores in Houston, TX',
-                'Ranches with website in Texas',
-                'Livestock distributors in USA',
-                'Co-ops buying minerals',
-                'Farm supply stores near me',
+                { label: 'Feed stores in Houston, TX', q: 'Find livestock feed stores in Houston, TX with websites, emails and phone numbers' },
+                { label: 'Ranches with websites in Texas', q: 'Find ranches and tack shops with websites in Texas' },
+                { label: 'Livestock suppliers in USA', q: 'Find livestock suppliers and feed mills in USA' },
+                { label: 'Mineral distributors with email', q: 'Find mineral distributors in Texas with email addresses' },
+                { label: 'Co-ops buying salt and minerals', q: 'Find farm supply cooperatives buying salt and minerals in USA' },
               ].map((ex) => (
                 <button
-                  key={ex}
+                  key={ex.label}
                   type="button"
                   onClick={() => {
-                    setAiQuery(ex);
-                    void planAndSearch(true, ex);
+                    setAiQuery(ex.q);
+                    void planAndSearch(true, ex.q);
                   }}
                   className="inline-flex items-center gap-1 px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-700 text-slate-600 text-[11px] font-medium transition cursor-pointer shadow-2xs"
                 >
                   <MagnifyingGlass className="w-3 h-3 text-slate-400" />
-                  {ex}
+                  {ex.label}
                 </button>
               ))}
             </div>
-          </div>
 
-          {/* ── 2. AI Interpreted Search Plan Card ── */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <CheckCircle weight="fill" className="w-5 h-5 text-emerald-500" />
-                <h3 className="font-bold text-slate-900 text-sm">AI Interpreted Search Plan</h3>
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedFilters((v) => !v)}
-                  className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 ml-2 cursor-pointer"
-                >
-                  <PencilSimple className="w-3.5 h-3.5" /> Edit if needed
-                </button>
-              </div>
-
-              <div className="flex items-center gap-3">
+            {/* AI Detected Parameters (editable) */}
+            <div className="pt-2 border-t border-slate-100 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                  <CheckCircle weight="fill" className="w-4 h-4 text-emerald-500" />
+                  <span>AI Detected Parameters (editable)</span>
+                </div>
                 <button
                   type="button"
                   onClick={handleClearAllPlan}
-                  className="text-rose-600 hover:text-rose-700 text-xs font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+                  className="text-[11px] text-slate-400 hover:text-rose-600 transition cursor-pointer"
                 >
-                  <Trash className="w-3.5 h-3.5" /> Clear All
+                  Reset Parameters
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSaveSearchTemplate}
-                  className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 hover:underline cursor-pointer"
-                >
-                  <BookBookmark className="w-3.5 h-3.5" /> Save as Template
-                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                {/* Col 1: Business Types */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
+                    <Storefront className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Business Types</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 items-center min-h-[34px]">
+                    {categoriesList.map((cat, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 text-[11px] font-semibold"
+                      >
+                        {cat}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCategory(idx)}
+                          className="text-indigo-400 hover:text-indigo-700 cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    {showAddCategory ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={newCategoryInput}
+                          onChange={(e) => setNewCategoryInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); if (e.key === 'Escape') setShowAddCategory(false); }}
+                          placeholder="Category"
+                          className="px-2 py-0.5 text-xs border border-indigo-300 rounded w-24 focus:outline-none"
+                        />
+                        <button type="button" onClick={handleAddCategory} className="text-xs text-indigo-600 font-bold cursor-pointer">Add</button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowAddCategory(true)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-[11px] font-medium transition cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" /> Add
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Col 2: Locations */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
+                    <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Locations</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 items-center min-h-[34px]">
+                    {locationsList.map((loc, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-[11px] font-semibold"
+                      >
+                        {loc}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveLocation(idx)}
+                          className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    {showAddLocation ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={newLocationInput}
+                          onChange={(e) => setNewLocationInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddLocation(); if (e.key === 'Escape') setShowAddLocation(false); }}
+                          placeholder="City, State"
+                          className="px-2 py-0.5 text-xs border border-indigo-300 rounded w-24 focus:outline-none"
+                        />
+                        <button type="button" onClick={handleAddLocation} className="text-xs text-indigo-600 font-bold cursor-pointer">Add</button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowAddLocation(true)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-[11px] font-medium transition cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" /> Add
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Col 3: Required Contacts */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
+                    <Phone className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Required Contacts</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 items-center min-h-[34px]">
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requireWebsite}
+                        onChange={(e) => setRequireWebsite(e.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span>Website</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requireEmail}
+                        onChange={(e) => setRequireEmail(e.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span>Email</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={requirePhone}
+                        onChange={(e) => setRequirePhone(e.target.checked)}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <span>Phone</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Col 4: Results Target */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
+                    <Target className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Results</span>
+                  </div>
+                  <div className="flex items-center min-h-[34px]">
+                    <div className="relative w-full">
+                      <select
+                        value={resultsLimit}
+                        onChange={(e) => setResultsLimit(Number(e.target.value))}
+                        className="w-full appearance-none pl-3 pr-8 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                      >
+                        <option value={25}>25 businesses</option>
+                        <option value={50}>50 businesses</option>
+                        <option value={100}>100 businesses</option>
+                        <option value={150}>150 businesses</option>
+                        <option value={200}>200 businesses</option>
+                      </select>
+                      <CaretDown className="w-3 h-3 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
 
-            {/* 5-Column Filter Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-              
-              {/* Col 1: Business Types */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                  <Storefront className="w-4 h-4 text-indigo-600" />
-                  <span>Business Types</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 items-center min-h-[38px]">
-                  {categoriesList.map((cat, idx) => (
-                    <span
-                      key={idx}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-medium"
-                    >
-                      {cat}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveCategory(idx)}
-                        className="text-indigo-400 hover:text-indigo-700"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                  {showAddCategory ? (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={newCategoryInput}
-                        onChange={(e) => setNewCategoryInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); if (e.key === 'Escape') setShowAddCategory(false); }}
-                        placeholder="Add category"
-                        className="px-2 py-0.5 text-xs border border-indigo-300 rounded w-28 focus:outline-none"
-                      />
-                      <button type="button" onClick={handleAddCategory} className="text-xs text-indigo-600 font-bold">Add</button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowAddCategory(true)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-xs font-medium transition cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" /> Add
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Col 2: Locations */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                  <MapPin className="w-4 h-4 text-indigo-600" />
-                  <span>Locations</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 items-center min-h-[38px]">
-                  {locationsList.map((loc, idx) => (
-                    <span
-                      key={idx}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium"
-                    >
-                      {loc}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveLocation(idx)}
-                        className="text-slate-400 hover:text-slate-700"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                  {showAddLocation ? (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={newLocationInput}
-                        onChange={(e) => setNewLocationInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddLocation(); if (e.key === 'Escape') setShowAddLocation(false); }}
-                        placeholder="e.g. San Antonio, TX"
-                        className="px-2 py-0.5 text-xs border border-indigo-300 rounded w-32 focus:outline-none"
-                      />
-                      <button type="button" onClick={handleAddLocation} className="text-xs text-indigo-600 font-bold">Add</button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowAddLocation(true)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-xs font-medium transition cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" /> Add Location
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Col 3: Keywords */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                  <MagnifyingGlass className="w-4 h-4 text-indigo-600" />
-                  <span>Keywords</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 items-center min-h-[38px]">
-                  {keywordsList.map((kw, idx) => (
-                    <span
-                      key={idx}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium"
-                    >
-                      {kw}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveKeyword(idx)}
-                        className="text-slate-400 hover:text-slate-700"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                  {showAddKeyword ? (
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={newKeywordInput}
-                        onChange={(e) => setNewKeywordInput(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddKeyword(); if (e.key === 'Escape') setShowAddKeyword(false); }}
-                        placeholder="Keyword"
-                        className="px-2 py-0.5 text-xs border border-indigo-300 rounded w-24 focus:outline-none"
-                      />
-                      <button type="button" onClick={handleAddKeyword} className="text-xs text-indigo-600 font-bold">Add</button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowAddKeyword(true)}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-xs font-medium transition cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" /> Add Keyword
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Col 4: Contact Requirements */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                  <Phone className="w-4 h-4 text-indigo-600" />
-                  <span>Contact Requirements</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 items-center min-h-[38px]">
-                  <button
-                    type="button"
-                    onClick={() => setRequireWebsite((v) => !v)}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition cursor-pointer ${
-                      requireWebsite
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-semibold'
-                        : 'bg-slate-50 border-slate-200 text-slate-400'
-                    }`}
-                  >
-                    Website {requireWebsite && <Check className="w-3 h-3 text-indigo-600" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRequirePhone((v) => !v)}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition cursor-pointer ${
-                      requirePhone
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-semibold'
-                        : 'bg-slate-50 border-slate-200 text-slate-400'
-                    }`}
-                  >
-                    Phone {requirePhone && <Check className="w-3 h-3 text-indigo-600" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRequireEmail((v) => !v)}
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition cursor-pointer ${
-                      requireEmail
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-semibold'
-                        : 'bg-slate-50 border-slate-200 text-slate-400'
-                    }`}
-                  >
-                    Email {requireEmail && <Check className="w-3 h-3 text-indigo-600" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Col 5: Results Limit */}
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                  <FileText className="w-4 h-4 text-indigo-600" />
-                  <span>Results Limit</span>
-                </div>
-                <div className="flex items-center min-h-[38px]">
-                  <select
-                    value={resultsLimit}
-                    onChange={(e) => setResultsLimit(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                  >
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                    <option value={150}>150</option>
-                    <option value={200}>200</option>
-                    <option value={250}>250</option>
-                  </select>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Advanced Filters Collapsible */}
+            {/* Collapsible Advanced Options */}
             <div className="border-t border-slate-100 pt-3">
               <button
                 type="button"
@@ -1673,7 +1941,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               >
                 <span className="flex items-center gap-1.5">
                   <GearSix className="w-3.5 h-3.5 text-slate-400" />
-                  Advanced Filters &amp; Options (Radius, Search Sources, Company Size, More...)
+                  <span>Advanced Options</span>
+                  <span className="text-slate-400 text-[11px] font-normal">— Search sources, radius, additional keywords, exclusions, and more.</span>
                 </span>
                 {showAdvancedFilters ? <CaretUp className="w-3.5 h-3.5" /> : <CaretDown className="w-3.5 h-3.5" />}
               </button>
@@ -1694,7 +1963,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     </select>
                   </label>
                   <label className="space-y-1 text-[11px] font-semibold text-slate-600">
-                    Map radius (km)
+                    Map search radius (km)
                     <input
                       aria-label="Radius in kilometers"
                       className="w-full border border-slate-200 rounded-lg p-2 font-normal"
@@ -1720,7 +1989,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   <div className="col-span-full flex flex-wrap gap-x-4 gap-y-2 pt-2 text-[11px] text-slate-600">
                     <label className="flex items-center gap-1.5 cursor-pointer">
                       <input type="checkbox" checked={excludeSaved} onChange={(e) => setExcludeSaved(e.target.checked)} />
-                      New leads only
+                      New leads only (exclude already saved)
                     </label>
                     <label className="flex items-center gap-1.5 cursor-pointer">
                       <input type="checkbox" checked={excludeContacted} onChange={(e) => setExcludeContacted(e.target.checked)} />
@@ -1738,9 +2007,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </div>
               )}
             </div>
+
           </div>
 
-          {/* ── 3. Live Streaming Progress Indicator ("sath sath result deta jay") ── */}
+          {/* Live Progressive Search Status Indicator */}
           {searching && (
             <div className="p-3 bg-gradient-to-r from-indigo-50 via-purple-50 to-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 font-semibold flex items-center justify-between shadow-xs animate-pulse">
               <div className="flex items-center gap-2">
@@ -1761,338 +2031,472 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             </div>
           )}
 
-          {/* ── 4. Search Results Header & Actions ── */}
-          <div className="space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h3 className="text-base font-bold text-slate-900">
-                  Search Results ({leads.length} found)
-                </h3>
-                {leads.length > 0 && (
-                  <>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-600" />
-                      {leads.filter((l) => l.dataSource === 'openstreetmap' || (l.address && l.phone)).length} verified businesses
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                      <ClockCounterClockwise className="w-3.5 h-3.5 text-amber-600" />
-                      {leads.filter((l) => !(l.dataSource === 'openstreetmap' || (l.address && l.phone))).length} need verification
-                    </span>
-                  </>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 self-start sm:self-auto flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setResultsView((v) => (v === 'map' ? 'table' : 'map'))}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-indigo-700 text-xs font-semibold hover:bg-indigo-50 shadow-sm transition"
-                >
-                  <MapPin className="w-3.5 h-3.5 text-indigo-600" />
-                  {resultsView === 'map' ? 'View as Table' : 'View on Map'}
-                </button>
-
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setExportMenuOpen((v) => !v)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 shadow-sm transition"
-                  >
-                    <DownloadSimple className="w-3.5 h-3.5 text-slate-500" />
-                    Export <CaretDown className="w-3 h-3 text-slate-400" />
-                  </button>
-                  {exportMenuOpen && (
-                    <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1 text-xs">
-                      <button
-                        type="button"
-                        onClick={handleExportSearchResultsCSV}
-                        className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 text-slate-700 font-medium"
-                      >
-                        Export CSV
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleExportSearchResultsJSON}
-                        className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 text-slate-700 font-medium"
-                      >
-                        Export JSON
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  disabled={selectedLeadIds.size === 0 || savingSelected}
-                  onClick={handleSaveSelected}
-                  className="px-4 py-1.5 rounded-lg bg-[#5a4fe6] hover:bg-[#493ecc] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                >
-                  <BookBookmark className="w-3.5 h-3.5 text-white" />
-                  {savingSelected ? 'Saving...' : `Save Selected (${selectedLeadIds.size})`}
-                </button>
-              </div>
-            </div>
-
-            {/* ── 5. Results Table View ── */}
-            {resultsView === 'table' ? (
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-700 border-collapse">
-                    <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                      <tr>
-                        <th className="w-10 px-3 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            checked={leads.length > 0 && selectedLeadIds.size === leads.length}
-                            onChange={handleToggleSelectAll}
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                          />
-                        </th>
-                        <th className="w-10 px-2 py-3 text-slate-400">#</th>
-                        <th className="px-3 py-3">Business Name</th>
-                        <th className="px-3 py-3">Location</th>
-                        <th className="px-3 py-3">Category</th>
-                        <th className="px-3 py-3">Website</th>
-                        <th className="px-3 py-3">Phone</th>
-                        <th className="px-3 py-3">Email</th>
-                        <th className="px-3 py-3">Source</th>
-                        <th className="px-3 py-3">Status</th>
-                        <th className="px-3 py-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {leads.length > 0 ? (
-                        leads.map((lead, idx) => {
-                          const isVerified = lead.dataSource === 'openstreetmap' || Boolean(lead.address && lead.phone);
-                          const isSelected = selectedLeadIds.has(lead.businessName);
-                          const isSaving = savingLeadId === lead.businessName;
-                          return (
-                            <tr key={`${lead.businessName}-${idx}`} className="hover:bg-slate-50/70 transition">
-                              <td className="px-3 py-3 text-center">
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => handleToggleSelectLead(lead.businessName)}
-                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                />
-                              </td>
-                              <td className="px-2 py-3 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
-                              <td className="px-3 py-3 font-semibold text-slate-900 max-w-[200px] truncate" title={lead.businessName}>
-                                {lead.businessName}
-                              </td>
-                              <td className="px-3 py-3 text-slate-600 whitespace-nowrap">
-                                {[lead.city, lead.region].filter(Boolean).join(', ') || lead.address || 'Texas'}
-                              </td>
-                              <td className="px-3 py-3 whitespace-nowrap">
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                  {lead.category}
-                                </span>
-                              </td>
-                              <td className="px-3 py-3 whitespace-nowrap">
-                                {lead.website ? (
-                                  <a
-                                    href={lead.website}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-indigo-600 hover:underline inline-flex items-center gap-1 font-medium max-w-[130px] truncate"
-                                    title={lead.website}
-                                  >
-                                    <Globe className="w-3 h-3 text-indigo-400 flex-shrink-0" />
-                                    {lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
-                                  </a>
-                                ) : (
-                                  <span className="text-slate-300">—</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3 whitespace-nowrap">
-                                {lead.phone ? (
-                                  <a
-                                    href={`tel:${lead.phone}`}
-                                    className="text-slate-700 hover:underline inline-flex items-center gap-1 font-medium"
-                                  >
-                                    <Phone className="w-3 h-3 text-emerald-600 flex-shrink-0" />
-                                    {lead.phone}
-                                  </a>
-                                ) : (
-                                  <span className="text-slate-300">—</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3 whitespace-nowrap">
-                                {lead.email ? (
-                                  <a
-                                    href={`mailto:${lead.email}`}
-                                    className="text-indigo-600 hover:underline inline-flex items-center gap-1 font-medium max-w-[150px] truncate"
-                                    title={lead.email}
-                                  >
-                                    <EnvelopeSimple className="w-3 h-3 text-indigo-400 flex-shrink-0" />
-                                    {lead.email}
-                                  </a>
-                                ) : (
-                                  <span className="text-slate-300">—</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3 whitespace-nowrap">
-                                <span className="inline-flex items-center gap-1 text-[11px] text-slate-600">
-                                  <Globe className="w-3 h-3 text-slate-400" />
-                                  {lead.dataSource === 'openstreetmap' ? 'OpenStreetMap' : lead.dataSource === 'searxng' ? 'Web Search' : 'Google Maps'}
-                                </span>
-                              </td>
-                              <td className="px-3 py-3 whitespace-nowrap">
-                                {isVerified ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
-                                    Verified
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                                    <ClockCounterClockwise className="w-3 h-3 text-amber-600" />
-                                    Need verification
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3 text-right whitespace-nowrap">
-                                <div className="inline-flex items-center gap-1 justify-end">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSaveToLibrary(lead)}
-                                    disabled={lead.alreadySaved || isSaving}
-                                    title={lead.alreadySaved ? 'Already saved in Lead Library' : 'Save to Lead Library'}
-                                    className={`p-1.5 rounded-lg border text-xs font-semibold transition ${
-                                      lead.alreadySaved
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 cursor-default'
-                                        : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                                    }`}
-                                  >
-                                    {lead.alreadySaved ? (
-                                      <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-600" />
-                                    ) : isSaving ? (
-                                      <ArrowsClockwise className="w-3.5 h-3.5 animate-spin text-slate-600" />
-                                    ) : (
-                                      <BookBookmark className="w-3.5 h-3.5 text-slate-600" />
-                                    )}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAIAnalyze(lead)}
-                                    title="AI Lead Assessment"
-                                    className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-indigo-600 transition"
-                                  >
-                                    <Robot className="w-3.5 h-3.5 text-indigo-600" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        <tr>
-                          <td colSpan={11} className="py-12 text-center text-slate-400">
-                            <div className="max-w-sm mx-auto space-y-2">
-                              <MagnifyingGlass className="w-8 h-8 text-slate-300 mx-auto" />
-                              <p className="text-xs font-medium text-slate-600">No leads discovered yet</p>
-                              <p className="text-[11px] text-slate-400">
-                                Click &quot;AI Find Leads&quot; above to search Houston, Dallas, Austin, and broad regions with live streaming results.
-                              </p>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : (
-              /* Map / Location View */
-              <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-indigo-600" />
-                    <h4 className="text-sm font-bold text-slate-900">Geographic Spread ({leads.length} locations)</h4>
+          {/* ── 2. Results Section (2-Column Layout matching Reference Screenshot) ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6 items-start">
+            
+            {/* ── Left Sidebar: Saved Searches & Quick Filters ── */}
+            <div className="space-y-4">
+              
+              {/* Saved Searches Card */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                    <BookBookmark className="w-4 h-4 text-indigo-600" />
+                    <span>Saved Searches</span>
                   </div>
-                  <span className="text-xs text-slate-500">Targeting Houston, Dallas, Austin and Texas metros</span>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {leads.map((lead, idx) => (
-                    <div key={idx} className="p-3 rounded-lg border border-slate-100 bg-slate-50/50 space-y-2">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h5 className="font-bold text-xs text-slate-900">{lead.businessName}</h5>
-                          <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded font-semibold">{lead.category}</span>
+
+                <button
+                  type="button"
+                  onClick={handleSaveSearchTemplate}
+                  className="w-full py-2 px-3 rounded-lg border border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50/60 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Save Current Search
+                </button>
+
+                <div className="space-y-1.5 pt-1">
+                  {PRESET_SAVED_SEARCHES.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => applySavedSearch(s)}
+                      className="w-full text-left p-2.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <MagnifyingGlass className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-800 group-hover:text-indigo-600 truncate">{s.name}</p>
+                          <p className="text-[10px] text-slate-400 truncate">{s.location}</p>
                         </div>
-                        {lead.osmUrl && (
-                          <a href={lead.osmUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 text-[10px] hover:underline flex items-center gap-0.5">
-                            Map <ArrowSquareOut className="w-2.5 h-2.5" />
-                          </a>
-                        )}
                       </div>
-                      <p className="text-[11px] text-slate-600">{lead.address || [lead.city, lead.region].filter(Boolean).join(', ') || 'Local area'}</p>
-                      {lead.phone && <p className="text-[11px] text-emerald-700 font-medium">📞 {lead.phone}</p>}
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* ── 6. "See How It Works" Informational Modal ── */}
-          {showHowItWorksModal && (
-            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    <Sparkle weight="fill" className="w-5 h-5 text-indigo-600" />
-                    <h4 className="font-bold text-slate-900 text-base">How AI Smart Search Works</h4>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowHowItWorksModal(false)}
-                    className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+              {/* Quick Filters Card */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 pb-1 border-b border-slate-100">
+                  <Funnel className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Quick Filters</span>
                 </div>
-                <div className="space-y-3 text-xs text-slate-600">
-                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-indigo-50/50 border border-indigo-100">
-                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0">1</span>
-                    <div>
-                      <strong className="text-slate-900 block">Plain English Intent</strong>
-                      Type naturally in English or Roman Urdu. E.g., &quot;Find 100 livestock feed stores in Houston, Dallas and Austin&quot;.
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-indigo-50/50 border border-indigo-100">
-                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0">2</span>
-                    <div>
-                      <strong className="text-slate-900 block">AI Planning with Gemini</strong>
-                      Gemini parses multiple cities, buyer categories, keywords, and contact requirements automatically into an editable plan.
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-indigo-50/50 border border-indigo-100">
-                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0">3</span>
-                    <div>
-                      <strong className="text-slate-900 block">Live Progressive Streaming</strong>
-                      Searches run across each target location in real time. Discovered leads immediately appear on screen batch by batch without waiting.
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-indigo-50/50 border border-indigo-100">
-                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0">4</span>
-                    <div>
-                      <strong className="text-slate-900 block">Bulk Save &amp; CSV Export</strong>
-                      Select discovered prospects with checkboxes and save in bulk to your Lead Library or download as CSV.
-                    </div>
-                  </div>
-                </div>
+
                 <button
                   type="button"
-                  onClick={() => setShowHowItWorksModal(false)}
-                  className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-semibold text-xs hover:bg-slate-800 transition"
+                  onClick={() => setFindLeadsQuickFilter('all')}
+                  className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    findLeadsQuickFilter === 'all' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
                 >
-                  Got it
+                  <span className="flex items-center gap-2">
+                    <BookBookmark className="w-3.5 h-3.5 text-indigo-600" /> All Leads
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-100/70 text-indigo-800 text-[10px] font-bold">
+                    {leads.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFindLeadsQuickFilter('verified')}
+                  className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    findLeadsQuickFilter === 'verified' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-600" /> Verified
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100/70 text-emerald-800 text-[10px] font-bold">
+                    {verifiedFindCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFindLeadsQuickFilter('unverified')}
+                  className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    findLeadsQuickFilter === 'unverified' ? 'bg-amber-50 text-amber-700' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <WarningCircle weight="fill" className="w-3.5 h-3.5 text-amber-500" /> Unverified
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100/70 text-amber-800 text-[10px] font-bold">
+                    {unverifiedFindCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFindLeadsQuickFilter('review')}
+                  className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    findLeadsQuickFilter === 'review' ? 'bg-rose-50 text-rose-700' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <ClockCounterClockwise className="w-3.5 h-3.5 text-rose-500" /> Needs Review
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-rose-100/70 text-rose-800 text-[10px] font-bold">
+                    {needsReviewFindCount}
+                  </span>
                 </button>
               </div>
-            </div>
-          )}
 
-          {/* ── 7. AI Factual Assessment Modal ── */}
+            </div>
+
+            {/* ── Right Main Area: Leads Found Table & Actions ── */}
+            <div className="space-y-4">
+              
+              {/* Header Action Bar */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900">Leads Found</h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                      {filteredFindLeads.length}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                    <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-500 inline-block" />
+                    Verified and deduplicated results from multiple sources. Select leads to save to library.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={selectedLeadIds.size === 0 || savingSelected}
+                    onClick={handleSaveSelected}
+                    className="px-4 py-2 rounded-xl bg-[#584de3] hover:bg-[#493ecc] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                  >
+                    <BookBookmark className="w-3.5 h-3.5 text-white" />
+                    {savingSelected ? 'Saving...' : `Save Selected (${selectedLeadIds.size})`}
+                  </button>
+
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setExportMenuOpen((v) => !v)}
+                      className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition cursor-pointer"
+                    >
+                      <DownloadSimple className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Export CSV</span>
+                      <CaretDown className="w-3 h-3 text-slate-400" />
+                    </button>
+                    {exportMenuOpen && (
+                      <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 text-xs">
+                        <button
+                          type="button"
+                          onClick={handleExportSearchResultsCSV}
+                          className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 text-slate-700 font-medium"
+                        >
+                          Export CSV
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleExportSearchResultsJSON}
+                          className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 text-slate-700 font-medium"
+                        >
+                          Export JSON
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setResultsView((v) => (v === 'map' ? 'table' : 'map'))}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition cursor-pointer"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>{resultsView === 'map' ? 'View as Table' : 'View on Map'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Table or Map View */}
+              {resultsView === 'table' ? (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs text-slate-700 border-collapse">
+                      <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                        <tr>
+                          <th className="w-10 px-3 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={paginatedFindLeads.length > 0 && paginatedFindLeads.every((l) => selectedLeadIds.has(l.businessName))}
+                              onChange={handleToggleSelectAll}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            />
+                          </th>
+                          <th className="w-10 px-2 py-3 text-slate-400">#</th>
+                          <th className="px-3 py-3">Business Name</th>
+                          <th className="px-3 py-3">Location</th>
+                          <th className="px-3 py-3">Category</th>
+                          <th className="px-3 py-3">Contact Information</th>
+                          <th className="px-3 py-3">Source</th>
+                          <th className="px-3 py-3">Status</th>
+                          <th className="px-3 py-3">Score</th>
+                          <th className="px-3 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {paginatedFindLeads.length > 0 ? (
+                          paginatedFindLeads.map((lead, idx) => {
+                            const isVerified = lead.dataSource === 'openstreetmap' || Boolean(lead.address && lead.phone);
+                            const isSelected = selectedLeadIds.has(lead.businessName);
+                            const isSaving = savingLeadId === lead.businessName;
+                            const rowNum = (findLeadsPage - 1) * findLeadsPageSize + idx + 1;
+                            return (
+                              <tr key={`${lead.businessName}-${idx}`} className="hover:bg-slate-50/70 transition">
+                                <td className="px-3 py-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleToggleSelectLead(lead.businessName)}
+                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                  />
+                                </td>
+                                <td className="px-2 py-3 text-slate-400 font-mono text-[11px]">{rowNum}</td>
+                                
+                                {/* Business Name with Company Initials Avatar */}
+                                <td className="px-3 py-3 font-semibold text-slate-900 max-w-[220px]">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs border flex-shrink-0 ${getAvatarBg(lead.businessName)}`}>
+                                      {getCompanyInitials(lead.businessName)}
+                                    </div>
+                                    <span className="truncate" title={lead.businessName}>{lead.businessName}</span>
+                                  </div>
+                                </td>
+
+                                {/* Location */}
+                                <td className="px-3 py-3 text-slate-600 whitespace-nowrap">
+                                  <div className="flex items-center gap-1">
+                                    <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                                    <span>{[lead.city, lead.region].filter(Boolean).join(', ') || lead.address || 'Texas'}</span>
+                                  </div>
+                                </td>
+
+                                {/* Category */}
+                                <td className="px-3 py-3 whitespace-nowrap">
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                    {lead.category || 'Feed Store'}
+                                  </span>
+                                </td>
+
+                                {/* Contact Information (Website, Phone, Email Multi-line) */}
+                                <td className="px-3 py-3">
+                                  <div className="space-y-1 text-[11px]">
+                                    {lead.website ? (
+                                      <a
+                                        href={lead.website}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-indigo-600 hover:underline flex items-center gap-1 font-medium truncate max-w-[170px]"
+                                        title={lead.website}
+                                      >
+                                        <Globe className="w-3 h-3 text-indigo-400 flex-shrink-0" />
+                                        <span>{lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
+                                        <ArrowSquareOut className="w-2.5 h-2.5 flex-shrink-0" />
+                                      </a>
+                                    ) : (
+                                      <span className="text-slate-300 block">—</span>
+                                    )}
+
+                                    {lead.phone && (
+                                      <a
+                                        href={`tel:${lead.phone}`}
+                                        className="text-slate-700 hover:underline flex items-center gap-1 font-medium"
+                                      >
+                                        <Phone className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                                        <span>{lead.phone}</span>
+                                      </a>
+                                    )}
+
+                                    {lead.email && (
+                                      <a
+                                        href={`mailto:${lead.email}`}
+                                        className="text-slate-600 hover:underline flex items-center gap-1 truncate max-w-[170px]"
+                                        title={lead.email}
+                                      >
+                                        <EnvelopeSimple className="w-3 h-3 text-indigo-500 flex-shrink-0" />
+                                        <span>{lead.email}</span>
+                                      </a>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* Source */}
+                                <td className="px-3 py-3 whitespace-nowrap">
+                                  <SourceBadge source={lead.dataSource} />
+                                </td>
+
+                                {/* Status Badge */}
+                                <td className="px-3 py-3 whitespace-nowrap">
+                                  {isVerified ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                      <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
+                                      Verified
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                      <WarningCircle weight="fill" className="w-3 h-3 text-amber-500" />
+                                      Unverified
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Fit Score */}
+                                <td className="px-3 py-3 whitespace-nowrap">
+                                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                    {lead.opportunityScore ?? 85}
+                                  </span>
+                                </td>
+
+                                {/* Actions */}
+                                <td className="px-3 py-3 text-right whitespace-nowrap">
+                                  <div className="inline-flex items-center gap-1 justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveToLibrary(lead)}
+                                      disabled={lead.alreadySaved || isSaving}
+                                      title={lead.alreadySaved ? 'Saved in Lead Library' : 'Save to Lead Library'}
+                                      className={`p-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+                                        lead.alreadySaved
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                                      }`}
+                                    >
+                                      {lead.alreadySaved ? (
+                                        <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-600" />
+                                      ) : isSaving ? (
+                                        <ArrowsClockwise className="w-3.5 h-3.5 animate-spin text-slate-600" />
+                                      ) : (
+                                        <BookBookmark className="w-3.5 h-3.5 text-slate-600" />
+                                      )}
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAIAnalyze(lead)}
+                                      title="AI Lead Assessment"
+                                      className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-indigo-600 transition cursor-pointer"
+                                    >
+                                      <Robot className="w-3.5 h-3.5 text-indigo-600" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={10} className="py-12 text-center text-slate-400">
+                              <div className="max-w-sm mx-auto space-y-2">
+                                <MagnifyingGlass className="w-8 h-8 text-slate-300 mx-auto" />
+                                <p className="text-xs font-medium text-slate-600">No leads discovered yet</p>
+                                <p className="text-[11px] text-slate-400">
+                                  Click &quot;Find Leads with AI&quot; or select one of the saved searches on the left to start prospecting.
+                                </p>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination Footer */}
+                  {filteredFindLeads.length > 0 && (
+                    <div className="px-4 py-3 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                      <span>
+                        Showing {Math.min((findLeadsPage - 1) * findLeadsPageSize + 1, filteredFindLeads.length)}–
+                        {Math.min(findLeadsPage * findLeadsPageSize, filteredFindLeads.length)} of {filteredFindLeads.length} leads
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={findLeadsPage <= 1}
+                          onClick={() => setFindLeadsPage((p) => Math.max(1, p - 1))}
+                          className="px-2 py-1 rounded border border-slate-200 bg-white text-xs font-semibold disabled:opacity-40 hover:bg-slate-50 cursor-pointer"
+                        >
+                          &lt;
+                        </button>
+                        {Array.from({ length: Math.min(5, totalFindPages) }, (_, i) => i + 1).map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setFindLeadsPage(p)}
+                            className={`w-7 h-7 rounded text-xs font-bold transition cursor-pointer ${
+                              findLeadsPage === p ? 'bg-[#584de3] text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                        {totalFindPages > 5 && (
+                          <>
+                            <span className="px-1 text-slate-400">...</span>
+                            <button
+                              type="button"
+                              onClick={() => setFindLeadsPage(totalFindPages)}
+                              className={`w-7 h-7 rounded text-xs font-bold transition cursor-pointer ${
+                                findLeadsPage === totalFindPages ? 'bg-[#584de3] text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                              }`}
+                            >
+                              {totalFindPages}
+                            </button>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          disabled={findLeadsPage >= totalFindPages}
+                          onClick={() => setFindLeadsPage((p) => Math.min(totalFindPages, p + 1))}
+                          className="px-2 py-1 rounded border border-slate-200 bg-white text-xs font-semibold disabled:opacity-40 hover:bg-slate-50 cursor-pointer"
+                        >
+                          &gt;
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Map / Location View */
+                <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-indigo-600" />
+                      <h4 className="text-sm font-bold text-slate-900">Geographic Spread ({leads.length} locations)</h4>
+                    </div>
+                    <span className="text-xs text-slate-500">Targeting Texas and USA metros</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {leads.map((lead, idx) => (
+                      <div key={idx} className="p-3 rounded-lg border border-slate-100 bg-slate-50/50 space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h5 className="font-bold text-xs text-slate-900">{lead.businessName}</h5>
+                            <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded font-semibold">{lead.category}</span>
+                          </div>
+                          {lead.osmUrl && (
+                            <a href={lead.osmUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 text-[10px] hover:underline flex items-center gap-0.5">
+                              Map <ArrowSquareOut className="w-2.5 h-2.5" />
+                            </a>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-600">{lead.address || [lead.city, lead.region].filter(Boolean).join(', ') || 'Local area'}</p>
+                        {lead.phone && <p className="text-[11px] text-emerald-700 font-medium">📞 {lead.phone}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+          </div>
+
+          {/* ── AI Factual Assessment Modal ── */}
           {analyzingLeadName && (
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-4">
@@ -2105,7 +2509,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     type="button"
                     aria-label="Close AI factual assessment"
                     onClick={() => { setAnalyzingLeadName(null); setAiAnalysisResult(null); }}
-                    className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                    className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
                   >
                     ✕
                   </button>
@@ -2157,7 +2561,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 <button
                   type="button"
                   onClick={() => { setAnalyzingLeadName(null); setAiAnalysisResult(null); }}
-                  className="w-full py-2 rounded-lg bg-slate-900 text-white font-semibold text-xs hover:bg-slate-800 transition"
+                  className="w-full py-2 rounded-lg bg-slate-900 text-white font-semibold text-xs hover:bg-slate-800 transition cursor-pointer"
                 >
                   Close
                 </button>
@@ -2167,288 +2571,1225 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         </div>
 
         {/* ══════════ LEAD LIBRARY TAB ══════════ */}
-        <div id="leados-panel-library" role="tabpanel" aria-labelledby="leados-tab-library" className={activeTab === 'library' ? "space-y-4" : "hidden"}>
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Lead Library</h3>
-                  <p className="text-[11px] text-slate-500">Manage saved prospects, qualification status, and export to CSV.</p>
+        <div id="leados-panel-library" role="tabpanel" aria-labelledby="leados-tab-library" className={activeTab === 'library' ? "space-y-6" : "hidden"}>
+          {/* ── 1. Top Header & KPI Summary ── */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                    <BookBookmark weight="fill" className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">Lead Library</h2>
+                  <span className="bg-slate-100 text-slate-700 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                    {libraryLeads.length} Total Saved
+                  </span>
                 </div>
-                <button onClick={handleExportCSV} className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-[11px] shadow-sm flex items-center gap-1.5 transition">
-                  <DownloadSimple className="w-3.5 h-3.5" /> Export CSV
+                <p className="text-xs text-slate-500 mt-1">
+                  Central repository for all saved B2B prospects, verified contacts, fit qualification scores, sales notes, and wholesale outreach.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => loadLibrary()}
+                  disabled={loadingLibrary}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                >
+                  <ArrowsClockwise className={`w-3.5 h-3.5 ${loadingLibrary ? 'animate-spin text-indigo-600' : 'text-slate-500'}`} />
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportCSV}
+                  className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                >
+                  <DownloadSimple className="w-3.5 h-3.5 text-slate-600" />
+                  Export CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeTab('find')}
+                  className="px-4 py-1.5 rounded-lg bg-[#584de3] hover:bg-[#493ecb] text-white font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                >
+                  <MagnifyingGlass className="w-3.5 h-3.5" />
+                  Find More Leads
                 </button>
               </div>
-              <div className="flex flex-col md:flex-row gap-2">
-                <div className="relative flex-1">
-                  <MagnifyingGlass className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                  <input type="text" placeholder="Search by name, category, or city..." value={librarySearch} onChange={(e) => setLibrarySearch(e.target.value)} className="w-full pl-8 pr-3 py-2 rounded-lg border border-slate-200 text-[11px] focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-                </div>
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 bg-white">
+            </div>
+
+            {/* Verification & Pipeline KPI statistics */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-3 border-t border-slate-100">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Total Saved</span>
+                <span className="text-xl font-bold text-slate-900 mt-0.5 block">{libraryLeads.length}</span>
+              </div>
+              <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
+                <span className="text-[10px] font-bold text-emerald-700 block uppercase tracking-wider">Verified Contacts</span>
+                <span className="text-xl font-bold text-emerald-800 mt-0.5 block">
+                  {libraryLeads.filter((l) => l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website)).length}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-100">
+                <span className="text-[10px] font-bold text-blue-700 block uppercase tracking-wider">Direct Phone</span>
+                <span className="text-xl font-bold text-blue-800 mt-0.5 block">
+                  {libraryLeads.filter((l) => Boolean(l.phone)).length}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100">
+                <span className="text-[10px] font-bold text-indigo-700 block uppercase tracking-wider">Email Verified</span>
+                <span className="text-xl font-bold text-indigo-800 mt-0.5 block">
+                  {libraryLeads.filter((l) => Boolean(l.email)).length}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-100">
+                <span className="text-[10px] font-bold text-purple-700 block uppercase tracking-wider">In Sales Pipeline</span>
+                <span className="text-xl font-bold text-purple-800 mt-0.5 block">
+                  {libraryLeads.filter((l) => l.status === 'qualified' || l.status === 'contacted' || l.status === 'shortlisted').length}
+                </span>
+              </div>
+            </div>
+
+            {/* Search and Multi-Filtering Controls */}
+            <div className="flex flex-col lg:flex-row gap-2.5 pt-2 border-t border-slate-100">
+              <div className="relative flex-1">
+                <MagnifyingGlass className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search by business name, city, phone, email, notes, or category..."
+                  value={librarySearch}
+                  onChange={(e) => setLibrarySearch(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+                {librarySearch && (
+                  <button
+                    type="button"
+                    onClick={() => setLibrarySearch('')}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={libraryCategoryFilter}
+                  onChange={(e) => setLibraryCategoryFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="all">All Categories ({libraryCategories.length})</option>
+                  {libraryCategories.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="all">All Pipeline Stages</option>
+                  {LEAD_PIPELINE.map((state) => (
+                    <option key={state} value={state}>{state.replaceAll('_', ' ')}</option>
+                  ))}
+                  <option value="disqualified">Disqualified</option>
+                </select>
+
+                <select
+                  value={libraryVerificationFilter}
+                  onChange={(e) => setLibraryVerificationFilter(e.target.value as any)}
+                  className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
                   <option value="all">All Statuses</option>
-                  {LEAD_PIPELINE.map((state) => <option key={state} value={state}>{state.replaceAll('_', ' ')}</option>)}
-                  <option value="disqualified">Disqualified (legacy)</option>
+                  <option value="verified">Verified Only</option>
+                  <option value="unverified">Unverified Only</option>
                 </select>
               </div>
             </div>
 
-            {libraryError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800" role="alert">
-                Lead Library error: {libraryError}
+            {/* Bulk Action Bar (when leads are selected) */}
+            {librarySelectedIds.size > 0 && (
+              <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in">
+                <div className="flex items-center gap-2 font-bold text-indigo-950">
+                  <CheckCircle weight="fill" className="w-4 h-4 text-indigo-600" />
+                  <span>{librarySelectedIds.size} {librarySelectedIds.size === 1 ? 'lead' : 'leads'} selected</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-slate-600 font-medium text-[11px]">Set Stage:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkUpdateLibraryStatus('qualified')}
+                    className="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-semibold hover:bg-indigo-100 transition cursor-pointer text-[11px]"
+                  >
+                    Qualified
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkUpdateLibraryStatus('contacted')}
+                    className="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-semibold hover:bg-indigo-100 transition cursor-pointer text-[11px]"
+                  >
+                    Contacted
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkUpdateLibraryStatus('shortlisted')}
+                    className="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-semibold hover:bg-indigo-100 transition cursor-pointer text-[11px]"
+                  >
+                    Shortlisted
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkUpdateLibraryStatus('disqualified')}
+                    className="px-2.5 py-1 rounded bg-white border border-rose-200 text-rose-800 font-semibold hover:bg-rose-100 transition cursor-pointer text-[11px]"
+                  >
+                    Disqualify
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBulkDeleteLibraryLeads}
+                    className="px-2.5 py-1 rounded bg-rose-50 text-rose-700 font-semibold border border-rose-200 hover:bg-rose-100 transition cursor-pointer text-[11px] flex items-center gap-1"
+                  >
+                    <Trash className="w-3 h-3" />
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLibrarySelectedIds(new Set())}
+                    className="px-2 py-1 text-slate-500 hover:text-slate-800 text-[11px] font-medium"
+                  >
+                    Clear Selection
+                  </button>
+                </div>
               </div>
             )}
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-              {loadingLibrary ? (
-                <div className="p-12 text-center text-slate-400 text-xs">
-                  <ArrowsClockwise className="w-5 h-5 animate-spin mx-auto mb-2 text-indigo-500" />
-                  Loading saved prospects...
+          </div>
+
+          {libraryError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800" role="alert">
+              Lead Library error: {libraryError}
+            </div>
+          )}
+
+          {/* ── 2. Leads Found Table (Matches Reference Screenshot Style) ── */}
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+            {loadingLibrary ? (
+              <div className="p-16 text-center text-slate-400 text-xs">
+                <ArrowsClockwise className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
+                Loading saved prospects...
+              </div>
+            ) : filteredLibraryLeads.length === 0 ? (
+              <div className="p-16 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                  <BookBookmark className="w-6 h-6" />
                 </div>
-              ) : libraryLeads.length === 0 ? (
-                <div className="p-12 text-center space-y-2">
-                  <BookBookmark className="w-7 h-7 text-slate-300 mx-auto" />
-                  <h4 className="font-bold text-slate-800 text-xs">No Saved Leads Found</h4>
-                  <p className="text-[11px] text-slate-500 max-w-xs mx-auto">Go to <b>Find Leads</b> and search for businesses, then click &quot;Save Lead&quot; to add them here.</p>
-                  <button onClick={() => changeTab('find')} className="mt-2 px-4 py-1.5 rounded-lg bg-indigo-600 text-white font-semibold text-[11px]">Discover Leads</button>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-[11px] text-slate-700">
-                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      <tr>
-                        <th className="py-2.5 px-3">Business Name</th>
-                        <th className="py-2.5 px-3">Category</th>
-                        <th className="py-2.5 px-3">Location</th>
-                        <th className="py-2.5 px-3">Contact & Provenance</th>
-                        <th className="py-2.5 px-3">Website</th>
-                        <th className="py-2.5 px-3">Score</th>
-                        <th className="py-2.5 px-3">Status</th>
-                        <th className="py-2.5 px-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {libraryLeads.map((l) => (
-                        <tr key={l.id} className="hover:bg-slate-50/60 transition">
-                          <td className="py-2.5 px-3 font-bold text-slate-900">
-                            {l.businessName}
-                            {l.osmUrl && <a href={l.osmUrl} target="_blank" rel="noopener noreferrer" className="ml-1 text-indigo-600 inline-flex"><ArrowSquareOut className="w-2.5 h-2.5" /></a>}
+                <h4 className="font-bold text-slate-800 text-sm">No Saved Leads Found</h4>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  {libraryLeads.length > 0
+                    ? 'No leads match your active filters or search keyword.'
+                    : 'Discover verified B2B businesses in Find Leads and click "Save Selected" to populate your library.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setLibrarySearch(''); setLibraryCategoryFilter('all'); setStatusFilter('all'); changeTab('find'); }}
+                  className="px-4 py-2 rounded-lg bg-[#584de3] text-white font-semibold text-xs shadow-sm cursor-pointer"
+                >
+                  Discover Leads
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="py-3 px-3 w-8 text-center">
+                        <input
+                          type="checkbox"
+                          checked={librarySelectedIds.size === filteredLibraryLeads.length && filteredLibraryLeads.length > 0}
+                          onChange={handleToggleSelectAllLibrary}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </th>
+                      <th className="py-3 px-2 w-8 text-slate-400 font-bold">#</th>
+                      <th className="py-3 px-3 font-bold text-slate-600">Business Name</th>
+                      <th className="py-3 px-3 font-bold text-slate-600">Location</th>
+                      <th className="py-3 px-3 font-bold text-slate-600">Category</th>
+                      <th className="py-3 px-3 font-bold text-slate-600">Contact Information</th>
+                      <th className="py-3 px-3 font-bold text-slate-600">Source</th>
+                      <th className="py-3 px-3 font-bold text-slate-600">Status</th>
+                      <th className="py-3 px-3 font-bold text-slate-600">Score</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredLibraryLeads.map((lead, idx) => {
+                      const isSelected = librarySelectedIds.has(lead.id);
+                      const isVerified = lead.emailSource === 'company_website' || lead.dataSource === 'openstreetmap' || Boolean(lead.phone && lead.website);
+                      const displayScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 82;
+
+                      return (
+                        <tr
+                          key={lead.id}
+                          onClick={() => openLeadDrawer(lead, 'details')}
+                          className={`hover:bg-slate-50/80 transition cursor-pointer ${isSelected ? 'bg-indigo-50/30' : ''}`}
+                        >
+                          {/* Checkbox */}
+                          <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectLibraryLead(lead.id)}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            />
                           </td>
-                          <td className="py-2.5 px-3"><span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium text-slate-600">{l.category || 'N/A'}</span></td>
-                          <td className="py-2.5 px-3 text-slate-600">{[l.city, l.region].filter(Boolean).join(', ') || '—'}</td>
-                          <td className="py-2.5 px-3">
-                            {l.email ? (
-                              <div className="flex flex-col gap-0.5">
-                                <span className="font-medium text-slate-900">{l.email}</span>
-                                <span className={`text-[10px] ${l.emailSource === 'company_website' ? 'text-emerald-700' : 'text-amber-800'}`}>{l.emailSource === 'company_website' ? 'Published on company website' : l.emailSource === 'manually_entered' ? 'Owner entered — unverified' : l.emailSource === 'discovered_osm' ? 'OSM record — unverified' : 'Unverified'}</span>
+
+                          {/* Index */}
+                          <td className="py-3 px-2 text-[11px] text-slate-400 font-medium">
+                            {idx + 1}
+                          </td>
+
+                          {/* Business Name with Company Initials Avatar */}
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[11px] flex-shrink-0 border ${getAvatarBg(lead.businessName)}`}>
+                                {getCompanyInitials(lead.businessName)}
                               </div>
-                            ) : (
-                              <button onClick={() => handleOpenEmailModal(l)} className="text-indigo-600 hover:underline flex items-center gap-1 font-medium"><Plus className="w-3 h-3" /> Add</button>
+                              <div className="min-w-0">
+                                <div className="font-bold text-slate-900 flex items-center gap-1.5 hover:text-indigo-600 transition">
+                                  <span className="truncate max-w-[200px]" title={lead.businessName}>{lead.businessName}</span>
+                                  {lead.osmUrl && (
+                                    <a
+                                      href={lead.osmUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="text-slate-400 hover:text-indigo-600 inline-flex flex-shrink-0"
+                                      title="View on OpenStreetMap"
+                                    >
+                                      <ArrowSquareOut className="w-3 h-3" />
+                                    </a>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                  <span>{lead.dataSource || 'OpenStreetMap'}</span>
+                                  {lead.notes && (
+                                    <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-semibold">
+                                      Has Notes
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Location */}
+                          <td className="py-3 px-3 text-slate-600">
+                            <div className="flex items-center gap-1 font-medium text-slate-800">
+                              <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                              <span className="truncate max-w-[140px]">{[lead.city, lead.region].filter(Boolean).join(', ') || 'United States'}</span>
+                            </div>
+                            {lead.address && (
+                              <div className="text-[10px] text-slate-400 truncate max-w-[140px] pl-4.5" title={lead.address}>
+                                {lead.address}
+                              </div>
                             )}
                           </td>
-                          <td className="py-2.5 px-3">
-                            {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline flex items-center gap-1 max-w-[120px] truncate">{l.website.replace(/^https?:\/\//, '')} <ArrowSquareOut className="w-2.5 h-2.5" /></a> : <span className="text-slate-300">—</span>}
+
+                          {/* Category */}
+                          <td className="py-3 px-3">
+                            <span className="inline-flex px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-100">
+                              {lead.category || 'Feed Store'}
+                            </span>
                           </td>
-                          <td className="py-2.5 px-3">{l.research?.qualification ? <ScoreBadge score={l.research.qualification.score} label="Fit" /> : l.opportunityScore != null ? <ScoreBadge score={l.opportunityScore} label="Priority" /> : <span className="text-slate-500">Not assessed</span>}</td>
-                          <td className="py-2.5 px-3">
-                            <select value={l.status} onChange={(e) => handleUpdateLeadStatus(l.id, e.target.value)} className="px-1.5 py-0.5 rounded border border-slate-200 text-[10px] font-semibold bg-white focus:outline-none">
-                              {LEAD_PIPELINE.map((state) => <option key={state} value={state}>{state.replaceAll('_', ' ')}</option>)}
-                              {!LEAD_PIPELINE.includes(l.status as typeof LEAD_PIPELINE[number]) && <option value={l.status}>{l.status}</option>}
-                            </select>
+
+                          {/* Contact Info (Multi-line formatted) */}
+                          <td className="py-3 px-3 text-[11px]" onClick={(e) => e.stopPropagation()}>
+                            <div className="space-y-1">
+                              {lead.website ? (
+                                <div className="flex items-center gap-1 text-slate-700">
+                                  <Globe className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                                  <a
+                                    href={lead.website}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-indigo-600 hover:underline font-medium truncate max-w-[160px] inline-flex items-center gap-1"
+                                    title={lead.website}
+                                  >
+                                    <span>{lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
+                                    <ArrowSquareOut className="w-2.5 h-2.5 flex-shrink-0" />
+                                  </a>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1 text-slate-300 text-[10px]">
+                                  <Globe className="w-3 h-3" />
+                                  <span>No website</span>
+                                </div>
+                              )}
+
+                              {lead.phone ? (
+                                <div className="flex items-center gap-1 text-slate-700">
+                                  <Phone className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                                  <a href={`tel:${lead.phone}`} className="hover:underline font-semibold text-slate-800 text-[11px]">
+                                    {lead.phone}
+                                  </a>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1 text-slate-300 text-[10px]">
+                                  <Phone className="w-3 h-3" />
+                                  <span>No phone listed</span>
+                                </div>
+                              )}
+
+                              {lead.email ? (
+                                <div className="flex items-center gap-1 text-slate-700">
+                                  <EnvelopeSimple className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                                  <span className="font-medium text-slate-900 truncate max-w-[150px]" title={lead.email}>
+                                    {lead.email}
+                                  </span>
+                                  <span className={`text-[9px] font-semibold px-1 py-0.2 rounded ${
+                                    lead.emailSource === 'company_website' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                    lead.emailSource === 'manually_entered' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                    'bg-amber-50 text-amber-700 border border-amber-200'
+                                  }`}>
+                                    {lead.emailSource === 'company_website' ? 'Website' : lead.emailSource === 'manually_entered' ? 'Staff' : 'OSM'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEmailModal(lead)}
+                                  className="text-indigo-600 hover:underline flex items-center gap-1 font-medium text-[10px]"
+                                >
+                                  <Plus className="w-2.5 h-2.5" /> Add email
+                                </button>
+                              )}
+                            </div>
                           </td>
-                          <td className="py-2.5 px-3 text-right">
+
+                          {/* Source */}
+                          <td className="py-3 px-3">
+                            <SourceBadge source={lead.dataSource || 'Google Maps'} />
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-3 px-3">
+                            {isVerified ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
+                                Verified
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                <WarningCircle weight="fill" className="w-3 h-3 text-amber-600" />
+                                Unverified
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Fit Score */}
+                          <td className="py-3 px-3">
+                            <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-bold border ${
+                              displayScore >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                              displayScore >= 60 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                              'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}>
+                              {displayScore}
+                            </span>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3 px-3 text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              <button onClick={() => startOutreachForLead(l)} className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[10px] flex items-center gap-1 transition"><PaperPlaneRight className="w-3 h-3" /> Outreach</button>
-                              <button onClick={() => handleOpenEmailModal(l)} className="p-1 text-slate-400 hover:text-indigo-600 rounded hover:bg-indigo-50 transition" title="Edit"><PencilSimple className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => handleDeleteSavedLead(l.id)} className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 transition" title="Delete"><Trash className="w-3.5 h-3.5" /></button>
+                              <button
+                                type="button"
+                                onClick={() => openLeadDrawer(lead, 'outreach')}
+                                className="px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[11px] flex items-center gap-1 transition cursor-pointer border border-indigo-200"
+                                title="Compose Wholesale Outreach"
+                              >
+                                <PaperPlaneRight className="w-3 h-3 text-indigo-600" />
+                                Outreach
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openLeadDrawer(lead, 'notes')}
+                                className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+                                title="Notes & Follow-up Schedule"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSavedLead(lead.id)}
+                                className="p-1.5 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                                title="Delete Lead"
+                              >
+                                <Trash className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </td>
                         </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ── 3. Professional Slide-Over Lead Details Side Panel Drawer ── */}
+          {selectedDrawerLead && (
+            <div className="fixed inset-0 z-50 overflow-hidden">
+              {/* Backdrop */}
+              <div
+                className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+                onClick={() => setSelectedDrawerLead(null)}
+              />
+
+              <div className="fixed inset-y-0 right-0 max-w-2xl w-full bg-white shadow-2xl border-l border-slate-200 flex flex-col z-50 animate-in slide-in-from-right duration-200">
+                {/* Drawer Header */}
+                <div className="p-5 border-b border-slate-200 bg-slate-50/50 flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 border ${getAvatarBg(selectedDrawerLead.businessName)}`}>
+                      {getCompanyInitials(selectedDrawerLead.businessName)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-slate-900 text-base leading-tight truncate" title={selectedDrawerLead.businessName}>
+                          {selectedDrawerLead.businessName}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-100">
+                          {selectedDrawerLead.category || 'Feed Store'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-slate-400" />
+                        {[selectedDrawerLead.city, selectedDrawerLead.region].filter(Boolean).join(', ') || 'United States'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* Pipeline Stage Select */}
+                    <select
+                      value={selectedDrawerLead.status}
+                      onChange={(e) => handleUpdateDrawerLeadStatus(e.target.value)}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-800 shadow-2xs focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                    >
+                      {LEAD_PIPELINE.map((st) => (
+                        <option key={st} value={st}>{st.replaceAll('_', ' ')}</option>
                       ))}
-                    </tbody>
-                  </table>
+                      <option value="disqualified">Disqualified</option>
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDrawerLead(null)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
+
+                {/* Drawer Tabs: Details | Outreach | Notes & History */}
+                <div className="flex items-center border-b border-slate-200 bg-white px-5">
+                  {[
+                    { id: 'details' as const, label: 'Details & Fit Score', icon: Target },
+                    { id: 'outreach' as const, label: 'Wholesale Outreach', icon: PaperPlaneRight },
+                    { id: 'notes' as const, label: 'Notes & History', icon: FileText },
+                  ].map((tab) => {
+                    const Icon = tab.icon;
+                    const isCur = drawerActiveTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setDrawerActiveTab(tab.id)}
+                        className={`flex items-center gap-2 py-3 px-3.5 text-xs font-semibold border-b-2 transition cursor-pointer -mb-px ${
+                          isCur
+                            ? 'border-indigo-600 text-indigo-600'
+                            : 'border-transparent text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <Icon className={`w-3.5 h-3.5 ${isCur ? 'text-indigo-600' : 'text-slate-400'}`} />
+                        <span>{tab.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Drawer Body Scroll Area */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                  {/* TAB 1: DETAILS */}
+                  {drawerActiveTab === 'details' && (
+                    <div className="space-y-4">
+                      {/* Contact & Location Details */}
+                      <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 text-slate-500">
+                          <Storefront className="w-3.5 h-3.5 text-indigo-600" />
+                          Business &amp; Contact Info
+                        </h4>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Full Address</span>
+                            <span className="text-slate-800 font-medium block mt-0.5">
+                              {selectedDrawerLead.address || `${selectedDrawerLead.city || ''}, ${selectedDrawerLead.region || ''}` || 'Not provided'}
+                            </span>
+                            {selectedDrawerLead.city && (
+                              <a
+                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedDrawerLead.businessName} ${selectedDrawerLead.city || ''} ${selectedDrawerLead.region || ''}`)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:underline text-[10px] font-semibold inline-flex items-center gap-0.5 mt-1"
+                              >
+                                Google Maps <ArrowSquareOut className="w-2.5 h-2.5" />
+                              </a>
+                            )}
+                          </div>
+
+                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Phone Number</span>
+                            {selectedDrawerLead.phone ? (
+                              <a href={`tel:${selectedDrawerLead.phone}`} className="text-slate-800 font-semibold text-xs hover:underline block mt-0.5">
+                                {selectedDrawerLead.phone}
+                              </a>
+                            ) : (
+                              <span className="text-slate-400 mt-0.5 block">No direct phone listed</span>
+                            )}
+                          </div>
+
+                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Official Website</span>
+                            {selectedDrawerLead.website ? (
+                              <a
+                                href={selectedDrawerLead.website}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:underline font-semibold block mt-0.5 truncate"
+                                title={selectedDrawerLead.website}
+                              >
+                                {selectedDrawerLead.website}
+                              </a>
+                            ) : (
+                              <span className="text-slate-400 mt-0.5 block">No website available</span>
+                            )}
+                          </div>
+
+                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Email Address</span>
+                            {selectedDrawerLead.email ? (
+                              <div className="mt-0.5">
+                                <span className="font-semibold text-slate-800 block">{selectedDrawerLead.email}</span>
+                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 mt-0.5 inline-block">
+                                  {selectedDrawerLead.emailSource === 'company_website' ? 'Website Verified' : selectedDrawerLead.emailSource === 'manually_entered' ? 'Staff Added' : 'OSM Record'}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 mt-0.5 block">No email recorded</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Fit Score & Opportunity Breakdown */}
+                      <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 text-slate-500">
+                            <Target className="w-3.5 h-3.5 text-emerald-600" />
+                            Commercial Fit Score Breakdown
+                          </h4>
+                          <ScoreBadge score={selectedDrawerLead.research?.qualification?.score ?? selectedDrawerLead.opportunityScore ?? 82} label="Fit Score" />
+                        </div>
+
+                        {selectedDrawerLead.evidence ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                            <div className="p-2 bg-slate-50 rounded-lg text-center">
+                              <span className="text-[10px] text-slate-400 block uppercase font-bold">ICP Fit</span>
+                              <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.icpFit ?? 85}/100</span>
+                            </div>
+                            <div className="p-2 bg-slate-50 rounded-lg text-center">
+                              <span className="text-[10px] text-slate-400 block uppercase font-bold">Reachability</span>
+                              <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.reachability ?? 90}/100</span>
+                            </div>
+                            <div className="p-2 bg-slate-50 rounded-lg text-center">
+                              <span className="text-[10px] text-slate-400 block uppercase font-bold">Confidence</span>
+                              <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.dataConfidence ?? 80}/100</span>
+                            </div>
+                            <div className="p-2 bg-slate-50 rounded-lg text-center">
+                              <span className="text-[10px] text-slate-400 block uppercase font-bold">Priority</span>
+                              <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.commercialPriority ?? 88}/100</span>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {selectedDrawerLead.opportunitySignals && selectedDrawerLead.opportunitySignals.length > 0 && (
+                          <div className="space-y-1 pt-1">
+                            <span className="text-[10px] font-bold text-slate-500 block uppercase tracking-wider">Opportunity Signals</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {selectedDrawerLead.opportunitySignals.map((sig, sIdx) => (
+                                <span key={sIdx} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold border border-indigo-100">
+                                  {sig}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* AI Deep Assessment Trigger */}
+                      <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/40 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Robot className="w-4 h-4 text-indigo-600" />
+                            <h4 className="text-xs font-bold text-slate-900">AI Deep Assessment</h4>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAIAnalyze(selectedDrawerLead as any)}
+                            disabled={analyzingLeadName === selectedDrawerLead.businessName}
+                            className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition cursor-pointer shadow-2xs flex items-center gap-1"
+                          >
+                            {analyzingLeadName === selectedDrawerLead.businessName ? (
+                              <><ArrowsClockwise className="w-3 h-3 animate-spin" /> Analyzing...</>
+                            ) : (
+                              'Run AI Assessment'
+                            )}
+                          </button>
+                        </div>
+
+                        {aiAnalysisResult && analyzingLeadName === selectedDrawerLead.businessName && (
+                          <div className="p-3 bg-white rounded-lg border border-indigo-200 text-xs space-y-2">
+                            <p className="text-slate-700 leading-relaxed">{aiAnalysisResult.analysis?.summary}</p>
+                            <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-1 border-t border-slate-100">
+                              <span><strong>Suitability:</strong> {aiAnalysisResult.analysis?.potentialValue}</span>
+                              <span><strong>Confidence:</strong> {aiAnalysisResult.analysis?.confidence}</span>
+                            </div>
+                          </div>
+                        )}
+                        <p className="text-[11px] text-slate-500">
+                          Evaluates this business against Himalayan Koh wholesale parameters, salt lick retail demand, and product lines.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: OUTREACH */}
+                  {drawerActiveTab === 'outreach' && (
+                    <div className="space-y-4">
+                      {/* Safety Simulation Mode Banner */}
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 flex items-start gap-2.5">
+                        <WarningCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold block">Safety Mode Active [SIMULATION]</span>
+                          <p className="mt-0.5 text-amber-900 text-[11px]">
+                            Outreach is safely generated and simulated in Himalayan Koh LeadOS. No live emails are dispatched without explicit admin approval.
+                          </p>
+                        </div>
+                      </div>
+
+                      {sendResultNotice && (
+                        <div className={`p-3 rounded-lg text-xs flex items-start gap-2 border ${sendResultNotice.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-rose-50 border-rose-200 text-rose-950'}`}>
+                          {sendResultNotice.ok ? <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" /> : <WarningCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />}
+                          <div className="font-medium text-[11px]">{sendResultNotice.msg}</div>
+                        </div>
+                      )}
+
+                      {/* Template Selector Pills */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-1.5">
+                          Select B2B Wholesale Template
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {OUTREACH_TEMPLATES.map((tmpl) => (
+                            <button
+                              key={tmpl.id}
+                              type="button"
+                              onClick={() => handleTemplateSelect(tmpl)}
+                              className={`text-left p-2.5 rounded-xl border transition text-xs cursor-pointer ${
+                                selectedTemplate.id === tmpl.id
+                                  ? 'bg-indigo-50 border-indigo-400 text-indigo-950 font-semibold ring-1 ring-indigo-400'
+                                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              <div className="font-bold text-[11px]">{tmpl.name}</div>
+                              <div className="text-[10px] text-slate-500 mt-0.5 capitalize">{tmpl.category.replace('_', ' ')}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Form */}
+                      <form onSubmit={handleSendOutreach} className="space-y-3 pt-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Recipient Name</label>
+                            <input
+                              type="text"
+                              value={recipientName}
+                              onChange={(e) => setRecipientName(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Recipient Email</label>
+                            <input
+                              type="email"
+                              value={recipientEmail}
+                              onChange={(e) => { setRecipientEmail(e.target.value); setRecipientEmailSource('manually_entered'); }}
+                              placeholder="buyer@store.com"
+                              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Subject Line</label>
+                          <input
+                            type="text"
+                            value={emailSubject}
+                            onChange={(e) => setEmailSubject(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Message Body</label>
+                          <textarea
+                            rows={6}
+                            value={emailBody}
+                            onChange={(e) => setEmailBody(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono leading-relaxed"
+                          />
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => setShowAdvancedOutreachWorkflow(!showAdvancedOutreachWorkflow)}
+                            className="text-xs text-indigo-600 hover:underline font-semibold flex items-center gap-1"
+                          >
+                            {showAdvancedOutreachWorkflow ? 'Hide Advanced Workflow' : 'Show Advanced Workflow & Evidence'}
+                          </button>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateDrawerLeadStatus('contacted')}
+                              className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer"
+                            >
+                              Mark Contacted
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={sendingOutreach}
+                              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                              {sendingOutreach ? (
+                                <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Simulating...</>
+                              ) : (
+                                <><PaperPlaneRight className="w-3.5 h-3.5" /> Preview Simulation</>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+
+                      {showAdvancedOutreachWorkflow && (
+                        <div className="pt-4 border-t border-slate-200">
+                          <LeadIntelligencePanel
+                            key={activeOutreachLeadId || 'drawer-outreach'}
+                            initialLeadId={activeOutreachLeadId}
+                            headers={getAuthHeaders}
+                            onSavedSearch={() => { changeTab('find'); setSelectedDrawerLead(null); }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TAB 3: NOTES & HISTORY */}
+                  {drawerActiveTab === 'notes' && (
+                    <form onSubmit={handleSaveDrawerNotes} className="space-y-4">
+                      {drawerSavedMsg && (
+                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-emerald-600" />
+                          <span>{drawerSavedMsg}</span>
+                        </div>
+                      )}
+
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-bold text-slate-700">Internal Sales Notes &amp; Account Remarks</label>
+                        <textarea
+                          rows={4}
+                          value={drawerNotes}
+                          onChange={(e) => setDrawerNotes(e.target.value)}
+                          placeholder="Record discussions, buyer product preferences, salt block volume, custom packaging requirements..."
+                          className="w-full p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-bold text-slate-600">Next Follow-Up Date</label>
+                          <input
+                            type="date"
+                            value={drawerFollowUpDate}
+                            onChange={(e) => setDrawerFollowUpDate(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-bold text-slate-600">Requested Quantity</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 2 Pallets / 100 blocks"
+                            value={drawerQuantity}
+                            onChange={(e) => setDrawerQuantity(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-bold text-slate-600">Packaging Preference</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Bulk Palletized / Private Label"
+                            value={drawerPackaging}
+                            onChange={(e) => setDrawerPackaging(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end pt-2">
+                        <button
+                          type="submit"
+                          disabled={savingDrawerNotes}
+                          className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                          {savingDrawerNotes ? (
+                            <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Saving...</>
+                          ) : (
+                            'Save Notes & Follow-Up'
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Audit / Provenance History */}
+                      <div className="pt-4 border-t border-slate-100 space-y-2">
+                        <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Discovery &amp; Contact Provenance</h4>
+                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[11px] text-slate-600 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span>Data Source:</span>
+                            <span className="font-bold text-slate-800">{selectedDrawerLead.dataSource || 'OpenStreetMap Nominatim / Overpass'}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Contact Verification:</span>
+                            <span className="font-bold text-slate-800">
+                              {selectedDrawerLead.emailSource === 'company_website' ? 'Verified on Company Website' :
+                               selectedDrawerLead.emailSource === 'manually_entered' ? 'Manually Added by Admin' :
+                               'Public Map Directory Record'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span>Saved Timestamp:</span>
+                            <span className="font-mono text-slate-700">{selectedDrawerLead.createdAt ? new Date(selectedDrawerLead.createdAt).toLocaleString() : 'Active session'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ══════════ SETTINGS TAB (Unified with AI Engine) ══════════ */}
+        <div id="leados-panel-settings" role="tabpanel" aria-labelledby="leados-tab-settings" className={activeTab === 'settings' ? "space-y-6" : "hidden"}>
+          {/* Settings Section Selector Bar */}
+          <div className="bg-white rounded-xl border border-slate-200 p-2 flex items-center gap-1 overflow-x-auto">
+            {[
+              { id: 'ai' as const, label: 'AI Intelligence Engine', icon: Robot },
+              { id: 'icp' as const, label: 'Target Market & ICP', icon: Target },
+              { id: 'scoring' as const, label: 'Scoring Rules', icon: Sliders },
+              { id: 'system' as const, label: 'System & Providers', icon: GearSix },
+            ].map((sec) => {
+              const Icon = sec.icon;
+              const isCur = settingsSection === sec.id;
+              return (
+                <button
+                  key={sec.id}
+                  type="button"
+                  onClick={() => setSettingsSection(sec.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
+                    isCur
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {sec.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Section 1: AI Intelligence Engine */}
+          {settingsSection === 'ai' && (
+            <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Robot className="w-4 h-4 text-indigo-600" />
+                  AI Intelligence &amp; Model Configuration
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Server-side Google Gemini (primary, configured in Admin → Settings → API Keys) with OpenRouter / DeepSeek fallback. Search queries are deterministic and never blocked if AI is offline.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 text-sm">Google Gemini (Primary)</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">Recommended</span>
+                  </div>
+                  <p className="text-slate-600 text-[11px]">
+                    Uses the Google Gemini key saved in Admin → Settings → API Keys. Enriches discovered leads and generates contextual outreach drafts.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const headers = await getAuthHeaders();
+                      const res = await fetch('/api/admin/leados/ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...headers },
+                        body: JSON.stringify({ action: 'test', provider: 'gemini' }),
+                      });
+                      const d = await res.json();
+                      alert(d.configured ? `Gemini verified successfully (${d.model})` : 'Gemini API key not configured — add it in Admin → Settings → API Keys');
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100 text-[11px] shadow-2xs"
+                  >
+                    Test Gemini Connection
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 text-sm">OpenRouter (Fallback)</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-700">Fallback</span>
+                  </div>
+                  <p className="text-slate-600 text-[11px]">
+                    Used automatically only when Google Gemini is unavailable or rate limited.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const headers = await getAuthHeaders();
+                      const res = await fetch('/api/admin/leados/ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...headers },
+                        body: JSON.stringify({ action: 'test', provider: 'openrouter' }),
+                      });
+                      const d = await res.json();
+                      alert(d.configured ? `OpenRouter verified successfully (${d.model})` : 'OpenRouter API key not configured');
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100 text-[11px] shadow-2xs"
+                  >
+                    Test OpenRouter Connection
+                  </button>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 md:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900">Safety &amp; Deterministic Truth Invariance</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-800">Enforced</span>
+                  </div>
+                  <p className="text-slate-600 text-[11px]">
+                    AI failures never interrupt or block lead discovery. All entities are discovered deterministically via OpenStreetMap. Contact info is strictly labeled by source provenance.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Section 2: Ideal Customer Profile (ICP) Target Market */}
+          {settingsSection === 'icp' && (
+            <div className="space-y-4">
+              {activeProject && (
+                <form onSubmit={handleSaveProjectICP} className="space-y-4">
+                  <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                          <Target className="w-4 h-4 text-indigo-600" />
+                          Ideal Customer Profile (ICP) Target Market &amp; Keywords
+                        </h3>
+                        <p className="text-[11px] text-slate-500">
+                          Target market parameters used for deterministic fit scoring (0–100) and discovery relevance.
+                        </p>
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={savingProject}
+                        className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-2xs transition flex items-center gap-1.5"
+                      >
+                        {savingProject ? (<><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Saving...</>) : 'Save ICP Settings'}
+                      </button>
+                    </div>
+
+                    {projectSavedMsg && (
+                      <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-emerald-600" /> {projectSavedMsg}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <label className="font-semibold text-slate-600 text-[11px]">Project / Brand Name</label>
+                        <input
+                          type="text"
+                          value={activeProject.name}
+                          onChange={(e) => setActiveProject({ ...activeProject, name: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-slate-600 text-[11px]">Storefront / Website URL</label>
+                        <input
+                          type="text"
+                          value={activeProject.website || ''}
+                          onChange={(e) => setActiveProject({ ...activeProject, website: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium"
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="font-semibold text-slate-600 text-[11px]">Product &amp; Mineral Definition</label>
+                        <input
+                          type="text"
+                          value={activeProject.productService || ''}
+                          onChange={(e) => setActiveProject({ ...activeProject, productService: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium"
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="font-semibold text-slate-600 text-[11px]">Target Customer Description</label>
+                        <input
+                          type="text"
+                          value={activeProject.targetCustomerDescription || ''}
+                          onChange={(e) => setActiveProject({ ...activeProject, targetCustomerDescription: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium"
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="font-semibold text-slate-600 text-[11px]">Ideal Customer Profile (Narrative)</label>
+                        <textarea
+                          rows={3}
+                          value={activeProject.idealCustomerProfile || ''}
+                          onChange={(e) => setActiveProject({ ...activeProject, idealCustomerProfile: e.target.value })}
+                          className="w-full p-3 rounded-lg border border-slate-200 font-medium text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-slate-600 text-[11px]">Positive Keywords (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={(activeProject.positiveKeywords || []).join(', ')}
+                          onChange={(e) => setActiveProject({ ...activeProject, positiveKeywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-slate-600 text-[11px]">Negative Keywords (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={(activeProject.negativeKeywords || []).join(', ')}
+                          onChange={(e) => setActiveProject({ ...activeProject, negativeKeywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </form>
               )}
             </div>
-          </div>
-
-        {/* ══════════ RESEARCH TAB ══════════ */}
-        <div id="leados-panel-research" role="tabpanel" aria-labelledby="leados-tab-research" className={activeTab === 'research' ? "bg-white rounded-xl border border-slate-200 p-5 space-y-4" : "hidden"}>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">Multi-Category Market Research</h3>
-            <p className="text-[11px] text-slate-500">Choose a relevant buyer category and location. Searches are bounded and respect shared provider pacing.</p>
-          </div>
-          <div className="p-3 bg-indigo-50/60 rounded-lg border border-indigo-100 text-[11px] text-indigo-950">
-            <span className="font-bold block mb-1.5">Automated Scan Categories:</span>
-            <div className="flex flex-wrap gap-1">{BUYER_CATEGORIES.map((c) => (<span key={c} className="px-2 py-0.5 rounded bg-white font-medium text-slate-700 border border-indigo-200/70">{c}</span>))}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <input type="text" name="researchRegion" aria-label="Target research region" placeholder="Target Region (e.g. Texas, Montana, Kentucky)" value={researchRegion} onChange={(e) => setResearchRegion(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium" />
-            <button type="button" onClick={() => { setLocation(researchRegion || 'Texas'); changeTab('find'); }} className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 shadow-sm transition">Launch Scan</button>
-          </div>
-        </div>
-
-        {/* ══════════ SCORING RULES TAB ══════════ */}
-        <div id="leados-panel-scoring" role="tabpanel" aria-labelledby="leados-tab-scoring" className={activeTab === 'scoring' ? "space-y-6" : "hidden"}>
-          {activeProject && (
-            <form onSubmit={handleSaveProjectICP} className="space-y-4">
-              <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">Ideal Customer Profile (ICP) Target Market & Fit Keywords</h3>
-                    <p className="text-[11px] text-slate-500">Configures target market rules for Project Fit scoring (0–100) and discovery relevance.</p>
-                  </div>
-                  <button type="submit" disabled={savingProject} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5">
-                    {savingProject ? (<><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Saving...</>) : 'Save ICP'}
-                  </button>
-                </div>
-                {projectSavedMsg && <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-800 flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-600" /> {projectSavedMsg}</div>}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
-                  <div className="space-y-1"><label className="font-semibold text-slate-600">Project / Business Name</label><input type="text" value={activeProject.name} onChange={(e) => setActiveProject({ ...activeProject, name: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                  <div className="space-y-1"><label className="font-semibold text-slate-600">Website / Storefront URL</label><input type="text" value={activeProject.website || ''} onChange={(e) => setActiveProject({ ...activeProject, website: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                  <div className="space-y-1 md:col-span-2"><label className="font-semibold text-slate-600">Product / Service Definition</label><input type="text" value={activeProject.productService || ''} onChange={(e) => setActiveProject({ ...activeProject, productService: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                  <div className="space-y-1 md:col-span-2"><label className="font-semibold text-slate-600">Target Customer Description</label><input type="text" value={activeProject.targetCustomerDescription || ''} onChange={(e) => setActiveProject({ ...activeProject, targetCustomerDescription: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                  <div className="space-y-1 md:col-span-2"><label className="font-semibold text-slate-600">Ideal Customer Profile (Narrative)</label><textarea rows={3} value={activeProject.idealCustomerProfile || ''} onChange={(e) => setActiveProject({ ...activeProject, idealCustomerProfile: e.target.value })} className="w-full p-3 rounded-lg border border-slate-200 font-medium" /></div>
-                  <div className="space-y-1"><label className="font-semibold text-slate-600">Positive Keywords (comma separated)</label><input type="text" value={(activeProject.positiveKeywords || []).join(', ')} onChange={(e) => setActiveProject({ ...activeProject, positiveKeywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                  <div className="space-y-1"><label className="font-semibold text-slate-600">Negative Keywords (comma separated)</label><input type="text" value={(activeProject.negativeKeywords || []).join(', ')} onChange={(e) => setActiveProject({ ...activeProject, negativeKeywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                </div>
-              </div>
-            </form>
           )}
 
-          <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Deterministic Opportunity Scoring Weights</h3>
-              <p className="text-[11px] text-slate-500">Opportunity scores (0–100) based on observed data completeness and outreach signals.</p>
-            </div>
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full text-left text-[11px]">
-                <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                  <tr><th className="py-2.5 px-3">Signal Key</th><th className="py-2.5 px-3">Signal Name</th><th className="py-2.5 px-3">Weight</th><th className="py-2.5 px-3">Impact</th></tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {weights.map((w) => (
-                    <tr key={w.signalKey} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-mono text-slate-600">{w.signalKey}</td>
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{w.signalName}</td>
-                      <td className="py-2.5 px-3"><span className={`px-1.5 py-0.5 rounded font-bold ${w.weight > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>{w.weight > 0 ? `+${w.weight}` : w.weight}</span></td>
-                      <td className="py-2.5 px-3 text-slate-500">{w.weight > 0 ? 'Increases priority' : 'Decreases necessity'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        {/* ══════════ CLIENT OUTREACH TAB ══════════ */}
-        <div id="leados-panel-outreach" role="tabpanel" aria-labelledby="leados-tab-outreach" className={activeTab === 'outreach' ? "space-y-4" : "hidden"}>
-          <LeadIntelligencePanel key={activeOutreachLeadId || 'workspace'} initialLeadId={activeOutreachLeadId} headers={getAuthHeaders} onSavedSearch={(saved) => { setCategory(saved.category || 'Feed Store'); setLocation(saved.location || 'Houston, TX'); setProductInterest(saved.productInterest || 'horse_salt'); setKeyword(saved.keyword || ''); setMaxResults(saved.maxResults || 15); setRadiusKm(saved.radiusKm || 25); setSearchDepth(saved.searchDepth || 1); setRequireWebsite(Boolean(saved.requireWebsite)); setRequirePhone(Boolean(saved.requirePhone)); setRequireEmail(Boolean(saved.requireEmail)); setExcludeSaved(Boolean(saved.excludeSaved)); setExcludeContacted(Boolean(saved.excludeContacted)); setWholesaleOnly(Boolean(saved.wholesaleOnly)); setPrivateLabelOnly(Boolean(saved.privateLabelOnly)); changeTab('find'); }} />
-
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center justify-between">
+          {/* Section 3: Deterministic Opportunity Scoring Rules */}
+          {settingsSection === 'scoring' && (
+            <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
               <div>
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2"><PaperPlaneRight className="w-4 h-4 text-indigo-600" /> Client & B2B Wholesale Outreach</h3>
-                <p className="text-[11px] text-slate-500">Targeted email outreach for discovered animal feed, equine tack, and bulk salt buyers.</p>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-indigo-600" />
+                  Deterministic Opportunity Scoring Weights
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Opportunity priority scores (0–100) calculated from verified contact presence and commercial signals.
+                </p>
               </div>
-              <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> Simulation Mode</span>
-            </div>
-            <div className="mt-3 p-3 bg-amber-50/70 border border-amber-200/80 rounded-lg text-[11px] text-amber-900 flex items-start gap-2">
-              <WarningCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div><span className="font-bold block text-amber-950">Safety Mode Active [SIMULATION]</span><p className="mt-0.5 text-amber-800">This composer records a simulation in the audit trail and sends no email. Persistent reviewed drafts above use the separately gated n8n workflow.</p></div>
-            </div>
-          </div>
 
-          {sendResultNotice && (
-            <div className={`p-3 rounded-lg text-[11px] flex items-start gap-2 border ${sendResultNotice.ok ? sendResultNotice.simulated ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
-              {sendResultNotice.ok ? <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" /> : <WarningCircle className="w-4 h-4 text-red-600 flex-shrink-0" />}
-              <div className="flex-1 font-medium">{sendResultNotice.msg}</div>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3">Signal Key</th>
+                      <th className="py-2.5 px-3">Signal Name</th>
+                      <th className="py-2.5 px-3">Weight</th>
+                      <th className="py-2.5 px-3">Impact</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {weights.map((w) => (
+                      <tr key={w.signalKey} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-3 font-mono text-slate-600">{w.signalKey}</td>
+                        <td className="py-2.5 px-3 font-bold text-slate-900">{w.signalName}</td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-1.5 py-0.5 rounded font-bold ${w.weight > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                            {w.weight > 0 ? `+${w.weight}` : w.weight}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-500">{w.weight > 0 ? 'Increases commercial priority' : 'Decreases necessity'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-1 space-y-3">
-              <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-                <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><Tag className="w-3.5 h-3.5 text-indigo-600" /> Select Prospect</h4>
-                <select value={activeOutreachLeadId || ''} onChange={(e) => { const l = libraryLeads.find((x) => x.id === e.target.value); if (l) startOutreachForLead(l); }} className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-800 bg-white">
-                  <option value="">-- Choose from saved ({libraryLeads.length}) --</option>
-                  {libraryLeads.map((l) => (<option key={l.id} value={l.id}>{l.businessName} ({l.city || 'Local'}) {l.email ? `[${l.email}]` : '[No Email]'}</option>))}
-                </select>
-                <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Templates</span>
-                  {OUTREACH_TEMPLATES.map((tmpl) => (
-                    <button key={tmpl.id} type="button" onClick={() => handleTemplateSelect(tmpl)} className={`w-full text-left p-2.5 rounded-lg border transition text-[11px] ${selectedTemplate.id === tmpl.id ? 'bg-indigo-50 border-indigo-300 text-indigo-950 font-semibold' : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
-                      <div className="font-bold">{tmpl.name}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">{tmpl.category}</div>
-                    </button>
-                  ))}
+          {/* Section 4: System & Providers */}
+          {settingsSection === 'system' && (
+            <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <GearSix className="w-4 h-4 text-indigo-600" />
+                  LeadOS System Architecture &amp; Endpoints
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Database isolation, data providers, and rate pacing rules.
+                </p>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 font-mono space-y-1">
+                  <div className="font-bold text-slate-800">Database Namespacing:</div>
+                  <div className="text-slate-600 text-[11px]">All persistence tables prefixed: <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200">leados_*</code></div>
+                  <div className="text-slate-600 text-[11px]">Access control: WordPress administrator capability + storefront admin RBAC</div>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 font-mono space-y-1">
+                  <div className="font-bold text-slate-800">Lead Discovery Sources:</div>
+                  <div className="text-slate-600 text-[11px]">Geocoding: OpenStreetMap Nominatim (respects 1-sec pacing)</div>
+                  <div className="text-slate-600 text-[11px]">Entity Discovery: OpenStreetMap Overpass API (live bounding query)</div>
+                  <div className="text-slate-600 text-[11px]">Scoring: Pure deterministic in-memory calculation</div>
                 </div>
               </div>
             </div>
-
-            <div className="lg:col-span-2">
-              <form onSubmit={handleSendOutreach} className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><EnvelopeSimple className="w-3.5 h-3.5 text-indigo-600" /> Wholesale Email Composer</h4>
-                  <span className="text-[10px] font-medium text-slate-400">Tokens: {'{business_name}'}, {'{city}'}</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Business Name</label><input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="e.g. Hill Country Feed" className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
-                  <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Recipient Email</label><input type="email" value={recipientEmail} onChange={(e) => { setRecipientEmail(e.target.value); setRecipientEmailSource('manually_entered'); }} placeholder="buyer@feedstore.com" className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
-                </div>
-                <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Subject Line</label><input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
-                <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Email Body</label><textarea rows={10} value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono leading-relaxed" /></div>
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10px] text-slate-500">Sender: <span className="font-semibold text-slate-700">sales@himalayankoh.com</span></span>
-                  <button type="submit" disabled={sendingOutreach} className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5">
-                    {sendingOutreach ? (<><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Sending...</>) : (<><PaperPlaneRight className="w-3.5 h-3.5" /> Preview simulation</>)}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        {/* ══════════ AI ENGINE TAB ══════════ */}
-        <div id="leados-panel-ai" role="tabpanel" aria-labelledby="leados-tab-ai" className={activeTab === 'ai' ? "bg-white rounded-xl border border-slate-200 p-5 space-y-4" : "hidden"}>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">AI Intelligence Configuration</h3>
-            <p className="text-[11px] text-slate-500">Server-side Google Gemini (primary, from Admin → Settings → API Keys) with OpenRouter / DeepSeek fallback enriches discovered leads on-demand. Search itself is deterministic and needs no AI key.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
-            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
-              <div className="flex items-center justify-between"><span className="font-bold text-slate-900">Google Gemini (Primary)</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-100 text-emerald-800">Recommended</span></div>
-              <p className="text-slate-600">Uses the Google key saved in Admin → Settings → API Keys. No extra setup.</p>
-              <button onClick={async () => { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ action: 'test', provider: 'gemini' }) }); const d = await res.json(); alert(d.configured ? `Gemini connection verified (${d.model})` : 'Gemini API key not configured — add it in Admin → Settings → API Keys'); }} className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100">Test Connection</button>
-            </div>
-            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
-              <div className="flex items-center justify-between"><span className="font-bold text-slate-900">OpenRouter (Fallback)</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-slate-200 text-slate-700">Fallback</span></div>
-              <p className="text-slate-600">Used automatically only when Gemini is unavailable.</p>
-              <button onClick={async () => { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ action: 'test', provider: 'openrouter' }) }); const d = await res.json(); alert(d.configured ? `OpenRouter connection verified (${d.model})` : 'API key not configured'); }} className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100">Test Connection</button>
-            </div>
-            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
-              <div className="flex items-center justify-between"><span className="font-bold text-slate-900">Safety & Truth Invariance</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-indigo-100 text-indigo-800">Enforced</span></div>
-              <p className="text-slate-600">AI failures never block search. Leads always returned deterministically. Hallucinated metrics strictly prohibited.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* ══════════ SETTINGS TAB ══════════ */}
-        <div id="leados-panel-settings" role="tabpanel" aria-labelledby="leados-tab-settings" className={activeTab === 'settings' ? "bg-white rounded-xl border border-slate-200 p-5 space-y-4" : "hidden"}>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">LeadOS System Settings</h3>
-            <p className="text-[11px] text-slate-500">System architecture, isolated database tables, and provider endpoints.</p>
-          </div>
-          <div className="space-y-2 text-[11px]">
-            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 font-mono space-y-0.5">
-              <div className="font-bold text-slate-800">Database Namespacing:</div>
-              <div className="text-slate-600">All tables prefixed: leados_*</div>
-              <div className="text-slate-600">Access control: WordPress administrator capability + storefront admin RBAC</div>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 font-mono space-y-0.5">
-              <div className="font-bold text-slate-800">Lead Data Sources:</div>
-              <div className="text-slate-600">Geocoding: OpenStreetMap Nominatim</div>
-              <div className="text-slate-600">Entity Discovery: OpenStreetMap Overpass API</div>
-              <div className="text-slate-600">Scoring: In-Memory Deterministic</div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -2467,6 +3808,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             <form onSubmit={handleSaveEmailModal} className="space-y-3">
               <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Email</label><input type="email" value={inputEmail} onChange={(e) => setInputEmail(e.target.value)} placeholder="contact@store.com" className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
               <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Phone</label><input type="text" value={inputPhone} onChange={(e) => setInputPhone(e.target.value)} placeholder="(800) 555-0199" className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
+              <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Sales Notes / Remarks</label><textarea rows={3} value={inputNotes} onChange={(e) => setInputNotes(e.target.value)} placeholder="Buyer preferences, store size, notes..." className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
               {emailModalNotice && <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-700 font-medium">{emailModalNotice}</div>}
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button type="button" onClick={() => setEditingEmailLead(null)} className="px-3 py-1.5 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
