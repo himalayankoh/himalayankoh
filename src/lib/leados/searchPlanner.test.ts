@@ -60,4 +60,14 @@ describe('LeadOS search planner', () => {
     expect(() => mergeAIPlan('not json', rulesPlan('x').plan)).toThrow();
     expect(mergeAIPlan('{"c":"Hacker <script>","l":"<b>Austin, TX</b>"}', rulesPlan('feed').plan)).toMatchObject({ category: 'Feed Store', location: 'Austin, TX' });
   });
+
+  it('extracts multiple locations, categories and limit from composite prompt', () => {
+    const r = rulesPlan('Find 100 livestock feed stores and mineral distributors in Houston, Dallas and Austin with websites, emails and phone numbers');
+    expect(r.plan.locations).toEqual(expect.arrayContaining(['Houston, TX', 'Dallas, TX', 'Austin, TX']));
+    expect(r.plan.categories).toEqual(expect.arrayContaining(['Feed Store', 'Livestock Distributor']));
+    expect(r.plan.resultsLimit).toBe(100);
+    expect(r.plan.requireWebsite).toBe(true);
+    expect(r.plan.requireEmail).toBe(true);
+    expect(r.plan.requirePhone).toBe(true);
+  });
 });

@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       category: searchCategory,
       location: location.trim(),
       keyword: searchKeyword,
-      maxResults: Math.min(Math.max(Number(maxResults) || 15,1),40),
+      maxResults: Math.min(Math.max(Number(maxResults) || 15, 1), 250),
       requireWebsite: Boolean(requireWebsite),
       requirePhone: Boolean(requirePhone),
       requireEmail: body.requireEmail === true,

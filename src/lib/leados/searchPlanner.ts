@@ -13,6 +13,10 @@ import type { ProductInterest } from './types';
 export interface SearchPlan {
   category: string;
   location: string;
+  categories?: string[];
+  locations?: string[];
+  keywords?: string[];
+  resultsLimit?: number;
   keyword: string;
   productInterest: ProductInterest;
   requireWebsite: boolean;
@@ -111,41 +115,97 @@ function cityBefore(prefix: string): string {
   return afterPrep !== prefix.trim() ? words.slice(-3).join(' ') : words.slice(-1).join(' ');
 }
 
-export function extractLocation(text: string): string {
+export function extractLocations(text: string): string[] {
   const lower = text.toLowerCase();
-  // Longest names first so "kansas city" wins over "kansas".
+  const found: string[] = [];
   for (const name of Object.keys(KNOWN_CITIES).sort((a, b) => b.length - a.length)) {
-    if (new RegExp(`\\b${name}\\b`).test(lower)) return KNOWN_CITIES[name];
+    if (new RegExp(`\\b${name}\\b`).test(lower)) {
+      const city = KNOWN_CITIES[name];
+      if (!found.includes(city)) found.push(city);
+    }
   }
   for (const [re, city] of ZIP_PREFIXES) {
-    if (re.test(text)) return city;
+    if (re.test(text) && !found.includes(city)) {
+      found.push(city);
+    }
   }
   for (const m of text.matchAll(/([A-Za-z][A-Za-z .'-]{1,60}?),\s*([A-Za-z]{2})\b/g)) {
     const code = m[2].toUpperCase();
     if (!ABBRS.has(code) || (m[2] !== code && AMBIGUOUS.has(m[2]))) continue;
     const city = cityBefore(m[1]);
-    if (city) return `${titleCase(city.toLowerCase())}, ${code}`;
+    if (city) {
+      const formatted = `${titleCase(city.toLowerCase())}, ${code}`;
+      if (!found.includes(formatted)) found.push(formatted);
+    }
   }
   for (const name of Object.keys(STATES).sort((a, b) => b.length - a.length)) {
-    if (new RegExp(`\\b${name}\\b`).test(lower)) return titleCase(name);
+    if (new RegExp(`\\b${name}\\b`).test(lower)) {
+      const state = titleCase(name);
+      if (!found.includes(state)) found.push(state);
+    }
   }
-  if (/\b(?:nationwide|usa|united states|all over (?:the )?us)\b/i.test(text)) return 'USA';
-  return '';
+  if (!found.length && /\b(?:nationwide|usa|united states|all over (?:the )?us)\b/i.test(text)) {
+    found.push('USA');
+  }
+  return found;
+}
+
+export function extractLocation(text: string): string {
+  const locs = extractLocations(text);
+  return locs[0] || '';
+}
+
+export function extractCategories(text: string): string[] {
+  const cats: string[] = [];
+  for (const [re, cat] of CATEGORY_RULES) {
+    if (re.test(text) && !cats.includes(cat)) {
+      cats.push(cat);
+    }
+  }
+  return cats.length ? cats : ['Feed Store'];
+}
+
+export function extractKeywordsList(text: string): string[] {
+  const keywords: string[] = [];
+  for (const [re, term] of KEYWORD_TERMS) {
+    if (re.test(text) && !keywords.includes(term)) {
+      keywords.push(term);
+    }
+  }
+  return keywords;
+}
+
+export function extractLimit(text: string): number {
+  const m = text.match(/\b(\d{1,3})\s*(?:leads|prospects|stores|ranches|businesses|results|suppliers)?\b/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n >= 10 && n <= 500) return n;
+  }
+  return 100;
 }
 
 /** Zero-token planner. Always returns a valid plan. */
 export function rulesPlan(description: string, fallbackLocation = ''): PlanResult {
   const text = description.slice(0, 300);
+  const categories = extractCategories(text);
   const ruled = CATEGORY_RULES.find(([re]) => re.test(text))?.[1];
-  const category = ruled || 'Feed Store';
-  const location = extractLocation(text);
+  const category = ruled || categories[0] || 'Feed Store';
+  const locations = extractLocations(text);
+  const location = locations[0] || fallbackLocation;
   const productInterest = INTEREST_RULES.find(([re]) => re.test(text))?.[1] || CATEGORY_INTEREST[category] || 'horse_salt';
   const keyword = [...new Set(KEYWORD_TERMS.filter(([re]) => re.test(text)).map(([, term]) => term))].slice(0, 4).join(' ');
+  const keywords = extractKeywordsList(text);
+  const resultsLimit = extractLimit(text);
+
   return {
     plan: {
       category,
       location: location || fallbackLocation,
+      categories: categories.length ? categories : [category],
+      locations: locations.length ? locations : (location ? [location] : ['Houston, TX']),
+      keywords: keywords.length ? keywords : (keyword ? keyword.split(' ') : ['feed store', 'livestock', 'mineral']),
       keyword,
+      resultsLimit,
       productInterest,
       requireWebsite: /website|\bsite\b|\bweb\b/i.test(text),
       requirePhone: /phone|contact\s+number|call|\bower\b|\bowner\b|\bcontact\b|\bdetails\b/i.test(text),

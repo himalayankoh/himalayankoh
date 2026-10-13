@@ -31,8 +31,14 @@ import {
   PaperPlaneRight,
   PencilSimple,
   ClockCounterClockwise,
-  User,
   House,
+  Play,
+  X,
+  CaretDown,
+  CaretUp,
+  FileText,
+  Check,
+  Storefront,
 } from '@phosphor-icons/react';
 import { getAccessToken } from '@/services/wordpressAdminAuth';
 import type {
@@ -165,27 +171,62 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [projects, setProjects] = useState<LeadOSProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
 
-  // Find Leads state
+  // Find Leads state & Multi-Entity Search Plan
+  const [searchMode, setSearchMode] = useState<'ai' | 'manual'>('ai');
   const [category, setCategory] = useState('Feed Store');
   const searchGeneration = useRef(0);
   useEffect(() => () => { searchGeneration.current++; }, []);
-  const [aiQuery, setAiQuery] = useState('');
+  const [aiQuery, setAiQuery] = useState(
+    'Find 100 livestock feed stores and mineral distributors in Houston, Dallas and Austin with websites, emails and phone numbers.'
+  );
   const [planning, setPlanning] = useState(false);
   const [planNote, setPlanNote] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
   const [location, setLocation] = useState('Houston, TX');
+  const [locationsList, setLocationsList] = useState<string[]>([
+    'Houston, TX',
+    'Dallas, TX',
+    'Austin, TX',
+  ]);
+  const [categoriesList, setCategoriesList] = useState<string[]>([
+    'Feed Store',
+    'Livestock Supplier',
+    'Mineral Distributor',
+  ]);
+  const [keywordsList, setKeywordsList] = useState<string[]>([
+    'feed store',
+    'livestock',
+    'mineral',
+    'salt',
+  ]);
+  const [resultsLimit, setResultsLimit] = useState(100);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [savingSelected, setSavingSelected] = useState(false);
+  const [resultsView, setResultsView] = useState<'table' | 'map'>('table');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showHowItWorksModal, setShowHowItWorksModal] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+
+  // Chip input editing states
+  const [newLocationInput, setNewLocationInput] = useState('');
+  const [showAddLocation, setShowAddLocation] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newKeywordInput, setNewKeywordInput] = useState('');
+  const [showAddKeyword, setShowAddKeyword] = useState(false);
+
   const [researchRegion, setResearchRegion] = useState('Texas');
   const [maxResults, setMaxResults] = useState(15);
   const [productInterest, setProductInterest] = useState<ProductInterest>('horse_salt');
-  const [radiusKm, setRadiusKm] = useState(25);
+  const [radiusKm, setRadiusKm] = useState(35);
   const [searchDepth, setSearchDepth] = useState(1);
   const [excludeSaved, setExcludeSaved] = useState(false);
   const [excludeContacted, setExcludeContacted] = useState(true);
   const [wholesaleOnly, setWholesaleOnly] = useState(false);
   const [privateLabelOnly, setPrivateLabelOnly] = useState(false);
-  const [requireWebsite, setRequireWebsite] = useState(false);
-  const [requirePhone, setRequirePhone] = useState(false);
-  const [requireEmail, setRequireEmail] = useState(false);
+  const [requireWebsite, setRequireWebsite] = useState(true);
+  const [requirePhone, setRequirePhone] = useState(true);
+  const [requireEmail, setRequireEmail] = useState(true);
   const [searching, setSearching] = useState(false);
   const [searchStep, setSearchStep] = useState('');
   const [leads, setLeads] = useState<ScoredLead[]>([]);
@@ -328,89 +369,139 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     }
   }, [activeTab, loadLibrary]);
 
-  // Handle lead search. `o` lets the AI planner run with its values directly,
-  // instead of waiting for React state updates.
-  const handleSearch = async (e?: React.FormEvent, o: Partial<SearchPlan> = {}) => {
+  // Progressive Multi-Entity / Multi-Location Search runner
+  const runProgressiveSearch = async (
+    targetLocations: string[] = locationsList,
+    targetCategories: string[] = categoriesList,
+    targetKeywords: string[] = keywordsList,
+    limit: number = resultsLimit,
+    reqWeb: boolean = requireWebsite,
+    reqPhoneVal: boolean = requirePhone,
+    reqEmailVal: boolean = requireEmail,
+    prodInt: ProductInterest = productInterest,
+    wsOnly: boolean = wholesaleOnly,
+    plOnly: boolean = privateLabelOnly
+  ) => {
     const generation = ++searchGeneration.current;
-    if (e) e.preventDefault();
-    const q = { category, location, keyword, productInterest, searchDepth, excludeSaved, wholesaleOnly, privateLabelOnly, requireWebsite, requirePhone, requireEmail, ...o };
-    if (!q.category.trim()) {
-      setSearchError('Please select a business category.');
-      return;
-    }
-    if (!q.location.trim()) {
-      setSearchError('Please enter a target city, region, or state.');
-      return;
-    }
-
     setSearching(true);
     setSearchError(null);
-    setSearchStep('Searching permitted business sources...');
+    setSearchStep('Starting deep multi-location search...');
     setLeads([]);
+    setSelectedLeadIds(new Set());
     setDiagnostics(null);
+
+    const locs = targetLocations.length > 0 ? targetLocations : [location || 'Houston, TX'];
+    const cats = targetCategories.length > 0 ? targetCategories : [category || 'Feed Store'];
+    const kwString = targetKeywords.join(' ');
+
+    let collected: ScoredLead[] = [];
+    const seenNames = new Set<string>();
 
     try {
       const headers = await getAuthHeaders();
 
+      for (let lIdx = 0; lIdx < locs.length; lIdx++) {
+        const curLoc = locs[lIdx];
+        if (generation !== searchGeneration.current) return;
+        if (collected.length >= limit) break;
 
-
-      const res = await fetch('/api/admin/leados/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...headers,
-        },
-        body: JSON.stringify({
-          category: q.category,
-          location: q.location,
-          keyword: q.keyword.trim(),
-          productInterest: q.productInterest, radiusKm, searchDepth: q.searchDepth, excludeSaved: q.excludeSaved, excludeContacted, wholesaleOnly: q.wholesaleOnly, privateLabelOnly: q.privateLabelOnly, country: 'US',
-          projectId: selectedProjectId,
-          maxResults,
-          requireWebsite: q.requireWebsite,
-          requirePhone: q.requirePhone,
-          requireEmail: q.requireEmail,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to search leads');
-      }
-
-      setLeads(data.leads || []);
-      setDiagnostics(data.diagnostics || null);
-      if (data.diagnostics?.queuedJobId) {
-        setSearchStep('Map results shown. Waiting for the private research worker...');
-        for (let attempt = 0; attempt < 30 && generation === searchGeneration.current; attempt++) {
-          await new Promise((resolve) => setTimeout(resolve, 4000));
-          const poll = await fetch(`/api/admin/leados/search?jobId=${encodeURIComponent(data.diagnostics.queuedJobId)}`, {headers});
-          const completed = await poll.json();
+        for (let cIdx = 0; cIdx < cats.length; cIdx++) {
+          const curCat = cats[cIdx];
           if (generation !== searchGeneration.current) return;
-          if (!poll.ok) throw new Error(completed.error || 'Queued search failed.');
-          if (completed.state === 'expired' || completed.state === 'failed') { setSearchError(completed.error || 'Private research worker did not complete this source. Map results remain available.'); break; }
-          if (completed.state === 'complete') {
-            const combined = deduplicateLeads<ScoredLead>([...(data.leads || []), ...(completed.leads || [])]);
-            const final = combined.leads.slice(0,maxResults);
-            setLeads(final);
-            setDiagnostics((prior) => prior ? { ...prior, finalResultsCount: final.length, normalizedCount: final.length, duplicatesRemoved: prior.duplicatesRemoved + combined.duplicatesRemoved, rawResultsCount: prior.rawResultsCount + completed.rawCount, sources: {...prior.sources,searxng:{raw:completed.rawCount,normalized:completed.leads.length,error:completed.error || completed.upstreamErrors?.join('; ') || null}}, queuedJobId:undefined } : prior);
-            break;
+          if (collected.length >= limit) break;
+
+          setSearchStep(`Searching "${curCat}" in ${curLoc} (${collected.length} leads found so far)...`);
+
+          try {
+            const res = await fetch('/api/admin/leados/search', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({
+                category: curCat,
+                location: curLoc,
+                keyword: kwString,
+                productInterest: prodInt,
+                radiusKm: radiusKm || 35,
+                searchDepth,
+                excludeSaved,
+                excludeContacted,
+                wholesaleOnly: wsOnly,
+                privateLabelOnly: plOnly,
+                country: 'US',
+                projectId: selectedProjectId,
+                maxResults: Math.min(limit - collected.length, 50),
+                requireWebsite: reqWeb,
+                requirePhone: reqPhoneVal,
+                requireEmail: reqEmailVal,
+              }),
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              if (generation !== searchGeneration.current) return;
+              if (Array.isArray(data.leads)) {
+                const newItems: ScoredLead[] = [];
+                for (const item of data.leads) {
+                  const norm = (item.businessName || '').toLowerCase().trim();
+                  if (norm && !seenNames.has(norm)) {
+                    seenNames.add(norm);
+                    newItems.push(item);
+                  }
+                }
+
+                if (newItems.length > 0) {
+                  collected = [...collected, ...newItems].slice(0, limit);
+                  // PROGRESSIVE UPDATE: user sees results batch by batch!
+                  setLeads([...collected]);
+                }
+                if (data.diagnostics) {
+                  setDiagnostics(data.diagnostics);
+                }
+              }
+            }
+          } catch (innerErr) {
+            console.warn(`Search batch failed for ${curCat} in ${curLoc}:`, innerErr);
           }
-          if (attempt === 29) setSearchError('Private research is still pending. Retry this saved search later; no results were fabricated.');
         }
       }
+
+      if (collected.length === 0) {
+        setSearchStep('Search completed: 0 results found. Try broadening locations or keywords.');
+      } else {
+        setSearchStep(`Discovered ${collected.length} verified B2B leads across ${locs.length} locations.`);
+      }
     } catch (err: any) {
-      setSearchError(err.message || 'Error occurred during lead discovery');
+      if (generation === searchGeneration.current) {
+        setSearchError(err.message || 'Error occurred during progressive discovery');
+      }
     } finally {
-      if (generation === searchGeneration.current) { setSearching(false); setSearchStep(''); }
+      if (generation === searchGeneration.current) {
+        setSearching(false);
+      }
     }
   };
 
-  // Describe-and-search: the server uses free rules first and calls Gemini
-  // only for unclear requests, with a tiny enum-bound JSON answer.
-  const planAndSearch = async (runAfter: boolean) => {
-    if (!aiQuery.trim()) {
-      setSearchError('Describe who you want to find, e.g. "ranches and horse training stables near Houston, TX".');
+  const handleSearch = async (e?: React.FormEvent, o: Partial<SearchPlan> = {}) => {
+    if (e) e.preventDefault();
+    await runProgressiveSearch(
+      locationsList,
+      categoriesList,
+      keywordsList,
+      resultsLimit,
+      requireWebsite,
+      requirePhone,
+      requireEmail,
+      productInterest,
+      wholesaleOnly,
+      privateLabelOnly
+    );
+  };
+
+  // Describe-and-search with AI Planner
+  const planAndSearch = async (runAfter: boolean, customQuery?: string) => {
+    const qText = customQuery !== undefined ? customQuery : aiQuery;
+    if (!qText.trim()) {
+      setSearchError('Describe who you want to find, e.g. "Find 100 livestock feed stores and mineral distributors in Houston, Dallas and Austin".');
       return;
     }
     setPlanning(true);
@@ -420,21 +511,227 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const res = await fetch('/api/admin/leados/ai', {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'plan_search', description: aiQuery, location }),
+        body: JSON.stringify({ action: 'plan_search', description: qText, location: locationsList[0] || location }),
       });
       const data = await res.json();
-      if (!res.ok || !data.plan) throw new Error(data.error || 'Search planner is unavailable. Set the fields manually.');
-      const p: SearchPlan = { ...data.plan, location: data.plan.location || location };
-      setCategory(p.category); setLocation(p.location); setKeyword(p.keyword); setProductInterest(p.productInterest);
-      setRequireWebsite(p.requireWebsite); setRequirePhone(p.requirePhone); setRequireEmail(p.requireEmail);
-      setWholesaleOnly(p.wholesaleOnly); setPrivateLabelOnly(p.privateLabelOnly); setExcludeSaved(p.excludeSaved); setSearchDepth(p.searchDepth);
+      if (!res.ok || !data.plan) throw new Error(data.error || 'Search planner is unavailable.');
+      const p: SearchPlan = data.plan;
+
+      const newLocs = p.locations && p.locations.length > 0 ? p.locations : [p.location || 'Houston, TX'];
+      const newCats = p.categories && p.categories.length > 0 ? p.categories : [p.category || 'Feed Store'];
+      const newKws = p.keywords && p.keywords.length > 0 ? p.keywords : (p.keyword ? [p.keyword] : ['feed store', 'livestock', 'mineral']);
+      const newLimit = p.resultsLimit || 100;
+
+      setLocationsList(newLocs);
+      setCategoriesList(newCats);
+      setKeywordsList(newKws);
+      setResultsLimit(newLimit);
+      setCategory(newCats[0]);
+      setLocation(newLocs[0]);
+      setKeyword(newKws.join(' '));
+      setProductInterest(p.productInterest || 'horse_salt');
+      setRequireWebsite(p.requireWebsite ?? true);
+      setRequirePhone(p.requirePhone ?? true);
+      setRequireEmail(p.requireEmail ?? true);
+      setWholesaleOnly(p.wholesaleOnly ?? false);
+      setPrivateLabelOnly(p.privateLabelOnly ?? false);
+      setExcludeSaved(p.excludeSaved ?? false);
+      setSearchDepth(p.searchDepth ?? 1);
+
       setPlanNote(data.source === 'ai' ? `Planned by AI (${data.provider || 'Gemini'})` : 'Planned instantly — 0 AI tokens');
       setPlanning(false);
-      if (runAfter) await handleSearch(undefined, p);
+
+      if (runAfter) {
+        await runProgressiveSearch(
+          newLocs,
+          newCats,
+          newKws,
+          newLimit,
+          p.requireWebsite ?? true,
+          p.requirePhone ?? true,
+          p.requireEmail ?? true,
+          p.productInterest || 'horse_salt',
+          p.wholesaleOnly ?? false,
+          p.privateLabelOnly ?? false
+        );
+      }
     } catch (err) {
       setSearchError(err instanceof Error ? err.message : 'Search planner failed.');
     } finally {
       setPlanning(false);
+    }
+  };
+
+  // Bulk actions
+  const handleToggleSelectLead = (name: string) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedLeadIds.size === leads.length && leads.length > 0) {
+      setSelectedLeadIds(new Set());
+    } else {
+      setSelectedLeadIds(new Set(leads.map((l) => l.businessName)));
+    }
+  };
+
+  const handleSaveSelected = async () => {
+    if (selectedLeadIds.size === 0) return;
+    setSavingSelected(true);
+    let savedCount = 0;
+    try {
+      const headers = await getAuthHeaders();
+      const selectedLeads = leads.filter((l) => selectedLeadIds.has(l.businessName));
+      for (const lead of selectedLeads) {
+        try {
+          const res = await fetch('/api/admin/leados/leads/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ lead, projectId: selectedProjectId }),
+          });
+          if (res.ok) savedCount++;
+        } catch {
+          // Continue
+        }
+      }
+      setLeads((prev) =>
+        prev.map((l) => (selectedLeadIds.has(l.businessName) ? { ...l, alreadySaved: true } : l))
+      );
+      setSelectedLeadIds(new Set());
+      setSavedSuccessMsg(`Successfully saved ${savedCount} leads to Lead Library`);
+      setTimeout(() => setSavedSuccessMsg(null), 3500);
+      loadStatsAndProjects();
+    } catch (err: any) {
+      setSearchError(err.message || 'Failed to save selected leads');
+    } finally {
+      setSavingSelected(false);
+    }
+  };
+
+  const handleExportSearchResultsCSV = () => {
+    if (leads.length === 0) {
+      alert('No search results to export.');
+      return;
+    }
+    const headers = ['Business Name', 'Category', 'City', 'Region', 'Address', 'Phone', 'Email', 'Website', 'Source', 'Opportunity Score'];
+    const rows = leads.map((l) => [
+      `"${(l.businessName || '').replace(/"/g, '""')}"`,
+      `"${(l.category || '').replace(/"/g, '""')}"`,
+      `"${(l.city || '').replace(/"/g, '""')}"`,
+      `"${(l.region || '').replace(/"/g, '""')}"`,
+      `"${(l.address || '').replace(/"/g, '""')}"`,
+      `"${(l.phone || '').replace(/"/g, '""')}"`,
+      `"${(l.email || '').replace(/"/g, '""')}"`,
+      `"${(l.website || '').replace(/"/g, '""')}"`,
+      `"${(l.dataSource || '').replace(/"/g, '""')}"`,
+      l.opportunityScore ?? 0,
+    ]);
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `himalayan-koh-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setExportMenuOpen(false);
+  };
+
+  const handleExportSearchResultsJSON = () => {
+    if (leads.length === 0) {
+      alert('No search results to export.');
+      return;
+    }
+    const jsonContent = JSON.stringify(leads, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `himalayan-koh-leads-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setExportMenuOpen(false);
+  };
+
+  // Plan chip helpers
+  const handleRemoveLocation = (idx: number) => {
+    setLocationsList((prev) => prev.filter((_, i) => i !== idx));
+  };
+  const handleAddLocation = () => {
+    if (newLocationInput.trim()) {
+      setLocationsList((prev) => [...prev, newLocationInput.trim()]);
+      setNewLocationInput('');
+      setShowAddLocation(false);
+    }
+  };
+
+  const handleRemoveCategory = (idx: number) => {
+    setCategoriesList((prev) => prev.filter((_, i) => i !== idx));
+  };
+  const handleAddCategory = () => {
+    if (newCategoryInput.trim()) {
+      setCategoriesList((prev) => [...prev, newCategoryInput.trim()]);
+      setNewCategoryInput('');
+      setShowAddCategory(false);
+    }
+  };
+
+  const handleRemoveKeyword = (idx: number) => {
+    setKeywordsList((prev) => prev.filter((_, i) => i !== idx));
+  };
+  const handleAddKeyword = () => {
+    if (newKeywordInput.trim()) {
+      setKeywordsList((prev) => [...prev, newKeywordInput.trim()]);
+      setNewKeywordInput('');
+      setShowAddKeyword(false);
+    }
+  };
+
+  const handleClearAllPlan = () => {
+    setLocationsList([]);
+    setCategoriesList([]);
+    setKeywordsList([]);
+    setAiQuery('');
+  };
+
+  const handleSaveSearchTemplate = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/admin/leados/workflow', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_search',
+          name: `${categoriesList[0] || 'B2B'} — ${locationsList.join(', ') || 'Texas'}`,
+          category: categoriesList[0] || 'Feed Store',
+          location: locationsList.join(', ') || 'Houston, TX',
+          productInterest,
+          keyword: keywordsList.join(' '),
+          maxResults: resultsLimit,
+          radiusKm,
+          searchDepth,
+          requireWebsite,
+          requirePhone,
+          requireEmail,
+          excludeSaved,
+          excludeContacted,
+          wholesaleOnly,
+          privateLabelOnly,
+          country: 'US',
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to save search template.');
+      setSavedSuccessMsg('Search plan saved as template. Reuse anytime from Outreach → Saved searches.');
+      setTimeout(() => setSavedSuccessMsg(null), 3500);
+    } catch (e) {
+      setSearchError(String(e));
     }
   };
 
@@ -731,6 +1028,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     { id: 'overview', label: 'Overview', icon: SquaresFour },
     { id: 'find', label: 'Find Leads', icon: MagnifyingGlass },
     { id: 'library', label: 'Lead Library', icon: BookBookmark },
+    { id: 'projects', label: 'Projects (ICP)', icon: Target },
     { id: 'research', label: 'Multi-Research', icon: TrendUp },
     { id: 'scoring', label: 'Scoring Rules', icon: Sliders },
     { id: 'outreach', label: 'Client Outreach', icon: PaperPlaneRight },
@@ -742,46 +1040,42 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50/50">
       {/* ── Page Header ── */}
       <div className="bg-white border-b border-slate-200">
-        <div className="max-w-[1400px] mx-auto px-6 py-5">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-3">
-            <House className="w-3 h-3" />
-            <span>Admin</span>
-            <span>/</span>
-            <span className="text-slate-600 font-medium">LeadOS</span>
-          </div>
-
+        <div className="max-w-[1400px] mx-auto px-6 py-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h1 className="text-xl font-bold text-[#26211c] flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-[#faf0eb] flex items-center justify-center">
-                  <Target className="w-4.5 h-4.5 text-[#b86452]" />
-                </div>
-                LeadOS Intelligence
-              </h1>
-              <p className="text-sm text-[#6d6258] mt-1 max-w-xl">
-                B2B Lead Discovery, ICP Opportunity Scoring, and Verified Prospect Library for Himalayan Koh.
-              </p>
-              <p className="text-xs text-[#8d8276] mt-0.5">
-                Find and connect with farm stores, feed suppliers, livestock businesses, mineral buyers, distributors, and other B2B prospects.
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-black text-slate-900 tracking-tight">
+                  Himalayan Koh.
+                </h1>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                B2B Salt &amp; Minerals – Find and connect with farm stores, feed suppliers, livestock businesses, mineral buyers, distributors, and more.
               </p>
             </div>
 
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button
-                onClick={() => { changeTab('find'); setCategory('Feed Store'); setLocation('Houston, TX'); }}
-                className="px-4 py-2 text-xs font-semibold rounded-lg bg-[#b86452] hover:bg-[#8d4133] text-white flex items-center gap-1.5 transition shadow-sm"
-              >
-                <MagnifyingGlass className="w-3.5 h-3.5" />
-                Find New Leads
-              </button>
-              <button
-                onClick={handleExportCSV}
-                className="px-4 py-2 text-xs font-semibold rounded-lg border border-[#e0d6c8] text-[#26211c] hover:bg-[#faf7f1] flex items-center gap-1.5 transition"
-              >
-                <DownloadSimple className="w-3.5 h-3.5" />
-                Export CSV
-              </button>
+            <div className="flex items-center gap-2.5 flex-shrink-0">
+              <div className="relative">
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => {
+                    setSelectedProjectId(e.target.value);
+                    const p = projects.find((proj) => proj.id === e.target.value);
+                    if (p) setActiveProject(p);
+                  }}
+                  className="appearance-none pl-3.5 pr-8 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  {projects.length > 0 ? (
+                    projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Himalayan Koh — B2B Salt &amp; Minerals</option>
+                  )}
+                </select>
+                <CaretDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+              </div>
             </div>
           </div>
         </div>
@@ -972,267 +1266,905 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
         {/* ══════════ FIND LEADS TAB ══════════ */}
         <div id="leados-panel-find" role="tabpanel" aria-labelledby="leados-tab-find" className={activeTab === 'find' ? "space-y-5" : "hidden"}>
-          <form onSubmit={handleSearch} className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Find Business Leads</h3>
-                  <p className="text-[11px] text-slate-500">Map records and configured search sources. Company verification happens after saving; search snippets remain unverified.</p>
+          
+          {/* ── 1. AI Smart Search Hero Card ── */}
+          <div className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-[#f8f9ff] via-[#fbfcfe] to-[#f5f3ff] p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-600/10 flex items-center justify-center text-indigo-600">
+                    <Sparkle weight="fill" className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">AI Smart Search</h2>
+                  <span className="bg-[#584de3] text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-sm">
+                    <Sparkle weight="fill" className="w-3 h-3 text-white" /> Powered by Gemini
+                  </span>
                 </div>
-                <select value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)} className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  {projects.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
-                </select>
+                <p className="text-xs text-slate-500 mt-1.5">
+                  Describe your ideal customers in plain English. AI will automatically set the right categories, locations, filters and find verified business leads.
+                </p>
               </div>
 
-              <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-4 space-y-2.5">
-                <label htmlFor="leados-ai-query" className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
-                  <Sparkle weight="fill" className="w-4 h-4 text-indigo-600" /> Describe who you want to find
-                </label>
+              <div className="flex items-center gap-2 self-start sm:self-auto flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowHowItWorksModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-indigo-700 text-xs font-semibold hover:bg-indigo-50 shadow-sm transition"
+                >
+                  <Play weight="fill" className="w-3 h-3 text-indigo-600" /> See how it works
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSearchMode((m) => (m === 'ai' ? 'manual' : 'ai'))}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 shadow-sm transition"
+                >
+                  <Sliders className="w-3.5 h-3.5 text-slate-500" />
+                  {searchMode === 'ai' ? 'Switch to Manual Search' : 'Switch to AI Smart Search'}
+                </button>
+              </div>
+            </div>
+
+            {/* Prompt Textarea + Action Button */}
+            {searchMode === 'ai' ? (
+              <div className="relative rounded-xl border border-indigo-200 bg-white shadow-sm p-3 flex flex-col md:flex-row items-stretch gap-3">
                 <textarea
-                  id="leados-ai-query"
                   rows={2}
-                  maxLength={300}
                   value={aiQuery}
                   onChange={(e) => setAiQuery(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void planAndSearch(true); } }}
-                  placeholder='e.g. "Ranches and horse training stables near Houston, TX with a website" (English or Roman Urdu)'
-                  className="w-full px-3 py-2 rounded-lg border border-indigo-200 bg-white text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      void planAndSearch(true);
+                    }
+                  }}
+                  placeholder="Find 100 livestock feed stores and mineral distributors in Houston, Dallas and Austin with websites, emails and phone numbers."
+                  className="flex-1 text-xs text-slate-800 placeholder-slate-400 focus:outline-none resize-none font-medium leading-relaxed bg-transparent"
                 />
-                <div className="flex flex-wrap items-center gap-2">
-                  <button id="leados-ai-plan-search" type="button" disabled={planning || searching} onClick={() => void planAndSearch(true)} className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition">
-                    {planning ? <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> : <Sparkle weight="fill" className="w-3.5 h-3.5" />} Plan &amp; Search
-                  </button>
-                  <button id="leados-ai-plan-only" type="button" disabled={planning || searching} onClick={() => void planAndSearch(false)} className="px-3 py-2 rounded-lg border border-indigo-200 bg-white hover:bg-indigo-50 disabled:opacity-50 text-indigo-700 text-xs font-semibold transition">
-                    Fill fields only
-                  </button>
-                  <span className="text-[10px] text-slate-500">Ctrl+Enter. Clear requests are planned without AI tokens; Gemini helps only when needed.</span>
-                </div>
-                {planNote && (
-                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]" aria-live="polite">
-                    <span className="font-semibold text-indigo-800">{planNote}:</span>
-                    {[category, location, OFFER_PROFILES[productInterest].label, keyword && `"${keyword}"`, requireWebsite && 'Website', requirePhone && 'Phone', requireEmail && 'Email', wholesaleOnly && 'Wholesale', privateLabelOnly && 'Private label', excludeSaved && 'New only', searchDepth === 2 && 'Expanded'].filter(Boolean).map((chip) => (
-                      <span key={String(chip)} className="px-2 py-0.5 rounded-full bg-white border border-indigo-100 text-indigo-700">{chip}</span>
-                    ))}
-                    <span className="text-slate-500">Adjust below if needed.</span>
+                <button
+                  type="button"
+                  disabled={planning || searching}
+                  onClick={() => void planAndSearch(true)}
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#5a4fe6] to-[#7c3aed] hover:from-[#4c42cb] hover:to-[#6d28d9] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition self-end md:self-center disabled:opacity-50 flex-shrink-0 cursor-pointer"
+                >
+                  {planning || searching ? (
+                    <ArrowsClockwise className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Sparkle weight="fill" className="w-4 h-4" />
+                  )}
+                  AI Find Leads →
+                </button>
+              </div>
+            ) : (
+              /* Manual direct search input */
+              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Category</label>
+                    <select
+                      value={category}
+                      onChange={(e) => {
+                        setCategory(e.target.value);
+                        setCategoriesList([e.target.value]);
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium bg-white"
+                    >
+                      {PRESET_CATEGORIES.map((c) => (
+                        <option key={c.value} value={c.value}>{c.label}</option>
+                      ))}
+                    </select>
                   </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Target Location</label>
+                    <input
+                      type="text"
+                      value={location}
+                      onChange={(e) => {
+                        setLocation(e.target.value);
+                        setLocationsList([e.target.value]);
+                      }}
+                      placeholder="e.g. Houston, TX or Dallas, TX"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-600 block mb-1">Keywords</label>
+                    <input
+                      type="text"
+                      value={keyword}
+                      onChange={(e) => {
+                        setKeyword(e.target.value);
+                        setKeywordsList(e.target.value ? e.target.value.split(/\s+/) : []);
+                      }}
+                      placeholder="e.g. livestock, feed, mineral"
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    disabled={searching}
+                    onClick={() => void handleSearch()}
+                    className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
+                  >
+                    {searching ? <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> : <MagnifyingGlass className="w-3.5 h-3.5" />}
+                    Search Leads
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Example Prompt Chips */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500">
+              <span className="font-semibold text-slate-600 text-[11px]">Try an example:</span>
+              {[
+                'Feed stores in Houston, TX',
+                'Ranches with website in Texas',
+                'Livestock distributors in USA',
+                'Co-ops buying minerals',
+                'Farm supply stores near me',
+              ].map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={() => {
+                    setAiQuery(ex);
+                    void planAndSearch(true, ex);
+                  }}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-700 text-slate-600 text-[11px] font-medium transition cursor-pointer shadow-2xs"
+                >
+                  <MagnifyingGlass className="w-3 h-3 text-slate-400" />
+                  {ex}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── 2. AI Interpreted Search Plan Card ── */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle weight="fill" className="w-5 h-5 text-emerald-500" />
+                <h3 className="font-bold text-slate-900 text-sm">AI Interpreted Search Plan</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters((v) => !v)}
+                  className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 ml-2 cursor-pointer"
+                >
+                  <PencilSimple className="w-3.5 h-3.5" /> Edit if needed
+                </button>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleClearAllPlan}
+                  className="text-rose-600 hover:text-rose-700 text-xs font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+                >
+                  <Trash className="w-3.5 h-3.5" /> Clear All
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSearchTemplate}
+                  className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+                >
+                  <BookBookmark className="w-3.5 h-3.5" /> Save as Template
+                </button>
+              </div>
+            </div>
+
+            {/* 5-Column Filter Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+              
+              {/* Col 1: Business Types */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <Storefront className="w-4 h-4 text-indigo-600" />
+                  <span>Business Types</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 items-center min-h-[38px]">
+                  {categoriesList.map((cat, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-medium"
+                    >
+                      {cat}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCategory(idx)}
+                        className="text-indigo-400 hover:text-indigo-700"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                  {showAddCategory ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={newCategoryInput}
+                        onChange={(e) => setNewCategoryInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); if (e.key === 'Escape') setShowAddCategory(false); }}
+                        placeholder="Add category"
+                        className="px-2 py-0.5 text-xs border border-indigo-300 rounded w-28 focus:outline-none"
+                      />
+                      <button type="button" onClick={handleAddCategory} className="text-xs text-indigo-600 font-bold">Add</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCategory(true)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-xs font-medium transition cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Add
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Col 2: Locations */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <MapPin className="w-4 h-4 text-indigo-600" />
+                  <span>Locations</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 items-center min-h-[38px]">
+                  {locationsList.map((loc, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium"
+                    >
+                      {loc}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLocation(idx)}
+                        className="text-slate-400 hover:text-slate-700"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                  {showAddLocation ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={newLocationInput}
+                        onChange={(e) => setNewLocationInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddLocation(); if (e.key === 'Escape') setShowAddLocation(false); }}
+                        placeholder="e.g. San Antonio, TX"
+                        className="px-2 py-0.5 text-xs border border-indigo-300 rounded w-32 focus:outline-none"
+                      />
+                      <button type="button" onClick={handleAddLocation} className="text-xs text-indigo-600 font-bold">Add</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddLocation(true)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-xs font-medium transition cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Add Location
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Col 3: Keywords */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <MagnifyingGlass className="w-4 h-4 text-indigo-600" />
+                  <span>Keywords</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 items-center min-h-[38px]">
+                  {keywordsList.map((kw, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-xs font-medium"
+                    >
+                      {kw}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveKeyword(idx)}
+                        className="text-slate-400 hover:text-slate-700"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                  {showAddKeyword ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={newKeywordInput}
+                        onChange={(e) => setNewKeywordInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddKeyword(); if (e.key === 'Escape') setShowAddKeyword(false); }}
+                        placeholder="Keyword"
+                        className="px-2 py-0.5 text-xs border border-indigo-300 rounded w-24 focus:outline-none"
+                      />
+                      <button type="button" onClick={handleAddKeyword} className="text-xs text-indigo-600 font-bold">Add</button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddKeyword(true)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-xs font-medium transition cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Add Keyword
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Col 4: Contact Requirements */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <Phone className="w-4 h-4 text-indigo-600" />
+                  <span>Contact Requirements</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 items-center min-h-[38px]">
+                  <button
+                    type="button"
+                    onClick={() => setRequireWebsite((v) => !v)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                      requireWebsite
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-semibold'
+                        : 'bg-slate-50 border-slate-200 text-slate-400'
+                    }`}
+                  >
+                    Website {requireWebsite && <Check className="w-3 h-3 text-indigo-600" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRequirePhone((v) => !v)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                      requirePhone
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-semibold'
+                        : 'bg-slate-50 border-slate-200 text-slate-400'
+                    }`}
+                  >
+                    Phone {requirePhone && <Check className="w-3 h-3 text-indigo-600" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRequireEmail((v) => !v)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-medium transition cursor-pointer ${
+                      requireEmail
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-semibold'
+                        : 'bg-slate-50 border-slate-200 text-slate-400'
+                    }`}
+                  >
+                    Email {requireEmail && <Check className="w-3 h-3 text-indigo-600" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Col 5: Results Limit */}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+                  <FileText className="w-4 h-4 text-indigo-600" />
+                  <span>Results Limit</span>
+                </div>
+                <div className="flex items-center min-h-[38px]">
+                  <select
+                    value={resultsLimit}
+                    onChange={(e) => setResultsLimit(Number(e.target.value))}
+                    className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={150}>150</option>
+                    <option value={200}>200</option>
+                    <option value={250}>250</option>
+                  </select>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Advanced Filters Collapsible */}
+            <div className="border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedFilters((v) => !v)}
+                className="w-full flex items-center justify-between text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+              >
+                <span className="flex items-center gap-1.5">
+                  <GearSix className="w-3.5 h-3.5 text-slate-400" />
+                  Advanced Filters &amp; Options (Radius, Search Sources, Company Size, More...)
+                </span>
+                {showAdvancedFilters ? <CaretUp className="w-3.5 h-3.5" /> : <CaretDown className="w-3.5 h-3.5" />}
+              </button>
+
+              {showAdvancedFilters && (
+                <div className="grid sm:grid-cols-3 gap-3 pt-3 text-xs">
+                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">
+                    Product to offer
+                    <select
+                      aria-label="Product interest"
+                      className="w-full border border-slate-200 rounded-lg p-2 font-normal bg-white"
+                      value={productInterest}
+                      onChange={(e) => setProductInterest(e.target.value as ProductInterest)}
+                    >
+                      {PRODUCT_INTERESTS.map((p) => (
+                        <option key={p} value={p}>{OFFER_PROFILES[p].label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">
+                    Map radius (km)
+                    <input
+                      aria-label="Radius in kilometers"
+                      className="w-full border border-slate-200 rounded-lg p-2 font-normal"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={radiusKm}
+                      onChange={(e) => setRadiusKm(Number(e.target.value))}
+                    />
+                  </label>
+                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">
+                    Search depth
+                    <select
+                      aria-label="Search depth"
+                      className="w-full border border-slate-200 rounded-lg p-2 font-normal bg-white"
+                      value={searchDepth}
+                      onChange={(e) => setSearchDepth(Number(e.target.value))}
+                    >
+                      <option value={1}>Standard (1 web query)</option>
+                      <option value={2}>Expanded (2 queries)</option>
+                    </select>
+                  </label>
+                  <div className="col-span-full flex flex-wrap gap-x-4 gap-y-2 pt-2 text-[11px] text-slate-600">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" checked={excludeSaved} onChange={(e) => setExcludeSaved(e.target.checked)} />
+                      New leads only
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" checked={excludeContacted} onChange={(e) => setExcludeContacted(e.target.checked)} />
+                      Skip contacted
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" checked={wholesaleOnly} onChange={(e) => setWholesaleOnly(e.target.checked)} />
+                      Wholesale only
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="checkbox" checked={privateLabelOnly} onChange={(e) => setPrivateLabelOnly(e.target.checked)} />
+                      Private label only
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── 3. Live Streaming Progress Indicator ("sath sath result deta jay") ── */}
+          {searching && (
+            <div className="p-3 bg-gradient-to-r from-indigo-50 via-purple-50 to-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 font-semibold flex items-center justify-between shadow-xs animate-pulse">
+              <div className="flex items-center gap-2">
+                <ArrowsClockwise className="w-4 h-4 text-indigo-600 animate-spin flex-shrink-0" />
+                <span>{searchStep || 'Querying B2B directories and map registries across target locations...'}</span>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-white border border-indigo-200 text-indigo-700 text-[10px] font-bold tracking-wide uppercase flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+                Live Progressive Discovery
+              </span>
+            </div>
+          )}
+
+          {searchError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 flex items-center gap-2">
+              <WarningCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+              <span>{searchError}</span>
+            </div>
+          )}
+
+          {/* ── 4. Search Results Header & Actions ── */}
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h3 className="text-base font-bold text-slate-900">
+                  Search Results ({leads.length} found)
+                </h3>
+                {leads.length > 0 && (
+                  <>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-600" />
+                      {leads.filter((l) => l.dataSource === 'openstreetmap' || (l.address && l.phone)).length} verified businesses
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                      <ClockCounterClockwise className="w-3.5 h-3.5 text-amber-600" />
+                      {leads.filter((l) => !(l.dataSource === 'openstreetmap' || (l.address && l.phone))).length} need verification
+                    </span>
+                  </>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-600">Business Category</label>
-                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                    {PRESET_CATEGORIES.map((c) => (<option key={c.value} value={c.value}>{c.label}</option>))}
-                  </select>
-                  <input type="text" placeholder="Extra words (optional) e.g. cattle, boarding, organic" value={keyword} onChange={(e) => setKeyword(e.target.value)} className="w-full px-3 py-2 mt-1 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500" />
-                </div>
+              <div className="flex items-center gap-2 self-start sm:self-auto flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setResultsView((v) => (v === 'map' ? 'table' : 'map'))}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-white text-indigo-700 text-xs font-semibold hover:bg-indigo-50 shadow-sm transition"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                  {resultsView === 'map' ? 'View as Table' : 'View on Map'}
+                </button>
 
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-600">Target Location</label>
-                  <div className="relative">
-                    <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                    <input type="text" placeholder="e.g. Houston, TX or Montana" value={location} onChange={(e) => setLocation(e.target.value)} className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {PRESET_LOCATIONS.slice(0, 5).map((loc) => (
-                      <button key={loc} type="button" onClick={() => setLocation(loc)} className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 transition">{loc}</button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-600">Filters & Actions</label>
-                  <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
-                      <input type="checkbox" checked={requireWebsite} onChange={(e) => setRequireWebsite(e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                      Website
-                    </label>
-                    <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
-                      <input type="checkbox" checked={requirePhone} onChange={(e) => setRequirePhone(e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                      Phone
-                    </label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <select value={maxResults} onChange={(e) => setMaxResults(Number(e.target.value))} className="px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-700 bg-white">
-                      <option value={10}>10</option>
-                      <option value={15}>15</option>
-                      <option value={25}>25</option>
-                      <option value={40}>40</option>
-                    </select>
-                    <button type="submit" disabled={searching} className="flex-1 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold text-xs shadow-sm flex items-center justify-center gap-1.5 transition">
-                      {searching ? (<><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Searching...</>) : (<><MagnifyingGlass className="w-3.5 h-3.5" /> Search</>)}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <details className="border border-slate-200 rounded-lg p-3 text-xs">
-                <summary className="font-semibold cursor-pointer text-slate-700">More options <span className="font-normal text-slate-500">(optional — the planner fills these)</span></summary>
-                <div className="grid sm:grid-cols-3 gap-3 pt-3">
-                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">Product to offer<select aria-label="Product interest" className="w-full border border-slate-200 rounded-lg p-2 font-normal" value={productInterest} onChange={(e) => setProductInterest(e.target.value as ProductInterest)}>{PRODUCT_INTERESTS.map((p) => <option key={p} value={p}>{OFFER_PROFILES[p].label}</option>)}</select></label>
-                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">Map radius (km)<input aria-label="Radius in kilometers" className="w-full border border-slate-200 rounded-lg p-2 font-normal" type="number" min={1} max={50} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} /></label>
-                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">Search depth<select aria-label="Search depth" className="w-full border border-slate-200 rounded-lg p-2 font-normal" value={searchDepth} onChange={(e) => setSearchDepth(Number(e.target.value))}><option value={1}>Standard (1 web query)</option><option value={2}>Expanded (2 queries)</option></select></label>
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-2 pt-3 text-[11px] text-slate-600">
-                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={excludeSaved} onChange={(e) => setExcludeSaved(e.target.checked)} /> New leads only</label>
-                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={excludeContacted} onChange={(e) => setExcludeContacted(e.target.checked)} /> Skip contacted</label>
-                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={requireEmail} onChange={(e) => setRequireEmail(e.target.checked)} /> Verified email only</label>
-                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={wholesaleOnly} onChange={(e) => setWholesaleOnly(e.target.checked)} /> Wholesale</label>
-                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={privateLabelOnly} onChange={(e) => setPrivateLabelOnly(e.target.checked)} /> Private label</label>
-                </div>
-                <p className="text-slate-500 mt-2">US market. For statewide or nationwide distributor searches, configure protected SearXNG. Website research records publicly listed business emails after saving.</p>
-                <button type="button" className="mt-2 underline text-indigo-700" onClick={async () => { try { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/workflow', {method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({action:'save_search',name:`${category} — ${location}`, category,location,productInterest,keyword,maxResults,radiusKm,searchDepth,requireWebsite,requirePhone,requireEmail,excludeSaved,excludeContacted,wholesaleOnly,privateLabelOnly,country:'US'})}); if (!res.ok) throw new Error('Saved search unavailable.'); setSearchError(null); setSearchStep('Search saved. Open Outreach → Saved searches to reuse it.'); } catch(e) { setSearchError(String(e)); } }}>Save this search</button>
-              </details>
-              {searchStep && (
-                <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-lg text-[11px] text-indigo-800 flex items-center gap-2">
-                  <ArrowsClockwise className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                  {searchStep}
-                </div>
-              )}
-              {searchError && (
-                <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-800 flex items-center gap-2">
-                  <WarningCircle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
-                  {searchError}
-                </div>
-              )}
-            </form>
-
-            {diagnostics && (
-              <div className="bg-white rounded-xl border border-slate-200 p-4 text-[11px] space-y-1.5">
-                <div className="flex items-center justify-between font-semibold text-slate-700">
-                  <span className="flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Search Diagnostics</span>
-                  <span className="text-slate-400 font-mono">{diagnostics.responseTimeMs}ms</span>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-slate-600">
-                  <div><span className="text-slate-400">Location:</span> <span className="font-medium text-slate-800">{diagnostics.resolvedLocation || 'N/A'}</span></div>
-                  <div><span className="text-slate-400">Source records:</span> <span className="font-medium text-slate-800">{diagnostics.rawResultsCount}</span></div>
-                  <div><span className="text-slate-400">Duplicates:</span> <span className="font-medium text-slate-800">{diagnostics.duplicatesRemoved}</span></div>
-                  <div><span className="text-slate-400">Scored:</span> <span className="font-medium text-slate-800">{diagnostics.normalizedCount}</span></div>
-                  {diagnostics.sources && (
-                    <div className="col-span-2 md:col-span-4 flex flex-wrap gap-1.5 pt-0.5">
-                      {Object.entries(diagnostics.sources).map(([name, s]) => {
-                        const isMap = name === 'overpass';
-                        const label = isMap ? 'Map data' : name === 'searxng' ? 'Web search' : 'Keyword index';
-                        const count = s.normalized || 0;
-                        const hasResults = count > 0;
-                        return (
-                          <span key={name} className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${hasResults ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                            {label}: {hasResults ? `${count} found` : isMap ? 'skipped (web active)' : '0 found'}
-                          </span>
-                        );
-                      })}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setExportMenuOpen((v) => !v)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 shadow-sm transition"
+                  >
+                    <DownloadSimple className="w-3.5 h-3.5 text-slate-500" />
+                    Export <CaretDown className="w-3 h-3 text-slate-400" />
+                  </button>
+                  {exportMenuOpen && (
+                    <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={handleExportSearchResultsCSV}
+                        className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 text-slate-700 font-medium"
+                      >
+                        Export CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleExportSearchResultsJSON}
+                        className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 text-slate-700 font-medium"
+                      >
+                        Export JSON
+                      </button>
                     </div>
                   )}
                 </div>
-              </div>
-            )}
 
-            {leads.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-900">Discovered Prospects ({leads.length})</h3>
-                  <span className="text-[11px] text-slate-400">Sorted by Project Fit & Opportunity Score</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {leads.map((lead, idx) => {
-                    const oppScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 0;
-                    const isSaving = savingLeadId === lead.businessName;
-                    return (
-                      <div key={`${lead.businessName}-${idx}`} className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 hover:shadow-sm transition">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <h4 className="text-sm font-bold text-slate-900 leading-snug">{lead.businessName}</h4>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600">{lead.category}</span>
-                              <span className="text-[11px] text-slate-500 flex items-center gap-1"><MapPin className="w-3 h-3" /> {[lead.city, lead.region].filter(Boolean).join(', ') || 'Local'}</span>
+                <button
+                  type="button"
+                  disabled={selectedLeadIds.size === 0 || savingSelected}
+                  onClick={handleSaveSelected}
+                  className="px-4 py-1.5 rounded-lg bg-[#5a4fe6] hover:bg-[#493ecc] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                >
+                  <BookBookmark className="w-3.5 h-3.5 text-white" />
+                  {savingSelected ? 'Saving...' : `Save Selected (${selectedLeadIds.size})`}
+                </button>
+              </div>
+            </div>
+
+            {/* ── 5. Results Table View ── */}
+            {resultsView === 'table' ? (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-700 border-collapse">
+                    <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                      <tr>
+                        <th className="w-10 px-3 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={leads.length > 0 && selectedLeadIds.size === leads.length}
+                            onChange={handleToggleSelectAll}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          />
+                        </th>
+                        <th className="w-10 px-2 py-3 text-slate-400">#</th>
+                        <th className="px-3 py-3">Business Name</th>
+                        <th className="px-3 py-3">Location</th>
+                        <th className="px-3 py-3">Category</th>
+                        <th className="px-3 py-3">Website</th>
+                        <th className="px-3 py-3">Phone</th>
+                        <th className="px-3 py-3">Email</th>
+                        <th className="px-3 py-3">Source</th>
+                        <th className="px-3 py-3">Status</th>
+                        <th className="px-3 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {leads.length > 0 ? (
+                        leads.map((lead, idx) => {
+                          const isVerified = lead.dataSource === 'openstreetmap' || Boolean(lead.address && lead.phone);
+                          const isSelected = selectedLeadIds.has(lead.businessName);
+                          const isSaving = savingLeadId === lead.businessName;
+                          return (
+                            <tr key={`${lead.businessName}-${idx}`} className="hover:bg-slate-50/70 transition">
+                              <td className="px-3 py-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleSelectLead(lead.businessName)}
+                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                />
+                              </td>
+                              <td className="px-2 py-3 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                              <td className="px-3 py-3 font-semibold text-slate-900 max-w-[200px] truncate" title={lead.businessName}>
+                                {lead.businessName}
+                              </td>
+                              <td className="px-3 py-3 text-slate-600 whitespace-nowrap">
+                                {[lead.city, lead.region].filter(Boolean).join(', ') || lead.address || 'Texas'}
+                              </td>
+                              <td className="px-3 py-3 whitespace-nowrap">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                  {lead.category}
+                                </span>
+                              </td>
+                              <td className="px-3 py-3 whitespace-nowrap">
+                                {lead.website ? (
+                                  <a
+                                    href={lead.website}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-indigo-600 hover:underline inline-flex items-center gap-1 font-medium max-w-[130px] truncate"
+                                    title={lead.website}
+                                  >
+                                    <Globe className="w-3 h-3 text-indigo-400 flex-shrink-0" />
+                                    {lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
+                                  </a>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 whitespace-nowrap">
+                                {lead.phone ? (
+                                  <a
+                                    href={`tel:${lead.phone}`}
+                                    className="text-slate-700 hover:underline inline-flex items-center gap-1 font-medium"
+                                  >
+                                    <Phone className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                                    {lead.phone}
+                                  </a>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 whitespace-nowrap">
+                                {lead.email ? (
+                                  <a
+                                    href={`mailto:${lead.email}`}
+                                    className="text-indigo-600 hover:underline inline-flex items-center gap-1 font-medium max-w-[150px] truncate"
+                                    title={lead.email}
+                                  >
+                                    <EnvelopeSimple className="w-3 h-3 text-indigo-400 flex-shrink-0" />
+                                    {lead.email}
+                                  </a>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 text-[11px] text-slate-600">
+                                  <Globe className="w-3 h-3 text-slate-400" />
+                                  {lead.dataSource === 'openstreetmap' ? 'OpenStreetMap' : lead.dataSource === 'searxng' ? 'Web Search' : 'Google Maps'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-3 whitespace-nowrap">
+                                {isVerified ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
+                                    Verified
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                    <ClockCounterClockwise className="w-3 h-3 text-amber-600" />
+                                    Need verification
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-3 text-right whitespace-nowrap">
+                                <div className="inline-flex items-center gap-1 justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveToLibrary(lead)}
+                                    disabled={lead.alreadySaved || isSaving}
+                                    title={lead.alreadySaved ? 'Already saved in Lead Library' : 'Save to Lead Library'}
+                                    className={`p-1.5 rounded-lg border text-xs font-semibold transition ${
+                                      lead.alreadySaved
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 cursor-default'
+                                        : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                                    }`}
+                                  >
+                                    {lead.alreadySaved ? (
+                                      <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-600" />
+                                    ) : isSaving ? (
+                                      <ArrowsClockwise className="w-3.5 h-3.5 animate-spin text-slate-600" />
+                                    ) : (
+                                      <BookBookmark className="w-3.5 h-3.5 text-slate-600" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAIAnalyze(lead)}
+                                    title="AI Lead Assessment"
+                                    className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-indigo-600 transition"
+                                  >
+                                    <Robot className="w-3.5 h-3.5 text-indigo-600" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={11} className="py-12 text-center text-slate-400">
+                            <div className="max-w-sm mx-auto space-y-2">
+                              <MagnifyingGlass className="w-8 h-8 text-slate-300 mx-auto" />
+                              <p className="text-xs font-medium text-slate-600">No leads discovered yet</p>
+                              <p className="text-[11px] text-slate-400">
+                                Click &quot;AI Find Leads&quot; above to search Houston, Dallas, Austin, and broad regions with live streaming results.
+                              </p>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <ScoreBadge score={oppScore} label="Fit" />
-                          </div>
-                        </div>
-
-                        <div className="p-2.5 bg-slate-50 rounded-lg text-[11px] space-y-1 border border-slate-100">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-slate-500 uppercase text-[10px] tracking-wider">Source observations</span>
-                            <span className="text-[10px] text-slate-400 flex items-center gap-1"><Globe className="w-2.5 h-2.5" /> Source: {lead.dataSource === 'openstreetmap' ? 'OpenStreetMap' : lead.dataSource}</span>
-                          </div>
-                          {lead.address && <div className="flex items-center gap-1.5 text-slate-600"><MapPin className="w-3 h-3 text-slate-400" /> {lead.address}</div>}
-                          {lead.phone && <div className="flex items-center gap-1.5 text-slate-700 font-medium"><Phone className="w-3 h-3 text-emerald-600" /> <a href={`tel:${lead.phone}`} className="hover:underline">{lead.phone}</a></div>}
-                          {lead.website && <div className="flex items-center gap-1.5 text-indigo-600"><Globe className="w-3 h-3" /> <a href={lead.website} target="_blank" rel="noopener noreferrer" className="hover:underline truncate">{lead.website}</a></div>}
-                        </div>
-
-                        {lead.evidence ? <EvidenceSummary evidence={lead.evidence} /> : <p className="text-[11px] text-slate-500">Search candidate; company facts and purchasing interest remain unverified.</p>}
-                        {(lead.research?.sources || []).map((source,i)=><details key={`${source.url}-${i}`} className="text-[11px] border rounded p-2"><summary>{source.status} · {source.kind} · {source.retrievedAt}</summary><a href={source.url} target="_blank" rel="noopener noreferrer" className="underline break-all">{source.url}</a><p>{source.excerpt}</p></details>)}
-
-                        {lead.projectFit?.reasons && lead.projectFit.reasons.length > 0 && (
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">ICP Match Signals</span>
-                            <ul className="text-[11px] text-slate-600 space-y-0.5">
-                              {lead.projectFit.reasons.map((r, i) => (<li key={i} className="flex items-start gap-1.5"><CheckCircle className="w-3 h-3 text-emerald-500 mt-0.5" /> {r}</li>))}
-                            </ul>
-                          </div>
-                        )}
-
-                        <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                          {lead.osmUrl && <a href={lead.osmUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-slate-500 hover:text-slate-800 flex items-center gap-1">OSM Map <ArrowSquareOut className="w-3 h-3" /></a>}
-                          <div className="flex items-center gap-1.5 ml-auto">
-                            <button onClick={() => handleAIAnalyze(lead)} className="px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1 transition">
-                              <Robot className="w-3 h-3 text-indigo-600" /> AI
-                            </button>
-                            <button onClick={() => handleSaveToLibrary(lead)} disabled={lead.alreadySaved || isSaving} className={`px-3 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition ${lead.alreadySaved ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
-                              {lead.alreadySaved ? (<><CheckCircle className="w-3 h-3" /> Saved</>) : isSaving ? (<><ArrowsClockwise className="w-3 h-3 animate-spin" /> Saving...</>) : (<><Plus className="w-3 h-3" /> Save</>)}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-            )}
-
-            {/* AI Analysis Modal */}
-            {analyzingLeadName && (
-              <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-white rounded-xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
-                      <Robot className="w-4 h-4 text-indigo-600" />
-                      <h4 className="font-bold text-slate-900 text-sm">AI Factual Assessment</h4>
-                    </div>
-                    <button type="button" aria-label="Close AI factual assessment" onClick={() => { setAnalyzingLeadName(null); setAiAnalysisResult(null); }} className="text-slate-400 hover:text-slate-600 text-sm font-bold">✕</button>
+            ) : (
+              /* Map / Location View */
+              <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-indigo-600" />
+                    <h4 className="text-sm font-bold text-slate-900">Geographic Spread ({leads.length} locations)</h4>
                   </div>
-                  <div className="text-[11px] text-slate-500">Business: <span className="text-slate-900 font-bold">{analyzingLeadName}</span></div>
-                  {!aiAnalysisResult && !aiError && (
-                    <div className="py-8 text-center space-y-2">
-                      <ArrowsClockwise className="w-5 h-5 animate-spin mx-auto text-indigo-600" />
-                      <p className="text-[11px] text-slate-500">Querying server-side model...</p>
-                    </div>
-                  )}
-                  {aiError && <div className="p-3 bg-red-50 text-red-800 rounded-lg text-[11px] flex items-center gap-2"><WarningCircle className="w-4 h-4 text-red-600" /> {aiError}</div>}
-                  {aiAnalysisResult && (
-                    <div className="space-y-3 text-[11px]">
-                      <div className="p-3 bg-indigo-50 rounded-lg text-indigo-950 space-y-1">
-                        <span className="font-bold">Summary:</span>
-                        <p className="text-indigo-900">{aiAnalysisResult.analysis?.summary}</p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="p-3 bg-slate-50 rounded-lg"><span className="text-slate-400 font-medium block">Suitability:</span><span className="font-bold text-slate-800">{aiAnalysisResult.analysis?.potentialValue}</span></div>
-                        <div className="p-3 bg-slate-50 rounded-lg"><span className="text-slate-400 font-medium block">Confidence:</span><span className="font-bold text-slate-800 capitalize">{aiAnalysisResult.analysis?.confidence}</span></div>
-                      </div>
-                      {aiAnalysisResult.analysis?.opportunitySignals?.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="font-bold text-slate-700">Signals:</span>
-                          <ul className="space-y-1 text-slate-600">{aiAnalysisResult.analysis.opportunitySignals.map((s: string, i: number) => (<li key={i} className="flex items-center gap-1.5"><CheckCircle className="w-3 h-3 text-indigo-600" /> {s}</li>))}</ul>
+                  <span className="text-xs text-slate-500">Targeting Houston, Dallas, Austin and Texas metros</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {leads.map((lead, idx) => (
+                    <div key={idx} className="p-3 rounded-lg border border-slate-100 bg-slate-50/50 space-y-2">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h5 className="font-bold text-xs text-slate-900">{lead.businessName}</h5>
+                          <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded font-semibold">{lead.category}</span>
                         </div>
-                      )}
+                        {lead.osmUrl && (
+                          <a href={lead.osmUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 text-[10px] hover:underline flex items-center gap-0.5">
+                            Map <ArrowSquareOut className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-600">{lead.address || [lead.city, lead.region].filter(Boolean).join(', ') || 'Local area'}</p>
+                      {lead.phone && <p className="text-[11px] text-emerald-700 font-medium">📞 {lead.phone}</p>}
                     </div>
-                  )}
-                  <button type="button" onClick={() => { setAnalyzingLeadName(null); setAiAnalysisResult(null); }} className="w-full py-2 rounded-lg bg-slate-900 text-white font-semibold text-xs hover:bg-slate-800 transition">Close</button>
+                  ))}
                 </div>
               </div>
             )}
           </div>
+
+          {/* ── 6. "See How It Works" Informational Modal ── */}
+          {showHowItWorksModal && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkle weight="fill" className="w-5 h-5 text-indigo-600" />
+                    <h4 className="font-bold text-slate-900 text-base">How AI Smart Search Works</h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowHowItWorksModal(false)}
+                    className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="space-y-3 text-xs text-slate-600">
+                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-indigo-50/50 border border-indigo-100">
+                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0">1</span>
+                    <div>
+                      <strong className="text-slate-900 block">Plain English Intent</strong>
+                      Type naturally in English or Roman Urdu. E.g., &quot;Find 100 livestock feed stores in Houston, Dallas and Austin&quot;.
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-indigo-50/50 border border-indigo-100">
+                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0">2</span>
+                    <div>
+                      <strong className="text-slate-900 block">AI Planning with Gemini</strong>
+                      Gemini parses multiple cities, buyer categories, keywords, and contact requirements automatically into an editable plan.
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-indigo-50/50 border border-indigo-100">
+                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0">3</span>
+                    <div>
+                      <strong className="text-slate-900 block">Live Progressive Streaming</strong>
+                      Searches run across each target location in real time. Discovered leads immediately appear on screen batch by batch without waiting.
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-2.5 rounded-lg bg-indigo-50/50 border border-indigo-100">
+                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white font-bold text-[10px] flex items-center justify-center flex-shrink-0">4</span>
+                    <div>
+                      <strong className="text-slate-900 block">Bulk Save &amp; CSV Export</strong>
+                      Select discovered prospects with checkboxes and save in bulk to your Lead Library or download as CSV.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowHowItWorksModal(false)}
+                  className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-semibold text-xs hover:bg-slate-800 transition"
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── 7. AI Factual Assessment Modal ── */}
+          {analyzingLeadName && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl max-w-lg w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Robot className="w-4 h-4 text-indigo-600" />
+                    <h4 className="font-bold text-slate-900 text-sm">AI Factual Assessment</h4>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close AI factual assessment"
+                    onClick={() => { setAnalyzingLeadName(null); setAiAnalysisResult(null); }}
+                    className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Business: <span className="text-slate-900 font-bold">{analyzingLeadName}</span>
+                </div>
+                {!aiAnalysisResult && !aiError && (
+                  <div className="py-8 text-center space-y-2">
+                    <ArrowsClockwise className="w-5 h-5 animate-spin mx-auto text-indigo-600" />
+                    <p className="text-[11px] text-slate-500">Querying server-side model...</p>
+                  </div>
+                )}
+                {aiError && (
+                  <div className="p-3 bg-red-50 text-red-800 rounded-lg text-[11px] flex items-center gap-2">
+                    <WarningCircle className="w-4 h-4 text-red-600" /> {aiError}
+                  </div>
+                )}
+                {aiAnalysisResult && (
+                  <div className="space-y-3 text-[11px]">
+                    <div className="p-3 bg-indigo-50 rounded-lg text-indigo-950 space-y-1">
+                      <span className="font-bold">Summary:</span>
+                      <p className="text-indigo-900">{aiAnalysisResult.analysis?.summary}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-3 bg-slate-50 rounded-lg">
+                        <span className="text-slate-400 font-medium block">Suitability:</span>
+                        <span className="font-bold text-slate-800">{aiAnalysisResult.analysis?.potentialValue}</span>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-lg">
+                        <span className="text-slate-400 font-medium block">Confidence:</span>
+                        <span className="font-bold text-slate-800 capitalize">{aiAnalysisResult.analysis?.confidence}</span>
+                      </div>
+                    </div>
+                    {aiAnalysisResult.analysis?.opportunitySignals?.length > 0 && (
+                      <div className="space-y-1">
+                        <span className="font-bold text-slate-700">Signals:</span>
+                        <ul className="space-y-1 text-slate-600">
+                          {aiAnalysisResult.analysis.opportunitySignals.map((s: string, i: number) => (
+                            <li key={i} className="flex items-center gap-1.5">
+                              <CheckCircle className="w-3 h-3 text-indigo-600" /> {s}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setAnalyzingLeadName(null); setAiAnalysisResult(null); }}
+                  className="w-full py-2 rounded-lg bg-slate-900 text-white font-semibold text-xs hover:bg-slate-800 transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ══════════ LEAD LIBRARY TAB ══════════ */}
         <div id="leados-panel-library" role="tabpanel" aria-labelledby="leados-tab-library" className={activeTab === 'library' ? "space-y-4" : "hidden"}>

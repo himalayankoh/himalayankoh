@@ -45,19 +45,58 @@ const DEFAULT_CATEGORY_MAPPINGS: Record<string, OsmTag[]> = {
   'feed store': [
     { key: 'shop', value: 'agrarian' },
     { key: 'shop', value: 'farm' },
+    { key: 'shop', value: 'animal_feed' },
+    { key: 'shop', value: 'country_store' },
+    { key: 'shop', value: 'pet' },
   ],
   'farm supply': [
     { key: 'shop', value: 'agrarian' },
     { key: 'shop', value: 'farm' },
     { key: 'shop', value: 'garden_centre' },
+    { key: 'shop', value: 'trade' },
+    { key: 'shop', value: 'country_store' },
   ],
   'equestrian store': [
     { key: 'shop', value: 'equestrian' },
     { key: 'shop', value: 'saddlery' },
+    { key: 'shop', value: 'tack' },
   ],
   'ranch & horse facility': [
     { key: 'leisure', value: 'horse_riding' },
     { key: 'place', value: 'farm' },
+    { key: 'landuse', value: 'farm' },
+  ],
+  'livestock distributor': [
+    { key: 'shop', value: 'agrarian' },
+    { key: 'shop', value: 'farm' },
+    { key: 'shop', value: 'wholesale' },
+    { key: 'shop', value: 'trade' },
+    { key: 'commercial', value: 'agricultural' },
+  ],
+  'mineral distributor': [
+    { key: 'shop', value: 'agrarian' },
+    { key: 'shop', value: 'wholesale' },
+    { key: 'shop', value: 'farm' },
+    { key: 'shop', value: 'trade' },
+  ],
+  'salt wholesaler': [
+    { key: 'shop', value: 'wholesale' },
+    { key: 'shop', value: 'agrarian' },
+    { key: 'shop', value: 'food' },
+  ],
+  'specialty food distributor': [
+    { key: 'shop', value: 'wholesale' },
+    { key: 'shop', value: 'food' },
+    { key: 'shop', value: 'deli' },
+  ],
+  'spice retailer': [
+    { key: 'shop', value: 'spices' },
+    { key: 'shop', value: 'food' },
+    { key: 'shop', value: 'supermarket' },
+  ],
+  'private label buyer': [
+    { key: 'shop', value: 'wholesale' },
+    { key: 'shop', value: 'trade' },
   ],
   'supermarket': [
     { key: 'shop', value: 'supermarket' },
@@ -395,7 +434,7 @@ export async function searchOpenStreetMap(input: LeadSearchInput): Promise<{
   };
 
   const { tags } = await resolveOsmTags(input.category);
-  const maxResults = Math.min(input.maxResults || 15, 50);
+  const maxResults = Math.min(input.maxResults || 15, 200);
   const keyword = input.keyword?.trim() || '';
 
   // Tag search (map data) and keyword search (name index) run together so one
