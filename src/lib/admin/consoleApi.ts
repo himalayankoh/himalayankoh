@@ -125,6 +125,8 @@ export interface AdminCoupon {
   free_shipping?: boolean;
   status?: string;
   state: CouponState;
+  individual_use?: boolean;
+  email_restrictions?: string[];
 }
 
 export interface AdminCouponInput {
@@ -139,6 +141,8 @@ export interface AdminCouponInput {
   usageLimitPerUser?: number | null;
   freeShipping?: boolean;
   published?: boolean;
+  individualUse?: boolean;
+  emailRestrictions?: string[];
 }
 
 export async function fetchAdminCoupons(): Promise<AdminCoupon[]> {

@@ -99,7 +99,17 @@ interface StripeCheckoutSession {
 export default function CheckoutPage({ retailOnly = false }: { retailOnly?: boolean }) {
   const navigate = useNavigate();
   const { user, profile } = useAuthContext();
-  const { items, clearCart, isLoaded, isLoading, updateCustomerAddress, serverTax } = useCart();
+  const {
+    items,
+    clearCart,
+    isLoaded,
+    isLoading,
+    updateCustomerAddress,
+    serverTax,
+    setCoupon,
+    serverDiscount,
+    appliedCoupons,
+  } = useCart();
   const toast = useToast();
   const [form, setForm] = useState({
     ...initialForm,
@@ -112,6 +122,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [couponInput, setCouponInput] = useState('');
   const [couponCode, setCouponCode] = useState('');
+  const [couponApplying, setCouponApplying] = useState(false);
   /** Whether the summary's promo-code box is unfolded (the reference layout's "Enter"). */
   const [promoOpen, setPromoOpen] = useState(false);
   /**
@@ -239,11 +250,14 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
           : shippoEnabled
             ? 0
             : undefined,
+        discountAmountOverride: typeof serverDiscount === 'number' && serverDiscount > 0
+          ? serverDiscount
+          : undefined,
         taxAmountOverride: authoritativeTax ?? (serverTax ?? undefined),
         destinationState: normalizedState || undefined,
       }
     ),
-    [couponCode, items, shippingMethod, useLiveShippoRates, selectedShippoRate?.amount, authoritativeTax, serverTax, normalizedState]
+    [couponCode, items, shippingMethod, useLiveShippoRates, selectedShippoRate?.amount, authoritativeTax, serverTax, serverDiscount, normalizedState]
   );
 
   const paymentDetailsReady = Boolean(
@@ -541,23 +555,77 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     }
   };
 
-  const applyCoupon = () => {
-    const nextCoupon = couponInput.trim().toUpperCase();
-    if (!nextCoupon) {
-      setCouponCode('');
+  const applyCoupon = useCallback(
+    async (codeToApply?: string) => {
+      const raw = typeof codeToApply === 'string' ? codeToApply : couponInput;
+      const nextCoupon = raw.trim();
+      if (!nextCoupon) {
+        setCouponCode('');
+        setFieldErrors((current) => ({ ...current, coupon: undefined }));
+        try {
+          await setCoupon(null);
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      setCouponApplying(true);
       setFieldErrors((current) => ({ ...current, coupon: undefined }));
-      return;
-    }
 
-    if (!supportedCoupons[nextCoupon]) {
-      setFieldErrors((current) => ({ ...current, coupon: 'Coupon code is not valid.' }));
-      setCouponCode('');
-      return;
-    }
+      try {
+        // 1. Validate and apply with WooCommerce Store API (handles private codes, restrictions, usage limits)
+        await setCoupon(nextCoupon);
+        setCouponCode(nextCoupon);
+        setFieldErrors((current) => ({ ...current, coupon: undefined }));
+      } catch (err: unknown) {
+        // 2. Fallback for offline demo coupon (HKWELCOME10) if store API is local/unavailable
+        const upper = nextCoupon.toUpperCase();
+        if (supportedCoupons[upper]) {
+          setCouponCode(upper);
+          setFieldErrors((current) => ({ ...current, coupon: undefined }));
+        } else {
+          const message = getErrorMessage(err, 'Coupon code is not valid or cannot be applied.');
+          setFieldErrors((current) => ({ ...current, coupon: message }));
+          setCouponCode('');
+        }
+      } finally {
+        setCouponApplying(false);
+      }
+    },
+    [couponInput, setCoupon]
+  );
 
-    setCouponCode(nextCoupon);
+  const removeCoupon = useCallback(async () => {
+    setCouponInput('');
+    setCouponCode('');
     setFieldErrors((current) => ({ ...current, coupon: undefined }));
-  };
+    try {
+      await setCoupon(null);
+    } catch {
+      // ignore
+    }
+  }, [setCoupon]);
+
+  // Read direct 1-click coupon URL parameter (?coupon=CODE) and auto-apply
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramCoupon = urlParams.get('coupon')?.trim();
+    if (paramCoupon) {
+      setCouponInput(paramCoupon);
+      setPromoOpen(true);
+      void applyCoupon(paramCoupon);
+    }
+  }, [applyCoupon]);
+
+  // Sync applied coupons from active cart session
+  useEffect(() => {
+    if (!couponCode && appliedCoupons && appliedCoupons.length > 0) {
+      setCouponCode(appliedCoupons[0]);
+      setCouponInput(appliedCoupons[0]);
+    }
+  }, [appliedCoupons, couponCode]);
 
   const validateForm = () => {
     const nextErrors: FieldErrors = {};
@@ -1459,19 +1527,42 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                         <input
                           value={couponInput}
                           onChange={(event) => setCouponInput(event.target.value)}
-                          aria-label="Coupon code" name="coupon" placeholder="Enter coupon code"
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              void applyCoupon();
+                            }
+                          }}
+                          aria-label="Coupon code"
+                          name="coupon"
+                          placeholder="Enter coupon code"
                           className={inputClass}
+                          disabled={couponApplying}
                         />
-                        <button type="button" onClick={applyCoupon} className="rounded-xl bg-charcoal px-4 text-sm font-semibold text-white hover:bg-charcoal-light">
-                          Apply
+                        <button
+                          type="button"
+                          onClick={() => void applyCoupon()}
+                          disabled={couponApplying}
+                          className="rounded-xl bg-charcoal px-4 text-sm font-semibold text-white hover:bg-charcoal-light disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {couponApplying ? <Loader2 size={14} className="animate-spin" /> : 'Apply'}
                         </button>
                       </div>
                       {fieldErrors.coupon && <p className="mt-1 text-xs text-red-600">{fieldErrors.coupon}</p>}
                       {couponCode && (
-                        <p className="mt-2 flex items-center gap-1 text-xs text-green-700">
-                          <CheckCircle size={14} />
-                          {supportedCoupons[couponCode].label} applied
-                        </p>
+                        <div className="mt-2 flex items-center justify-between text-xs text-green-700 bg-green-50/80 px-2.5 py-1.5 rounded-lg border border-green-200/60">
+                          <span className="flex items-center gap-1 font-medium">
+                            <CheckCircle size={14} />
+                            {supportedCoupons[couponCode]?.label || `Coupon "${couponCode}" applied`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void removeCoupon()}
+                            className="text-xs text-red-600 hover:text-red-700 font-semibold underline ml-2"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1479,7 +1570,12 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
 
                 <div className="space-y-2 border-t border-himalayan-line/60 pt-4">
                   <SummaryRow label="Subtotal" value={totals.subtotal} />
-                  {totals.discountAmount > 0 && <SummaryRow label="Discount" value={-totals.discountAmount} />}
+                  {totals.discountAmount > 0 && (
+                    <SummaryRow
+                      label={`Discount ${couponCode ? `(${couponCode})` : ''}`}
+                      value={-totals.discountAmount}
+                    />
+                  )}
                   {/* A single line, two truths: a priced delivery reads as a number, and an
                       unpriced one says so rather than reading as a free delivery. */}
                   <SummaryRow

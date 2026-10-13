@@ -63,6 +63,12 @@ export async function POST(request: Request) {
     ? (record.discountType as CouponDiscountType)
     : 'percent';
 
+  const emailRestrictions = Array.isArray(record.emailRestrictions)
+    ? (record.emailRestrictions.filter((item): item is string => typeof item === 'string') as string[])
+    : typeof record.emailRestrictions === 'string' && record.emailRestrictions.trim()
+      ? [record.emailRestrictions.trim()]
+      : undefined;
+
   try {
     const coupon = await createWooCoupon({
       code: typeof record.code === 'string' ? record.code : '',
@@ -76,6 +82,8 @@ export async function POST(request: Request) {
       usageLimitPerUser: typeof record.usageLimitPerUser === 'number' ? record.usageLimitPerUser : null,
       freeShipping: record.freeShipping === true,
       published: record.published === true,
+      individualUse: record.individualUse === true,
+      emailRestrictions,
     });
     return NextResponse.json({ coupon: { ...coupon, state: couponState(coupon) } }, { status: 201 });
   } catch (error) {

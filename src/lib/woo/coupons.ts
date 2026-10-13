@@ -68,6 +68,10 @@ export interface CouponInput {
   freeShipping?: boolean;
   /** Draft keeps the coupon inert until the owner publishes it. */
   published?: boolean;
+  /** Whether the coupon can only be used alone without stacking. */
+  individualUse?: boolean;
+  /** Customer emails permitted to redeem this coupon. Empty/undefined means any customer. */
+  emailRestrictions?: string[];
 }
 
 /** A coupon write failed in a way the caller must surface. */
@@ -136,6 +140,14 @@ export function validateCoupon(input: CouponInput): void {
       throw new CouponWriteError(`The ${label} must be a whole number of at least 1, or left empty.`, 400);
     }
   }
+  if (Array.isArray(input.emailRestrictions)) {
+    for (const email of input.emailRestrictions) {
+      const clean = email.trim();
+      if (clean && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+        throw new CouponWriteError(`"${clean}" is not a valid email address.`, 400);
+      }
+    }
+  }
 }
 
 /** Every coupon the store holds. */
@@ -180,6 +192,12 @@ function bodyFrom(input: CouponInput): Record<string, unknown> {
   if (input.usageLimit !== undefined) body.usage_limit = input.usageLimit ?? null;
   if (input.usageLimitPerUser !== undefined) body.usage_limit_per_user = input.usageLimitPerUser ?? null;
   if (input.freeShipping !== undefined) body.free_shipping = input.freeShipping;
+  if (input.individualUse !== undefined) body.individual_use = Boolean(input.individualUse);
+  if (input.emailRestrictions !== undefined) {
+    body.email_restrictions = input.emailRestrictions
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+  }
   body.status = input.published ? 'publish' : 'draft';
   return body;
 }
@@ -221,14 +239,27 @@ export async function updateWooCoupon(
     code: input.code ?? current.code,
     discountType: input.discountType ?? current.discount_type,
     amount: input.amount ?? Number(current.amount),
-    description: input.description,
-    dateExpires: input.dateExpires,
-    minimumAmount: input.minimumAmount,
-    maximumAmount: input.maximumAmount,
-    usageLimit: input.usageLimit,
-    usageLimitPerUser: input.usageLimitPerUser,
-    freeShipping: input.freeShipping,
+    description: input.description !== undefined ? input.description : current.description,
+    dateExpires: input.dateExpires !== undefined ? input.dateExpires : (current.date_expires_gmt ?? null),
+    minimumAmount:
+      input.minimumAmount !== undefined
+        ? input.minimumAmount
+        : current.minimum_amount
+          ? Number(current.minimum_amount)
+          : null,
+    maximumAmount:
+      input.maximumAmount !== undefined
+        ? input.maximumAmount
+        : current.maximum_amount
+          ? Number(current.maximum_amount)
+          : null,
+    usageLimit: input.usageLimit !== undefined ? input.usageLimit : (current.usage_limit ?? null),
+    usageLimitPerUser:
+      input.usageLimitPerUser !== undefined ? input.usageLimitPerUser : (current.usage_limit_per_user ?? null),
+    freeShipping: input.freeShipping !== undefined ? input.freeShipping : Boolean(current.free_shipping),
     published: input.published ?? current.status === 'publish',
+    individualUse: input.individualUse !== undefined ? input.individualUse : Boolean(current.individual_use),
+    emailRestrictions: input.emailRestrictions !== undefined ? input.emailRestrictions : current.email_restrictions,
   };
   validateCoupon(merged);
 

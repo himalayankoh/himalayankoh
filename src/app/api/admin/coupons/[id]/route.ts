@@ -74,6 +74,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
             : undefined,
       freeShipping: typeof record.freeShipping === 'boolean' ? record.freeShipping : undefined,
       published: typeof record.published === 'boolean' ? record.published : undefined,
+      individualUse: typeof record.individualUse === 'boolean' ? record.individualUse : undefined,
+      emailRestrictions: Array.isArray(record.emailRestrictions)
+        ? (record.emailRestrictions.filter((item): item is string => typeof item === 'string') as string[])
+        : typeof record.emailRestrictions === 'string' && record.emailRestrictions.trim()
+          ? [record.emailRestrictions.trim()]
+          : undefined,
     });
     return NextResponse.json({ coupon: { ...coupon, state: couponState(coupon) } });
   } catch (error) {

@@ -70,6 +70,15 @@ describe('validation', () => {
     expect(() => validateCoupon({ ...base, usageLimit: 0 })).toThrow(/whole number/i);
     expect(() => validateCoupon({ ...base, usageLimitPerUser: 2.5 })).toThrow(/whole number/i);
   });
+
+  it('validates email restrictions', () => {
+    expect(() =>
+      validateCoupon({ ...base, emailRestrictions: ['user@example.com', 'vip@client.co'] })
+    ).not.toThrow();
+    expect(() =>
+      validateCoupon({ ...base, emailRestrictions: ['not-an-email'] })
+    ).toThrow(/not a valid email address/i);
+  });
 });
 
 describe('state', () => {
