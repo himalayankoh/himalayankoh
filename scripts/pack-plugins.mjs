@@ -178,6 +178,9 @@ for (const plugin of PLUGINS) {
 
   const inside = plugin.file.split('/').pop();
   const entries = [[inside, readFileSync(source)]];
+  if (plugin.slug === 'himalayan-koh-leados') {
+    entries.push(['himalayan-koh-leados-intelligence.php', readFileSync(join(ROOT, 'wordpress/himalayan-koh-leados-intelligence.php'))]);
+  }
 
   // The filename is load-bearing: WordPress installs this into `plugins/<basename>/`.
   const zipPath = join(OUT, `${plugin.slug}.zip`);

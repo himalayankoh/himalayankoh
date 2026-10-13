@@ -1,0 +1,17 @@
+use_default_settings:
+  engines:
+    keep_only: [duckduckgo, bing, brave]
+general:
+  debug: false
+  instance_name: Himalayan Koh Private Research
+search:
+  safe_search: 1
+  formats: [json]
+server:
+  secret_key: replace-in-private-runtime-file
+  limiter: false
+  image_proxy: false
+  bind_address: 0.0.0.0
+  port: 8080
+ui:
+  static_use_hash: true

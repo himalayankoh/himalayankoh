@@ -1,0 +1,292 @@
+{
+  "name": "HK LeadOS 2 — Approved Outreach (Disabled)",
+  "nodes": [
+    {
+      "id": "Approved-dispatch",
+      "name": "Approved dispatch",
+      "type": "n8n-nodes-base.webhook",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hk-leados-approved-dispatch",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 2,
+      "webhookId": "hk-leados-approved-dispatch"
+    },
+    {
+      "id": "Sender-controls",
+      "name": "Sender controls",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const request=$input.first().json.body || {}; const controls={enabled:false,senderVerified:false,optOutVerified:false,senderEmail:'',postalAddress:''}; return [{json:{request,controls}}];"
+      },
+      "position": [
+        240,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "id": "Validate-reviewed-send",
+      "name": "Validate reviewed send",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const {request:r,controls:c}=$input.first().json; const allowed=c.enabled && c.senderVerified && c.optOutVerified && c.senderEmail && c.postalAddress && r.dispatchId && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(r.recipient||'') && r.subject && r.message && r.sender===c.senderEmail && r.postalAddress===c.postalAddress; return [{json:{...r,allowed:Boolean(allowed),error:allowed?'':'Sender verification, postal address and opt-out controls are not configured.'}}];"
+      },
+      "position": [
+        480,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "id": "Sender-ready",
+      "name": "Sender ready",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.allowed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "position": [
+        700,
+        0
+      ],
+      "typeVersion": 2.2
+    },
+    {
+      "id": "Blocked-response",
+      "name": "Blocked response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ok:false,state:\"blocked\",error:$json.error}) }}",
+        "options": {
+          "responseCode": 503
+        }
+      },
+      "position": [
+        920,
+        200
+      ],
+      "typeVersion": 1.4
+    },
+    {
+      "id": "Claim-once-before-SMTP",
+      "name": "Claim once before SMTP",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://himalayankoh.com/api/leados/outreach-events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({dispatchId:$json.dispatchId,eventId:$json.dispatchId+\":smtp-claim\",state:\"sending\"}) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "position": [
+        920,
+        -100
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "id": "Claim-accepted",
+      "name": "Claim accepted",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const r=$input.first().json; if(!r.ok || r.data?.duplicate || r.data?.item?.state!=='sending')return []; const input=$('Validate reviewed send').first().json; const item=r.data.item,p=item.payload; if(item.id!==input.dispatchId || p.recipient!==input.recipient || p.subject!==input.subject || p.message!==input.message)throw new Error('Dispatch differs from the owner-approved record; no email sent.'); return [{json:{...input,recipient:p.recipient,subject:p.subject,message:p.message}}];"
+      },
+      "position": [
+        1160,
+        -100
+      ],
+      "typeVersion": 2
+    },
+    {
+      "id": "Send-reviewed-SMTP",
+      "name": "Send reviewed SMTP",
+      "type": "n8n-nodes-base.emailSend",
+      "parameters": {
+        "fromEmail": "={{ $json.sender }}",
+        "toEmail": "={{ $json.recipient }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.message + \"\\n\\n\" + $json.postalAddress }}",
+        "options": {}
+      },
+      "position": [
+        1380,
+        -100
+      ],
+      "typeVersion": 2.1,
+      "retryOnFail": false
+    },
+    {
+      "id": "Record-sent-acceptance",
+      "name": "Record sent acceptance",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://himalayankoh.com/api/leados/outreach-events",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({dispatchId:$(\"Claim accepted\").first().json.dispatchId,eventId:$(\"Claim accepted\").first().json.dispatchId+\":smtp-sent\",state:\"sent\"}) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "position": [
+        1610,
+        -100
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "id": "Accepted-response",
+      "name": "Accepted response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"ok\":true,\"state\":\"sent\"}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "position": [
+        1840,
+        -100
+      ],
+      "typeVersion": 1.4
+    }
+  ],
+  "connections": {
+    "Approved dispatch": {
+      "main": [
+        [
+          {
+            "node": "Sender controls",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sender controls": {
+      "main": [
+        [
+          {
+            "node": "Validate reviewed send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate reviewed send": {
+      "main": [
+        [
+          {
+            "node": "Sender ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sender ready": {
+      "main": [
+        [
+          {
+            "node": "Claim once before SMTP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Blocked response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim once before SMTP": {
+      "main": [
+        [
+          {
+            "node": "Claim accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim accepted": {
+      "main": [
+        [
+          {
+            "node": "Send reviewed SMTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send reviewed SMTP": {
+      "main": [
+        [
+          {
+            "node": "Record sent acceptance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record sent acceptance": {
+      "main": [
+        [
+          {
+            "node": "Accepted response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 90
+  }
+}

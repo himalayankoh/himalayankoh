@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from './route';
 
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), search: vi.fn(), ensure: vi.fn(), project: vi.fn(), saved: vi.fn(), record: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), search: vi.fn(), ensure: vi.fn(), project: vi.fn(), saved: vi.fn(), record: vi.fn(), gate: vi.fn() }));
 vi.mock('@/lib/auth/verifyAdminRequest', () => ({ verifyAdminRequest: mocks.auth }));
-vi.mock('@/lib/leados/osm-provider', () => ({ searchOpenStreetMap: mocks.search }));
-vi.mock('@/lib/leados/db', () => ({ ensureDefaultProject: mocks.ensure, getProjectById: mocks.project, listSavedLeads: mocks.saved, recordSearchExecution: mocks.record }));
+vi.mock('@/lib/leados/discovery', () => ({ discoverLeads: mocks.search }));
+vi.mock('@/lib/leados/db', () => ({ ensureDefaultProject: mocks.ensure, getProjectById: mocks.project, listSavedLeads: mocks.saved, recordSearchExecution: mocks.record, leadosRequest: mocks.gate }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -13,6 +13,7 @@ beforeEach(() => {
   mocks.project.mockResolvedValue(null);
   mocks.saved.mockResolvedValue({ leads: [] });
   mocks.record.mockResolvedValue(undefined);
+  mocks.gate.mockResolvedValue({ok:true});
   mocks.search.mockResolvedValue({ leads: [], diagnostics: { geocodeSuccess: true, errorSummary: null } });
 });
 const request = () => new Request('https://himalayankoh.com/api/admin/leados/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'Houston, TX', category: 'Feed Store' }) });
@@ -31,7 +32,7 @@ describe('LeadOS search outcomes', () => {
     const body = await response.json();
     expect(body.ok).toBe(false);
     expect(body.error).toBeTruthy();
-    expect(JSON.stringify(body)).not.toContain('private upstream failure');
+    expect(body.diagnostics.errorSummary).toBe('private upstream failure');
     expect(mocks.saved).not.toHaveBeenCalled();
     expect(mocks.record).not.toHaveBeenCalled();
   });

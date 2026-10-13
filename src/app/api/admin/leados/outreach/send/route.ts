@@ -12,9 +12,10 @@
 
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { getSavedLeadById, recordAuditEntry, updateSavedLead } from '@/lib/leados/db';
+import { getSavedLeadById, recordAuditEntry, leadosRequest } from '@/lib/leados/db';
 import { validateOutboundCopy } from '@/lib/leados/claims';
 import { sendLeadOSMail } from '@/lib/leados/emailProvider';
+import { outreachReadiness, dispatchApprovedDraft } from '@/lib/leados/n8n';
 
 export async function POST(request: Request) {
   const auth = await verifyAdminRequest(request);
@@ -22,6 +23,17 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
+    if (body.simulation !== true) {
+      const readiness = outreachReadiness();
+      if (!readiness.ready) return NextResponse.json({ error: 'Outbound disabled until sender and n8n compliance controls are verified.', blockers: readiness.blockers }, { status: 503 });
+      if (typeof body.draftId !== 'string' || !Number.isInteger(body.revision)) return NextResponse.json({ error: 'A persisted approved draft and its current revision are required.' }, { status: 400 });
+      const reserved = await leadosRequest<{ item: { id: string; payload: { recipient: string; subject: string; message: string } } }>('/workflow', { method: 'POST', body: { action: 'reserve', id: body.draftId, revision: body.revision } });
+      const draft = { id: reserved.item.id, ...reserved.item.payload };
+      const check = validateOutboundCopy(`${draft.subject}\n${draft.message}`);
+      const result = check.ok ? await dispatchApprovedDraft(draft) : { state: 'unknown', error: 'Approved copy contains unsupported claims; owner review required.' };
+      await leadosRequest('/workflow', { method: 'POST', body: { action: 'dispatch_result', id: draft.id, state: result.state, error: 'error' in result ? result.error : '' } });
+      return NextResponse.json({ ok: result.state === 'queued', ...result }, { status: result.state === 'queued' ? 202 : 502 });
+    }
     const leadId = typeof body.leadId === 'string' ? body.leadId.trim() : '';
     const recipientEmail = typeof body.recipientEmail === 'string' ? body.recipientEmail.trim() : '';
     const recipientName = typeof body.recipientName === 'string' ? body.recipientName.trim() : '';
@@ -67,13 +79,6 @@ export async function POST(request: Request) {
       details: auditDetails,
     });
 
-    if (result.state === 'delivered') {
-      await updateSavedLead(leadId, {
-        status: 'contacted',
-        notes: `${lead.notes ? `${lead.notes}\n` : ''}[OUTREACH DELIVERED] ${new Date().toISOString()} provider=${result.provider} id=${result.providerMessageId || 'unavailable'} subject="${subject}"`,
-      });
-      return NextResponse.json({ ok: true, state: result.state, provider: result.provider, providerMessageId: result.providerMessageId, message: 'Outreach delivered successfully.' });
-    }
     if (result.state === 'simulated') {
       return NextResponse.json({ ok: true, state: result.state, simulated: true, provider: result.provider, message: '[SIMULATION] No external email was sent and the lead was not marked Contacted.' });
     }

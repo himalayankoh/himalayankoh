@@ -197,7 +197,7 @@ function orderedProviders(requested: LeadOSAIProvider): Array<'gemini' | 'openro
 }
 
 /** Runs one prompt against the first provider that answers. Remembers who answered. */
-async function runPromptWithFallback(
+export async function runPromptWithFallback(
   prompt: string,
   provider: LeadOSAIProvider = 'auto'
 ): Promise<{ text: string; providerUsed: 'gemini' | 'openrouter' | 'deepseek' }> {

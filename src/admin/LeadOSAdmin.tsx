@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Target,
   MagnifyingGlass,
@@ -41,25 +41,22 @@ import type {
   SavedLeadRecord,
   SearchDiagnostics,
 } from '@/lib/leados/types';
+import LeadIntelligencePanel from './LeadIntelligencePanel';
+import { BUYER_CATEGORIES, PRODUCT_INTERESTS, OFFER_PROFILES, LEAD_PIPELINE, createIntroduction, deduplicateLeads } from '@/lib/leados/intelligence';
+import type { ProductInterest } from '@/lib/leados/types';
 import { parseLeadOSUrlState } from '@/lib/leados/urlState';
 
 type TabType = 'overview' | 'find' | 'library' | 'projects' | 'research' | 'scoring' | 'outreach' | 'ai' | 'settings';
 
 
-const PRESET_CATEGORIES = [
-  { label: 'Feed Store (Livestock & animal feed)', value: 'Feed Store' },
-  { label: 'Farm Supply (Agrarian & farm cooperatives)', value: 'Farm Supply' },
-  { label: 'Equestrian Store (Tack & equine stables)', value: 'Equestrian Store' },
-  { label: 'Supermarket (Gourmet & organic grocery)', value: 'Supermarket' },
-  { label: 'Veterinary (Animal health clinics)', value: 'Veterinary' },
-];
+const PRESET_CATEGORIES = BUYER_CATEGORIES.map((value) => ({label: value, value}));
 
 const PRESET_LOCATIONS = [
   'Houston, TX',
   'Fort Worth, TX',
   'San Antonio, TX',
-  'Billings, MT',
-  'Cheyenne, WY',
+  'Dallas, TX',
+  'Austin, TX',
   'Omaha, NE',
   'Denver, CO',
   'Lexington, KY',
@@ -74,97 +71,10 @@ export interface OutreachTemplate {
   body: string;
 }
 
-export const OUTREACH_TEMPLATES: OutreachTemplate[] = [
-  {
-    id: 'wholesale_licks',
-    name: 'Wholesale Animal Mineral Salt Licks (Feed & Farm)',
-    category: 'Feed Store / Farm Supply',
-    subject: 'Direct Wholesale Himalayan Pink Salt Mineral Licks for {business_name}',
-    body: `Hi Team at {business_name},
-
-I came across your store in {city} while researching premier agricultural and animal feed retailers in the region.
-
-At Himalayan Koh, we offer Himalayan salt products for livestock and equine use, including blocks and carved licks on ropes. Product details and availability can be shared for your review.
-
-Why our farm store and feed mill partners love working with us:
-• Himalayan salt products for livestock and equine customers.
-• Wholesale information available on request.
-• Product specifications and current availability shared before any order.
-• Sales support from the Himalayan Koh team.
-
-Would you be open to reviewing our wholesale price sheet and receiving a complimentary sample pack for your store?
-
-Best regards,
-
-Salman Basco
-Himalayan Koh Wholesale Team
-sales@himalayankoh.com | (832) 224-6466
-https://preview.himalayankoh.com`,
-  },
-  {
-    id: 'equine_specialty',
-    name: 'Equine & Tack Specialty (Round Salt Lick on Rope)',
-    category: 'Equestrian Store',
-    subject: 'Himalayan Rock Salt Licks on Rope for {business_name} Stables',
-    body: `Hello {business_name} Team,
-
-I am reaching out from Himalayan Koh regarding our signature equine salt block line.
-
-Our carved Himalayan rock salt licks with hanging ropes are listed for equine and livestock use. We can share current product specifications and wholesale information for your review.
-
-We supply tack shops and equestrian centers with:
-• Carved round licks with hanging ropes.
-• Retail and wholesale product information available on request.
-• Current packaging, minimums, and availability confirmed before an order.
-
-May I send you our quick dealer catalog and wholesale pricing for your equine customers?
-
-Sincerely,
-
-Himalayan Koh Equine Division
-sales@himalayankoh.com | (832) 224-6466`,
-  },
-  {
-    id: 'food_grocery',
-    name: 'Bulk Food-Grade Pink Salt (Grocers & Co-ops)',
-    category: 'Supermarket / Food Co-op',
-    subject: 'Direct Import Himalayan Pink Salt Wholesale — {business_name}',
-    body: `Hello,
-
-We are a direct importer of food-grade Himalayan pink salt supplying organic grocery cooperatives, specialty spice retailers, and gourmet markets.
-
-Our product offerings include:
-• Fine and coarse grain culinary pink salt in 1 lb, 5 lb, and 25 lb bulk bags.
-• Handcrafted Himalayan salt cooking plates and bowls.
-• Product specifications and sourcing information available for review.
-
-We would love to introduce Himalayan Koh to your shoppers in {city}. Can I share our wholesale tier pricing with you this week?
-
-Warm regards,
-
-Himalayan Koh Gourmet Line
-Houston, TX
-sales@himalayankoh.com`,
-  },
-  {
-    id: 'commercial_distribution',
-    name: 'Commercial Wholesale & Bulk Salt Supply',
-    category: 'Commercial Distributor',
-    subject: 'B2B Himalayan Salt Supply Partnership with {business_name}',
-    body: `Hi {business_name},
-
-I noticed your active presence as a trusted merchant in the agricultural and specialty retail space.
-
-We speak with regional distributors and retailers about Himalayan salt products, including animal licks and culinary products. We can share current wholesale information and product specifications for review.
-
-If you are expanding your catalog with high-velocity mineral products, let's connect for 10 minutes to discuss bulk wholesale margins.
-
-Best regards,
-
-Himalayan Koh B2B Wholesale
-sales@himalayankoh.com | (832) 224-6466`,
-  },
-];
+export const OUTREACH_TEMPLATES: OutreachTemplate[] = PRODUCT_INTERESTS.map((interest) => {
+  const intro = createIntroduction({businessName: '{business_name}', city: '{city}', category: interest === 'culinary_salt' ? 'specialty food and spice businesses' : 'relevant B2B businesses'}, interest);
+  return {id: interest, name: OFFER_PROFILES[interest].label, category: interest, subject: intro.subject, body: intro.message};
+});
 
 /** Compact KPI card */
 function metricValue(value: unknown): string | number {
@@ -256,13 +166,23 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
   // Find Leads state
   const [category, setCategory] = useState('Feed Store');
+  const searchGeneration = useRef(0);
+  useEffect(() => () => { searchGeneration.current++; }, []);
   const [customCategory, setCustomCategory] = useState('');
   const [keyword, setKeyword] = useState('');
   const [location, setLocation] = useState('Houston, TX');
   const [researchRegion, setResearchRegion] = useState('Texas');
   const [maxResults, setMaxResults] = useState(15);
+  const [productInterest, setProductInterest] = useState<ProductInterest>('horse_salt');
+  const [radiusKm, setRadiusKm] = useState(25);
+  const [searchDepth, setSearchDepth] = useState(1);
+  const [excludeSaved, setExcludeSaved] = useState(false);
+  const [excludeContacted, setExcludeContacted] = useState(true);
+  const [wholesaleOnly, setWholesaleOnly] = useState(false);
+  const [privateLabelOnly, setPrivateLabelOnly] = useState(false);
   const [requireWebsite, setRequireWebsite] = useState(false);
   const [requirePhone, setRequirePhone] = useState(false);
+  const [requireEmail, setRequireEmail] = useState(false);
   const [searching, setSearching] = useState(false);
   const [searchStep, setSearchStep] = useState('');
   const [leads, setLeads] = useState<ScoredLead[]>([]);
@@ -304,7 +224,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [selectedTemplate, setSelectedTemplate] = useState<OutreachTemplate>(OUTREACH_TEMPLATES[0]);
   const [recipientEmail, setRecipientEmail] = useState('');
   const [recipientName, setRecipientName] = useState('');
-  const [recipientEmailSource, setRecipientEmailSource] = useState<'discovered_osm' | 'manually_entered' | 'unverified'>('unverified');
+  const [recipientEmailSource, setRecipientEmailSource] = useState<'discovered_osm' | 'company_website' | 'manually_entered' | 'unverified'>('unverified');
   const [emailSubject, setEmailSubject] = useState(OUTREACH_TEMPLATES[0].subject.replace('{business_name}', 'Partner'));
   const [emailBody, setEmailBody] = useState(OUTREACH_TEMPLATES[0].body.replace(/\{business_name\}/g, 'Partner').replace(/\{city\}/g, 'your city'));
   const [activeOutreachLeadId, setActiveOutreachLeadId] = useState<string | undefined>(undefined);
@@ -400,13 +320,14 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   }, [loadStatsAndProjects, loadWeights]);
 
   useEffect(() => {
-    if (activeTab === 'library') {
+    if (activeTab === 'library' || activeTab === 'outreach') {
       loadLibrary();
     }
   }, [activeTab, loadLibrary]);
 
   // Handle lead search
   const handleSearch = async (e?: React.FormEvent) => {
+    const generation = ++searchGeneration.current;
     if (e) e.preventDefault();
     const effectiveCategory = category === 'custom' ? customCategory : category;
     if (!effectiveCategory.trim()) {
@@ -420,14 +341,14 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
     setSearching(true);
     setSearchError(null);
-    setSearchStep('1/3 Geocoding target market coordinates...');
+    setSearchStep('Searching permitted business sources...');
     setLeads([]);
     setDiagnostics(null);
 
     try {
       const headers = await getAuthHeaders();
-      setTimeout(() => setSearchStep('2/3 Querying OpenStreetMap Overpass API for verified entities...'), 700);
-      setTimeout(() => setSearchStep('3/3 Normalizing records & calculating deterministic project fit...'), 1800);
+
+
 
       const res = await fetch('/api/admin/leados/search', {
         method: 'POST',
@@ -439,10 +360,12 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           category: effectiveCategory,
           location,
           keyword: keyword.trim(),
+          productInterest, radiusKm, searchDepth, excludeSaved, excludeContacted, wholesaleOnly, privateLabelOnly, country: 'US',
           projectId: selectedProjectId,
           maxResults,
           requireWebsite,
           requirePhone,
+          requireEmail,
         }),
       });
 
@@ -453,11 +376,29 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
       setLeads(data.leads || []);
       setDiagnostics(data.diagnostics || null);
+      if (data.diagnostics?.queuedJobId) {
+        setSearchStep('Map results shown. Waiting for the private research worker...');
+        for (let attempt = 0; attempt < 30 && generation === searchGeneration.current; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+          const poll = await fetch(`/api/admin/leados/search?jobId=${encodeURIComponent(data.diagnostics.queuedJobId)}`, {headers});
+          const completed = await poll.json();
+          if (generation !== searchGeneration.current) return;
+          if (!poll.ok) throw new Error(completed.error || 'Queued search failed.');
+          if (completed.state === 'expired' || completed.state === 'failed') { setSearchError(completed.error || 'Private research worker did not complete this source. Map results remain available.'); break; }
+          if (completed.state === 'complete') {
+            const combined = deduplicateLeads<ScoredLead>([...(data.leads || []), ...(completed.leads || [])]);
+            const final = combined.leads.slice(0,maxResults);
+            setLeads(final);
+            setDiagnostics((prior) => prior ? { ...prior, finalResultsCount: final.length, normalizedCount: final.length, duplicatesRemoved: prior.duplicatesRemoved + combined.duplicatesRemoved, rawResultsCount: prior.rawResultsCount + completed.rawCount, sources: {...prior.sources,searxng:{raw:completed.rawCount,normalized:completed.leads.length,error:completed.error || completed.upstreamErrors?.join('; ') || null}}, queuedJobId:undefined } : prior);
+            break;
+          }
+          if (attempt === 29) setSearchError('Private research is still pending. Retry this saved search later; no results were fabricated.');
+        }
+      }
     } catch (err: any) {
       setSearchError(err.message || 'Error occurred during lead discovery');
     } finally {
-      setSearching(false);
-      setSearchStep('');
+      if (generation === searchGeneration.current) { setSearching(false); setSearchStep(''); }
     }
   };
 
@@ -999,8 +940,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             <form onSubmit={handleSearch} className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Find Verified Business Leads</h3>
-                  <p className="text-[11px] text-slate-500">Queries live OpenStreetMap & Overpass data. Real data only — never fabricated.</p>
+                  <h3 className="text-sm font-bold text-slate-900">Find Business Leads</h3>
+                  <p className="text-[11px] text-slate-500">Map records and configured search sources. Company verification happens after saving; search snippets remain unverified.</p>
                 </div>
                 <select value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)} className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-[11px] font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500">
                   {projects.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
@@ -1059,6 +1000,21 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </div>
               </div>
 
+              <details className="border border-slate-200 rounded-lg p-3 text-xs">
+                <summary className="font-semibold cursor-pointer">Product interest &amp; advanced search</summary>
+                <div className="grid md:grid-cols-3 gap-3 pt-3">
+                  <label>Product interest<select aria-label="Product interest" className="w-full border rounded-lg p-2" value={productInterest} onChange={(e) => setProductInterest(e.target.value as ProductInterest)}>{PRODUCT_INTERESTS.map((p) => <option key={p} value={p}>{OFFER_PROFILES[p].label}</option>)}</select></label>
+                  <label>Radius (km)<input aria-label="Radius in kilometers" className="w-full border rounded-lg p-2" type="number" min={1} max={50} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} /></label>
+                  <label>Search depth<select aria-label="Search depth" className="w-full border rounded-lg p-2" value={searchDepth} onChange={(e) => setSearchDepth(Number(e.target.value))}><option value={1}>Standard (one web query)</option><option value={2}>Expanded (two relevant queries)</option></select></label>
+                  <label><input type="checkbox" checked={excludeSaved} onChange={(e) => setExcludeSaved(e.target.checked)} /> Exclude saved leads</label>
+                  <label><input type="checkbox" checked={excludeContacted} onChange={(e) => setExcludeContacted(e.target.checked)} /> Exclude contacted leads</label>
+                  <label><input type="checkbox" checked={requireEmail} onChange={(e) => setRequireEmail(e.target.checked)} /> Require company-verified email</label>
+                  <label><input type="checkbox" checked={wholesaleOnly} onChange={(e) => setWholesaleOnly(e.target.checked)} /> Wholesale query</label>
+                  <label><input type="checkbox" checked={privateLabelOnly} onChange={(e) => setPrivateLabelOnly(e.target.checked)} /> Private-label query</label>
+                </div>
+                <p className="text-slate-500 mt-2">US market. For statewide or nationwide distributor searches, configure protected SearXNG. Website research records publicly listed business emails after saving.</p>
+                <button type="button" className="mt-2 underline text-indigo-700" onClick={async () => { try { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/workflow', {method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({action:'save_search',name:`${category} — ${location}`, category,location,productInterest,keyword,maxResults,radiusKm,searchDepth,requireWebsite,requirePhone,requireEmail,excludeSaved,excludeContacted,wholesaleOnly,privateLabelOnly,country:'US'})}); if (!res.ok) throw new Error('Saved search unavailable.'); setSearchError(null); setSearchStep('Search saved. Open Outreach → Saved searches to reuse it.'); } catch(e) { setSearchError(String(e)); } }}>Save this search</button>
+              </details>
               {searchStep && (
                 <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-lg text-[11px] text-indigo-800 flex items-center gap-2">
                   <ArrowsClockwise className="w-3.5 h-3.5 animate-spin text-indigo-600" />
@@ -1081,14 +1037,14 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-slate-600">
                   <div><span className="text-slate-400">Location:</span> <span className="font-medium text-slate-800">{diagnostics.resolvedLocation || 'N/A'}</span></div>
-                  <div><span className="text-slate-400">Raw OSM:</span> <span className="font-medium text-slate-800">{diagnostics.rawResultsCount}</span></div>
+                  <div><span className="text-slate-400">Source records:</span> <span className="font-medium text-slate-800">{diagnostics.rawResultsCount}</span></div>
                   <div><span className="text-slate-400">Duplicates:</span> <span className="font-medium text-slate-800">{diagnostics.duplicatesRemoved}</span></div>
                   <div><span className="text-slate-400">Scored:</span> <span className="font-medium text-slate-800">{diagnostics.normalizedCount}</span></div>
                   {diagnostics.sources && (
                     <div className="col-span-2 md:col-span-4 flex flex-wrap gap-1.5 pt-0.5">
                       {Object.entries(diagnostics.sources).map(([name, s]) => (
                         <span key={name} className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${s.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
-                          {name === 'overpass' ? 'Map data' : 'Keyword index'}: {s.error ? 'unavailable' : `${s.normalized} found`}
+                          {name === 'overpass' ? 'Map data' : name === 'searxng' ? 'SearXNG' : 'Self-hosted keyword index'}: {s.error ? 'unavailable' : `${s.normalized} found`}
                         </span>
                       ))}
                     </div>
@@ -1105,7 +1061,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {leads.map((lead, idx) => {
-                    const oppScore = lead.opportunityScore ?? 0;
+                    const oppScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 0;
                     const isSaving = savingLeadId === lead.businessName;
                     return (
                       <div key={`${lead.businessName}-${idx}`} className="bg-white rounded-xl border border-slate-200 p-4 space-y-3 hover:shadow-sm transition">
@@ -1118,13 +1074,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <ScoreBadge score={oppScore} label="Priority" />
+                            <ScoreBadge score={oppScore} label="Fit" />
                           </div>
                         </div>
 
                         <div className="p-2.5 bg-slate-50 rounded-lg text-[11px] space-y-1 border border-slate-100">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold text-slate-500 uppercase text-[10px] tracking-wider">Verified Facts</span>
+                            <span className="font-bold text-slate-500 uppercase text-[10px] tracking-wider">Source observations</span>
                             <span className="text-[10px] text-slate-400 flex items-center gap-1"><Globe className="w-2.5 h-2.5" /> Source: {lead.dataSource === 'openstreetmap' ? 'OpenStreetMap' : lead.dataSource}</span>
                           </div>
                           {lead.address && <div className="flex items-center gap-1.5 text-slate-600"><MapPin className="w-3 h-3 text-slate-400" /> {lead.address}</div>}
@@ -1225,10 +1181,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </div>
                 <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-700 bg-white">
                   <option value="all">All Statuses</option>
-                  <option value="new">New</option>
-                  <option value="contacted">Contacted</option>
-                  <option value="qualified">Qualified</option>
-                  <option value="disqualified">Disqualified</option>
+                  {LEAD_PIPELINE.map((state) => <option key={state} value={state}>{state.replaceAll('_', ' ')}</option>)}
+                  <option value="disqualified">Disqualified (legacy)</option>
                 </select>
               </div>
             </div>
@@ -1291,10 +1245,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           <td className="py-2.5 px-3"><ScoreBadge score={l.opportunityScore ?? 0} label="Priority" /></td>
                           <td className="py-2.5 px-3">
                             <select value={l.status} onChange={(e) => handleUpdateLeadStatus(l.id, e.target.value)} className="px-1.5 py-0.5 rounded border border-slate-200 text-[10px] font-semibold bg-white focus:outline-none">
-                              <option value="new">New</option>
-                              <option value="contacted">Contacted</option>
-                              <option value="qualified">Qualified</option>
-                              <option value="disqualified">Disqualified</option>
+                              {LEAD_PIPELINE.map((state) => <option key={state} value={state}>{state.replaceAll('_', ' ')}</option>)}
+                              {!LEAD_PIPELINE.includes(l.status as typeof LEAD_PIPELINE[number]) && <option value={l.status}>{l.status}</option>}
                             </select>
                           </td>
                           <td className="py-2.5 px-3 text-right">
@@ -1346,11 +1298,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Multi-Category Market Research</h3>
-              <p className="text-[11px] text-slate-500">Run continuous batch discovery across all target categories for a specific geographic market.</p>
+              <p className="text-[11px] text-slate-500">Choose a relevant buyer category and location. Searches are bounded and respect shared provider pacing.</p>
             </div>
             <div className="p-3 bg-indigo-50/60 rounded-lg border border-indigo-100 text-[11px] text-indigo-950">
               <span className="font-bold block mb-1.5">Automated Scan Categories:</span>
-              <div className="flex flex-wrap gap-1">{['Feed Store', 'Farm Supply', 'Equestrian Store', 'Supermarket', 'Veterinary'].map((c) => (<span key={c} className="px-2 py-0.5 rounded bg-white font-medium text-slate-700 border border-indigo-200/70">{c}</span>))}</div>
+              <div className="flex flex-wrap gap-1">{BUYER_CATEGORIES.map((c) => (<span key={c} className="px-2 py-0.5 rounded bg-white font-medium text-slate-700 border border-indigo-200/70">{c}</span>))}</div>
             </div>
             <div className="flex items-center gap-2">
               <input type="text" name="researchRegion" aria-label="Target research region" placeholder="Target Region (e.g. Texas, Montana, Kentucky)" value={researchRegion} onChange={(e) => setResearchRegion(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium" />
@@ -1389,6 +1341,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         {/* ══════════ CLIENT OUTREACH TAB ══════════ */}
         {activeTab === 'outreach' && (
           <div className="space-y-4">
+            <LeadIntelligencePanel key={activeOutreachLeadId || 'workspace'} initialLeadId={activeOutreachLeadId} headers={getAuthHeaders} onSavedSearch={(saved) => { setCategory(saved.category || 'Feed Store'); setLocation(saved.location || 'Houston, TX'); setProductInterest(saved.productInterest || 'horse_salt'); setKeyword(saved.keyword || ''); setMaxResults(saved.maxResults || 15); setRadiusKm(saved.radiusKm || 25); setSearchDepth(saved.searchDepth || 1); setRequireWebsite(Boolean(saved.requireWebsite)); setRequirePhone(Boolean(saved.requirePhone)); setRequireEmail(Boolean(saved.requireEmail)); setExcludeSaved(Boolean(saved.excludeSaved)); setExcludeContacted(Boolean(saved.excludeContacted)); setWholesaleOnly(Boolean(saved.wholesaleOnly)); setPrivateLabelOnly(Boolean(saved.privateLabelOnly)); changeTab('find'); }} />
+
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -1399,7 +1353,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
               <div className="mt-3 p-3 bg-amber-50/70 border border-amber-200/80 rounded-lg text-[11px] text-amber-900 flex items-start gap-2">
                 <WarningCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div><span className="font-bold block text-amber-950">Safety Mode Active [SIMULATION]</span><p className="mt-0.5 text-amber-800">Outbound emails on staging are logged to audit trail. No emails transmitted externally unless production API key is configured.</p></div>
+                <div><span className="font-bold block text-amber-950">Safety Mode Active [SIMULATION]</span><p className="mt-0.5 text-amber-800">Outbound emails on staging are logged to audit trail. This preview never sends email. Persistent reviewed drafts above use the separately gated n8n workflow.</p></div>
               </div>
             </div>
 
@@ -1445,7 +1399,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[10px] text-slate-500">Sender: <span className="font-semibold text-slate-700">sales@himalayankoh.com</span></span>
                     <button type="submit" disabled={sendingOutreach} className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5">
-                      {sendingOutreach ? (<><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Sending...</>) : (<><PaperPlaneRight className="w-3.5 h-3.5" /> Send Outreach</>)}
+                      {sendingOutreach ? (<><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Sending...</>) : (<><PaperPlaneRight className="w-3.5 h-3.5" /> Preview simulation</>)}
                     </button>
                   </div>
                 </form>
@@ -1491,7 +1445,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 font-mono space-y-0.5">
                 <div className="font-bold text-slate-800">Database Namespacing:</div>
                 <div className="text-slate-600">All tables prefixed: leados_*</div>
-                <div className="text-slate-600">Row Level Security: Enabled</div>
+                <div className="text-slate-600">Access control: WordPress administrator capability + storefront admin RBAC</div>
               </div>
               <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 font-mono space-y-0.5">
                 <div className="font-bold text-slate-800">Lead Data Sources:</div>

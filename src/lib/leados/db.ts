@@ -46,11 +46,11 @@ export const HK_DEFAULT_PROJECT: LeadOSProject = {
   id: HK_DEFAULT_PROJECT_ID,
   workspaceId: HK_DEFAULT_WORKSPACE_ID,
   name: 'Himalayan Koh — B2B Salt & Minerals',
-  website: 'https://preview.himalayankoh.com',
+  website: 'https://himalayankoh.com',
   shortDescription:
-    'Wholesale & B2B distribution of Himalayan rock salt animal licks and bulk culinary salt.',
+    'B2B inquiries for active Himalayan salt licks, livestock bags and the edible jar.',
   productService:
-    'Natural animal mineral salt licks (rope, carved, block), bulk organic pink salt, spa/bath minerals.',
+    'Active 2 lb and 30 lb salt licks, 6 lb livestock pouch, 45 lb livestock bag, and 16 oz edible jar. Private-label services require confirmation.',
   targetCustomerDescription:
     'Feed and farm supply retailers, livestock & equine ranches, animal health stores, food co-ops, and bulk spice/salt distributors.',
   industries: [
@@ -111,15 +111,16 @@ export const HK_DEFAULT_PROJECT: LeadOSProject = {
 type RawRow = Record<string, any>;
 
 /** A WordPress read/write against the app's own namespace. */
-async function leadosRequest<T>(
+export async function leadosRequest<T>(
   path: string,
-  options: { method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown; params?: Record<string, string | number | undefined> } = {}
+  options: { method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown; params?: Record<string, string | number | undefined>; timeoutMs?: number } = {}
 ): Promise<T> {
   return wordpressRequest<T>(`/leados/v1${path}`, {
     method: options.method ?? 'GET',
     body: options.body,
     params: options.params,
     credentials: requireWordPressCredentials(),
+    timeoutMs: options.timeoutMs,
   });
 }
 
@@ -191,6 +192,10 @@ function toSavedLead(row: RawRow): SavedLeadRecord {
     phone: row.phone,
     email: row.email,
     emailSource: row.email_source || (row.email ? 'discovered_osm' : undefined),
+    research: row.research || {},
+    dataSource: row.data_source,
+    osmType: row.osm_type,
+    osmId: row.osm_id,
     opportunityScore: row.opportunity_score === null || row.opportunity_score === undefined
       ? null
       : Number(row.opportunity_score),
@@ -314,6 +319,7 @@ export async function saveLeadToLibrary(
     osm_id: lead.osmId,
     osm_url: lead.osmUrl,
     data_source: lead.dataSource || 'openstreetmap',
+    research: lead.research || {},
     opportunity_score: lead.opportunityScore ?? null,
     opportunity_signals: lead.opportunitySignals || [],
     tags: lead.category ? [lead.category] : [],
@@ -388,6 +394,8 @@ export async function updateSavedLead(
     }
     if (patch.phone !== undefined) body.phone = patch.phone;
     if (patch.website !== undefined) body.website = patch.website;
+    for (const field of ['address','city','region','country'] as const) if (patch[field] !== undefined) body[field] = patch[field];
+    if (patch.research !== undefined) body.research = patch.research;
 
     const response = await leadosRequest<{ lead?: RawRow | null }>(
       `/leads/${encodeURIComponent(id)}`,
@@ -417,9 +425,11 @@ export async function recordSearchExecution(entry: {
   category: string;
   location: string;
   resultsCount: number;
+  executionId?: string;
+  initialKeys?: string[];
 }): Promise<void> {
   try {
-    await leadosRequest('/searches', { method: 'POST', body: entry });
+    await leadosRequest(entry.executionId ? '/workflow' : '/searches', { method: 'POST', body: entry.executionId ? { action: 'search_history', id: entry.executionId, resultsCount: entry.resultsCount, ...(entry.initialKeys ? { initialKeys: entry.initialKeys } : {}) } : entry });
   } catch (error) {
     throw describe('LeadOS search history write', error);
   }

@@ -168,6 +168,8 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
   mirrorLoop:
   for (const mirror of OVERPASS_URLS) {
     for (let attempt = 1; attempt <= 2; attempt++) {
+      const remainingMs = 45000 - (Date.now() - start);
+      if (remainingMs < 1000) { lastError = 'Overpass search exceeded its bounded time budget.'; break mirrorLoop; }
       try {
         res = await fetch(mirror, {
           method: 'POST',
@@ -176,7 +178,7 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
             'User-Agent': 'LeadOS-HimalayanKoh/1.0',
           },
           body: `data=${encodeURIComponent(query)}`,
-          signal: AbortSignal.timeout(25000),
+          signal: AbortSignal.timeout(Math.min(25000, remainingMs)),
         });
 
         if (res.ok) break mirrorLoop;
@@ -251,6 +253,7 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
         osmId,
         osmUrl: `https://www.openstreetmap.org/${osmType}/${osmId}`,
         dataSource: 'openstreetmap',
+        research: { sources: [{ url: `https://www.openstreetmap.org/${osmType}/${osmId}`, retrievedAt: new Date().toISOString(), kind: 'openstreetmap', status: 'verified', excerpt: `${name}; mapped shop=${elTags.shop || ''}, amenity=${elTags.amenity || ''}; ${addr.address || ''} ${addr.city || ''} ${addr.region || ''}` }] },
       };
 
       if (input.requireWebsite && !lead.website) continue;
@@ -292,6 +295,11 @@ export async function searchNominatimKeywords(
   maxResults: number,
   category: string
 ): Promise<{ leads: NormalizedLead[]; rawCount: number; error: string | null }> {
+  // A delay alone does not make systematic POI harvesting compliant. Keep this
+  // proven parser for operator-owned installations; public Nominatim is geocoding only.
+  if (new URL(NOMINATIM_URL).hostname === 'nominatim.openstreetmap.org') {
+    return { leads: [], rawCount: 0, error: 'Public Nominatim keyword harvesting is disabled; configure self-hosted search.' };
+  }
   const q = `${keyword.trim()} near ${location.trim()}`;
   try {
     // Nominatim usage policy: at most 1 request/second per client.

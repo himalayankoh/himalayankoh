@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — LeadOS & CRM
  * Description:       Custom tables and REST endpoints for the LeadOS prospect engine and the CRM lead inbox. This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the leados/v1 and crm/v1 namespaces below.
- * Version:           1.0.0
+ * Version:           2.0.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -39,9 +39,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_LEADOS_VERSION', '1.0.0' );
+define( 'HK_LEADOS_VERSION', '2.0.0' );
 define( 'HK_LEADOS_WORKSPACE_ID', '00000000-0000-0000-0000-000000000001' );
 define( 'HK_LEADOS_DEFAULT_PROJECT_ID', '00000000-0000-0000-0000-000000000002' );
+require_once __DIR__ . '/himalayan-koh-leados-intelligence.php';
+add_action( 'plugins_loaded', function () {
+	if ( get_option( 'hk_leados_db_version' ) !== HK_LEADOS_VERSION ) { hk_leados_install(); }
+} );
 
 /** Columns that hold JSON text and are decoded on the way out. */
 function hk_leados_json_columns() {
@@ -122,6 +126,8 @@ function hk_leados_install() {
 		osm_id varchar(64) DEFAULT NULL,
 		osm_url varchar(255) DEFAULT NULL,
 		data_source varchar(64) DEFAULT NULL,
+		dedupe_key varchar(64) DEFAULT NULL,
+		research longtext DEFAULT NULL,
 		opportunity_score decimal(6,2) DEFAULT NULL,
 		opportunity_signals longtext DEFAULT NULL,
 		status varchar(32) NOT NULL DEFAULT 'new',
@@ -133,6 +139,7 @@ function hk_leados_install() {
 		updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY  (id),
 		KEY workspace_status (workspace_id, status),
+		UNIQUE KEY workspace_identity (workspace_id, dedupe_key),
 		KEY osm_lookup (workspace_id, data_source, osm_type, osm_id),
 		KEY business_name (business_name)
 	) $charset;";
@@ -196,6 +203,20 @@ function hk_leados_install() {
 		KEY coupon_used (coupon_used)
 	) $charset;";
 
+	$sql[] = "CREATE TABLE {$p}leados_workflows (
+		id varchar(36) NOT NULL,
+		workspace_id varchar(36) NOT NULL,
+		kind varchar(32) NOT NULL,
+		lead_id varchar(36) DEFAULT NULL,
+		state varchar(32) NOT NULL DEFAULT 'draft',
+		revision int NOT NULL DEFAULT 1,
+		payload longtext NOT NULL,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (id),
+		KEY workspace_kind (workspace_id, kind),
+		KEY lead_state (lead_id, state)
+	) $charset;";
 	foreach ( $sql as $statement ) {
 		dbDelta( $statement );
 	}
@@ -236,9 +257,9 @@ function hk_leados_ensure_default_rows() {
 			'id'                            => HK_LEADOS_DEFAULT_PROJECT_ID,
 			'workspace_id'                  => HK_LEADOS_WORKSPACE_ID,
 			'name'                          => 'Himalayan Koh — B2B Salt & Minerals',
-			'website'                       => 'https://preview.himalayankoh.com',
-			'short_description'             => 'Wholesale & B2B distribution of Himalayan rock salt animal licks and bulk culinary salt.',
-			'product_service'               => 'Natural animal mineral salt licks (rope, carved, block), bulk organic pink salt, spa/bath minerals.',
+			'website'                       => 'https://himalayankoh.com',
+			'short_description'             => 'B2B inquiries for active Himalayan salt licks, livestock bags and the edible jar.',
+			'product_service'               => 'Active 2 lb and 30 lb salt licks, 6 lb livestock pouch, 45 lb livestock bag, and 16 oz edible jar. Private-label services require confirmation.',
 			'target_customer_description'   => 'Feed and farm supply retailers, livestock & equine ranches, animal health stores, food co-ops, and bulk spice/salt distributors.',
 			'industries'                    => wp_json_encode( array( 'Agriculture', 'Livestock & Equine', 'Farm Supplies', 'Wholesale & Distribution', 'Specialty Retail' ) ),
 			'business_categories'           => wp_json_encode( array( 'Feed Store', 'Farm Supply', 'Equestrian Store', 'Veterinary', 'Supermarket' ) ),
@@ -266,6 +287,9 @@ function hk_leados_decode_row( $table, $row ) {
 		return $row;
 	}
 	$json_columns = hk_leados_json_columns();
+	if ( 'leados_leads' === $table ) {
+		$row['research'] = json_decode( $row['research'] ?? '{}', true ) ?: array();
+	}
 	foreach ( ( $json_columns[ $table ] ?? array() ) as $column ) {
 		if ( isset( $row[ $column ] ) && is_string( $row[ $column ] ) && '' !== $row[ $column ] ) {
 			$decoded = json_decode( $row[ $column ], true );
@@ -704,7 +728,7 @@ function hk_leados_save_lead( WP_REST_Request $request ) {
 	$body = $request->get_json_params() ?: array();
 	$lead = $body['lead'] ?? $body;
 
-	$workspace = $lead['workspace_id'] ?? HK_LEADOS_WORKSPACE_ID;
+	$workspace = HK_LEADOS_WORKSPACE_ID;
 	$provider  = ! empty( $lead['osm_url'] ) ? 'openstreetmap' : ( $lead['data_source'] ?? 'unknown' );
 
 	$payload = array(
@@ -725,6 +749,8 @@ function hk_leados_save_lead( WP_REST_Request $request ) {
 		'osm_id'              => $lead['osm_id'] ?? null,
 		'osm_url'             => $lead['osm_url'] ?? null,
 		'data_source'         => $provider,
+		'research'            => wp_json_encode( hk_leados2_clean_research( $lead['research'] ?? array() ) ),
+		'dedupe_key'          => hk_leados2_identity( $lead ),
 		'opportunity_score'   => isset( $lead['opportunity_score'] ) ? $lead['opportunity_score'] : null,
 		'opportunity_signals' => $lead['opportunity_signals'] ?? array(),
 		'tags'                => $lead['tags'] ?? array(),
@@ -735,8 +761,13 @@ function hk_leados_save_lead( WP_REST_Request $request ) {
 		return new WP_Error( 'hk_leados_invalid', 'business_name is required.', array( 'status' => 400 ) );
 	}
 
-	$existing_id = null;
-	if ( ! empty( $payload['osm_type'] ) && ! empty( $payload['osm_id'] ) ) {
+	$lock_name = 'hklo2_' . substr( $payload['dedupe_key'], 0, 48 );
+	if ( '1' !== (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 3)', $lock_name ) ) ) {
+		return new WP_Error( 'hk_leados_busy', 'Another save is in progress; retry later.', array( 'status' => 409 ) );
+	}
+	try {
+	$existing_id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$p}leados_leads WHERE workspace_id = %s AND dedupe_key = %s LIMIT 1", $workspace, $payload['dedupe_key'] ) );
+	if ( ! $existing_id && ! empty( $payload['osm_type'] ) && ! empty( $payload['osm_id'] ) ) {
 		$existing_id = $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT id FROM {$p}leados_leads
@@ -754,6 +785,15 @@ function hk_leados_save_lead( WP_REST_Request $request ) {
 		// Deliberately not touching status/notes/starred/tags — those are the
 		// owner's, and a re-search must not quietly undo their triage.
 		unset( $payload['tags'] );
+		$prior = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$p}leados_leads WHERE id = %s", $existing_id ), ARRAY_A );
+		$old_research = json_decode( $prior['research'] ?? '{}', true ) ?: array();
+		$new_research = json_decode( $payload['research'], true ) ?: array();
+		$old_research['sources'] = hk_leados2_merge_sources( $old_research['sources'] ?? array(), $new_research['sources'] ?? array() );
+		$payload['research'] = wp_json_encode( $old_research );
+		// Rediscovery cannot overwrite hand-edited contact information.
+		foreach ( array( 'email', 'phone', 'website', 'email_source', 'address', 'city', 'region', 'country' ) as $contact_field ) {
+			if ( ! empty( $prior[ $contact_field ] ) ) { unset( $payload[ $contact_field ] ); }
+		}
 		$wpdb->update( "{$p}leados_leads", hk_leados_encode_payload( 'leados_leads', $payload ), array( 'id' => $existing_id ) );
 		$lead_id = $existing_id;
 	} else {
@@ -763,7 +803,9 @@ function hk_leados_save_lead( WP_REST_Request $request ) {
 		$payload['starred']    = ! empty( $lead['starred'] ) ? 1 : 0;
 		$payload['notes']      = $lead['notes'] ?? null;
 		$payload['discovered_at'] = current_time( 'mysql', true );
-		$wpdb->insert( "{$p}leados_leads", hk_leados_encode_payload( 'leados_leads', $payload ) );
+		if ( false === $wpdb->insert( "{$p}leados_leads", hk_leados_encode_payload( 'leados_leads', $payload ) ) ) {
+			return new WP_Error( 'hk_leados_write', 'Lead save failed.', array( 'status' => 500 ) );
+		}
 	}
 
 	$project_id = $body['projectId'] ?? null;
@@ -789,6 +831,7 @@ function hk_leados_save_lead( WP_REST_Request $request ) {
 
 	$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$p}leados_leads WHERE id = %s", $lead_id ), ARRAY_A );
 	return rest_ensure_response( array( 'lead' => hk_leados_decode_row( 'leados_leads', hk_leados_attach_projects( $row ) ) ) );
+	} finally { $wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) ); }
 }
 
 /** Adds the `leados_project_leads` member the app's mapper reads. */
@@ -878,7 +921,10 @@ function hk_leados_update_lead( WP_REST_Request $request ) {
 	$id   = $request['id'];
 	$body = $request->get_json_params() ?: array();
 
-	$allowed = array( 'status', 'starred', 'notes', 'tags', 'email', 'phone', 'website' );
+	$allowed = array( 'status', 'starred', 'notes', 'tags', 'email', 'phone', 'website', 'research', 'address', 'city', 'region', 'country' );
+	if ( isset( $body['status'] ) && ! in_array( $body['status'], hk_leados2_pipeline(), true ) ) {
+		return new WP_Error( 'hk_leados_status', 'Invalid pipeline status.', array( 'status' => 400 ) );
+	}
 	$payload = array();
 
 	foreach ( $allowed as $field ) {
@@ -891,6 +937,10 @@ function hk_leados_update_lead( WP_REST_Request $request ) {
 		}
 		if ( 'tags' === $field ) {
 			$payload['tags'] = wp_json_encode( array_values( (array) $body[ $field ] ) );
+			continue;
+		}
+		if ( 'research' === $field ) {
+			$payload['research'] = wp_json_encode( hk_leados2_clean_research( $body[$field] ) );
 			continue;
 		}
 		$payload[ $field ] = $body[ $field ];

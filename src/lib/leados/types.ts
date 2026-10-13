@@ -1,3 +1,20 @@
+export type ProductInterest = 'horse_salt' | 'livestock_salt' | 'culinary_salt' | 'bulk_wholesale' | 'private_label';
+export interface SourceEvidence { url: string; retrievedAt: string; kind: string; status: 'verified' | 'inferred' | 'not_found'; excerpt?: string; }
+export interface LeadResearch {
+  publicCompanyName?: string;
+  sources?: SourceEvidence[];
+  contactPage?: string | null;
+  lastVerifiedAt?: string;
+  productInterest?: ProductInterest;
+  assignedOwner?: string;
+  nextFollowUp?: string;
+  requestedQuantity?: string;
+  packagingPreference?: string;
+  buyerQuestions?: string;
+  quoteRequired?: boolean;
+  qualification?: { score: number; reasons: string[]; breakdown: Record<string, number>; interest: ProductInterest; qualified: boolean };
+  errors?: string[];
+}
 export interface NormalizedLead {
   businessName: string;
   category: string;
@@ -8,7 +25,8 @@ export interface NormalizedLead {
   website: string | null;
   phone: string | null;
   email: string | null;
-  emailSource?: 'discovered_osm' | 'manually_entered' | 'unverified';
+  emailSource?: 'discovered_osm' | 'company_website' | 'manually_entered' | 'unverified';
+  research?: LeadResearch;
   latitude: number | null;
   longitude: number | null;
   osmType: string | null;
@@ -27,6 +45,16 @@ export interface LeadSearchInput {
   requirePhone?: boolean;
   nodeOnly?: boolean;
   radiusKm?: number;
+  productInterest?: ProductInterest;
+  requireEmail?: boolean;
+  excludeSaved?: boolean;
+  excludeContacted?: boolean;
+  searchDepth?: number;
+  country?: string;
+  state?: string;
+  city?: string;
+  wholesaleOnly?: boolean;
+  privateLabelOnly?: boolean;
 }
 
 export interface ProjectFitResult {
@@ -78,6 +106,7 @@ export interface SearchDiagnostics {
   aiFailures?: number;
   responseTimeMs: number;
   errorSummary: string | null;
+  queuedJobId?: string;
 }
 
 export interface LeadOSProject {
@@ -134,7 +163,11 @@ export interface SavedLeadRecord {
   website: string | null;
   phone: string | null;
   email: string | null;
-  emailSource?: 'discovered_osm' | 'manually_entered' | 'unverified';
+  emailSource?: 'discovered_osm' | 'company_website' | 'manually_entered' | 'unverified';
+  research?: LeadResearch;
+  dataSource?: string;
+  osmType?: string | null;
+  osmId?: string | null;
   opportunityScore: number | null;
   opportunitySignals: string[] | null;
   evidence?: {
