@@ -1234,7 +1234,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                             {l.email ? (
                               <div className="flex flex-col gap-0.5">
                                 <span className="font-medium text-slate-900">{l.email}</span>
-                                <StatusPill status={l.emailSource === 'manually_entered' ? 'qualified' : 'new'} />
+                                <span className={`text-[10px] ${l.emailSource === 'company_website' ? 'text-emerald-700' : 'text-amber-800'}`}>{l.emailSource === 'company_website' ? 'Published on company website' : l.emailSource === 'manually_entered' ? 'Owner entered — unverified' : l.emailSource === 'discovered_osm' ? 'OSM record — unverified' : 'Unverified'}</span>
                               </div>
                             ) : (
                               <button onClick={() => handleOpenEmailModal(l)} className="text-indigo-600 hover:underline flex items-center gap-1 font-medium"><Plus className="w-3 h-3" /> Add</button>
@@ -1243,7 +1243,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           <td className="py-2.5 px-3">
                             {l.website ? <a href={l.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline flex items-center gap-1 max-w-[120px] truncate">{l.website.replace(/^https?:\/\//, '')} <ArrowSquareOut className="w-2.5 h-2.5" /></a> : <span className="text-slate-300">—</span>}
                           </td>
-                          <td className="py-2.5 px-3"><ScoreBadge score={l.opportunityScore ?? 0} label="Priority" /></td>
+                          <td className="py-2.5 px-3">{l.research?.qualification ? <ScoreBadge score={l.research.qualification.score} label="Fit" /> : l.opportunityScore != null ? <ScoreBadge score={l.opportunityScore} label="Priority" /> : <span className="text-slate-500">Not assessed</span>}</td>
                           <td className="py-2.5 px-3">
                             <select value={l.status} onChange={(e) => handleUpdateLeadStatus(l.id, e.target.value)} className="px-1.5 py-0.5 rounded border border-slate-200 text-[10px] font-semibold bg-white focus:outline-none">
                               {LEAD_PIPELINE.map((state) => <option key={state} value={state}>{state.replaceAll('_', ' ')}</option>)}
