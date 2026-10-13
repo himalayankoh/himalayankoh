@@ -12,11 +12,27 @@ describe('LeadOS search planner', () => {
     expect(r.plan.keyword).toContain('cattle');
   });
 
-  it('parses City, ST without mistaking words like "in"/"or" for states', () => {
+  it('maps misspelled ranch query with zip code without AI', async () => {
+    const ask = vi.fn();
+    const r = await planLeadSearch('raches ower details neary by 77065 10 km', { ask });
+    expect(ask).not.toHaveBeenCalled();
+    expect(r.source).toBe('rules');
+    expect(r.plan).toMatchObject({
+      category: 'Ranch & Horse Facility',
+      location: 'Houston, TX',
+      productInterest: 'horse_salt',
+      requirePhone: true,
+    });
+    expect(r.plan.keyword).toContain('ranch');
+  });
+
+  it('parses City, ST and ZIP codes without mistaking words like "in"/"or" for states', () => {
     expect(extractLocation('feed stores in Ocala, FL')).toBe('Ocala, FL');
     expect(extractLocation('tack shops near Billings, MT please')).toBe('Billings, MT');
     expect(extractLocation('farms, or cows')).toBe('');
     expect(extractLocation('ranches, in houston')).toBe('Houston, TX');
+    expect(extractLocation('ranches near 77065 10 km')).toBe('Houston, TX');
+    expect(extractLocation('distributors in 75201')).toBe('Dallas, TX');
     expect(extractLocation('distributors across Kansas City')).toBe('Kansas City, MO');
     expect(extractLocation('salt importers nationwide')).toBe('USA');
   });

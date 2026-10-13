@@ -172,7 +172,7 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
   mirrorLoop:
   for (const mirror of OVERPASS_URLS) {
     for (let attempt = 1; attempt <= 2; attempt++) {
-      const remainingMs = 45000 - (Date.now() - start);
+      const remainingMs = 12000 - (Date.now() - start);
       if (remainingMs < 1000) { lastError = 'Overpass search exceeded its bounded time budget.'; break mirrorLoop; }
       try {
         res = await fetch(mirror, {
@@ -182,7 +182,7 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
             'User-Agent': 'LeadOS-HimalayanKoh/1.0',
           },
           body: `data=${encodeURIComponent(query)}`,
-          signal: AbortSignal.timeout(Math.min(25000, remainingMs)),
+          signal: AbortSignal.timeout(Math.min(6000, remainingMs)),
         });
 
         if (res.ok) break mirrorLoop;
@@ -191,7 +191,7 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
           rateLimited = true;
           lastError = `Overpass rate limited (${res.status})`;
           if (attempt < 2) {
-            await new Promise((r) => setTimeout(r, 2000));
+            await new Promise((r) => setTimeout(r, 500));
             continue;
           }
         } else {
@@ -201,7 +201,7 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
       } catch (err) {
         lastError = err instanceof Error ? err.message : String(err);
         if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, 1500));
+          await new Promise((r) => setTimeout(r, 500));
         }
       }
     }

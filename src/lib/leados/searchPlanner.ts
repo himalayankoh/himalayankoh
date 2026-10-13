@@ -39,8 +39,8 @@ const CATEGORY_RULES: Array<[RegExp, string]> = [
   [/specialty\s+food|gourmet|grocer|food\s+distribut|culinary/i, 'Specialty Food Distributor'],
   [/\btack\b|saddle|equestrian\s+(?:store|shop)/i, 'Equestrian Store'],
   [/feed\s+(?:store|supply|supplies|mill|shop)|farm\s+(?:&|and)\s+feed/i, 'Feed Store'],
+  [/\branc?h(?:es)?\b|\brache?s?\b|stable|boarding|riding|horse\s+(?:train|farm|barn|cent|owner)|training\s+(?:area|cent|barn|facilit)|equestrian\s+(?:cent|facilit)|dairy|cattle|\bcows?\b|goat|sheep|\bfarms?\b/i, 'Ranch & Horse Facility'],
   [/farm\s+supply|ag(?:ricultural)?\s+supply|tractor|\bco-?op\b/i, 'Farm Supply'],
-  [/ranch|stable|boarding|riding|horse\s+(?:train|farm|barn|cent)|training\s+(?:area|cent|barn|facilit)|equestrian\s+(?:cent|facilit)|dairy|cattle|\bcows?\b|goat|sheep|\bfarms?\b/i, 'Ranch & Horse Facility'],
   [/livestock\s+(?:distribut|wholesal|supplier)|distributor/i, 'Livestock Distributor'],
   [/feed/i, 'Feed Store'],
 ];
@@ -48,7 +48,7 @@ const CATEGORY_RULES: Array<[RegExp, string]> = [
 const INTEREST_RULES: Array<[RegExp, ProductInterest]> = [
   [/private[\s-]?label/i, 'private_label'],
   [/culinary|food|spice|kitchen|edible|cooking|grocer/i, 'culinary_salt'],
-  [/horse|equine|equestrian|stable|riding|\btack\b/i, 'horse_salt'],
+  [/horse|equine|equestrian|stable|riding|\btack\b|\branc?h/i, 'horse_salt'],
   [/\bcows?\b|cattle|livestock|goat|sheep|dairy|deer/i, 'livestock_salt'],
   [/bulk|pallet|truckload/i, 'bulk_wholesale'],
 ];
@@ -77,9 +77,25 @@ const KNOWN_CITIES: Record<string, string> = {
   'oklahoma city': 'Oklahoma City, OK', tulsa: 'Tulsa, OK', nashville: 'Nashville, TN', phoenix: 'Phoenix, AZ', 'kansas city': 'Kansas City, MO',
 };
 
+const ZIP_PREFIXES: Array<[RegExp, string]> = [
+  [/\b77\d{3}\b/, 'Houston, TX'],
+  [/\b75\d{3}\b/, 'Dallas, TX'],
+  [/\b76\d{3}\b/, 'Fort Worth, TX'],
+  [/\b78\d{3}\b/, 'San Antonio, TX'],
+  [/\b79\d{3}\b/, 'Lubbock, TX'],
+  [/\b73\d{3}\b/, 'Oklahoma City, OK'],
+  [/\b80\d{3}\b/, 'Denver, CO'],
+  [/\b68\d{3}\b/, 'Omaha, NE'],
+  [/\b40\d{3}\b/, 'Lexington, KY'],
+  [/\b34\d{3}\b/, 'Ocala, FL'],
+  [/\b37\d{3}\b/, 'Nashville, TN'],
+  [/\b85\d{3}\b/, 'Phoenix, AZ'],
+];
+
 const KEYWORD_TERMS: Array<[RegExp, string]> = [
   [/horse|equine/i, 'horse'], [/\bcows?\b|cattle/i, 'cattle'], [/dairy/i, 'dairy'], [/goat/i, 'goat'], [/sheep/i, 'sheep'],
   [/boarding/i, 'boarding'], [/train/i, 'training'], [/rodeo/i, 'rodeo'], [/organic/i, 'organic'], [/deer|hunting/i, 'deer'],
+  [/\branc?h(?:es)?\b|\brache?s?\b/i, 'ranch'], [/owner|ower/i, 'owner'],
 ];
 
 const titleCase = (s: string) => s.replace(/\b[a-z]/g, (m) => m.toUpperCase());
@@ -100,6 +116,9 @@ export function extractLocation(text: string): string {
   // Longest names first so "kansas city" wins over "kansas".
   for (const name of Object.keys(KNOWN_CITIES).sort((a, b) => b.length - a.length)) {
     if (new RegExp(`\\b${name}\\b`).test(lower)) return KNOWN_CITIES[name];
+  }
+  for (const [re, city] of ZIP_PREFIXES) {
+    if (re.test(text)) return city;
   }
   for (const m of text.matchAll(/([A-Za-z][A-Za-z .'-]{1,60}?),\s*([A-Za-z]{2})\b/g)) {
     const code = m[2].toUpperCase();
@@ -129,7 +148,7 @@ export function rulesPlan(description: string, fallbackLocation = ''): PlanResul
       keyword,
       productInterest,
       requireWebsite: /website|\bsite\b|\bweb\b/i.test(text),
-      requirePhone: /phone|contact number|call/i.test(text),
+      requirePhone: /phone|contact\s+number|call|\bower\b|\bowner\b|\bcontact\b|\bdetails\b/i.test(text),
       requireEmail: /e-?mail/i.test(text),
       wholesaleOnly: /wholesal|distributor|bulk/i.test(text),
       privateLabelOnly: /private[\s-]?label/i.test(text),
@@ -143,7 +162,7 @@ export function rulesPlan(description: string, fallbackLocation = ''): PlanResul
 
 export function buildPlannerPrompt(description: string): string {
   return `Map this B2B lead-search request (any language) for a US Himalayan salt seller to JSON.
-c: one of ${BUYER_CATEGORIES.join('|')}
+c: one of Ranch & Horse Facility (ranches, stables, horse farms, cattle)|Feed Store|Farm Supply|Equestrian Store|Livestock Distributor|Salt Wholesaler|Spice Retailer|Specialty Food Distributor|Private Label Buyer
 i: one of ${PRODUCT_INTERESTS.join('|')}
 l: US "City, ST", state name, "USA", or ""
 k: up to 4 English search words not already implied by c, or ""
