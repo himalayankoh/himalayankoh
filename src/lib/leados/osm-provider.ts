@@ -224,6 +224,9 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
       const elTags = el.tags || {};
       const name = elTags.name || elTags['name:en'];
       if (!name) continue;
+      // OSM shop=farm also describes produce/CSA shops. Do not relabel those
+      // as feed stores merely because they matched the broad tag query.
+      if (input.category.toLowerCase()==='feed store' && elTags.shop==='farm' && !/feed|grain|livestock|agricultur|ranch supplies/i.test(`${name} ${elTags.description || ''}`)) continue;
 
       const lat = el.lat || el.center?.lat;
       const lon = el.lon || el.center?.lon;

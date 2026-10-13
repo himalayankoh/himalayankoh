@@ -63,6 +63,10 @@ describe('LeadOS 2 evidence and identity', () => {
     expect(discoveryQuery({category:'Private Label Buyer',location:'USA'})).toContain('Himalayan pink salt private label wholesale');
     expect(discoveryQuery({category:'Livestock Distributor',location:'Texas'})).toContain('livestock feed agricultural supply distributor');
   });
+  it('keeps actual equestrian companies and excludes the directories seen in Dallas QA',()=>{
+    const results=normalizeSearchResults([{title:'Dover Saddlery Dallas',url:'https://usa.wheretoride.horse/us/dallas/dover-saddlery',content:'Horse tack store'},{title:'Tack Shops in Dallas - NewHorse.com',url:'https://www.newhorse.com/page/tackshops/dallas',content:'Equestrian tack shops'},{title:'State - Texas',url:'https://stullfeeders.com/properties/list',content:'Feed suppliers'},{title:'Dover Saddlery English Tack',url:'https://www.doversaddlery.com/',content:'Horse tack supplier'}],{category:'Equestrian Store',location:'Dallas'},'2026-10-13');
+    expect(results.map(r=>r.website)).toEqual(['https://www.doversaddlery.com/']);
+  });
 });
 describe('Outbound configuration fails closed', () => {
   it('does not call n8n while disabled or unverified', async () => {

@@ -15,4 +15,8 @@ describe('Overpass response validity', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ elements: [] })));
     expect(await queryOverpass(input)).toMatchObject({ leads: [], rawCount: 0, error: null });
   });
+  it('does not label produce cooperatives as feed stores, but keeps observed feed suppliers',async()=>{
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({elements:[{type:'node',id:1,lat:29.76,lon:-95.36,tags:{name:'Plant It Forward',shop:'farm'}},{type:'node',id:2,lat:29.77,lon:-95.37,tags:{name:'Sam Houston Feed & Supply',shop:'farm'}},{type:'node',id:3,lat:29.78,lon:-95.38,tags:{name:'Agricultural Store',shop:'agrarian'}}]})));
+    expect((await queryOverpass(input)).leads.map(l=>l.businessName)).toEqual(['Sam Houston Feed & Supply','Agricultural Store']);
+  });
 });

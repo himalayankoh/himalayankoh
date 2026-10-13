@@ -24,9 +24,9 @@ export function normalizeSearchResults(results: WebSearchResult[], input: LeadSe
     const website = result.url ? publicCompanyUrl(result.url) : null;
     if (!website || !result.title || /directory|top \d|best \d|near me|yellow pages|mapquest/i.test(result.title)) continue;
     const candidateUrl = new URL(website);
-    if (/(^|\.)(?:whereorg|macraesbluebook|chamberofcommerce|manta|loc8nearme|visithoustontexas)\.com$/i.test(candidateUrl.hostname) || /\/(?:directory|businesses|listings)(?:\/|$)/i.test(candidateUrl.pathname) || /\/service\/.*\/location\//i.test(candidateUrl.pathname)) continue;
+    if (/(^|\.)(?:whereorg|macraesbluebook|chamberofcommerce|manta|loc8nearme|visithoustontexas|newhorse)\.com$/i.test(candidateUrl.hostname) || /(^|\.)wheretoride\.horse$/i.test(candidateUrl.hostname) || /\/(?:directory|businesses|listings)(?:\/|$)/i.test(candidateUrl.pathname) || /\/properties\/list(?:\/|$)/i.test(candidateUrl.pathname) || /\/service\/.*\/location\//i.test(candidateUrl.pathname)) continue;
     const text = `${result.title} ${result.content || ''}`;
-    if (!/feed|farm|ranch|equestrian|livestock|salt|spice|seasoning|food distribut/i.test(text)) continue;
+    if (!/feed|farm|ranch|equestrian|equine|horse|tack|saddlery|livestock|salt|spice|seasoning|food distribut/i.test(text)) continue;
     if (/software|marketing agency|restaurant/i.test(result.title)) continue;
     leads.push({
       businessName: result.title.split(/\s[|–—]\s/)[0].trim().slice(0, 200), category: input.category,
