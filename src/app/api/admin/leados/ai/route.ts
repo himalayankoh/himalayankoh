@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { analyzeLeadWithAI, scoreProjectFitWithAI, getAIProviderStatus, type LeadOSAIProvider } from '@/lib/leados/ai';
+import { analyzeLeadWithAI, scoreProjectFitWithAI, getAIProviderStatus, runPromptWithFallback, type LeadOSAIProvider } from '@/lib/leados/ai';
 import { getProjectById } from '@/lib/leados/db';
+import { planLeadSearch } from '@/lib/leados/searchPlanner';
 
 const VALID_PROVIDERS: LeadOSAIProvider[] = ['auto', 'gemini', 'openrouter', 'deepseek'];
 
@@ -36,6 +37,16 @@ export async function POST(request: Request) {
         model: status.gemini.configured ? status.gemini.model : status.openrouter.model,
         providers: status,
       });
+    }
+
+    if (action === 'plan_search') {
+      const description = typeof body.description === 'string' ? body.description : '';
+      if (!description.trim()) return NextResponse.json({ error: 'Describe who you want to find.' }, { status: 400 });
+      const result = await planLeadSearch(description, {
+        fallbackLocation: typeof body.location === 'string' ? body.location : '',
+        ask: (prompt) => runPromptWithFallback(prompt, provider, { maxOutputTokens: 120, json: true, temperature: 0 }),
+      });
+      return NextResponse.json({ ok: true, ...result }, { headers: { 'Cache-Control': 'private, no-store' } });
     }
 
     if (!lead || !lead.businessName) {

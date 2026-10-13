@@ -3,7 +3,7 @@ import type { NormalizedLead, LeadResearch, ProductInterest } from './types';
 
 export const LEAD_PIPELINE = ['new', 'researched', 'qualified', 'approved_for_outreach', 'contacted', 'replied', 'interested', 'quote_requested', 'negotiating', 'won', 'lost', 'do_not_contact'] as const;
 export const PRODUCT_INTERESTS: ProductInterest[] = ['horse_salt', 'livestock_salt', 'culinary_salt', 'bulk_wholesale', 'private_label'];
-export const BUYER_CATEGORIES = ['Feed Store', 'Farm Supply', 'Equestrian Store', 'Livestock Distributor', 'Salt Wholesaler', 'Specialty Food Distributor', 'Spice Retailer', 'Private Label Buyer'];
+export const BUYER_CATEGORIES = ['Feed Store', 'Farm Supply', 'Equestrian Store', 'Ranch & Horse Facility', 'Livestock Distributor', 'Salt Wholesaler', 'Specialty Food Distributor', 'Spice Retailer', 'Private Label Buyer'];
 
 /** These are catalog references, not guaranteed wholesale manufacturing capabilities. */
 export const OFFER_PROFILES: Record<ProductInterest, { label: string; productIds: string[]; caveat: string }> = {

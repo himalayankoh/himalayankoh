@@ -7,6 +7,7 @@ import { calculateDeterministicProjectFit } from '@/lib/leados/project-fit';
 import { getProjectById, recordSearchExecution, ensureDefaultProject, listSavedLeads, leadosRequest } from '@/lib/leados/db';
 import type { ScoredLead, ProductInterest } from '@/lib/leados/types';
 import type { LeadSearchInput } from '@/lib/leados/types';
+import { rulesPlan } from '@/lib/leados/searchPlanner';
 
 async function savedLibraryForDiscovery() {
   const first = await listSavedLeads({limit:200,page:1});
@@ -66,8 +67,16 @@ export async function POST(request: Request) {
     if (!location || typeof location !== 'string' || !location.trim()) {
       return NextResponse.json({ error: 'Valid target location is required (e.g. "Houston, TX" or "Montana")' }, { status: 400 });
     }
-    if (typeof category !== 'string' || !BUYER_CATEGORIES.includes(category.trim()) || location.length > 160) {
-      return NextResponse.json({error:'Choose a supported buyer category and a location under 160 characters.'},{status:400});
+    if (location.length > 160) {
+      return NextResponse.json({error:'Target location must be under 160 characters.'},{status:400});
+    }
+    // Free-text categories (old "custom" option, saved searches) map to the
+    // closest supported segment; the original words stay as the keyword.
+    let searchCategory = typeof category === 'string' ? category.trim().slice(0,80) : '';
+    let searchKeyword = typeof keyword === 'string' ? keyword.trim().slice(0,160) : '';
+    if (!BUYER_CATEGORIES.includes(searchCategory)) {
+      searchKeyword = [searchCategory, searchKeyword].filter(Boolean).join(' ').slice(0,160);
+      searchCategory = rulesPlan(searchKeyword).plan.category;
     }
 
     await ensureDefaultProject();
@@ -79,9 +88,9 @@ export async function POST(request: Request) {
     // Shared WordPress gate, rather than an isolate-local throttle.
     await leadosRequest('/research/gate', { method: 'POST', body: { operation: 'search' } });
     const { leads: rawLeads, diagnostics } = await discoverLeads({
-      category: category.trim(),
+      category: searchCategory,
       location: location.trim(),
-      keyword: typeof keyword === 'string' ? keyword.trim().slice(0,160) : '',
+      keyword: searchKeyword,
       maxResults: Math.min(Math.max(Number(maxResults) || 15,1),40),
       requireWebsite: Boolean(requireWebsite),
       requirePhone: Boolean(requirePhone),
@@ -147,7 +156,7 @@ export async function POST(request: Request) {
 
     // Record execution for search history
     await recordSearchExecution({
-      category,
+      category: searchCategory,
       location,
       resultsCount: scoredLeads.length,
       ...(diagnostics.queuedJobId ? {executionId:diagnostics.queuedJobId,initialKeys:scoredLeads.map(leadIdentity)} : {}),

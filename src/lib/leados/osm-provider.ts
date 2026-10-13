@@ -55,6 +55,10 @@ const DEFAULT_CATEGORY_MAPPINGS: Record<string, OsmTag[]> = {
     { key: 'shop', value: 'equestrian' },
     { key: 'shop', value: 'saddlery' },
   ],
+  'ranch & horse facility': [
+    { key: 'leisure', value: 'horse_riding' },
+    { key: 'place', value: 'farm' },
+  ],
   'supermarket': [
     { key: 'shop', value: 'supermarket' },
   ],

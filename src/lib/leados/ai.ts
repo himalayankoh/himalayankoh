@@ -96,13 +96,22 @@ export async function getAIProviderStatus(): Promise<
   };
 }
 
+/** Per-call generation limits. Defaults preserve the original behaviour. */
+export interface PromptOptions {
+  maxOutputTokens?: number;
+  /** Ask for raw JSON output (Gemini responseMimeType / OpenAI json mode). */
+  json?: boolean;
+  temperature?: number;
+}
+
 /**
  * Calls OpenRouter / DeepSeek chat completions API with strict error boundaries.
  */
 async function callChatCompletions(
   provider: 'openrouter' | 'deepseek',
   messages: Array<{ role: string; content: string }>,
-  modelOverride?: string
+  modelOverride?: string,
+  opts: PromptOptions = {}
 ): Promise<string> {
   const isDeepSeek = provider === 'deepseek';
   let apiKey = isDeepSeek ? getDeepSeekApiKey() : getOpenRouterApiKey();
@@ -146,8 +155,9 @@ async function callChatCompletions(
     body: JSON.stringify({
       model,
       messages,
-      temperature: 0.2,
-      max_tokens: 800,
+      temperature: opts.temperature ?? 0.2,
+      max_tokens: opts.maxOutputTokens ?? 800,
+      ...(opts.json ? { response_format: { type: 'json_object' } } : {}),
     }),
     signal: AbortSignal.timeout(15000),
   });
@@ -163,19 +173,27 @@ async function callChatCompletions(
 }
 
 /** Calls Google Gemini (generateContent) with the owner's saved Google key. */
-async function callGemini(prompt: string, modelOverride?: string): Promise<string> {
+async function callGemini(prompt: string, modelOverride?: string, opts: PromptOptions = {}): Promise<string> {
   const apiKey = await getGeminiApiKey();
   if (!apiKey) {
     throw new Error('Gemini API key is not configured on the server.');
   }
   const model = modelOverride || (await getGeminiModel());
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  // Small structured calls: disable hidden "thinking" tokens where the model
+  // allows it (2.5 Flash / Flash-Lite), otherwise they consume the budget.
+  const lean = opts.maxOutputTokens !== undefined && /2\.5-flash/i.test(model);
   const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 800 },
+      generationConfig: {
+        temperature: opts.temperature ?? 0.2,
+        maxOutputTokens: opts.maxOutputTokens ?? 800,
+        ...(opts.json ? { responseMimeType: 'application/json' } : {}),
+        ...(lean ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      },
     }),
     signal: AbortSignal.timeout(15000),
   });
@@ -199,16 +217,17 @@ function orderedProviders(requested: LeadOSAIProvider): Array<'gemini' | 'openro
 /** Runs one prompt against the first provider that answers. Remembers who answered. */
 export async function runPromptWithFallback(
   prompt: string,
-  provider: LeadOSAIProvider = 'auto'
+  provider: LeadOSAIProvider = 'auto',
+  opts: PromptOptions = {}
 ): Promise<{ text: string; providerUsed: 'gemini' | 'openrouter' | 'deepseek' }> {
   let lastError: unknown = null;
   for (const candidate of orderedProviders(provider)) {
     try {
       if (candidate === 'gemini') {
-        return { text: await callGemini(prompt), providerUsed: 'gemini' };
+        return { text: await callGemini(prompt, undefined, opts), providerUsed: 'gemini' };
       }
       return {
-        text: await callChatCompletions(candidate, [{ role: 'user', content: prompt }]),
+        text: await callChatCompletions(candidate, [{ role: 'user', content: prompt }], undefined, opts),
         providerUsed: candidate,
       };
     } catch (err) {

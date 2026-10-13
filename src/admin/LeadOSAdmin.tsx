@@ -43,6 +43,7 @@ import type {
 } from '@/lib/leados/types';
 import LeadIntelligencePanel from './LeadIntelligencePanel';
 import { BUYER_CATEGORIES, PRODUCT_INTERESTS, OFFER_PROFILES, LEAD_PIPELINE, createIntroduction, deduplicateLeads } from '@/lib/leados/intelligence';
+import type { SearchPlan } from '@/lib/leados/searchPlanner';
 import type { ProductInterest } from '@/lib/leados/types';
 import { parseLeadOSUrlState } from '@/lib/leados/urlState';
 
@@ -168,7 +169,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [category, setCategory] = useState('Feed Store');
   const searchGeneration = useRef(0);
   useEffect(() => () => { searchGeneration.current++; }, []);
-  const [customCategory, setCustomCategory] = useState('');
+  const [aiQuery, setAiQuery] = useState('');
+  const [planning, setPlanning] = useState(false);
+  const [planNote, setPlanNote] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
   const [location, setLocation] = useState('Houston, TX');
   const [researchRegion, setResearchRegion] = useState('Texas');
@@ -325,16 +328,17 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     }
   }, [activeTab, loadLibrary]);
 
-  // Handle lead search
-  const handleSearch = async (e?: React.FormEvent) => {
+  // Handle lead search. `o` lets the AI planner run with its values directly,
+  // instead of waiting for React state updates.
+  const handleSearch = async (e?: React.FormEvent, o: Partial<SearchPlan> = {}) => {
     const generation = ++searchGeneration.current;
     if (e) e.preventDefault();
-    const effectiveCategory = category === 'custom' ? customCategory : category;
-    if (!effectiveCategory.trim()) {
-      setSearchError('Please select or specify a business category.');
+    const q = { category, location, keyword, productInterest, searchDepth, excludeSaved, wholesaleOnly, privateLabelOnly, requireWebsite, requirePhone, requireEmail, ...o };
+    if (!q.category.trim()) {
+      setSearchError('Please select a business category.');
       return;
     }
-    if (!location.trim()) {
+    if (!q.location.trim()) {
       setSearchError('Please enter a target city, region, or state.');
       return;
     }
@@ -357,15 +361,15 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           ...headers,
         },
         body: JSON.stringify({
-          category: effectiveCategory,
-          location,
-          keyword: keyword.trim(),
-          productInterest, radiusKm, searchDepth, excludeSaved, excludeContacted, wholesaleOnly, privateLabelOnly, country: 'US',
+          category: q.category,
+          location: q.location,
+          keyword: q.keyword.trim(),
+          productInterest: q.productInterest, radiusKm, searchDepth: q.searchDepth, excludeSaved: q.excludeSaved, excludeContacted, wholesaleOnly: q.wholesaleOnly, privateLabelOnly: q.privateLabelOnly, country: 'US',
           projectId: selectedProjectId,
           maxResults,
-          requireWebsite,
-          requirePhone,
-          requireEmail,
+          requireWebsite: q.requireWebsite,
+          requirePhone: q.requirePhone,
+          requireEmail: q.requireEmail,
         }),
       });
 
@@ -399,6 +403,38 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       setSearchError(err.message || 'Error occurred during lead discovery');
     } finally {
       if (generation === searchGeneration.current) { setSearching(false); setSearchStep(''); }
+    }
+  };
+
+  // Describe-and-search: the server uses free rules first and calls Gemini
+  // only for unclear requests, with a tiny enum-bound JSON answer.
+  const planAndSearch = async (runAfter: boolean) => {
+    if (!aiQuery.trim()) {
+      setSearchError('Describe who you want to find, e.g. "ranches and horse training stables near Houston, TX".');
+      return;
+    }
+    setPlanning(true);
+    setSearchError(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/admin/leados/ai', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'plan_search', description: aiQuery, location }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.plan) throw new Error(data.error || 'Search planner is unavailable. Set the fields manually.');
+      const p: SearchPlan = { ...data.plan, location: data.plan.location || location };
+      setCategory(p.category); setLocation(p.location); setKeyword(p.keyword); setProductInterest(p.productInterest);
+      setRequireWebsite(p.requireWebsite); setRequirePhone(p.requirePhone); setRequireEmail(p.requireEmail);
+      setWholesaleOnly(p.wholesaleOnly); setPrivateLabelOnly(p.privateLabelOnly); setExcludeSaved(p.excludeSaved); setSearchDepth(p.searchDepth);
+      setPlanNote(data.source === 'ai' ? `Planned by AI (${data.provider || 'Gemini'})` : 'Planned instantly — 0 AI tokens');
+      setPlanning(false);
+      if (runAfter) await handleSearch(undefined, p);
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Search planner failed.');
+    } finally {
+      setPlanning(false);
     }
   };
 
@@ -948,17 +984,47 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </select>
               </div>
 
+              <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-violet-50 p-4 space-y-2.5">
+                <label htmlFor="leados-ai-query" className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
+                  <Sparkle weight="fill" className="w-4 h-4 text-indigo-600" /> Describe who you want to find
+                </label>
+                <textarea
+                  id="leados-ai-query"
+                  rows={2}
+                  maxLength={300}
+                  value={aiQuery}
+                  onChange={(e) => setAiQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void planAndSearch(true); } }}
+                  placeholder='e.g. "Ranches and horse training stables near Houston, TX with a website" (English or Roman Urdu)'
+                  className="w-full px-3 py-2 rounded-lg border border-indigo-200 bg-white text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button id="leados-ai-plan-search" type="button" disabled={planning || searching} onClick={() => void planAndSearch(true)} className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition">
+                    {planning ? <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> : <Sparkle weight="fill" className="w-3.5 h-3.5" />} Plan &amp; Search
+                  </button>
+                  <button id="leados-ai-plan-only" type="button" disabled={planning || searching} onClick={() => void planAndSearch(false)} className="px-3 py-2 rounded-lg border border-indigo-200 bg-white hover:bg-indigo-50 disabled:opacity-50 text-indigo-700 text-xs font-semibold transition">
+                    Fill fields only
+                  </button>
+                  <span className="text-[10px] text-slate-500">Ctrl+Enter. Clear requests are planned without AI tokens; Gemini helps only when needed.</span>
+                </div>
+                {planNote && (
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]" aria-live="polite">
+                    <span className="font-semibold text-indigo-800">{planNote}:</span>
+                    {[category, location, OFFER_PROFILES[productInterest].label, keyword && `"${keyword}"`, requireWebsite && 'Website', requirePhone && 'Phone', requireEmail && 'Email', wholesaleOnly && 'Wholesale', privateLabelOnly && 'Private label', excludeSaved && 'New only', searchDepth === 2 && 'Expanded'].filter(Boolean).map((chip) => (
+                      <span key={String(chip)} className="px-2 py-0.5 rounded-full bg-white border border-indigo-100 text-indigo-700">{chip}</span>
+                    ))}
+                    <span className="text-slate-500">Adjust below if needed.</span>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-semibold text-slate-600">Business Category</label>
                   <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium text-slate-800 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                     {PRESET_CATEGORIES.map((c) => (<option key={c.value} value={c.value}>{c.label}</option>))}
-                    <option value="custom">+ Custom Category...</option>
                   </select>
-                  {category === 'custom' && (
-                    <input type="text" placeholder="e.g. Grain Elevator, Tack Shop" value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} className="w-full px-3 py-2 mt-1 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500" />
-                  )}
-                  <input type="text" placeholder="Keyword (optional) e.g. organic feed, tack" value={keyword} onChange={(e) => setKeyword(e.target.value)} className="w-full px-3 py-2 mt-1 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500" />
+                  <input type="text" placeholder="Extra words (optional) e.g. cattle, boarding, organic" value={keyword} onChange={(e) => setKeyword(e.target.value)} className="w-full px-3 py-2 mt-1 rounded-lg border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500" />
                 </div>
 
                 <div className="space-y-1.5">
@@ -1001,16 +1067,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
 
               <details className="border border-slate-200 rounded-lg p-3 text-xs">
-                <summary className="font-semibold cursor-pointer">Product interest &amp; advanced search</summary>
-                <div className="grid md:grid-cols-3 gap-3 pt-3">
-                  <label>Product interest<select aria-label="Product interest" className="w-full border rounded-lg p-2" value={productInterest} onChange={(e) => setProductInterest(e.target.value as ProductInterest)}>{PRODUCT_INTERESTS.map((p) => <option key={p} value={p}>{OFFER_PROFILES[p].label}</option>)}</select></label>
-                  <label>Radius (km)<input aria-label="Radius in kilometers" className="w-full border rounded-lg p-2" type="number" min={1} max={50} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} /></label>
-                  <label>Search depth<select aria-label="Search depth" className="w-full border rounded-lg p-2" value={searchDepth} onChange={(e) => setSearchDepth(Number(e.target.value))}><option value={1}>Standard (one web query)</option><option value={2}>Expanded (two relevant queries)</option></select></label>
-                  <label><input type="checkbox" checked={excludeSaved} onChange={(e) => setExcludeSaved(e.target.checked)} /> Exclude saved leads</label>
-                  <label><input type="checkbox" checked={excludeContacted} onChange={(e) => setExcludeContacted(e.target.checked)} /> Exclude contacted leads</label>
-                  <label><input type="checkbox" checked={requireEmail} onChange={(e) => setRequireEmail(e.target.checked)} /> Require company-verified email</label>
-                  <label><input type="checkbox" checked={wholesaleOnly} onChange={(e) => setWholesaleOnly(e.target.checked)} /> Wholesale query</label>
-                  <label><input type="checkbox" checked={privateLabelOnly} onChange={(e) => setPrivateLabelOnly(e.target.checked)} /> Private-label query</label>
+                <summary className="font-semibold cursor-pointer text-slate-700">More options <span className="font-normal text-slate-500">(optional — the planner fills these)</span></summary>
+                <div className="grid sm:grid-cols-3 gap-3 pt-3">
+                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">Product to offer<select aria-label="Product interest" className="w-full border border-slate-200 rounded-lg p-2 font-normal" value={productInterest} onChange={(e) => setProductInterest(e.target.value as ProductInterest)}>{PRODUCT_INTERESTS.map((p) => <option key={p} value={p}>{OFFER_PROFILES[p].label}</option>)}</select></label>
+                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">Map radius (km)<input aria-label="Radius in kilometers" className="w-full border border-slate-200 rounded-lg p-2 font-normal" type="number" min={1} max={50} value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))} /></label>
+                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">Search depth<select aria-label="Search depth" className="w-full border border-slate-200 rounded-lg p-2 font-normal" value={searchDepth} onChange={(e) => setSearchDepth(Number(e.target.value))}><option value={1}>Standard (1 web query)</option><option value={2}>Expanded (2 queries)</option></select></label>
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-2 pt-3 text-[11px] text-slate-600">
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={excludeSaved} onChange={(e) => setExcludeSaved(e.target.checked)} /> New leads only</label>
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={excludeContacted} onChange={(e) => setExcludeContacted(e.target.checked)} /> Skip contacted</label>
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={requireEmail} onChange={(e) => setRequireEmail(e.target.checked)} /> Verified email only</label>
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={wholesaleOnly} onChange={(e) => setWholesaleOnly(e.target.checked)} /> Wholesale</label>
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={privateLabelOnly} onChange={(e) => setPrivateLabelOnly(e.target.checked)} /> Private label</label>
                 </div>
                 <p className="text-slate-500 mt-2">US market. For statewide or nationwide distributor searches, configure protected SearXNG. Website research records publicly listed business emails after saving.</p>
                 <button type="button" className="mt-2 underline text-indigo-700" onClick={async () => { try { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/workflow', {method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({action:'save_search',name:`${category} — ${location}`, category,location,productInterest,keyword,maxResults,radiusKm,searchDepth,requireWebsite,requirePhone,requireEmail,excludeSaved,excludeContacted,wholesaleOnly,privateLabelOnly,country:'US'})}); if (!res.ok) throw new Error('Saved search unavailable.'); setSearchError(null); setSearchStep('Search saved. Open Outreach → Saved searches to reuse it.'); } catch(e) { setSearchError(String(e)); } }}>Save this search</button>

@@ -7,6 +7,7 @@ const EXPANSIONS: Record<string, string[]> = {
   'Feed Store': ['feed supply livestock feed retailer', 'farm ranch supply'],
   'Farm Supply': ['farm ranch agricultural supply wholesaler'],
   'Equestrian Store': ['equestrian tack horse supply store'],
+  'Ranch & Horse Facility': ['horse boarding training stable equestrian center', 'cattle ranch livestock farm'],
   'Livestock Distributor': ['livestock feed agricultural supply distributor'],
   'Salt Wholesaler': ['Himalayan salt wholesale distributor importer'],
   'Specialty Food Distributor': ['specialty food spice seasoning distributor'],
@@ -80,7 +81,7 @@ export async function discoverLeads(input: LeadSearchInput): Promise<{ leads: No
   if (!BUYER_CATEGORIES.includes(input.category)) throw new Error('Choose a relevant Himalayan Koh B2B buyer category.');
   if (input.country && !/^(us|usa|united states)$/i.test(input.country)) throw new Error('LeadOS targets the United States.');
   const started = Date.now();
-  const localOsm = ['Feed Store', 'Farm Supply', 'Equestrian Store'].includes(input.category) && !/^(?:usa|us|united states|texas)(?:,?\s*(?:usa|us|united states))?$/i.test(input.location.trim());
+  const localOsm = ['Feed Store', 'Farm Supply', 'Equestrian Store', 'Ranch & Horse Facility'].includes(input.category) && !/^(?:usa|us|united states|texas)(?:,?\s*(?:usa|us|united states))?$/i.test(input.location.trim());
   const [osm, web] = await Promise.all([
     localOsm ? searchOpenStreetMap({ ...input, keyword: '', maxResults: Math.min(input.maxResults || 15, 40), radiusKm: Math.min(Math.max(input.radiusKm || 25, 1), 50) }) : Promise.resolve(null),
     searchSearxng(input),
