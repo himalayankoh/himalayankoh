@@ -39,6 +39,7 @@ import {
   FileText,
   Check,
   Storefront,
+  Megaphone,
 } from '@phosphor-icons/react';
 import { getAccessToken } from '@/services/wordpressAdminAuth';
 import type {
@@ -53,7 +54,11 @@ import type { SearchPlan } from '@/lib/leados/searchPlanner';
 import type { ProductInterest } from '@/lib/leados/types';
 import { parseLeadOSUrlState } from '@/lib/leados/urlState';
 
-type TabType = 'overview' | 'find' | 'library' | 'settings';
+const AMarketingGen = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.AMarketingGen })));
+const ASEOEngine = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.ASEOEngine })));
+const AEmailMarketing = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.AEmailMarketing })));
+
+type TabType = 'overview' | 'find' | 'library' | 'email' | 'marketing' | 'seo' | 'settings';
 
 
 const PRESET_CATEGORIES = BUYER_CATEGORIES.map((value) => ({label: value, value}));
@@ -368,6 +373,49 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [drawerPackaging, setDrawerPackaging] = useState('');
   const [savingDrawerNotes, setSavingDrawerNotes] = useState(false);
   const [drawerSavedMsg, setDrawerSavedMsg] = useState<string | null>(null);
+
+  // Quick Email Outreach state for Find Leads Page
+  const [quickEmailLead, setQuickEmailLead] = useState<ScoredLead | null>(null);
+  const [quickEmailRecipient, setQuickEmailRecipient] = useState('');
+  const [quickEmailSubject, setQuickEmailSubject] = useState('');
+  const [quickEmailBody, setQuickEmailBody] = useState('');
+  const [quickEmailInterest, setQuickEmailInterest] = useState<ProductInterest>('horse_salt');
+  const [quickEmailCopied, setQuickEmailCopied] = useState(false);
+  const [quickEmailStatus, setQuickEmailStatus] = useState<string | null>(null);
+
+  const handleOpenQuickEmail = (lead: ScoredLead) => {
+    setQuickEmailLead(lead);
+    setQuickEmailRecipient(lead.email || '');
+    setQuickEmailCopied(false);
+    setQuickEmailStatus(null);
+    const interest = productInterest || 'horse_salt';
+    setQuickEmailInterest(interest);
+    const intro = createIntroduction(
+      {
+        businessName: lead.businessName,
+        city: lead.city || lead.region || 'your area',
+        category: lead.category || 'business',
+      },
+      interest
+    );
+    setQuickEmailSubject(intro.subject);
+    setQuickEmailBody(intro.message);
+  };
+
+  const handleQuickEmailInterestChange = (interest: ProductInterest) => {
+    setQuickEmailInterest(interest);
+    if (!quickEmailLead) return;
+    const intro = createIntroduction(
+      {
+        businessName: quickEmailLead.businessName,
+        city: quickEmailLead.city || quickEmailLead.region || 'your area',
+        category: quickEmailLead.category || 'business',
+      },
+      interest
+    );
+    setQuickEmailSubject(intro.subject);
+    setQuickEmailBody(intro.message);
+  };
 
   // Find Leads filters & state
   const [showExampleSearchesMenu, setShowExampleSearchesMenu] = useState(false);
@@ -1420,7 +1468,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               {[
                 { id: 'overview', label: 'Overview', icon: SquaresFour },
                 { id: 'find', label: 'Find Leads', icon: MagnifyingGlass },
-                { id: 'library', label: 'Lead Library', icon: BookBookmark },
+                { id: 'library', label: 'Lead Library & CRM', icon: BookBookmark },
+                { id: 'email', label: 'Email Marketing', icon: PaperPlaneRight },
+                { id: 'marketing', label: 'Marketing Gen', icon: Megaphone },
+                { id: 'seo', label: 'SEO Engine', icon: Sparkle },
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -2163,6 +2214,20 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  {selectedLeadIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const firstSelected = leads.find((l) => selectedLeadIds.has(l.businessName));
+                        if (firstSelected) handleOpenQuickEmail(firstSelected);
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-[#b86452] hover:bg-[#a05246] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                    >
+                      <PaperPlaneRight className="w-3.5 h-3.5 text-white" />
+                      <span>Email Selected ({selectedLeadIds.size})</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     disabled={selectedLeadIds.size === 0 || savingSelected}
@@ -2384,6 +2449,15 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                     >
                                       <Robot className="w-3.5 h-3.5 text-indigo-600" />
                                     </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenQuickEmail(lead)}
+                                      title={lead.email ? `Draft email outreach to ${lead.email}` : 'Draft email outreach pitch'}
+                                      className="p-1.5 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-[#b86452] transition cursor-pointer"
+                                    >
+                                      <PaperPlaneRight className="w-3.5 h-3.5 text-[#b86452]" />
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -2485,7 +2559,35 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           )}
                         </div>
                         <p className="text-[11px] text-slate-600">{lead.address || [lead.city, lead.region].filter(Boolean).join(', ') || 'Local area'}</p>
-                        {lead.phone && <p className="text-[11px] text-emerald-700 font-medium">📞 {lead.phone}</p>}
+                        <div className="flex items-center justify-between gap-1 text-[11px]">
+                          {lead.phone ? (
+                            <span className="text-emerald-700 font-medium">📞 {lead.phone}</span>
+                          ) : (
+                            <span className="text-slate-400 italic text-[10px]">No phone</span>
+                          )}
+                          {lead.email && (
+                            <span className="text-slate-600 truncate max-w-[140px]" title={lead.email}>✉️ {lead.email}</span>
+                          )}
+                        </div>
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveToLibrary(lead)}
+                            disabled={lead.alreadySaved}
+                            className={`px-2 py-1 rounded text-[10px] font-semibold border transition cursor-pointer ${
+                              lead.alreadySaved ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            {lead.alreadySaved ? 'Saved' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenQuickEmail(lead)}
+                            className="px-2.5 py-1 rounded bg-[#b86452] hover:bg-[#a05246] text-white text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                          >
+                            <PaperPlaneRight className="w-3 h-3" /> Email
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2565,6 +2667,188 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 >
                   Close
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Direct Email Outreach Modal (Integrated into Find Leads) ── */}
+          {quickEmailLead && (
+            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[92vh] overflow-y-auto">
+                {/* Header */}
+                <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-[#b86452]">
+                        <PaperPlaneRight weight="bold" className="w-4 h-4" />
+                      </div>
+                      <h4 className="font-bold text-slate-900 text-sm">Direct Outreach &amp; Pitch Generator</h4>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Draft, personalize, and dispatch wholesale pitches directly to <span className="font-bold text-slate-900">{quickEmailLead.businessName}</span>.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close outreach modal"
+                    onClick={() => { setQuickEmailLead(null); setQuickEmailStatus(null); }}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Pitch Angle Selector */}
+                <div className="space-y-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Product Angle &amp; Wholesale Pitch Profile
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {PRODUCT_INTERESTS.map((interest) => {
+                      const profile = OFFER_PROFILES[interest];
+                      const isSelected = quickEmailInterest === interest;
+                      return (
+                        <button
+                          key={interest}
+                          type="button"
+                          onClick={() => handleQuickEmailInterestChange(interest)}
+                          className={`p-2 rounded-xl border text-left transition cursor-pointer ${
+                            isSelected
+                              ? 'border-[#b86452] bg-[#fbf5f3] ring-1 ring-[#b86452]'
+                              : 'border-slate-200 bg-white hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="text-xs font-bold text-slate-900 truncate">{profile.label}</div>
+                          <div className="text-[10px] text-slate-500 truncate">{profile.caveat}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Recipient Email */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Recipient Email Address
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={quickEmailRecipient}
+                      onChange={(e) => setQuickEmailRecipient(e.target.value)}
+                      placeholder="e.g. buyer@feedstore.com"
+                      className="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#b86452]"
+                    />
+                    {quickEmailLead.website && (
+                      <a
+                        href={quickEmailLead.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 text-xs font-semibold flex items-center gap-1"
+                      >
+                        <Globe className="w-3.5 h-3.5" /> Website
+                      </a>
+                    )}
+                  </div>
+                  {!quickEmailRecipient && (
+                    <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center gap-1.5">
+                      <WarningCircle className="w-3.5 h-3.5 shrink-0" />
+                      No verified email found in public records. You can check their website or copy the pitch below into LinkedIn/Instagram DMs.
+                    </p>
+                  )}
+                </div>
+
+                {/* Subject Line */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Subject Line
+                  </label>
+                  <input
+                    type="text"
+                    value={quickEmailSubject}
+                    onChange={(e) => setQuickEmailSubject(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#b86452]"
+                  />
+                </div>
+
+                {/* Email Body */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Email Body / Personalized Pitch
+                  </label>
+                  <textarea
+                    rows={8}
+                    value={quickEmailBody}
+                    onChange={(e) => setQuickEmailBody(e.target.value)}
+                    className="w-full p-3 rounded-xl border border-slate-200 text-xs font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#b86452] leading-relaxed"
+                  />
+                </div>
+
+                {/* Status Notice */}
+                {quickEmailStatus && (
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
+                    <span>{quickEmailStatus}</span>
+                  </div>
+                )}
+
+                {/* Action Bar */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(`Subject: ${quickEmailSubject}\n\n${quickEmailBody}`);
+                          setQuickEmailCopied(true);
+                          setTimeout(() => setQuickEmailCopied(false), 3000);
+                        } catch {
+                          setQuickEmailStatus('Failed to copy to clipboard.');
+                        }
+                      }}
+                      className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      {quickEmailCopied ? <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> : <FileText className="w-3.5 h-3.5" />}
+                      <span>{quickEmailCopied ? 'Pitch Copied!' : 'Copy Pitch'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSaveToLibrary({
+                          ...quickEmailLead,
+                          email: quickEmailRecipient || quickEmailLead.email,
+                        });
+                        setQuickEmailStatus('Lead and pitch details saved to Lead Library!');
+                      }}
+                      className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <BookBookmark className="w-3.5 h-3.5" />
+                      <span>Save to Library</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { setQuickEmailLead(null); setQuickEmailStatus(null); }}
+                      className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-xs font-semibold cursor-pointer"
+                    >
+                      Close
+                    </button>
+
+                    <a
+                      href={`mailto:${quickEmailRecipient}?subject=${encodeURIComponent(quickEmailSubject)}&body=${encodeURIComponent(quickEmailBody)}`}
+                      onClick={() => {
+                        setQuickEmailStatus('Opening your default email client...');
+                      }}
+                      className="px-4 py-2 rounded-xl bg-[#b86452] hover:bg-[#a05246] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                    >
+                      <PaperPlaneRight className="w-3.5 h-3.5 text-white" />
+                      <span>Open in Mail Client</span>
+                    </a>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -3506,6 +3790,27 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
             </div>
           )}
+        </div>
+
+        {/* ══════════ EMAIL MARKETING TAB ══════════ */}
+        <div id="leados-panel-email" role="tabpanel" aria-labelledby="leados-tab-email" className={activeTab === 'email' ? "space-y-6" : "hidden"}>
+          <React.Suspense fallback={<div className="p-12 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200"><ArrowsClockwise className="w-6 h-6 animate-spin mx-auto text-[#b86452] mb-2" />Loading Email Marketing Studio...</div>}>
+            <AEmailMarketing />
+          </React.Suspense>
+        </div>
+
+        {/* ══════════ MARKETING GEN TAB ══════════ */}
+        <div id="leados-panel-marketing" role="tabpanel" aria-labelledby="leados-tab-marketing" className={activeTab === 'marketing' ? "space-y-6" : "hidden"}>
+          <React.Suspense fallback={<div className="p-12 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200"><ArrowsClockwise className="w-6 h-6 animate-spin mx-auto text-[#b86452] mb-2" />Loading Marketing Generator...</div>}>
+            <AMarketingGen />
+          </React.Suspense>
+        </div>
+
+        {/* ══════════ SEO ENGINE TAB ══════════ */}
+        <div id="leados-panel-seo" role="tabpanel" aria-labelledby="leados-tab-seo" className={activeTab === 'seo' ? "space-y-6" : "hidden"}>
+          <React.Suspense fallback={<div className="p-12 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200"><ArrowsClockwise className="w-6 h-6 animate-spin mx-auto text-[#b86452] mb-2" />Loading SEO Engine...</div>}>
+            <ASEOEngine />
+          </React.Suspense>
         </div>
 
         {/* ══════════ SETTINGS TAB (Unified with AI Engine) ══════════ */}

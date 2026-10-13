@@ -95,6 +95,12 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
+    title: 'LeadOS',
+    items: [
+      { to: '/admin/leados', icon: Target, label: 'LeadOS Workspace', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
+    ],
+  },
+  {
     title: 'Catalog',
     items: [
       { to: '/admin/products', icon: Package, label: 'Products', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
@@ -119,15 +125,8 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: 'Marketing',
-    // LeadOS moved in here: outreach is marketing, and it was sitting above the
-    // wholesale section as if it were a separate business.
     items: [
-      { to: '/admin/leados', icon: Target, label: 'LeadOS Workspace', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
-      { to: '/admin/client-outreach', icon: PaperPlaneRight, label: 'Client Outreach', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
-      { to: '/admin/seo', icon: Sparkle, label: 'SEO Engine', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
-      { to: '/admin/marketing', icon: Megaphone, label: 'Marketing Gen', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
       { to: '/admin/marketing-traffic', icon: TrendUp, label: 'Marketing & Traffic', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
-      { to: '/admin/email-marketing', icon: PaperPlaneRight, label: 'Email Marketing', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
       { to: '/admin/crm', icon: UsersIcon, label: 'CRM (Leads)', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
       { to: '/admin/analytics', icon: TrendUp, label: 'Analytics', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
     ],

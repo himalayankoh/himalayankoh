@@ -82,7 +82,6 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     label: 'LeadOS',
     items: [
       { label: 'LeadOS Workspace', path: '/admin/leados', icon: Target },
-      { label: 'Client Outreach', path: '/admin/client-outreach', icon: Send },
     ],
   },
   {
@@ -110,10 +109,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     label: 'Marketing',
     items: [
-      { label: 'SEO Engine', path: '/admin/seo-engine', icon: SearchIcon },
-      { label: 'Marketing Gen', path: '/admin/marketing', icon: Megaphone, pending: true },
       { label: 'Marketing & Traffic', path: '/admin/marketing-traffic', icon: TrendingUp, pending: true },
-      { label: 'Email Marketing', path: '/admin/email-marketing', icon: Mail, pending: true },
       { label: 'CRM (Leads)', path: '/admin/crm', icon: Contact },
       { label: 'Analytics', path: '/admin/analytics', icon: BarChart3 },
     ],

@@ -107,7 +107,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       title: 'LeadOS',
       items: [
         { to: '/admin/leados', icon: Target, label: 'LeadOS Workspace', g: 'linear-gradient(135deg,#6366f1,#8b5cf6)', dot: '#a5b4fc' },
-        { to: '/admin/client-outreach', icon: PaperPlaneRight, label: 'Client Outreach', g: 'linear-gradient(135deg,#ec4899,#8b5cf6)', dot: '#f472b6' },
       ],
     },
     {
@@ -134,10 +133,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     {
       title: 'Marketing',
       items: [
-        { to: '/admin/seo-engine', icon: MagnifyingGlass, label: 'SEO Engine', g: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', dot: '#818cf8' },
-        { to: '/admin/marketing', icon: Megaphone, label: 'Marketing Gen', g: 'linear-gradient(135deg,#d946ef,#ec4899)', dot: '#e879f9' },
         { to: '/admin/marketing-traffic', icon: TrendUp, label: 'Marketing & Traffic', g: 'linear-gradient(135deg,#06b6d4,#2563eb)', dot: '#22d3ee' },
-        { to: '/admin/email-marketing', icon: PaperPlaneRight, label: 'Email Marketing', g: 'linear-gradient(135deg,#38bdf8,#6366f1)', dot: '#60a5fa' },
         { to: '/admin/crm', icon: UsersIcon, label: 'CRM (Leads)', g: 'linear-gradient(135deg,#22c55e,#84cc16)', dot: '#4ade80' },
       ],
     },
@@ -6944,8 +6940,9 @@ export default function AdminSection() {
       <Route path="blogs" element={<AdminLayout><BlogManager /></AdminLayout>} />
       <Route path="media" element={<AdminLayout><MediaManager /></AdminLayout>} />
       <Route path="youtube-media" element={<AdminLayout><YouTubeMediaPage /></AdminLayout>} />
-      <Route path="seo-engine" element={<AdminLayout><ASEOEngine /></AdminLayout>} />
-      <Route path="marketing" element={<AdminLayout><AMarketingGen /></AdminLayout>} />
+      <Route path="seo" element={<AdminLayout><LeadOSAdmin defaultTab="seo" /></AdminLayout>} />
+      <Route path="seo-engine" element={<AdminLayout><LeadOSAdmin defaultTab="seo" /></AdminLayout>} />
+      <Route path="marketing" element={<AdminLayout><LeadOSAdmin defaultTab="marketing" /></AdminLayout>} />
       <Route path="variant-gen" element={<AdminLayout><AVariantGen /></AdminLayout>} />
       <Route path="ai" element={<AdminLayout><AAIHub /></AdminLayout>} />
       <Route path="ai-import" element={<AdminLayout><AAIImport /></AdminLayout>} />
@@ -6962,7 +6959,7 @@ export default function AdminSection() {
       <Route path="settings" element={<AdminLayout><ASettings /></AdminLayout>} />
       <Route path="settings/listing-playbook" element={<AdminLayout><ListingPlaybookAdmin /></AdminLayout>} />
       <Route path="marketing-traffic" element={<AdminLayout><AMarketingTraffic /></AdminLayout>} />
-      <Route path="email-marketing" element={<AdminLayout><AEmailMarketing /></AdminLayout>} />
+      <Route path="email-marketing" element={<AdminLayout><LeadOSAdmin defaultTab="email" /></AdminLayout>} />
       <Route path="crm" element={<AdminLayout><ACRM /></AdminLayout>} />
       <Route path="*" element={<Navigate to="/admin" replace />} />
     </Routes></Suspense>

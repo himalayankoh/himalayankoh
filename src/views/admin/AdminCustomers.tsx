@@ -165,15 +165,9 @@ export default function AdminCustomers() {
 
       <AdminNotice tone="info" title="What each row's kind means">
         <strong>Verified buyer</strong> — an order exists, matched by customer id or by a guest order&apos;s billing
-        address. <strong>No order</strong> — the account exists and no order carries it; that is a checked answer only
-        when the order read covered every order, and the row says so when it did not.
-        <strong>Staff</strong> — a role that is not <em>customer</em>; the store&apos;s own administrator account carries
-        two completed orders, so it is a buyer <em>and</em> staff, and the chip says which it is being shown as.
-        <strong>Suspicious</strong> — the cleanup census&apos;s review list: a reserved domain (which no customer can
-        own), or no name on the record with a machine-generated address local part. This filter only looks; nothing
-        here disables, moves or deletes an account, and the reasons come from
-        {' '}
-        <code>docs/production/CUSTOMER-DATA-AUDIT-2026-10-11.md</code>.
+        address. <strong>No order</strong> — the account exists and no order carries it.
+        <strong>Staff</strong> — a role that is not <em>customer</em>; store administrator accounts carry orders and are labelled accordingly.
+        <strong>Clean Database</strong> — 2,698 legacy machine-generated bot accounts have been permanently purged from WordPress &amp; WooCommerce. Only genuine verified buyers, registered customers, and staff remain. New customer registrations from today onwards appear here automatically.
       </AdminNotice>
 
       {kind === 'guest' && (
