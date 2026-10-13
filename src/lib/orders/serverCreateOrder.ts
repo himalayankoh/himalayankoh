@@ -7,6 +7,7 @@ import {
   type WooOrderLike,
 } from '@/lib/woo/orders';
 import { clearStoreCart, mapStoreCart, readStoreCart, type StoreCartLine } from '@/lib/woo/storeCart';
+import { findCouponByCode } from '@/lib/woo/coupons';
 import type { CreateOrderData, ShippingMethod } from '@/lib/orders/totals';
 import type { OrderWithItems } from '@/lib/commerce/types';
 import { resolveShippoConfigError } from '@/lib/shippo/config';
@@ -309,6 +310,19 @@ export async function reserveOrderForCheckout(
           quantity: item.quantity,
         })),
       });
+
+  // Check if coupon grants free shipping
+  if (data.couponCode?.trim()) {
+    try {
+      const wooCoupon = await findCouponByCode(data.couponCode);
+      if (wooCoupon?.free_shipping) {
+        resolvedShipping.shippingCostOverride = 0;
+        resolvedShipping.service = `${resolvedShipping.service || resolvedShipping.carrier || shippingMethod} (Free Shipping with Coupon)`;
+      }
+    } catch {
+      // Best-effort check; fallback to resolved shipping if coupon lookup fails
+    }
+  }
 
   const checkoutFingerprint = checkoutInputFingerprint({
     cartFingerprint: fingerprint,

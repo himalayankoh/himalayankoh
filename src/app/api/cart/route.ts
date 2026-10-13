@@ -37,6 +37,7 @@ import {
   setStoreCartCoupon,
   type CartSession,
 } from '@/lib/woo/storeCart';
+import { findCouponByCode } from '@/lib/woo/coupons';
 
 // A cart is session-owned, including validation and upstream error responses.
 function privateJson(body: unknown, init: ResponseInit = {}) {
@@ -146,7 +147,21 @@ async function respondWith(
       console.warn('[customer-cart] the cart binding could not be saved:', error);
     }
   }
-  return privateJson(mapStoreCart(cart));
+  const view = mapStoreCart(cart);
+  if (view.couponCodes && view.couponCodes.length > 0) {
+    try {
+      for (const code of view.couponCodes) {
+        const wooCoupon = await findCouponByCode(code);
+        if (wooCoupon?.free_shipping) {
+          view.hasFreeShipping = true;
+          break;
+        }
+      }
+    } catch {
+      // Swallowed: if WooCommerce REST check fails, cart remains valid
+    }
+  }
+  return privateJson(view);
 }
 
 /** The current cart, creating one if this browser has none yet. */

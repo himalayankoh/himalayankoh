@@ -58,6 +58,7 @@ let cartMutationVersion = 0;
 let serverTax: number | null = null;
 let serverDiscount: number | null = null;
 let serverTotal: number | null = null;
+let serverFreeShipping = false;
 let appliedCoupons: string[] = [];
 
 // Serializes concurrent mutations so API calls don't interleave
@@ -155,6 +156,7 @@ function applyView(view: CartView) {
   serverTax = typeof view.totalTax === 'number' ? view.totalTax : null;
   serverDiscount = typeof view.totalDiscount === 'number' ? view.totalDiscount : null;
   serverTotal = typeof view.totalPrice === 'number' ? view.totalPrice : null;
+  serverFreeShipping = Boolean(view.hasFreeShipping);
   appliedCoupons = view.couponCodes ?? [];
   emitChange();
   reportIssues(view.issues);
@@ -322,6 +324,7 @@ export function useCart() {
       }
 
       cartItems = [];
+      serverFreeShipping = false;
       saveLocalCart();
       emitChange();
     });
@@ -374,6 +377,7 @@ export function useCart() {
     serverTax,
     serverDiscount,
     serverTotal,
+    serverFreeShipping,
     appliedCoupons,
     isLoaded: loaded,
     isLoading,

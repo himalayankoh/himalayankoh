@@ -56,6 +56,8 @@ export interface CalculateOrderOptions {
   taxAmountOverride?: number;
   /** Destination state (2-letter code or name) to determine nexus. */
   destinationState?: string;
+  /** When true, delivery is free (coupon provides free shipping or promotional waiver). */
+  freeShipping?: boolean;
 }
 
 export function calculateOrderTotals(items: TotalsLineItem[], options: CalculateOrderOptions = {}): OrderTotals {
@@ -77,13 +79,15 @@ export function calculateOrderTotals(items: TotalsLineItem[], options: Calculate
   const taxableSubtotal = Math.max(0, subtotal - discountAmount);
   const shippingMethod = options.shippingMethod || 'standard';
   const shippingCost =
-    typeof options.shippingCostOverride === 'number' && options.shippingCostOverride >= 0
-      ? options.shippingCostOverride
-      : shippingMethod === 'expedited'
-        ? EXPEDITED_SHIPPING_COST
-        : subtotal >= FREE_SHIPPING_THRESHOLD
-          ? 0
-          : STANDARD_SHIPPING_COST;
+    options.freeShipping === true
+      ? 0
+      : typeof options.shippingCostOverride === 'number' && options.shippingCostOverride >= 0
+        ? options.shippingCostOverride
+        : shippingMethod === 'expedited'
+          ? EXPEDITED_SHIPPING_COST
+          : subtotal >= FREE_SHIPPING_THRESHOLD
+            ? 0
+            : STANDARD_SHIPPING_COST;
 
   const destinationState = options.destinationState ? options.destinationState.trim().toUpperCase() : null;
   const isTexas = destinationState === 'TX' || destinationState === 'TEXAS';

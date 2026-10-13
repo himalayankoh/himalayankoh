@@ -151,6 +151,8 @@ export interface StoreCartView {
   totalDiscount: number | null;
   /** The coupon codes applied to this WooCommerce cart. */
   couponCodes: string[];
+  /** Whether the active cart or applied coupons grant free shipping. */
+  hasFreeShipping?: boolean;
   currency: string;
   /** WooCommerce's own complaints about the cart, as plain sentences. */
   issues: string[];

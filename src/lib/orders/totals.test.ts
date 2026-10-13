@@ -109,4 +109,11 @@ describe('calculateOrderTotals', () => {
     expect(totals.taxAmount).toBeCloseTo(28 * TAX_RATE, 4);
     expect(totals.total).toBeCloseTo(28 + STANDARD_SHIPPING_COST + 28 * TAX_RATE, 2);
   });
+
+  it('waives shipping when freeShipping option is true even below threshold', () => {
+    const totals = calculateOrderTotals([{ quantity: 1, unitPrice: 10 }], { freeShipping: true });
+    expect(totals.subtotal).toBeCloseTo(10, 4);
+    expect(totals.shippingCost).toBe(0);
+    expect(totals.total).toBeCloseTo(10 + 10 * TAX_RATE, 2);
+  });
 });

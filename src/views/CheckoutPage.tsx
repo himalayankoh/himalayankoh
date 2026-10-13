@@ -108,6 +108,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     serverTax,
     setCoupon,
     serverDiscount,
+    serverFreeShipping,
     appliedCoupons,
   } = useCart();
   const toast = useToast();
@@ -239,17 +240,20 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       {
         couponCode,
         shippingMethod,
+        freeShipping: Boolean(serverFreeShipping),
         // With Shippo in play, delivery is priced only by a carrier, so until one answers
         // there is no delivery amount in this sum. Handing the store's flat table in here
         // instead is what put a charge on screen that no carrier had quoted — and, because
         // that table is what the order would have been billed from, the two agreed on a
         // price nobody had offered. With Shippo switched off there is no carrier to ask,
         // so there the table is this deployment's own pricing and stays.
-        shippingCostOverride: useLiveShippoRates
-          ? selectedShippoRate?.amount
-          : shippoEnabled
-            ? 0
-            : undefined,
+        shippingCostOverride: Boolean(serverFreeShipping)
+          ? 0
+          : useLiveShippoRates
+            ? selectedShippoRate?.amount
+            : shippoEnabled
+              ? 0
+              : undefined,
         discountAmountOverride: typeof serverDiscount === 'number' && serverDiscount > 0
           ? serverDiscount
           : undefined,
@@ -257,7 +261,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         destinationState: normalizedState || undefined,
       }
     ),
-    [couponCode, items, shippingMethod, useLiveShippoRates, selectedShippoRate?.amount, authoritativeTax, serverTax, serverDiscount, normalizedState]
+    [couponCode, items, shippingMethod, serverFreeShipping, useLiveShippoRates, selectedShippoRate?.amount, authoritativeTax, serverTax, serverDiscount, normalizedState]
   );
 
   const paymentDetailsReady = Boolean(
@@ -1104,12 +1108,14 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                     active={shippingMethod === 'standard'}
                     title="Standard delivery"
                     detail={
-                      totals.subtotal >= FREE_SHIPPING_THRESHOLD
-                        ? 'Free on orders over $50'
-                        : 'Packed and shipped from our warehouse'
+                      serverFreeShipping
+                        ? 'Free shipping applied with coupon'
+                        : totals.subtotal >= FREE_SHIPPING_THRESHOLD
+                          ? 'Free on orders over $50'
+                          : 'Packed and shipped from our warehouse'
                     }
                     price={
-                      totals.subtotal >= FREE_SHIPPING_THRESHOLD
+                      serverFreeShipping || totals.subtotal >= FREE_SHIPPING_THRESHOLD
                         ? 'Free'
                         : `$${STANDARD_SHIPPING_COST.toFixed(2)}`
                     }
@@ -1582,9 +1588,13 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                     label="Delivery"
                     value={totals.shippingCost}
                     text={
-                      shippoEnabled && !useLiveShippoRates
-                        ? 'Priced by the carrier'
-                        : undefined
+                      serverFreeShipping
+                        ? 'Free (Coupon)'
+                        : shippoEnabled && !useLiveShippoRates
+                          ? 'Priced by the carrier'
+                          : totals.shippingCost === 0
+                            ? 'Free'
+                            : undefined
                     }
                   />
                   <SummaryRow label="Tax" value={totals.taxAmount} />

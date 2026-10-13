@@ -33,6 +33,7 @@ export interface CartView {
   totalPrice: number | null;
   totalTax?: number | null;
   totalDiscount?: number | null;
+  hasFreeShipping?: boolean;
   couponCodes?: string[];
   currency: string;
   /** WooCommerce's own complaints about this cart, as sentences. */
