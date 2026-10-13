@@ -23,9 +23,9 @@ export function normalizeSearchResults(results: WebSearchResult[], input: LeadSe
   const leads: NormalizedLead[] = [];
   for (const result of results) {
     const website = result.url ? publicCompanyUrl(result.url) : null;
-    if (!website || !result.title || /directory|top \d|best \d|near me|yellow pages|mapquest/i.test(result.title)) continue;
+    if (!website || !result.title || /directory|top \d|best \d|near me|yellow pages|mapquest|\b\d+\s+(?:best|top|stables|ranches|farms|stores|shops)\b|\b\d+\s+near you\b|stables in [a-z]+/i.test(result.title)) continue;
     const candidateUrl = new URL(website);
-    if (/(^|\.)(?:whereorg|macraesbluebook|chamberofcommerce|manta|loc8nearme|visithoustontexas|newhorse)\.com$/i.test(candidateUrl.hostname) || /(^|\.)wheretoride\.horse$/i.test(candidateUrl.hostname) || /\/(?:directory|businesses|listings)(?:\/|$)/i.test(candidateUrl.pathname) || /\/properties\/list(?:\/|$)/i.test(candidateUrl.pathname) || /\/service\/.*\/location\//i.test(candidateUrl.pathname)) continue;
+    if (/(^|\.)(?:whereorg|macraesbluebook|chamberofcommerce|manta|loc8nearme|visithoustontexas|newhorse|horseboardingusa|horseboardingfinder|horseboardingatlas|equinenow|horsedeals|spoke)\.com$/i.test(candidateUrl.hostname) || /(?:finder|atlas|directory|locator|yellowpages)\.(?:com|org|net)$/i.test(candidateUrl.hostname) || /(^|\.)wheretoride\.horse$/i.test(candidateUrl.hostname) || /\/(?:directory|businesses|listings|horse-boarding-facilities)(?:\/|$)/i.test(candidateUrl.pathname) || /\/properties\/list(?:\/|$)/i.test(candidateUrl.pathname) || /\/service\/.*\/location\//i.test(candidateUrl.pathname)) continue;
     const text = `${result.title} ${result.content || ''}`;
     if (!/feed|farm|ranch|equestrian|equine|horse|tack|saddlery|livestock|salt|spice|seasoning|food distribut/i.test(text)) continue;
     if (/software|marketing agency|restaurant/i.test(result.title)) continue;

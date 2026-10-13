@@ -731,7 +731,6 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     { id: 'overview', label: 'Overview', icon: SquaresFour },
     { id: 'find', label: 'Find Leads', icon: MagnifyingGlass },
     { id: 'library', label: 'Lead Library', icon: BookBookmark },
-    { id: 'projects', label: 'Projects (ICP)', icon: Buildings },
     { id: 'research', label: 'Multi-Research', icon: TrendUp },
     { id: 'scoring', label: 'Scoring Rules', icon: Sliders },
     { id: 'outreach', label: 'Client Outreach', icon: PaperPlaneRight },
@@ -811,6 +810,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 >
                   <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[#b86452]' : 'text-[#8d8276]'}`} />
                   {tab.label}
+                  {tab.id === 'find' && searching && (
+                    <ArrowsClockwise className="w-3 h-3 text-[#b86452] animate-spin ml-0.5" />
+                  )}
                   {tab.id === 'library' && libraryLeads.length > 0 && (
                     <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[9px] bg-[#faf0eb] text-[#b86452] font-bold">
                       {libraryLeads.length}
@@ -836,9 +838,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       {/* ── Main Content ── */}          <div className="max-w-[1400px] mx-auto px-6 py-6">
 
         {/* ══════════ OVERVIEW TAB ══════════ */}
-        {activeTab === 'overview' && (
-          <div id="leados-panel-overview" role="tabpanel" aria-labelledby="leados-tab-overview" className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
-            {/* Left: KPIs + Content */}
+        <div id="leados-panel-overview" role="tabpanel" aria-labelledby="leados-tab-overview" className={activeTab === 'overview' ? "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6" : "hidden"}>
+          {/* Left: KPIs + Content */}
             <div className="space-y-6">
               {/* KPI Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -863,7 +864,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     </div>
                     <p className="text-xs text-slate-500 mt-0.5">Targeted at farm supply cooperatives, feed distributors, livestock ranches, and mineral retail buyers.</p>
                   </div>
-                  <button onClick={() => changeTab('projects')} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 flex-shrink-0">
+                  <button onClick={() => changeTab('scoring')} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 flex-shrink-0">
                     Configure <CaretRight className="w-3 h-3" />
                   </button>
                 </div>
@@ -968,12 +969,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
             </div>
           </div>
-        )}
 
         {/* ══════════ FIND LEADS TAB ══════════ */}
-        {activeTab === 'find' && (
-          <div id="leados-panel-find" role="tabpanel" aria-labelledby="leados-tab-find" className="space-y-5">
-            <form onSubmit={handleSearch} className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+        <div id="leados-panel-find" role="tabpanel" aria-labelledby="leados-tab-find" className={activeTab === 'find' ? "space-y-5" : "hidden"}>
+          <form onSubmit={handleSearch} className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Find Business Leads</h3>
@@ -1110,11 +1109,17 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   <div><span className="text-slate-400">Scored:</span> <span className="font-medium text-slate-800">{diagnostics.normalizedCount}</span></div>
                   {diagnostics.sources && (
                     <div className="col-span-2 md:col-span-4 flex flex-wrap gap-1.5 pt-0.5">
-                      {Object.entries(diagnostics.sources).map(([name, s]) => (
-                        <span key={name} className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${s.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
-                          {name === 'overpass' ? 'Map data' : name === 'searxng' ? 'SearXNG' : 'Self-hosted keyword index'}: {s.error ? (s.normalized ? `${s.normalized} found · partial source errors` : 'unavailable') : `${s.normalized} found`}
-                        </span>
-                      ))}
+                      {Object.entries(diagnostics.sources).map(([name, s]) => {
+                        const isMap = name === 'overpass';
+                        const label = isMap ? 'Map data' : name === 'searxng' ? 'Web search' : 'Keyword index';
+                        const count = s.normalized || 0;
+                        const hasResults = count > 0;
+                        return (
+                          <span key={name} className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${hasResults ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                            {label}: {hasResults ? `${count} found` : isMap ? 'skipped (web active)' : '0 found'}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1228,12 +1233,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
             )}
           </div>
-        )}
 
         {/* ══════════ LEAD LIBRARY TAB ══════════ */}
-        {activeTab === 'library' && (
-          <div id="leados-panel-library" role="tabpanel" aria-labelledby="leados-tab-library" className="space-y-4">
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div id="leados-panel-library" role="tabpanel" aria-labelledby="leados-tab-library" className={activeTab === 'library' ? "space-y-4" : "hidden"}>
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Lead Library</h3>
@@ -1333,55 +1336,51 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               )}
             </div>
           </div>
-        )}
-
-        {/* ══════════ PROJECTS (ICP) TAB ══════════ */}
-        {activeTab === 'projects' && activeProject && (
-          <form onSubmit={handleSaveProjectICP} className="space-y-4">
-            <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Ideal Customer Profile (ICP) Configuration</h3>
-                  <p className="text-[11px] text-slate-500">Configures target market rules for Project Fit scoring and outreach angles.</p>
-                </div>
-                <button type="submit" disabled={savingProject} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5">
-                  {savingProject ? (<><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Saving...</>) : 'Save ICP'}
-                </button>
-              </div>
-              {projectSavedMsg && <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-800 flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-600" /> {projectSavedMsg}</div>}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
-                <div className="space-y-1"><label className="font-semibold text-slate-600">Project Name</label><input type="text" value={activeProject.name} onChange={(e) => setActiveProject({ ...activeProject, name: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                <div className="space-y-1"><label className="font-semibold text-slate-600">Website / Storefront URL</label><input type="text" value={activeProject.website || ''} onChange={(e) => setActiveProject({ ...activeProject, website: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                <div className="space-y-1 md:col-span-2"><label className="font-semibold text-slate-600">Product / Service Definition</label><input type="text" value={activeProject.productService || ''} onChange={(e) => setActiveProject({ ...activeProject, productService: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                <div className="space-y-1 md:col-span-2"><label className="font-semibold text-slate-600">Target Customer Description</label><input type="text" value={activeProject.targetCustomerDescription || ''} onChange={(e) => setActiveProject({ ...activeProject, targetCustomerDescription: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                <div className="space-y-1 md:col-span-2"><label className="font-semibold text-slate-600">Ideal Customer Profile (Narrative)</label><textarea rows={3} value={activeProject.idealCustomerProfile || ''} onChange={(e) => setActiveProject({ ...activeProject, idealCustomerProfile: e.target.value })} className="w-full p-3 rounded-lg border border-slate-200 font-medium" /></div>
-                <div className="space-y-1"><label className="font-semibold text-slate-600">Positive Keywords (comma separated)</label><input type="text" value={(activeProject.positiveKeywords || []).join(', ')} onChange={(e) => setActiveProject({ ...activeProject, positiveKeywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-                <div className="space-y-1"><label className="font-semibold text-slate-600">Negative Keywords (comma separated)</label><input type="text" value={(activeProject.negativeKeywords || []).join(', ')} onChange={(e) => setActiveProject({ ...activeProject, negativeKeywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
-              </div>
-            </div>
-          </form>
-        )}
 
         {/* ══════════ RESEARCH TAB ══════════ */}
-        {activeTab === 'research' && (
-          <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Multi-Category Market Research</h3>
-              <p className="text-[11px] text-slate-500">Choose a relevant buyer category and location. Searches are bounded and respect shared provider pacing.</p>
-            </div>
-            <div className="p-3 bg-indigo-50/60 rounded-lg border border-indigo-100 text-[11px] text-indigo-950">
-              <span className="font-bold block mb-1.5">Automated Scan Categories:</span>
-              <div className="flex flex-wrap gap-1">{BUYER_CATEGORIES.map((c) => (<span key={c} className="px-2 py-0.5 rounded bg-white font-medium text-slate-700 border border-indigo-200/70">{c}</span>))}</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="text" name="researchRegion" aria-label="Target research region" placeholder="Target Region (e.g. Texas, Montana, Kentucky)" value={researchRegion} onChange={(e) => setResearchRegion(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium" />
-              <button type="button" onClick={() => { setLocation(researchRegion || 'Texas'); changeTab('find'); }} className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 shadow-sm transition">Launch Scan</button>
-            </div>
+        <div id="leados-panel-research" role="tabpanel" aria-labelledby="leados-tab-research" className={activeTab === 'research' ? "bg-white rounded-xl border border-slate-200 p-5 space-y-4" : "hidden"}>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Multi-Category Market Research</h3>
+            <p className="text-[11px] text-slate-500">Choose a relevant buyer category and location. Searches are bounded and respect shared provider pacing.</p>
           </div>
-        )}
+          <div className="p-3 bg-indigo-50/60 rounded-lg border border-indigo-100 text-[11px] text-indigo-950">
+            <span className="font-bold block mb-1.5">Automated Scan Categories:</span>
+            <div className="flex flex-wrap gap-1">{BUYER_CATEGORIES.map((c) => (<span key={c} className="px-2 py-0.5 rounded bg-white font-medium text-slate-700 border border-indigo-200/70">{c}</span>))}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input type="text" name="researchRegion" aria-label="Target research region" placeholder="Target Region (e.g. Texas, Montana, Kentucky)" value={researchRegion} onChange={(e) => setResearchRegion(e.target.value)} className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-xs font-medium" />
+            <button type="button" onClick={() => { setLocation(researchRegion || 'Texas'); changeTab('find'); }} className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 shadow-sm transition">Launch Scan</button>
+          </div>
+        </div>
 
         {/* ══════════ SCORING RULES TAB ══════════ */}
-        {activeTab === 'scoring' && (
+        <div id="leados-panel-scoring" role="tabpanel" aria-labelledby="leados-tab-scoring" className={activeTab === 'scoring' ? "space-y-6" : "hidden"}>
+          {activeProject && (
+            <form onSubmit={handleSaveProjectICP} className="space-y-4">
+              <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Ideal Customer Profile (ICP) Target Market & Fit Keywords</h3>
+                    <p className="text-[11px] text-slate-500">Configures target market rules for Project Fit scoring (0–100) and discovery relevance.</p>
+                  </div>
+                  <button type="submit" disabled={savingProject} className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm transition flex items-center gap-1.5">
+                    {savingProject ? (<><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Saving...</>) : 'Save ICP'}
+                  </button>
+                </div>
+                {projectSavedMsg && <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-800 flex items-center gap-2"><CheckCircle className="w-4 h-4 text-emerald-600" /> {projectSavedMsg}</div>}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                  <div className="space-y-1"><label className="font-semibold text-slate-600">Project / Business Name</label><input type="text" value={activeProject.name} onChange={(e) => setActiveProject({ ...activeProject, name: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
+                  <div className="space-y-1"><label className="font-semibold text-slate-600">Website / Storefront URL</label><input type="text" value={activeProject.website || ''} onChange={(e) => setActiveProject({ ...activeProject, website: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
+                  <div className="space-y-1 md:col-span-2"><label className="font-semibold text-slate-600">Product / Service Definition</label><input type="text" value={activeProject.productService || ''} onChange={(e) => setActiveProject({ ...activeProject, productService: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
+                  <div className="space-y-1 md:col-span-2"><label className="font-semibold text-slate-600">Target Customer Description</label><input type="text" value={activeProject.targetCustomerDescription || ''} onChange={(e) => setActiveProject({ ...activeProject, targetCustomerDescription: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
+                  <div className="space-y-1 md:col-span-2"><label className="font-semibold text-slate-600">Ideal Customer Profile (Narrative)</label><textarea rows={3} value={activeProject.idealCustomerProfile || ''} onChange={(e) => setActiveProject({ ...activeProject, idealCustomerProfile: e.target.value })} className="w-full p-3 rounded-lg border border-slate-200 font-medium" /></div>
+                  <div className="space-y-1"><label className="font-semibold text-slate-600">Positive Keywords (comma separated)</label><input type="text" value={(activeProject.positiveKeywords || []).join(', ')} onChange={(e) => setActiveProject({ ...activeProject, positiveKeywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
+                  <div className="space-y-1"><label className="font-semibold text-slate-600">Negative Keywords (comma separated)</label><input type="text" value={(activeProject.negativeKeywords || []).join(', ')} onChange={(e) => setActiveProject({ ...activeProject, negativeKeywords: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} className="w-full px-3 py-2 rounded-lg border border-slate-200 font-medium" /></div>
+                </div>
+              </div>
+            </form>
+          )}
+
           <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Deterministic Opportunity Scoring Weights</h3>
@@ -1405,126 +1404,120 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </table>
             </div>
           </div>
-        )}
+        </div>
 
         {/* ══════════ CLIENT OUTREACH TAB ══════════ */}
-        {activeTab === 'outreach' && (
-          <div className="space-y-4">
-            <LeadIntelligencePanel key={activeOutreachLeadId || 'workspace'} initialLeadId={activeOutreachLeadId} headers={getAuthHeaders} onSavedSearch={(saved) => { setCategory(saved.category || 'Feed Store'); setLocation(saved.location || 'Houston, TX'); setProductInterest(saved.productInterest || 'horse_salt'); setKeyword(saved.keyword || ''); setMaxResults(saved.maxResults || 15); setRadiusKm(saved.radiusKm || 25); setSearchDepth(saved.searchDepth || 1); setRequireWebsite(Boolean(saved.requireWebsite)); setRequirePhone(Boolean(saved.requirePhone)); setRequireEmail(Boolean(saved.requireEmail)); setExcludeSaved(Boolean(saved.excludeSaved)); setExcludeContacted(Boolean(saved.excludeContacted)); setWholesaleOnly(Boolean(saved.wholesaleOnly)); setPrivateLabelOnly(Boolean(saved.privateLabelOnly)); changeTab('find'); }} />
+        <div id="leados-panel-outreach" role="tabpanel" aria-labelledby="leados-tab-outreach" className={activeTab === 'outreach' ? "space-y-4" : "hidden"}>
+          <LeadIntelligencePanel key={activeOutreachLeadId || 'workspace'} initialLeadId={activeOutreachLeadId} headers={getAuthHeaders} onSavedSearch={(saved) => { setCategory(saved.category || 'Feed Store'); setLocation(saved.location || 'Houston, TX'); setProductInterest(saved.productInterest || 'horse_salt'); setKeyword(saved.keyword || ''); setMaxResults(saved.maxResults || 15); setRadiusKm(saved.radiusKm || 25); setSearchDepth(saved.searchDepth || 1); setRequireWebsite(Boolean(saved.requireWebsite)); setRequirePhone(Boolean(saved.requirePhone)); setRequireEmail(Boolean(saved.requireEmail)); setExcludeSaved(Boolean(saved.excludeSaved)); setExcludeContacted(Boolean(saved.excludeContacted)); setWholesaleOnly(Boolean(saved.wholesaleOnly)); setPrivateLabelOnly(Boolean(saved.privateLabelOnly)); changeTab('find'); }} />
 
-            <div className="bg-white rounded-xl border border-slate-200 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2"><PaperPlaneRight className="w-4 h-4 text-indigo-600" /> Client & B2B Wholesale Outreach</h3>
-                  <p className="text-[11px] text-slate-500">Targeted email outreach for discovered animal feed, equine tack, and bulk salt buyers.</p>
-                </div>
-                <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> Simulation Mode</span>
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2"><PaperPlaneRight className="w-4 h-4 text-indigo-600" /> Client & B2B Wholesale Outreach</h3>
+                <p className="text-[11px] text-slate-500">Targeted email outreach for discovered animal feed, equine tack, and bulk salt buyers.</p>
               </div>
-              <div className="mt-3 p-3 bg-amber-50/70 border border-amber-200/80 rounded-lg text-[11px] text-amber-900 flex items-start gap-2">
-                <WarningCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                <div><span className="font-bold block text-amber-950">Safety Mode Active [SIMULATION]</span><p className="mt-0.5 text-amber-800">This composer records a simulation in the audit trail and sends no email. Persistent reviewed drafts above use the separately gated n8n workflow.</p></div>
-              </div>
+              <span className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> Simulation Mode</span>
             </div>
-
-            {sendResultNotice && (
-              <div className={`p-3 rounded-lg text-[11px] flex items-start gap-2 border ${sendResultNotice.ok ? sendResultNotice.simulated ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
-                {sendResultNotice.ok ? <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" /> : <WarningCircle className="w-4 h-4 text-red-600 flex-shrink-0" />}
-                <div className="flex-1 font-medium">{sendResultNotice.msg}</div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-1 space-y-3">
-                <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-                  <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><Tag className="w-3.5 h-3.5 text-indigo-600" /> Select Prospect</h4>
-                  <select value={activeOutreachLeadId || ''} onChange={(e) => { const l = libraryLeads.find((x) => x.id === e.target.value); if (l) startOutreachForLead(l); }} className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-800 bg-white">
-                    <option value="">-- Choose from saved ({libraryLeads.length}) --</option>
-                    {libraryLeads.map((l) => (<option key={l.id} value={l.id}>{l.businessName} ({l.city || 'Local'}) {l.email ? `[${l.email}]` : '[No Email]'}</option>))}
-                  </select>
-                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Templates</span>
-                    {OUTREACH_TEMPLATES.map((tmpl) => (
-                      <button key={tmpl.id} type="button" onClick={() => handleTemplateSelect(tmpl)} className={`w-full text-left p-2.5 rounded-lg border transition text-[11px] ${selectedTemplate.id === tmpl.id ? 'bg-indigo-50 border-indigo-300 text-indigo-950 font-semibold' : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
-                        <div className="font-bold">{tmpl.name}</div>
-                        <div className="text-[10px] text-slate-500 mt-0.5">{tmpl.category}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="lg:col-span-2">
-                <form onSubmit={handleSendOutreach} className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                    <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><EnvelopeSimple className="w-3.5 h-3.5 text-indigo-600" /> Wholesale Email Composer</h4>
-                    <span className="text-[10px] font-medium text-slate-400">Tokens: {'{business_name}'}, {'{city}'}</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Business Name</label><input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="e.g. Hill Country Feed" className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
-                    <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Recipient Email</label><input type="email" value={recipientEmail} onChange={(e) => { setRecipientEmail(e.target.value); setRecipientEmailSource('manually_entered'); }} placeholder="buyer@feedstore.com" className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
-                  </div>
-                  <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Subject Line</label><input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
-                  <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Email Body</label><textarea rows={10} value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono leading-relaxed" /></div>
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[10px] text-slate-500">Sender: <span className="font-semibold text-slate-700">sales@himalayankoh.com</span></span>
-                    <button type="submit" disabled={sendingOutreach} className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5">
-                      {sendingOutreach ? (<><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Sending...</>) : (<><PaperPlaneRight className="w-3.5 h-3.5" /> Preview simulation</>)}
-                    </button>
-                  </div>
-                </form>
-              </div>
+            <div className="mt-3 p-3 bg-amber-50/70 border border-amber-200/80 rounded-lg text-[11px] text-amber-900 flex items-start gap-2">
+              <WarningCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div><span className="font-bold block text-amber-950">Safety Mode Active [SIMULATION]</span><p className="mt-0.5 text-amber-800">This composer records a simulation in the audit trail and sends no email. Persistent reviewed drafts above use the separately gated n8n workflow.</p></div>
             </div>
           </div>
-        )}
+
+          {sendResultNotice && (
+            <div className={`p-3 rounded-lg text-[11px] flex items-start gap-2 border ${sendResultNotice.ok ? sendResultNotice.simulated ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
+              {sendResultNotice.ok ? <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" /> : <WarningCircle className="w-4 h-4 text-red-600 flex-shrink-0" />}
+              <div className="flex-1 font-medium">{sendResultNotice.msg}</div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-1 space-y-3">
+              <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><Tag className="w-3.5 h-3.5 text-indigo-600" /> Select Prospect</h4>
+                <select value={activeOutreachLeadId || ''} onChange={(e) => { const l = libraryLeads.find((x) => x.id === e.target.value); if (l) startOutreachForLead(l); }} className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] font-medium text-slate-800 bg-white">
+                  <option value="">-- Choose from saved ({libraryLeads.length}) --</option>
+                  {libraryLeads.map((l) => (<option key={l.id} value={l.id}>{l.businessName} ({l.city || 'Local'}) {l.email ? `[${l.email}]` : '[No Email]'}</option>))}
+                </select>
+                <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Templates</span>
+                  {OUTREACH_TEMPLATES.map((tmpl) => (
+                    <button key={tmpl.id} type="button" onClick={() => handleTemplateSelect(tmpl)} className={`w-full text-left p-2.5 rounded-lg border transition text-[11px] ${selectedTemplate.id === tmpl.id ? 'bg-indigo-50 border-indigo-300 text-indigo-950 font-semibold' : 'bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
+                      <div className="font-bold">{tmpl.name}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{tmpl.category}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-2">
+              <form onSubmit={handleSendOutreach} className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><EnvelopeSimple className="w-3.5 h-3.5 text-indigo-600" /> Wholesale Email Composer</h4>
+                  <span className="text-[10px] font-medium text-slate-400">Tokens: {'{business_name}'}, {'{city}'}</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Business Name</label><input type="text" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="e.g. Hill Country Feed" className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
+                  <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Recipient Email</label><input type="email" value={recipientEmail} onChange={(e) => { setRecipientEmail(e.target.value); setRecipientEmailSource('manually_entered'); }} placeholder="buyer@feedstore.com" className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
+                </div>
+                <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Subject Line</label><input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" /></div>
+                <div><label className="block text-[11px] font-bold text-slate-700 mb-1">Email Body</label><textarea rows={10} value={emailBody} onChange={(e) => setEmailBody(e.target.value)} className="w-full px-2.5 py-2 rounded-lg border border-slate-200 text-[11px] text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono leading-relaxed" /></div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[10px] text-slate-500">Sender: <span className="font-semibold text-slate-700">sales@himalayankoh.com</span></span>
+                  <button type="submit" disabled={sendingOutreach} className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5">
+                    {sendingOutreach ? (<><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Sending...</>) : (<><PaperPlaneRight className="w-3.5 h-3.5" /> Preview simulation</>)}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
 
         {/* ══════════ AI ENGINE TAB ══════════ */}
-        {activeTab === 'ai' && (
-          <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">AI Intelligence Configuration</h3>
-              <p className="text-[11px] text-slate-500">Server-side Google Gemini (primary, from Admin → Settings → API Keys) with OpenRouter / DeepSeek fallback enriches discovered leads on-demand. Search itself is deterministic and needs no AI key.</p>
+        <div id="leados-panel-ai" role="tabpanel" aria-labelledby="leados-tab-ai" className={activeTab === 'ai' ? "bg-white rounded-xl border border-slate-200 p-5 space-y-4" : "hidden"}>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">AI Intelligence Configuration</h3>
+            <p className="text-[11px] text-slate-500">Server-side Google Gemini (primary, from Admin → Settings → API Keys) with OpenRouter / DeepSeek fallback enriches discovered leads on-demand. Search itself is deterministic and needs no AI key.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between"><span className="font-bold text-slate-900">Google Gemini (Primary)</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-100 text-emerald-800">Recommended</span></div>
+              <p className="text-slate-600">Uses the Google key saved in Admin → Settings → API Keys. No extra setup.</p>
+              <button onClick={async () => { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ action: 'test', provider: 'gemini' }) }); const d = await res.json(); alert(d.configured ? `Gemini connection verified (${d.model})` : 'Gemini API key not configured — add it in Admin → Settings → API Keys'); }} className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100">Test Connection</button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
-              <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between"><span className="font-bold text-slate-900">Google Gemini (Primary)</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-100 text-emerald-800">Recommended</span></div>
-                <p className="text-slate-600">Uses the Google key saved in Admin → Settings → API Keys. No extra setup.</p>
-                <button onClick={async () => { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ action: 'test', provider: 'gemini' }) }); const d = await res.json(); alert(d.configured ? `Gemini connection verified (${d.model})` : 'Gemini API key not configured — add it in Admin → Settings → API Keys'); }} className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100">Test Connection</button>
-              </div>
-              <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between"><span className="font-bold text-slate-900">OpenRouter (Fallback)</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-slate-200 text-slate-700">Fallback</span></div>
-                <p className="text-slate-600">Used automatically only when Gemini is unavailable.</p>
-                <button onClick={async () => { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ action: 'test', provider: 'openrouter' }) }); const d = await res.json(); alert(d.configured ? `OpenRouter connection verified (${d.model})` : 'API key not configured'); }} className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100">Test Connection</button>
-              </div>
-              <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between"><span className="font-bold text-slate-900">Safety & Truth Invariance</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-indigo-100 text-indigo-800">Enforced</span></div>
-                <p className="text-slate-600">AI failures never block search. Leads always returned deterministically. Hallucinated metrics strictly prohibited.</p>
-              </div>
+            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between"><span className="font-bold text-slate-900">OpenRouter (Fallback)</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-slate-200 text-slate-700">Fallback</span></div>
+              <p className="text-slate-600">Used automatically only when Gemini is unavailable.</p>
+              <button onClick={async () => { const headers = await getAuthHeaders(); const res = await fetch('/api/admin/leados/ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ action: 'test', provider: 'openrouter' }) }); const d = await res.json(); alert(d.configured ? `OpenRouter connection verified (${d.model})` : 'API key not configured'); }} className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100">Test Connection</button>
+            </div>
+            <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between"><span className="font-bold text-slate-900">Safety & Truth Invariance</span><span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-indigo-100 text-indigo-800">Enforced</span></div>
+              <p className="text-slate-600">AI failures never block search. Leads always returned deterministically. Hallucinated metrics strictly prohibited.</p>
             </div>
           </div>
-        )}
+        </div>
 
         {/* ══════════ SETTINGS TAB ══════════ */}
-        {activeTab === 'settings' && (
-          <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">LeadOS System Settings</h3>
-              <p className="text-[11px] text-slate-500">System architecture, isolated database tables, and provider endpoints.</p>
+        <div id="leados-panel-settings" role="tabpanel" aria-labelledby="leados-tab-settings" className={activeTab === 'settings' ? "bg-white rounded-xl border border-slate-200 p-5 space-y-4" : "hidden"}>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">LeadOS System Settings</h3>
+            <p className="text-[11px] text-slate-500">System architecture, isolated database tables, and provider endpoints.</p>
+          </div>
+          <div className="space-y-2 text-[11px]">
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 font-mono space-y-0.5">
+              <div className="font-bold text-slate-800">Database Namespacing:</div>
+              <div className="text-slate-600">All tables prefixed: leados_*</div>
+              <div className="text-slate-600">Access control: WordPress administrator capability + storefront admin RBAC</div>
             </div>
-            <div className="space-y-2 text-[11px]">
-              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 font-mono space-y-0.5">
-                <div className="font-bold text-slate-800">Database Namespacing:</div>
-                <div className="text-slate-600">All tables prefixed: leados_*</div>
-                <div className="text-slate-600">Access control: WordPress administrator capability + storefront admin RBAC</div>
-              </div>
-              <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 font-mono space-y-0.5">
-                <div className="font-bold text-slate-800">Lead Data Sources:</div>
-                <div className="text-slate-600">Geocoding: OpenStreetMap Nominatim</div>
-                <div className="text-slate-600">Entity Discovery: OpenStreetMap Overpass API</div>
-                <div className="text-slate-600">Scoring: In-Memory Deterministic</div>
-              </div>
+            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 font-mono space-y-0.5">
+              <div className="font-bold text-slate-800">Lead Data Sources:</div>
+              <div className="text-slate-600">Geocoding: OpenStreetMap Nominatim</div>
+              <div className="text-slate-600">Entity Discovery: OpenStreetMap Overpass API</div>
+              <div className="text-slate-600">Scoring: In-Memory Deterministic</div>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* ── Email Edit Modal ── */}
