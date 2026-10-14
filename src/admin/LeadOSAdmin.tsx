@@ -40,6 +40,7 @@ import {
   Check,
   Storefront,
   Megaphone,
+  Clipboard,
 } from '@phosphor-icons/react';
 import { getAccessToken } from '@/services/wordpressAdminAuth';
 import type {
@@ -53,6 +54,7 @@ import { BUYER_CATEGORIES, PRODUCT_INTERESTS, OFFER_PROFILES, LEAD_PIPELINE, cre
 import type { SearchPlan } from '@/lib/leados/searchPlanner';
 import type { ProductInterest } from '@/lib/leados/types';
 import { parseLeadOSUrlState } from '@/lib/leados/urlState';
+import InteractiveLocationMapPicker from './InteractiveLocationMapPicker';
 
 const AMarketingGen = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.AMarketingGen })));
 const ASEOEngine = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.ASEOEngine })));
@@ -162,39 +164,39 @@ export function SourceBadge({ source }: { source?: string }) {
   const norm = (source || '').toLowerCase();
   if (norm.includes('google')) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-        <span className="w-4 h-4 rounded-full bg-blue-50 border border-blue-200 text-blue-600 font-bold flex items-center justify-center text-[10px]">G</span>
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
+        <span className="w-4 h-4 rounded-full bg-blue-50 border border-blue-200 text-blue-600 font-bold flex items-center justify-center text-[10px] flex-shrink-0">G</span>
         Google Maps
       </span>
     );
   }
   if (norm.includes('yelp')) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-        <span className="w-4 h-4 rounded-full bg-red-50 border border-red-200 text-red-600 font-bold flex items-center justify-center text-[10px]">Y</span>
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
+        <span className="w-4 h-4 rounded-full bg-red-50 border border-red-200 text-red-600 font-bold flex items-center justify-center text-[10px] flex-shrink-0">Y</span>
         Yelp
       </span>
     );
   }
   if (norm.includes('website') || norm.includes('company')) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-        <Buildings className="w-3.5 h-3.5 text-slate-500" />
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
+        <Buildings className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
         Company Website
       </span>
     );
   }
   if (norm.includes('searx') || norm.includes('web')) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-        <Globe className="w-3.5 h-3.5 text-indigo-500" />
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
+        <Globe className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
         Website Search
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
+      <MapPin className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
       OpenStreetMap
     </span>
   );
@@ -326,6 +328,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
   // Chip input editing states
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const [newLocationInput, setNewLocationInput] = useState('');
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState('');
@@ -1856,23 +1859,61 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   </div>
                 </div>
 
-                {/* Col 2: Locations */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
-                    <MapPin className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Locations</span>
+                {/* Col 2: Locations (Interactive Map Enabled) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+                      <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Locations</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">({locationsList.length})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMapPicker(true)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-[10px] font-bold transition cursor-pointer shadow-2xs group"
+                      title="Open interactive USA & World map selector"
+                    >
+                      <Globe className="w-3 h-3 text-indigo-600 group-hover:rotate-12 transition" />
+                      <span>Open Map</span>
+                    </button>
                   </div>
+
+                  {/* Interactive Map Visual Trigger Banner */}
+                  <button
+                    type="button"
+                    onClick={() => setShowMapPicker(true)}
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/80 via-blue-50/60 to-indigo-50/80 hover:from-indigo-100 hover:to-blue-100 text-left transition flex items-center justify-between cursor-pointer group shadow-2xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-2xs">
+                        <Globe className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[11px] font-bold text-indigo-950 block leading-tight truncate">
+                          Choose on Interactive Map
+                        </span>
+                        <span className="text-[9px] text-indigo-700/80 block leading-tight truncate">
+                          Visual USA States, Metros &amp; Global
+                        </span>
+                      </div>
+                    </div>
+                    <CaretRight className="w-3.5 h-3.5 text-indigo-500 group-hover:translate-x-0.5 transition flex-shrink-0" />
+                  </button>
+
+                  {/* Active Selected Location Badges */}
                   <div className="flex flex-wrap gap-1.5 items-center min-h-[34px]">
                     {locationsList.map((loc, idx) => (
                       <span
                         key={idx}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-[11px] font-semibold"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-[11px] font-semibold hover:border-indigo-200 transition shadow-2xs"
                       >
-                        {loc}
+                        <MapPin className="w-3 h-3 text-indigo-500 flex-shrink-0" />
+                        <span className="truncate max-w-[130px]">{loc}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveLocation(idx)}
-                          className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                          className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                          title={`Remove ${loc}`}
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -1897,7 +1938,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                         onClick={() => setShowAddLocation(true)}
                         className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-[11px] font-medium transition cursor-pointer"
                       >
-                        <Plus className="w-3 h-3" /> Add
+                        <Plus className="w-3 h-3" /> Quick Add
                       </button>
                     )}
                   </div>
@@ -2319,11 +2360,26 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 </td>
 
                                 {/* Location */}
-                                <td className="px-3 py-3 text-slate-600 whitespace-nowrap min-w-[140px]">
-                                  <div className="flex items-center gap-1">
-                                    <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                                    <span>{[lead.city, lead.region].filter(Boolean).join(', ') || lead.address || 'Texas'}</span>
-                                  </div>
+                                <td className="px-3 py-3 text-slate-600 whitespace-nowrap min-w-[150px]">
+                                  {(() => {
+                                    const locText = [lead.city, lead.region].filter(Boolean).join(', ') || lead.address || 'United States';
+                                    const queryParts = [lead.businessName, lead.address, lead.city, lead.region].filter(Boolean);
+                                    const mapQuery = queryParts.join(', ');
+                                    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+                                    return (
+                                      <a
+                                        href={mapUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="group inline-flex items-center gap-1.5 font-medium text-slate-800 hover:text-indigo-600 transition"
+                                        title={`Open "${mapQuery}" in Google Maps`}
+                                      >
+                                        <MapPin className="w-3.5 h-3.5 text-indigo-500 group-hover:text-indigo-600 flex-shrink-0" />
+                                        <span className="truncate max-w-[160px] underline-offset-2 group-hover:underline">{locText}</span>
+                                        <ArrowSquareOut className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 flex-shrink-0 opacity-60 group-hover:opacity-100" />
+                                      </a>
+                                    );
+                                  })()}
                                 </td>
 
                                 {/* Category */}
@@ -2334,7 +2390,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 </td>
 
                                 {/* Contact Information (Website, Phone, Email Multi-line) */}
-                                <td className="px-3 py-3">
+                                <td className="px-3 py-3 whitespace-nowrap min-w-[220px]">
                                   <div className="space-y-1 text-[11px]">
                                     {lead.website ? (
                                       <a
@@ -2356,6 +2412,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                       <a
                                         href={`tel:${lead.phone}`}
                                         className="text-slate-700 hover:underline flex items-center gap-1 font-medium"
+                                        title={`Call ${lead.phone}`}
                                       >
                                         <Phone className="w-3 h-3 text-emerald-600 flex-shrink-0" />
                                         <span>{lead.phone}</span>
@@ -2364,9 +2421,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
                                     {lead.email && (
                                       <a
-                                        href={`mailto:${lead.email}`}
-                                        className="text-slate-600 hover:underline flex items-center gap-1 truncate max-w-[170px]"
-                                        title={lead.email}
+                                        href={`mailto:${lead.email}?subject=${encodeURIComponent(`Himalayan Salt Wholesale Inquiry - ${lead.businessName}`)}`}
+                                        className="text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 truncate max-w-[170px] font-medium"
+                                        title={`Send email to ${lead.email}`}
                                       >
                                         <EnvelopeSimple className="w-3 h-3 text-indigo-500 flex-shrink-0" />
                                         <span>{lead.email}</span>
@@ -2403,14 +2460,14 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 </td>
 
                                 {/* Actions */}
-                                <td className="px-3 py-3 text-right whitespace-nowrap">
-                                  <div className="inline-flex items-center gap-1 justify-end">
+                                <td className="px-3 py-3 text-right whitespace-nowrap min-w-[140px]">
+                                  <div className="inline-flex items-center gap-1.5 justify-end">
                                     <button
                                       type="button"
                                       onClick={() => handleSaveToLibrary(lead)}
                                       disabled={lead.alreadySaved || isSaving}
                                       title={lead.alreadySaved ? 'Saved in Lead Library' : 'Save to Lead Library'}
-                                      className={`p-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer ${
+                                      className={`p-1.5 rounded-lg border text-xs font-semibold transition cursor-pointer flex-shrink-0 ${
                                         lead.alreadySaved
                                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                           : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
@@ -2429,7 +2486,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                       type="button"
                                       onClick={() => handleAIAnalyze(lead)}
                                       title="AI Lead Assessment"
-                                      className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-indigo-600 transition cursor-pointer"
+                                      className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-indigo-600 transition cursor-pointer flex-shrink-0"
                                     >
                                       <Robot className="w-3.5 h-3.5 text-indigo-600" />
                                     </button>
@@ -2438,7 +2495,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                       type="button"
                                       onClick={() => handleOpenQuickEmail(lead)}
                                       title={lead.email ? `Draft email outreach to ${lead.email}` : 'Draft email outreach pitch'}
-                                      className="p-1.5 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-[#b86452] transition cursor-pointer"
+                                      className="p-1.5 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100 text-[#b86452] transition cursor-pointer flex-shrink-0"
                                     >
                                       <PaperPlaneRight className="w-3.5 h-3.5 text-[#b86452]" />
                                     </button>
@@ -3068,7 +3125,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs min-w-[980px]">
+                <table className="w-full text-left border-collapse text-xs min-w-[1080px]">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                       <th className="py-3 px-3 w-10 text-center whitespace-nowrap">
@@ -3081,13 +3138,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                       </th>
                       <th className="py-3 px-2 w-10 text-slate-400 font-bold whitespace-nowrap">#</th>
                       <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[200px]">Business Name</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[140px]">Location</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[160px]">Location</th>
                       <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[130px]">Category</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[220px]">Contact Information</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[100px]">Source</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[260px]">Contact Information</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[130px]">Source</th>
                       <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[110px]">Status</th>
                       <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[70px]">Score</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap text-right min-w-[120px]">Actions</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap text-right min-w-[190px]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -3151,17 +3208,34 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                             </div>
                           </td>
 
-                          {/* Location */}
-                          <td className="py-3 px-3 text-slate-600 whitespace-nowrap min-w-[140px]">
-                            <div className="flex items-center gap-1 font-medium text-slate-800">
-                              <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                              <span className="truncate max-w-[150px]">{[lead.city, lead.region].filter(Boolean).join(', ') || 'United States'}</span>
-                            </div>
-                            {lead.address && (
-                              <div className="text-[10px] text-slate-400 truncate max-w-[160px] pl-4.5" title={lead.address}>
-                                {lead.address}
-                              </div>
-                            )}
+                          {/* Location with direct Google Maps link */}
+                          <td className="py-3 px-3 text-slate-600 whitespace-nowrap min-w-[160px]" onClick={(e) => e.stopPropagation()}>
+                            {(() => {
+                              const locText = [lead.city, lead.region].filter(Boolean).join(', ') || 'United States';
+                              const queryParts = [lead.businessName, lead.address, lead.city, lead.region].filter(Boolean);
+                              const mapQuery = queryParts.join(', ');
+                              const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+                              return (
+                                <a
+                                  href={mapUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group inline-flex flex-col text-left transition"
+                                  title={`Open "${mapQuery}" in Google Maps`}
+                                >
+                                  <div className="flex items-center gap-1 font-semibold text-slate-800 group-hover:text-indigo-600">
+                                    <MapPin className="w-3.5 h-3.5 text-indigo-500 group-hover:text-indigo-600 flex-shrink-0" />
+                                    <span className="truncate max-w-[160px] underline-offset-2 group-hover:underline">{locText}</span>
+                                    <ArrowSquareOut className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 flex-shrink-0 opacity-60 group-hover:opacity-100" />
+                                  </div>
+                                  {lead.address && (
+                                    <div className="text-[10px] text-slate-400 group-hover:text-slate-600 truncate max-w-[170px] pl-4.5" title={lead.address}>
+                                      {lead.address}
+                                    </div>
+                                  )}
+                                </a>
+                              );
+                            })()}
                           </td>
 
                           {/* Category */}
@@ -3172,8 +3246,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Contact Info (Multi-line formatted) */}
-                          <td className="py-3 px-3 text-[11px]" onClick={(e) => e.stopPropagation()}>
-                            <div className="space-y-1">
+                          <td className="py-3 px-3 text-[11px] whitespace-nowrap min-w-[260px]" onClick={(e) => e.stopPropagation()}>
+                            <div className="space-y-1.5">
                               {lead.website ? (
                                 <div className="flex items-center gap-1 text-slate-700">
                                   <Globe className="w-3 h-3 text-slate-400 flex-shrink-0" />
@@ -3181,7 +3255,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                     href={lead.website}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-indigo-600 hover:underline font-medium truncate max-w-[160px] inline-flex items-center gap-1"
+                                    className="text-indigo-600 hover:underline font-medium truncate max-w-[170px] inline-flex items-center gap-1"
                                     title={lead.website}
                                   >
                                     <span>{lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
@@ -3190,7 +3264,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-1 text-slate-300 text-[10px]">
-                                  <Globe className="w-3 h-3" />
+                                  <Globe className="w-3 h-3 flex-shrink-0" />
                                   <span>No website</span>
                                 </div>
                               )}
@@ -3198,24 +3272,28 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                               {lead.phone ? (
                                 <div className="flex items-center gap-1 text-slate-700">
                                   <Phone className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                                  <a href={`tel:${lead.phone}`} className="hover:underline font-semibold text-slate-800 text-[11px]">
+                                  <a href={`tel:${lead.phone}`} className="hover:underline font-semibold text-slate-800 text-[11px]" title={`Call ${lead.phone}`}>
                                     {lead.phone}
                                   </a>
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-1 text-slate-300 text-[10px]">
-                                  <Phone className="w-3 h-3" />
+                                  <Phone className="w-3 h-3 flex-shrink-0" />
                                   <span>No phone listed</span>
                                 </div>
                               )}
 
                               {lead.email ? (
-                                <div className="flex items-center gap-1 text-slate-700">
-                                  <EnvelopeSimple className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                                  <span className="font-medium text-slate-900 truncate max-w-[150px]" title={lead.email}>
-                                    {lead.email}
-                                  </span>
-                                  <span className={`text-[9px] font-semibold px-1 py-0.2 rounded ${
+                                <div className="flex items-center gap-1.5">
+                                  <a
+                                    href={`mailto:${lead.email}?subject=${encodeURIComponent(`Himalayan Salt Wholesale Inquiry - ${lead.businessName}`)}`}
+                                    className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium inline-flex items-center gap-1 truncate max-w-[170px]"
+                                    title={`Click to send email to ${lead.email}`}
+                                  >
+                                    <EnvelopeSimple className="w-3 h-3 text-indigo-500 flex-shrink-0" />
+                                    <span className="truncate">{lead.email}</span>
+                                  </a>
+                                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap flex-shrink-0 ${
                                     lead.emailSource === 'company_website' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
                                     lead.emailSource === 'manually_entered' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
                                     'bg-amber-50 text-amber-700 border border-amber-200'
@@ -3227,7 +3305,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEmailModal(lead)}
-                                  className="text-indigo-600 hover:underline flex items-center gap-1 font-medium text-[10px]"
+                                  className="text-indigo-600 hover:underline flex items-center gap-1 font-medium text-[10px] cursor-pointer"
                                 >
                                   <Plus className="w-2.5 h-2.5" /> Add email
                                 </button>
@@ -3236,12 +3314,12 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Source */}
-                          <td className="py-3 px-3">
+                          <td className="py-3 px-3 whitespace-nowrap min-w-[130px]">
                             <SourceBadge source={lead.dataSource || 'Google Maps'} />
                           </td>
 
                           {/* Status */}
-                          <td className="py-3 px-3">
+                          <td className="py-3 px-3 whitespace-nowrap min-w-[110px]">
                             {isVerified ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
@@ -3256,7 +3334,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Fit Score */}
-                          <td className="py-3 px-3">
+                          <td className="py-3 px-3 whitespace-nowrap min-w-[70px]">
                             <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-bold border ${
                               displayScore >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                               displayScore >= 60 ? 'bg-amber-50 text-amber-700 border-amber-200' :
@@ -3267,21 +3345,33 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Actions */}
-                          <td className="py-3 px-3 text-right" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                type="button"
-                                onClick={() => openLeadDrawer(lead, 'outreach')}
-                                className="px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[11px] flex items-center gap-1 transition cursor-pointer border border-indigo-200"
-                                title="Compose Wholesale Outreach"
-                              >
-                                <PaperPlaneRight className="w-3 h-3 text-indigo-600" />
-                                Outreach
-                              </button>
+                          <td className="py-3 px-3 text-right whitespace-nowrap min-w-[190px]" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1.5">
+                              {lead.email ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openLeadDrawer(lead, 'outreach')}
+                                  className="px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-[11px] flex items-center gap-1.5 transition cursor-pointer shadow-2xs whitespace-nowrap flex-shrink-0"
+                                  title={`Send Wholesale Outreach Email to ${lead.email}`}
+                                >
+                                  <PaperPlaneRight weight="fill" className="w-3 h-3 text-white" />
+                                  Send Email
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => openLeadDrawer(lead, 'outreach')}
+                                  className="px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[11px] flex items-center gap-1 transition cursor-pointer border border-indigo-200 whitespace-nowrap flex-shrink-0"
+                                  title="Compose Wholesale Outreach"
+                                >
+                                  <PaperPlaneRight className="w-3 h-3 text-indigo-600" />
+                                  Outreach
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => openLeadDrawer(lead, 'notes')}
-                                className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+                                className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition cursor-pointer flex-shrink-0"
                                 title="Notes & Follow-up Schedule"
                               >
                                 <FileText className="w-3.5 h-3.5" />
@@ -3289,7 +3379,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                               <button
                                 type="button"
                                 onClick={() => handleDeleteSavedLead(lead.id)}
-                                className="p-1.5 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                                className="p-1.5 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer flex-shrink-0"
                                 title="Delete Lead"
                               >
                                 <Trash className="w-3.5 h-3.5" />
@@ -3449,10 +3539,25 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                             <span className="text-[10px] font-semibold text-slate-400 block uppercase">Email Address</span>
                             {selectedDrawerLead.email ? (
                               <div className="mt-0.5">
-                                <span className="font-semibold text-slate-800 block">{selectedDrawerLead.email}</span>
-                                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200 mt-0.5 inline-block">
-                                  {selectedDrawerLead.emailSource === 'company_website' ? 'Website Verified' : selectedDrawerLead.emailSource === 'manually_entered' ? 'Staff Added' : 'OSM Record'}
-                                </span>
+                                <a
+                                  href={`mailto:${selectedDrawerLead.email}?subject=${encodeURIComponent(`Himalayan Salt Wholesale Inquiry - ${selectedDrawerLead.businessName}`)}`}
+                                  className="font-semibold text-indigo-600 hover:underline block truncate"
+                                  title={`Send email to ${selectedDrawerLead.email}`}
+                                >
+                                  {selectedDrawerLead.email}
+                                </a>
+                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block whitespace-nowrap">
+                                    {selectedDrawerLead.emailSource === 'company_website' ? 'Website Verified' : selectedDrawerLead.emailSource === 'manually_entered' ? 'Staff Added' : 'OSM Record'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDrawerActiveTab('outreach')}
+                                    className="text-[10px] font-semibold text-indigo-600 hover:underline inline-flex items-center gap-0.5 cursor-pointer whitespace-nowrap"
+                                  >
+                                    Compose Outreach &rarr;
+                                  </button>
+                                </div>
                               </div>
                             ) : (
                               <span className="text-slate-400 mt-0.5 block">No email recorded</span>
@@ -3641,18 +3746,43 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                             {showAdvancedOutreachWorkflow ? 'Hide Advanced Workflow' : 'Show Advanced Workflow & Evidence'}
                           </button>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {recipientEmail && (
+                              <a
+                                href={`mailto:${recipientEmail}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
+                                className="px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition flex items-center gap-1.5 whitespace-nowrap"
+                                title="Open pre-filled pitch in your email client (Gmail, Outlook, Apple Mail)"
+                              >
+                                <EnvelopeSimple className="w-3.5 h-3.5 text-emerald-600" />
+                                Open in Mail App
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (navigator.clipboard?.writeText) {
+                                  navigator.clipboard.writeText(`Subject: ${emailSubject}\n\n${emailBody}`);
+                                  setDrawerSavedMsg('Email pitch copied to clipboard!');
+                                  setTimeout(() => setDrawerSavedMsg(null), 3000);
+                                }
+                              }}
+                              className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                              title="Copy pitch subject and body to clipboard"
+                            >
+                              <Clipboard className="w-3.5 h-3.5 text-slate-500" />
+                              Copy Pitch
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleUpdateDrawerLeadStatus('contacted')}
-                              className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer"
+                              className="px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer whitespace-nowrap"
                             >
                               Mark Contacted
                             </button>
                             <button
                               type="submit"
                               disabled={sendingOutreach}
-                              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                             >
                               {sendingOutreach ? (
                                 <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Simulating...</>
@@ -4109,6 +4239,16 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           </div>
         </div>
       )}
+      {/* ── Interactive Location Map Studio Modal ── */}
+      <InteractiveLocationMapPicker
+        isOpen={showMapPicker}
+        onClose={() => setShowMapPicker(false)}
+        locations={locationsList}
+        onChange={(newLocs) => {
+          setLocationsList(newLocs);
+          if (newLocs[0]) setLocation(newLocs[0]);
+        }}
+      />
     </div>
   );
 }
