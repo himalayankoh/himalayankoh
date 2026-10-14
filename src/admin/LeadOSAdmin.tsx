@@ -20,6 +20,8 @@ import {
   Plus,
   Trash,
   ArrowsClockwise,
+  ArrowsLeftRight,
+  HandGrabbing,
   ShieldCheck,
   Robot,
   TrendUp,
@@ -324,8 +326,45 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [savingSelected, setSavingSelected] = useState(false);
   const [resultsView, setResultsView] = useState<'table' | 'map'>('table');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [showHowItWorksModal, setShowHowItWorksModal] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [savedSearchesMenuOpen, setSavedSearchesMenuOpen] = useState(false);
+
+  // Mouse horizontal drag-to-scroll on leads table
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const isTableDraggingRef = useRef(false);
+  const tableStartXRef = useRef(0);
+  const tableScrollLeftRef = useRef(0);
+  const [isTableDragging, setIsTableDragging] = useState(false);
+
+  const handleTableMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a, input, select, textarea, label, [role="button"]')) {
+      return;
+    }
+    if (!tableScrollRef.current) return;
+    isTableDraggingRef.current = true;
+    setIsTableDragging(true);
+    tableStartXRef.current = e.pageX - tableScrollRef.current.offsetLeft;
+    tableScrollLeftRef.current = tableScrollRef.current.scrollLeft;
+  };
+
+  const handleTableMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isTableDraggingRef.current || !tableScrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - tableScrollRef.current.offsetLeft;
+    const walk = (x - tableStartXRef.current) * 1.5;
+    tableScrollRef.current.scrollLeft = tableScrollLeftRef.current - walk;
+  };
+
+  const handleTableMouseUp = () => {
+    isTableDraggingRef.current = false;
+    setIsTableDragging(false);
+  };
+
+  const handleTableMouseLeave = () => {
+    isTableDraggingRef.current = false;
+    setIsTableDragging(false);
+  };
 
   // Chip input editing states
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -1672,63 +1711,83 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         {/* ══════════ FIND LEADS TAB ══════════ */}
         <div id="leados-panel-find" role="tabpanel" aria-labelledby="leados-tab-find" className={activeTab === 'find' ? "space-y-6" : "hidden"}>
           
-          {/* ── 1. AI Smart Search Hero Card (Matches Reference Screenshot) ── */}
-          <div className="rounded-2xl border border-indigo-100 bg-white p-6 shadow-sm space-y-4">
+          {/* ── 1. AI Smart Search Hero Card (Compact, Ultra-Premium Executive Style) ── */}
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs space-y-3.5">
+            {/* Top row: Title, Gemini badge, Description & Actions */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-                    <Sparkle weight="fill" className="w-5 h-5 text-indigo-600" />
-                  </div>
-                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">AI Smart Search</h2>
-                  <span className="bg-[#584de3] text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow-xs">
-                    Powered by Gemini AI
-                  </span>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-xs flex-shrink-0">
+                  <Sparkle weight="fill" className="w-5 h-5 text-white" />
                 </div>
-                <p className="text-xs text-slate-500 mt-1.5">
-                  Describe your ideal customers, locations, business types, and contact requirements in natural language. AI will find and verify real businesses for you.
-                </p>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-none">
+                      AI Smart Search
+                    </h2>
+                    <span className="bg-slate-900 text-indigo-300 border border-slate-700/60 text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1 shadow-2xs">
+                      <Sparkle weight="fill" className="w-2.5 h-2.5 text-indigo-400" />
+                      Powered by Gemini AI
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Describe your ideal customers, locations, and contact requirements in natural language.
+                  </p>
+                </div>
               </div>
 
-              {/* View Example Searches Popover */}
-              <div className="relative self-start sm:self-auto flex-shrink-0">
+              {/* Top-right Actions: Reset & Examples */}
+              <div className="flex items-center gap-2 self-start sm:self-auto flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => setShowExampleSearchesMenu((v) => !v)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-white hover:bg-indigo-50/70 text-indigo-700 text-xs font-semibold shadow-2xs transition cursor-pointer"
+                  onClick={handleClearAllPlan}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-rose-600 text-[11px] font-semibold transition cursor-pointer shadow-2xs"
+                  title="Clear input and reset detected parameters"
                 >
-                  <Star weight="fill" className="w-3.5 h-3.5 text-amber-500" />
-                  <span>View Example Searches</span>
-                  <CaretDown className="w-3 h-3 text-indigo-400" />
+                  <ArrowsClockwise className="w-3 h-3 text-slate-400" />
+                  <span>Reset</span>
                 </button>
 
-                {showExampleSearchesMenu && (
-                  <div className="absolute right-0 mt-1.5 w-80 bg-white rounded-xl border border-slate-200 shadow-xl z-30 p-2 space-y-1 text-xs">
-                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
-                      Sample Discovery Prompts
+                {/* View Example Searches Popover */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowExampleSearchesMenu((v) => !v)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100/60 text-indigo-700 text-[11px] font-semibold shadow-2xs transition cursor-pointer"
+                  >
+                    <Star weight="fill" className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Example Searches</span>
+                    <CaretDown className="w-3 h-3 text-indigo-400" />
+                  </button>
+
+                  {showExampleSearchesMenu && (
+                    <div className="absolute right-0 mt-1.5 w-80 bg-white rounded-xl border border-slate-200 shadow-xl z-30 p-2 space-y-1 text-xs">
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                        Sample Discovery Prompts
+                      </div>
+                      {PRESET_SAVED_SEARCHES.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            setShowExampleSearchesMenu(false);
+                            applySavedSearch(preset);
+                          }}
+                          className="w-full text-left p-2 rounded-lg hover:bg-indigo-50 text-slate-700 transition cursor-pointer"
+                        >
+                          <div className="font-bold text-indigo-900 text-[11px]">{preset.name}</div>
+                          <div className="text-[10px] text-slate-500 line-clamp-1">{preset.query}</div>
+                        </button>
+                      ))}
                     </div>
-                    {PRESET_SAVED_SEARCHES.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => {
-                          setShowExampleSearchesMenu(false);
-                          applySavedSearch(preset);
-                        }}
-                        className="w-full text-left p-2 rounded-lg hover:bg-indigo-50 text-slate-700 transition cursor-pointer"
-                      >
-                        <div className="font-bold text-indigo-900 text-[11px]">{preset.name}</div>
-                        <div className="text-[10px] text-slate-500 line-clamp-1">{preset.query}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Prompt Input Bar with Clear Button & Action Button */}
-            <div className="rounded-xl border border-indigo-200 bg-white shadow-2xs p-2.5 flex flex-col md:flex-row items-center gap-2.5 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition">
-              <div className="relative flex-1 w-full flex items-center">
+            {/* Prompt Input Bar: Clean, sleek command field */}
+            <div className="rounded-xl border border-slate-200/90 bg-white shadow-2xs p-1.5 pl-3 flex flex-col md:flex-row items-center gap-2 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition">
+              <div className="relative flex-1 w-full flex items-center gap-2">
+                <MagnifyingGlass className="w-4 h-4 text-slate-400 flex-shrink-0" />
                 <input
                   type="text"
                   value={aiQuery}
@@ -1740,13 +1799,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     }
                   }}
                   placeholder="Find 100 livestock feed stores and mineral distributors in Houston, Dallas and Austin with websites, emails and phone numbers."
-                  className="w-full pr-8 text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium bg-transparent"
+                  className="w-full pr-6 text-xs text-slate-800 placeholder-slate-400 focus:outline-none font-medium bg-transparent"
                 />
                 {aiQuery && (
                   <button
                     type="button"
                     onClick={() => setAiQuery('')}
-                    className="p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition mr-1"
+                    className="p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition mr-1 cursor-pointer"
                     title="Clear input"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -1758,24 +1817,24 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 type="button"
                 disabled={planning || searching}
                 onClick={() => void planAndSearch(true)}
-                className="w-full md:w-auto px-6 py-2.5 rounded-xl bg-[#584de3] hover:bg-[#493ecc] text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 flex-shrink-0 cursor-pointer"
+                className="w-full md:w-auto px-5 py-2 rounded-lg bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 flex-shrink-0 cursor-pointer"
               >
                 {planning || searching ? (
-                  <ArrowsClockwise className="w-4 h-4 animate-spin text-white" />
+                  <ArrowsClockwise className="w-3.5 h-3.5 animate-spin text-white" />
                 ) : (
-                  <MagnifyingGlass className="w-4 h-4 text-white" />
+                  <Sparkle weight="fill" className="w-3.5 h-3.5 text-white" />
                 )}
                 <span>Find Leads with AI</span>
               </button>
             </div>
 
-            {/* "Try an example:" Quick Chips */}
-            <div className="flex flex-wrap items-center gap-2 pt-0.5 text-xs text-slate-500">
-              <span className="font-semibold text-slate-600 text-[11px]">Try an example:</span>
+            {/* Compact "Try an example:" Quick Chips */}
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+              <span className="font-semibold text-slate-500 text-[10px] uppercase tracking-wider mr-0.5">Try:</span>
               {[
-                { label: 'Feed stores in Houston, TX', q: 'Find livestock feed stores in Houston, TX with websites, emails and phone numbers' },
-                { label: 'Ranches with websites in Texas', q: 'Find ranches and tack shops with websites in Texas' },
-                { label: 'Livestock suppliers in USA', q: 'Find livestock suppliers and feed mills in USA' },
+                { label: 'Feed stores • Houston, TX', q: 'Find livestock feed stores in Houston, TX with websites, emails and phone numbers' },
+                { label: 'Ranches in Texas', q: 'Find ranches and tack shops with websites in Texas' },
+                { label: 'Livestock suppliers USA', q: 'Find livestock suppliers and feed mills in USA' },
                 { label: 'Mineral distributors with email', q: 'Find mineral distributors in Texas with email addresses' },
                 { label: 'Co-ops buying salt and minerals', q: 'Find farm supply cooperatives buying salt and minerals in USA' },
               ].map((ex) => (
@@ -1786,49 +1845,55 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     setAiQuery(ex.q);
                     void planAndSearch(true, ex.q);
                   }}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-700 text-slate-600 text-[11px] font-medium transition cursor-pointer shadow-2xs"
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border border-slate-200 bg-slate-50/70 hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-700 text-slate-600 text-[11px] font-medium transition cursor-pointer shadow-2xs"
                 >
-                  <MagnifyingGlass className="w-3 h-3 text-slate-400" />
+                  <MagnifyingGlass className="w-2.5 h-2.5 text-slate-400" />
                   {ex.label}
                 </button>
               ))}
             </div>
 
-            {/* AI Detected Parameters (editable) */}
-            <div className="pt-2 border-t border-slate-100 space-y-3">
-              <div className="flex items-center justify-between">
+            {/* AI Detected Parameters: Harmonious, Compact 4-Card Parameter Deck */}
+            <div className="pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between pb-2">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                  <CheckCircle weight="fill" className="w-4 h-4 text-emerald-500" />
-                  <span>AI Detected Parameters (editable)</span>
+                  <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>AI Detected Parameters</span>
+                  <span className="text-[10px] text-slate-400 font-normal">(editable)</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleClearAllPlan}
-                  className="text-[11px] text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                >
-                  Reset Parameters
-                </button>
+                {planNote && (
+                  <span className="text-[10px] text-indigo-600 font-medium bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                    {planNote}
+                  </span>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 
-                {/* Col 1: Business Types */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
-                    <Storefront className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Business Types</span>
+                {/* Parameter Card 1: Business Types */}
+                <div className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 flex flex-col justify-between space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+                      <Storefront className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Business Types</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-indigo-100/70 text-indigo-700">
+                      {categoriesList.length}
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 items-center min-h-[34px]">
+
+                  <div className="flex flex-wrap gap-1.5 items-center min-h-[30px]">
                     {categoriesList.map((cat, idx) => (
                       <span
                         key={idx}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 text-[11px] font-semibold"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-indigo-200 text-indigo-700 text-[11px] font-semibold shadow-2xs"
                       >
-                        {cat}
+                        <span className="truncate max-w-[120px]">{cat}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveCategory(idx)}
                           className="text-indigo-400 hover:text-indigo-700 cursor-pointer"
+                          title={`Remove ${cat}`}
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -1843,7 +1908,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           onChange={(e) => setNewCategoryInput(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); if (e.key === 'Escape') setShowAddCategory(false); }}
                           placeholder="Category"
-                          className="px-2 py-0.5 text-xs border border-indigo-300 rounded w-24 focus:outline-none"
+                          className="px-2 py-0.5 text-[11px] border border-indigo-300 rounded w-24 focus:outline-none bg-white"
                         />
                         <button type="button" onClick={handleAddCategory} className="text-xs text-indigo-600 font-bold cursor-pointer">Add</button>
                       </div>
@@ -1851,71 +1916,48 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                       <button
                         type="button"
                         onClick={() => setShowAddCategory(true)}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-[11px] font-medium transition cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-[10px] font-medium transition cursor-pointer bg-white"
                       >
-                        <Plus className="w-3 h-3" /> Add
+                        <Plus className="w-2.5 h-2.5" /> Add
                       </button>
                     )}
                   </div>
                 </div>
 
-                {/* Col 2: Locations (Interactive Map Enabled) */}
-                <div className="space-y-2">
+                {/* Parameter Card 2: Locations (Compact Map Studio Trigger + Chips) */}
+                <div className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 flex flex-col justify-between space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
                       <MapPin className="w-3.5 h-3.5 text-indigo-600" />
                       <span>Locations</span>
-                      <span className="text-[10px] text-slate-400 font-semibold">({locationsList.length})</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowMapPicker(true)}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-[10px] font-bold transition cursor-pointer shadow-2xs group"
-                      title="Open interactive USA & World map selector"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 text-indigo-700 hover:from-indigo-100 hover:to-blue-100 text-[10px] font-bold transition cursor-pointer shadow-2xs group"
+                      title="Open interactive USA & World map studio"
                     >
                       <Globe className="w-3 h-3 text-indigo-600 group-hover:rotate-12 transition" />
-                      <span>Open Map</span>
+                      <span>Map Studio</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     </button>
                   </div>
 
-                  {/* Interactive Map Visual Trigger Banner */}
-                  <button
-                    type="button"
-                    onClick={() => setShowMapPicker(true)}
-                    className="w-full px-2.5 py-1.5 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/80 via-blue-50/60 to-indigo-50/80 hover:from-indigo-100 hover:to-blue-100 text-left transition flex items-center justify-between cursor-pointer group shadow-2xs"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-2xs">
-                        <Globe className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-[11px] font-bold text-indigo-950 block leading-tight truncate">
-                          Choose on Interactive Map
-                        </span>
-                        <span className="text-[9px] text-indigo-700/80 block leading-tight truncate">
-                          Visual USA States, Metros &amp; Global
-                        </span>
-                      </div>
-                    </div>
-                    <CaretRight className="w-3.5 h-3.5 text-indigo-500 group-hover:translate-x-0.5 transition flex-shrink-0" />
-                  </button>
-
-                  {/* Active Selected Location Badges */}
-                  <div className="flex flex-wrap gap-1.5 items-center min-h-[34px]">
+                  <div className="flex flex-wrap gap-1.5 items-center min-h-[30px]">
                     {locationsList.map((loc, idx) => (
                       <span
                         key={idx}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-[11px] font-semibold hover:border-indigo-200 transition shadow-2xs"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800 text-[11px] font-semibold hover:border-indigo-200 transition shadow-2xs"
                       >
-                        <MapPin className="w-3 h-3 text-indigo-500 flex-shrink-0" />
-                        <span className="truncate max-w-[130px]">{loc}</span>
+                        <MapPin className="w-2.5 h-2.5 text-indigo-500 flex-shrink-0" />
+                        <span className="truncate max-w-[110px]">{loc}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoveLocation(idx)}
                           className="text-slate-400 hover:text-rose-600 cursor-pointer"
                           title={`Remove ${loc}`}
                         >
-                          <X className="w-3 h-3" />
+                          <X className="w-2.5 h-2.5" />
                         </button>
                       </span>
                     ))}
@@ -1928,7 +1970,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           onChange={(e) => setNewLocationInput(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') handleAddLocation(); if (e.key === 'Escape') setShowAddLocation(false); }}
                           placeholder="City, State"
-                          className="px-2 py-0.5 text-xs border border-indigo-300 rounded w-24 focus:outline-none"
+                          className="px-2 py-0.5 text-[11px] border border-indigo-300 rounded w-24 focus:outline-none bg-white"
                         />
                         <button type="button" onClick={handleAddLocation} className="text-xs text-indigo-600 font-bold cursor-pointer">Add</button>
                       </div>
@@ -1936,72 +1978,90 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                       <button
                         type="button"
                         onClick={() => setShowAddLocation(true)}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-[11px] font-medium transition cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-[10px] font-medium transition cursor-pointer bg-white"
                       >
-                        <Plus className="w-3 h-3" /> Quick Add
+                        <Plus className="w-2.5 h-2.5" /> Add
                       </button>
                     )}
                   </div>
                 </div>
 
-                {/* Col 3: Required Contacts */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
-                    <Phone className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Required Contacts</span>
+                {/* Parameter Card 3: Required Contacts (Modern Toggle Buttons) */}
+                <div className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 flex flex-col justify-between space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+                      <Phone className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Required Contacts</span>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 items-center min-h-[34px]">
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={requireWebsite}
-                        onChange={(e) => setRequireWebsite(e.target.checked)}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      />
-                      <span>Website</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={requireEmail}
-                        onChange={(e) => setRequireEmail(e.target.checked)}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      />
+
+                  <div className="flex items-center gap-1.5 min-h-[30px]">
+                    <button
+                      type="button"
+                      onClick={() => setRequireWebsite((v) => !v)}
+                      className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-semibold border transition inline-flex items-center justify-center gap-1 cursor-pointer ${
+                        requireWebsite
+                          ? 'bg-white border-indigo-300 text-indigo-700 shadow-2xs font-bold'
+                          : 'bg-white/60 border-slate-200 text-slate-400 hover:text-slate-600'
+                      }`}
+                      title={requireWebsite ? 'Website required (active)' : 'Website optional'}
+                    >
+                      <Check weight="bold" className={`w-3 h-3 ${requireWebsite ? 'text-indigo-600' : 'text-slate-300'}`} />
+                      <span>Web</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRequireEmail((v) => !v)}
+                      className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-semibold border transition inline-flex items-center justify-center gap-1 cursor-pointer ${
+                        requireEmail
+                          ? 'bg-white border-indigo-300 text-indigo-700 shadow-2xs font-bold'
+                          : 'bg-white/60 border-slate-200 text-slate-400 hover:text-slate-600'
+                      }`}
+                      title={requireEmail ? 'Email required (active)' : 'Email optional'}
+                    >
+                      <Check weight="bold" className={`w-3 h-3 ${requireEmail ? 'text-indigo-600' : 'text-slate-300'}`} />
                       <span>Email</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={requirePhone}
-                        onChange={(e) => setRequirePhone(e.target.checked)}
-                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRequirePhone((v) => !v)}
+                      className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-semibold border transition inline-flex items-center justify-center gap-1 cursor-pointer ${
+                        requirePhone
+                          ? 'bg-white border-indigo-300 text-indigo-700 shadow-2xs font-bold'
+                          : 'bg-white/60 border-slate-200 text-slate-400 hover:text-slate-600'
+                      }`}
+                      title={requirePhone ? 'Phone required (active)' : 'Phone optional'}
+                    >
+                      <Check weight="bold" className={`w-3 h-3 ${requirePhone ? 'text-indigo-600' : 'text-slate-300'}`} />
                       <span>Phone</span>
-                    </label>
+                    </button>
                   </div>
                 </div>
 
-                {/* Col 4: Results Target */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
-                    <Target className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Results</span>
-                  </div>
-                  <div className="flex items-center min-h-[34px]">
-                    <div className="relative w-full">
-                      <select
-                        value={resultsLimit}
-                        onChange={(e) => setResultsLimit(Number(e.target.value))}
-                        className="w-full appearance-none pl-3 pr-8 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
-                      >
-                        <option value={25}>25 businesses</option>
-                        <option value={50}>50 businesses</option>
-                        <option value={100}>100 businesses</option>
-                        <option value={150}>150 businesses</option>
-                        <option value={200}>200 businesses</option>
-                      </select>
-                      <CaretDown className="w-3 h-3 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                {/* Parameter Card 4: Results Volume */}
+                <div className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 flex flex-col justify-between space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+                      <Target className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Target Results</span>
                     </div>
+                  </div>
+
+                  <div className="relative min-h-[30px] flex items-center">
+                    <select
+                      value={resultsLimit}
+                      onChange={(e) => setResultsLimit(Number(e.target.value))}
+                      className="w-full appearance-none pl-3 pr-8 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-800 bg-white hover:border-indigo-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer shadow-2xs"
+                    >
+                      <option value={25}>25 businesses</option>
+                      <option value={50}>50 businesses</option>
+                      <option value={100}>100 businesses</option>
+                      <option value={150}>150 businesses</option>
+                      <option value={200}>200 businesses</option>
+                    </select>
+                    <CaretDown className="w-3 h-3 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
                   </div>
                 </div>
 
@@ -2009,7 +2069,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             </div>
 
             {/* Collapsible Advanced Options */}
-            <div className="border-t border-slate-100 pt-3">
+            <div className="border-t border-slate-100 pt-2.5">
               <button
                 type="button"
                 onClick={() => setShowAdvancedFilters((v) => !v)}
@@ -2018,7 +2078,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 <span className="flex items-center gap-1.5">
                   <GearSix className="w-3.5 h-3.5 text-slate-400" />
                   <span>Advanced Options</span>
-                  <span className="text-slate-400 text-[11px] font-normal">— Search sources, radius, additional keywords, exclusions, and more.</span>
+                  <span className="text-slate-400 text-[11px] font-normal hidden sm:inline">— Search sources, radius, additional keywords, exclusions, and more.</span>
                 </span>
                 {showAdvancedFilters ? <CaretUp className="w-3.5 h-3.5" /> : <CaretDown className="w-3.5 h-3.5" />}
               </button>
@@ -2107,124 +2167,14 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             </div>
           )}
 
-          {/* ── 2. Results Section (2-Column Layout matching Reference Screenshot) ── */}
-          <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6 items-start">
+          {/* ── 2. Results Section (Full-Width with Mouse Drag-to-Scroll & Embedded Controls) ── */}
+          <div className="w-full space-y-4">
             
-            {/* ── Left Sidebar: Saved Searches & Quick Filters ── */}
-            <div className="space-y-4">
+            {/* Header Action Bar with Integrated Quick Filters & Saved Searches */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               
-              {/* Saved Searches Card */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                    <BookBookmark className="w-4 h-4 text-indigo-600" />
-                    <span>Saved Searches</span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSaveSearchTemplate}
-                  className="w-full py-2 px-3 rounded-lg border border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50/60 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Save Current Search
-                </button>
-
-                <div className="space-y-1.5 pt-1">
-                  {PRESET_SAVED_SEARCHES.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => applySavedSearch(s)}
-                      className="w-full text-left p-2.5 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition group cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <MagnifyingGlass className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-800 group-hover:text-indigo-600 truncate">{s.name}</p>
-                          <p className="text-[10px] text-slate-400 truncate">{s.location}</p>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Quick Filters Card */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs space-y-2">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 pb-1 border-b border-slate-100">
-                  <Funnel className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Quick Filters</span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setFindLeadsQuickFilter('all')}
-                  className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    findLeadsQuickFilter === 'all' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <BookBookmark className="w-3.5 h-3.5 text-indigo-600" /> All Leads
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-indigo-100/70 text-indigo-800 text-[10px] font-bold">
-                    {leads.length}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFindLeadsQuickFilter('verified')}
-                  className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    findLeadsQuickFilter === 'verified' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-600" /> Verified
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-100/70 text-emerald-800 text-[10px] font-bold">
-                    {verifiedFindCount}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFindLeadsQuickFilter('unverified')}
-                  className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    findLeadsQuickFilter === 'unverified' ? 'bg-amber-50 text-amber-700' : 'text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <WarningCircle weight="fill" className="w-3.5 h-3.5 text-amber-500" /> Unverified
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-amber-100/70 text-amber-800 text-[10px] font-bold">
-                    {unverifiedFindCount}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setFindLeadsQuickFilter('review')}
-                  className={`w-full flex items-center justify-between p-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                    findLeadsQuickFilter === 'review' ? 'bg-rose-50 text-rose-700' : 'text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    <ClockCounterClockwise className="w-3.5 h-3.5 text-rose-500" /> Needs Review
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-rose-100/70 text-rose-800 text-[10px] font-bold">
-                    {needsReviewFindCount}
-                  </span>
-                </button>
-              </div>
-
-            </div>
-
-            {/* ── Right Main Area: Leads Found Table & Actions ── */}
-            <div className="space-y-4">
-              
-              {/* Header Action Bar */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Left: Title + Segmented Quick Filters */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-base font-bold text-slate-900">Leads Found</h3>
@@ -2233,81 +2183,228 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                    <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-500 inline-block" />
-                    Verified and deduplicated results from multiple sources. Select leads to save to library.
+                    <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-500 inline-block flex-shrink-0" />
+                    <span>Verified and deduplicated results. Select leads to save to library.</span>
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
-                  {selectedLeadIds.size > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const firstSelected = leads.find((l) => selectedLeadIds.has(l.businessName));
-                        if (firstSelected) handleOpenQuickEmail(firstSelected);
-                      }}
-                      className="px-3.5 py-2 rounded-xl bg-[#b86452] hover:bg-[#a05246] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                    >
-                      <PaperPlaneRight className="w-3.5 h-3.5 text-white" />
-                      <span>Email Selected ({selectedLeadIds.size})</span>
-                    </button>
-                  )}
-
+                {/* Segmented Quick Filters (Relocated from removed sidebar) */}
+                <div className="flex items-center gap-1 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-x-auto no-scrollbar">
                   <button
                     type="button"
-                    disabled={selectedLeadIds.size === 0 || savingSelected}
-                    onClick={handleSaveSelected}
-                    className="px-4 py-2 rounded-xl bg-[#584de3] hover:bg-[#493ecc] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                    onClick={() => setFindLeadsQuickFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                      findLeadsQuickFilter === 'all'
+                        ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
                   >
-                    <BookBookmark className="w-3.5 h-3.5 text-white" />
-                    {savingSelected ? 'Saving...' : `Save Selected (${selectedLeadIds.size})`}
+                    <span>All</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-slate-200/70 text-slate-700 text-[10px] font-bold">
+                      {leads.length}
+                    </span>
                   </button>
 
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setExportMenuOpen((v) => !v)}
-                      className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition cursor-pointer"
-                    >
-                      <DownloadSimple className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Export CSV</span>
-                      <CaretDown className="w-3 h-3 text-slate-400" />
-                    </button>
-                    {exportMenuOpen && (
-                      <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 text-xs">
-                        <button
-                          type="button"
-                          onClick={handleExportSearchResultsCSV}
-                          className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 text-slate-700 font-medium"
-                        >
-                          Export CSV
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleExportSearchResultsJSON}
-                          className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 text-slate-700 font-medium"
-                        >
-                          Export JSON
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFindLeadsQuickFilter('verified')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                      findLeadsQuickFilter === 'verified'
+                        ? 'bg-white text-emerald-700 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Verified</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-emerald-100/80 text-emerald-800 text-[10px] font-bold">
+                      {verifiedFindCount}
+                    </span>
+                  </button>
 
                   <button
                     type="button"
-                    onClick={() => setResultsView((v) => (v === 'map' ? 'table' : 'map'))}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition cursor-pointer"
+                    onClick={() => setFindLeadsQuickFilter('unverified')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                      findLeadsQuickFilter === 'unverified'
+                        ? 'bg-white text-amber-700 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
                   >
-                    <MapPin className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>{resultsView === 'map' ? 'View as Table' : 'View on Map'}</span>
+                    <WarningCircle weight="fill" className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Unverified</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-amber-100/80 text-amber-800 text-[10px] font-bold">
+                      {unverifiedFindCount}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFindLeadsQuickFilter('review')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                      findLeadsQuickFilter === 'review'
+                        ? 'bg-white text-rose-700 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <ClockCounterClockwise className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Review</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-rose-100/80 text-rose-800 text-[10px] font-bold">
+                      {needsReviewFindCount}
+                    </span>
                   </button>
                 </div>
               </div>
 
-              {/* Table or Map View */}
-              {resultsView === 'table' ? (
-                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
-                  <div className="overflow-x-auto">
+              {/* Right Toolbar Actions */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Horizontal Drag to Scroll Hint Badge */}
+                <span className="hidden xl:inline-flex items-center gap-1.5 text-[11px] text-slate-500 font-medium px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
+                  <ArrowsLeftRight className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Drag rows to scroll</span>
+                </span>
+
+                {/* Saved Searches Popover (Relocated from removed sidebar) */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setSavedSearchesMenuOpen((v) => !v)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition cursor-pointer"
+                  >
+                    <BookBookmark className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Saved Searches</span>
+                    <CaretDown className="w-3 h-3 text-slate-400" />
+                  </button>
+
+                  {savedSearchesMenuOpen && (
+                    <div className="absolute right-0 mt-1.5 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-30 p-2 space-y-2 text-xs">
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Saved Presets
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSavedSearchesMenuOpen(false)}
+                          className="text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSavedSearchesMenuOpen(false);
+                          void handleSaveSearchTemplate();
+                        }}
+                        className="w-full py-2 px-2.5 rounded-lg border border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50 font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Save Current Search
+                      </button>
+
+                      <div className="space-y-1 max-h-60 overflow-y-auto">
+                        {PRESET_SAVED_SEARCHES.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setSavedSearchesMenuOpen(false);
+                              applySavedSearch(s);
+                            }}
+                            className="w-full text-left p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 transition group cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2">
+                              <MagnifyingGlass className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-800 group-hover:text-indigo-600 truncate">{s.name}</p>
+                                <p className="text-[10px] text-slate-400 truncate">{s.location}</p>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {selectedLeadIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const firstSelected = leads.find((l) => selectedLeadIds.has(l.businessName));
+                      if (firstSelected) handleOpenQuickEmail(firstSelected);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[#b86452] hover:bg-[#a05246] text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                  >
+                    <PaperPlaneRight className="w-3.5 h-3.5 text-white" />
+                    <span>Email Selected ({selectedLeadIds.size})</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  disabled={selectedLeadIds.size === 0 || savingSelected}
+                  onClick={handleSaveSelected}
+                  className="px-4 py-2 rounded-xl bg-[#584de3] hover:bg-[#493ecc] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                >
+                  <BookBookmark className="w-3.5 h-3.5 text-white" />
+                  {savingSelected ? 'Saving...' : `Save Selected (${selectedLeadIds.size})`}
+                </button>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setExportMenuOpen((v) => !v)}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition cursor-pointer"
+                  >
+                    <DownloadSimple className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Export</span>
+                    <CaretDown className="w-3 h-3 text-slate-400" />
+                  </button>
+                  {exportMenuOpen && (
+                    <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={handleExportSearchResultsCSV}
+                        className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 text-slate-700 font-medium cursor-pointer"
+                      >
+                        Export CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleExportSearchResultsJSON}
+                        className="w-full text-left px-3 py-1.5 hover:bg-indigo-50 text-slate-700 font-medium cursor-pointer"
+                      >
+                        Export JSON
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setResultsView((v) => (v === 'map' ? 'table' : 'map'))}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition cursor-pointer"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>{resultsView === 'map' ? 'Table View' : 'Map View'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Table or Map View */}
+            {resultsView === 'table' ? (
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+                <div
+                  ref={tableScrollRef}
+                  onMouseDown={handleTableMouseDown}
+                  onMouseMove={handleTableMouseMove}
+                  onMouseUp={handleTableMouseUp}
+                  onMouseLeave={handleTableMouseLeave}
+                  className={`overflow-x-auto select-none ${
+                    isTableDragging ? 'cursor-grabbing' : 'cursor-grab'
+                  }`}
+                  title="Click and drag horizontally to scroll through lead details"
+                >
                     <table className="w-full text-left text-xs text-slate-700 border-collapse min-w-[980px]">
                       <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                         <tr>
@@ -2636,8 +2733,6 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               )}
 
             </div>
-
-          </div>
 
           {/* ── AI Factual Assessment Modal ── */}
           {analyzingLeadName && (
