@@ -43,6 +43,7 @@ import {
   Storefront,
   Megaphone,
   Clipboard,
+  DotsSixVertical,
 } from '@phosphor-icons/react';
 import { getAccessToken } from '@/services/wordpressAdminAuth';
 import type {
@@ -486,19 +487,235 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   // Settings active section
   const [settingsSection, setSettingsSection] = useState<'ai' | 'icp' | 'scoring' | 'system'>('ai');
 
-  const libraryCategories = Array.from(new Set(libraryLeads.map((l) => l.category).filter(Boolean))) as string[];
-  const filteredLibraryLeads = libraryLeads.filter((l) => {
-    if (libraryCategoryFilter !== 'all' && l.category !== libraryCategoryFilter) return false;
-    if (libraryVerificationFilter === 'verified') {
-      const isV = l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website);
-      if (!isV) return false;
+  // ── Lead Library Table Resizing, Sorting, Filtering & Row Reordering ──
+  const DEFAULT_LIBRARY_COL_WIDTHS = {
+    reorder: 38,
+    check: 38,
+    index: 38,
+    name: 240,
+    location: 160,
+    category: 140,
+    contact: 280,
+    source: 130,
+    status: 110,
+    score: 80,
+    actions: 190,
+  };
+
+  const [libraryColWidths, setLibraryColWidths] = useState<Record<string, number>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('hk_leados_lib_col_widths');
+        if (saved) return { ...DEFAULT_LIBRARY_COL_WIDTHS, ...JSON.parse(saved) };
+      } catch {}
     }
-    if (libraryVerificationFilter === 'unverified') {
-      const isV = l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website);
-      if (isV) return false;
-    }
-    return true;
+    return DEFAULT_LIBRARY_COL_WIDTHS;
   });
+
+  const resizingLibColRef = useRef<{ colKey: string; startX: number; startWidth: number } | null>(null);
+
+  const handleStartLibColResize = (colKey: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingLibColRef.current = {
+      colKey,
+      startX: e.clientX,
+      startWidth: libraryColWidths[colKey] || 150,
+    };
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizingLibColRef.current) return;
+      const delta = moveEvent.clientX - resizingLibColRef.current.startX;
+      const minW = ['reorder', 'check', 'index'].includes(resizingLibColRef.current.colKey) ? 30 : 60;
+      const newWidth = Math.max(minW, resizingLibColRef.current.startWidth + delta);
+      setLibraryColWidths((prev) => {
+        const next = { ...prev, [resizingLibColRef.current!.colKey]: newWidth };
+        try { localStorage.setItem('hk_leados_lib_col_widths', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    };
+
+    const handleMouseUp = () => {
+      resizingLibColRef.current = null;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleResetLibColWidth = (colKey: string) => {
+    setLibraryColWidths((prev) => {
+      const next = { ...prev, [colKey]: (DEFAULT_LIBRARY_COL_WIDTHS as any)[colKey] || 150 };
+      try { localStorage.setItem('hk_leados_lib_col_widths', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  // Sorting state for Lead Library
+  const [librarySortField, setLibrarySortField] = useState<'manual' | 'name' | 'location' | 'category' | 'contact' | 'source' | 'status' | 'score'>('manual');
+  const [librarySortDirection, setLibrarySortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const handleToggleLibrarySort = (field: 'name' | 'location' | 'category' | 'contact' | 'source' | 'status' | 'score') => {
+    if (librarySortField === field) {
+      if (librarySortDirection === 'asc') {
+        setLibrarySortDirection('desc');
+      } else {
+        setLibrarySortField('manual');
+        setLibrarySortDirection('asc');
+      }
+    } else {
+      setLibrarySortField(field);
+      setLibrarySortDirection('asc');
+    }
+  };
+
+  // Quick contact filter chips
+  const [libraryQuickContactFilter, setLibraryQuickContactFilter] = useState<'all' | 'verified' | 'phone' | 'email' | 'high_score'>('all');
+
+  // Row Drag & Drop Reordering state
+  const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
+  const [dragOverLeadId, setDragOverLeadId] = useState<string | null>(null);
+  const [dragDropSide, setDragDropSide] = useState<'top' | 'bottom'>('bottom');
+
+  const handleDragStartRow = (e: React.DragEvent, leadId: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', leadId);
+    setDraggedLeadId(leadId);
+  };
+
+  const handleDragOverRow = (e: React.DragEvent, targetLeadId: string) => {
+    e.preventDefault();
+    if (draggedLeadId === targetLeadId) return;
+    e.dataTransfer.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    const side = offsetY < rect.height / 2 ? 'top' : 'bottom';
+    setDragOverLeadId(targetLeadId);
+    setDragDropSide(side);
+  };
+
+  const handleDropRow = (e: React.DragEvent, targetLeadId: string) => {
+    e.preventDefault();
+    if (!draggedLeadId || draggedLeadId === targetLeadId) {
+      setDraggedLeadId(null);
+      setDragOverLeadId(null);
+      return;
+    }
+
+    setLibrarySortField('manual');
+
+    setLibraryLeads((prev) => {
+      const sourceIndex = prev.findIndex((l) => l.id === draggedLeadId);
+      const targetIndex = prev.findIndex((l) => l.id === targetLeadId);
+      if (sourceIndex === -1 || targetIndex === -1) return prev;
+
+      const next = [...prev];
+      const [movedItem] = next.splice(sourceIndex, 1);
+      const insertAt = dragDropSide === 'top'
+        ? (sourceIndex < targetIndex ? targetIndex - 1 : targetIndex)
+        : (sourceIndex < targetIndex ? targetIndex : targetIndex + 1);
+      next.splice(Math.max(0, insertAt), 0, movedItem);
+      return next;
+    });
+
+    setDraggedLeadId(null);
+    setDragOverLeadId(null);
+  };
+
+  const handleMoveRowOneStep = (leadId: string, direction: 'up' | 'down') => {
+    setLibrarySortField('manual');
+    setLibraryLeads((prev) => {
+      const idx = prev.findIndex((l) => l.id === leadId);
+      if (idx === -1) return prev;
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(idx, 1);
+      next.splice(targetIdx, 0, moved);
+      return next;
+    });
+  };
+
+  const libraryCategories = Array.from(new Set(libraryLeads.map((l) => l.category).filter(Boolean))) as string[];
+
+  // Fully integrated filtered & sorted leads calculation
+  const filteredLibraryLeads = React.useMemo(() => {
+    let result = libraryLeads.filter((l) => {
+      // 1. Text Search across name, location, address, phone, email, notes, category
+      if (librarySearch.trim()) {
+        const q = librarySearch.toLowerCase().trim();
+        const matchesName = l.businessName?.toLowerCase().includes(q);
+        const matchesCity = l.city?.toLowerCase().includes(q);
+        const matchesRegion = l.region?.toLowerCase().includes(q);
+        const matchesAddress = l.address?.toLowerCase().includes(q);
+        const matchesCategory = l.category?.toLowerCase().includes(q);
+        const matchesPhone = l.phone?.toLowerCase().includes(q);
+        const matchesEmail = l.email?.toLowerCase().includes(q);
+        const matchesNotes = (l as any).notes?.toLowerCase().includes(q);
+        if (!matchesName && !matchesCity && !matchesRegion && !matchesAddress && !matchesCategory && !matchesPhone && !matchesEmail && !matchesNotes) {
+          return false;
+        }
+      }
+
+      // 2. Category Filter
+      if (libraryCategoryFilter !== 'all' && l.category !== libraryCategoryFilter) return false;
+
+      // 3. Status / Pipeline Filter
+      if (statusFilter !== 'all' && l.status !== statusFilter) return false;
+
+      // 4. Verification Filter
+      const isV = l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website);
+      if (libraryVerificationFilter === 'verified' && !isV) return false;
+      if (libraryVerificationFilter === 'unverified' && isV) return false;
+
+      // 5. Quick Contact Filter Chips
+      if (libraryQuickContactFilter === 'verified' && !isV) return false;
+      if (libraryQuickContactFilter === 'phone' && !l.phone) return false;
+      if (libraryQuickContactFilter === 'email' && !l.email) return false;
+      if (libraryQuickContactFilter === 'high_score') {
+        const score = l.research?.qualification?.score ?? l.opportunityScore ?? 80;
+        if (score < 80) return false;
+      }
+
+      return true;
+    });
+
+    // 6. Column Sorting
+    if (librarySortField !== 'manual') {
+      result = [...result].sort((a, b) => {
+        let cmp = 0;
+        if (librarySortField === 'name') {
+          cmp = (a.businessName || '').localeCompare(b.businessName || '');
+        } else if (librarySortField === 'location') {
+          const locA = `${a.city || ''} ${a.region || ''}`.trim();
+          const locB = `${b.city || ''} ${b.region || ''}`.trim();
+          cmp = locA.localeCompare(locB);
+        } else if (librarySortField === 'category') {
+          cmp = (a.category || '').localeCompare(b.category || '');
+        } else if (librarySortField === 'contact') {
+          const scoreContact = (x: typeof a) => (x.email ? 4 : 0) + (x.phone ? 2 : 0) + (x.website ? 1 : 0);
+          cmp = scoreContact(b) - scoreContact(a);
+        } else if (librarySortField === 'source') {
+          cmp = (a.dataSource || '').localeCompare(b.dataSource || '');
+        } else if (librarySortField === 'status') {
+          cmp = (a.status || '').localeCompare(b.status || '');
+        } else if (librarySortField === 'score') {
+          const sA = a.research?.qualification?.score ?? a.opportunityScore ?? 0;
+          const sB = b.research?.qualification?.score ?? b.opportunityScore ?? 0;
+          cmp = sA - sB;
+        }
+        return librarySortDirection === 'asc' ? cmp : -cmp;
+      });
+    }
+
+    return result;
+  }, [libraryLeads, librarySearch, libraryCategoryFilter, statusFilter, libraryVerificationFilter, libraryQuickContactFilter, librarySortField, librarySortDirection]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -3165,6 +3382,93 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
             </div>
 
+            {/* Quick Filter Chips & Table Helpers */}
+            <div className="flex items-center justify-between gap-2 flex-wrap pt-1 text-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] font-bold text-slate-500 mr-1 flex items-center gap-1">
+                  <Funnel className="w-3 h-3 text-slate-400" />
+                  Quick Filters:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLibraryQuickContactFilter('all')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border cursor-pointer ${
+                    libraryQuickContactFilter === 'all'
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  All ({libraryLeads.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLibraryQuickContactFilter('verified')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border cursor-pointer ${
+                    libraryQuickContactFilter === 'verified'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                      : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                  }`}
+                >
+                  Verified Only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLibraryQuickContactFilter('phone')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border cursor-pointer ${
+                    libraryQuickContactFilter === 'phone'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                      : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
+                  }`}
+                >
+                  Direct Phone
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLibraryQuickContactFilter('email')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border cursor-pointer ${
+                    libraryQuickContactFilter === 'email'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                      : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
+                  }`}
+                >
+                  With Email
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLibraryQuickContactFilter('high_score')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border cursor-pointer ${
+                    libraryQuickContactFilter === 'high_score'
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                      : 'bg-white text-amber-800 border-amber-200 hover:bg-amber-50'
+                  }`}
+                >
+                  High Score (80+)
+                </button>
+              </div>
+
+              {/* Active Sort Indicator / Reset */}
+              <div className="flex items-center gap-2">
+                {librarySortField !== 'manual' && (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-semibold">
+                    <span>
+                      Sorted by {librarySortField.toUpperCase()} ({librarySortDirection === 'asc' ? 'A-Z' : 'Z-A'})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setLibrarySortField('manual')}
+                      className="text-indigo-600 hover:text-indigo-900 font-bold ml-1 cursor-pointer"
+                      title="Reset to custom manual row positions"
+                    >
+                      ✕ Reset
+                    </button>
+                  </div>
+                )}
+                <span className="text-[10px] text-slate-400 hidden md:inline" title="Drag right edge of header left/right to resize column width. Drag row handle (⋮⋮) to reorder rows.">
+                  ↔ Drag borders to resize • ⋮⋮ Drag rows to reposition
+                </span>
+              </div>
+            </div>
+
             {/* Bulk Action Bar (when leads are selected) */}
             {librarySelectedIds.size > 0 && (
               <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in">
@@ -3248,7 +3552,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </p>
                 <button
                   type="button"
-                  onClick={() => { setLibrarySearch(''); setLibraryCategoryFilter('all'); setStatusFilter('all'); changeTab('find'); }}
+                  onClick={() => { setLibrarySearch(''); setLibraryCategoryFilter('all'); setStatusFilter('all'); setLibraryQuickContactFilter('all'); changeTab('find'); }}
                   className="px-4 py-2 rounded-lg bg-[#584de3] text-white font-semibold text-xs shadow-sm cursor-pointer"
                 >
                   Discover Leads
@@ -3258,8 +3562,21 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs min-w-[1080px]">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      <th className="py-3 px-3 w-10 text-center whitespace-nowrap">
+                    <tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold text-slate-500 uppercase tracking-wider select-none">
+                      {/* Drag Reorder Handle Header */}
+                      <th
+                        style={{ width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder, maxWidth: libraryColWidths.reorder }}
+                        className="py-3 px-1 text-center whitespace-nowrap text-slate-400"
+                        title="Drag rows using handle (⋮⋮) to reorder"
+                      >
+                        <DotsSixVertical className="w-4 h-4 mx-auto text-slate-400" />
+                      </th>
+
+                      {/* Checkbox */}
+                      <th
+                        style={{ width: libraryColWidths.check, minWidth: libraryColWidths.check, maxWidth: libraryColWidths.check }}
+                        className="py-3 px-2 text-center whitespace-nowrap"
+                      >
                         <input
                           type="checkbox"
                           checked={librarySelectedIds.size === filteredLibraryLeads.length && filteredLibraryLeads.length > 0}
@@ -3267,15 +3584,227 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                         />
                       </th>
-                      <th className="py-3 px-2 w-10 text-slate-400 font-bold whitespace-nowrap">#</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[200px]">Business Name</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[160px]">Location</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[130px]">Category</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[260px]">Contact Information</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[130px]">Source</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[110px]">Status</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[70px]">Score</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap text-right min-w-[190px]">Actions</th>
+
+                      {/* Index */}
+                      <th
+                        style={{ width: libraryColWidths.index, minWidth: libraryColWidths.index, maxWidth: libraryColWidths.index }}
+                        className="py-3 px-2 text-slate-400 font-bold whitespace-nowrap text-center"
+                      >
+                        #
+                      </th>
+
+                      {/* Business Name */}
+                      <th
+                        style={{ width: libraryColWidths.name, minWidth: libraryColWidths.name }}
+                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
+                      >
+                        <div
+                          onClick={() => handleToggleLibrarySort('name')}
+                          className="flex items-center justify-between cursor-pointer pr-3"
+                          title="Click to sort by Business Name"
+                        >
+                          <span>Business Name</span>
+                          {librarySortField === 'name' ? (
+                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
+                          ) : (
+                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
+                          )}
+                        </div>
+                        <div
+                          onMouseDown={(e) => handleStartLibColResize('name', e)}
+                          onDoubleClick={() => handleResetLibColWidth('name')}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
+                          title="Drag left/right to resize (Double-click to reset width)"
+                        >
+                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                        </div>
+                      </th>
+
+                      {/* Location */}
+                      <th
+                        style={{ width: libraryColWidths.location, minWidth: libraryColWidths.location }}
+                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
+                      >
+                        <div
+                          onClick={() => handleToggleLibrarySort('location')}
+                          className="flex items-center justify-between cursor-pointer pr-3"
+                          title="Click to sort by Location"
+                        >
+                          <span>Location</span>
+                          {librarySortField === 'location' ? (
+                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
+                          ) : (
+                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
+                          )}
+                        </div>
+                        <div
+                          onMouseDown={(e) => handleStartLibColResize('location', e)}
+                          onDoubleClick={() => handleResetLibColWidth('location')}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
+                          title="Drag left/right to resize (Double-click to reset width)"
+                        >
+                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                        </div>
+                      </th>
+
+                      {/* Category */}
+                      <th
+                        style={{ width: libraryColWidths.category, minWidth: libraryColWidths.category }}
+                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
+                      >
+                        <div
+                          onClick={() => handleToggleLibrarySort('category')}
+                          className="flex items-center justify-between cursor-pointer pr-3"
+                          title="Click to sort by Category"
+                        >
+                          <span>Category</span>
+                          {librarySortField === 'category' ? (
+                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
+                          ) : (
+                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
+                          )}
+                        </div>
+                        <div
+                          onMouseDown={(e) => handleStartLibColResize('category', e)}
+                          onDoubleClick={() => handleResetLibColWidth('category')}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
+                          title="Drag left/right to resize (Double-click to reset width)"
+                        >
+                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                        </div>
+                      </th>
+
+                      {/* Contact Information */}
+                      <th
+                        style={{ width: libraryColWidths.contact, minWidth: libraryColWidths.contact }}
+                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
+                      >
+                        <div
+                          onClick={() => handleToggleLibrarySort('contact')}
+                          className="flex items-center justify-between cursor-pointer pr-3"
+                          title="Click to sort by Contact Information"
+                        >
+                          <span>Contact Information</span>
+                          {librarySortField === 'contact' ? (
+                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
+                          ) : (
+                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
+                          )}
+                        </div>
+                        <div
+                          onMouseDown={(e) => handleStartLibColResize('contact', e)}
+                          onDoubleClick={() => handleResetLibColWidth('contact')}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
+                          title="Drag left/right to resize (Double-click to reset width)"
+                        >
+                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                        </div>
+                      </th>
+
+                      {/* Source */}
+                      <th
+                        style={{ width: libraryColWidths.source, minWidth: libraryColWidths.source }}
+                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
+                      >
+                        <div
+                          onClick={() => handleToggleLibrarySort('source')}
+                          className="flex items-center justify-between cursor-pointer pr-3"
+                          title="Click to sort by Source"
+                        >
+                          <span>Source</span>
+                          {librarySortField === 'source' ? (
+                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
+                          ) : (
+                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
+                          )}
+                        </div>
+                        <div
+                          onMouseDown={(e) => handleStartLibColResize('source', e)}
+                          onDoubleClick={() => handleResetLibColWidth('source')}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
+                          title="Drag left/right to resize (Double-click to reset width)"
+                        >
+                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                        </div>
+                      </th>
+
+                      {/* Status */}
+                      <th
+                        style={{ width: libraryColWidths.status, minWidth: libraryColWidths.status }}
+                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
+                      >
+                        <div
+                          onClick={() => handleToggleLibrarySort('status')}
+                          className="flex items-center justify-between cursor-pointer pr-3"
+                          title="Click to sort by Status"
+                        >
+                          <span>Status</span>
+                          {librarySortField === 'status' ? (
+                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
+                          ) : (
+                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
+                          )}
+                        </div>
+                        <div
+                          onMouseDown={(e) => handleStartLibColResize('status', e)}
+                          onDoubleClick={() => handleResetLibColWidth('status')}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
+                          title="Drag left/right to resize (Double-click to reset width)"
+                        >
+                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                        </div>
+                      </th>
+
+                      {/* Score */}
+                      <th
+                        style={{ width: libraryColWidths.score, minWidth: libraryColWidths.score }}
+                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
+                      >
+                        <div
+                          onClick={() => handleToggleLibrarySort('score')}
+                          className="flex items-center justify-between cursor-pointer pr-3"
+                          title="Click to sort by Score"
+                        >
+                          <span>Score</span>
+                          {librarySortField === 'score' ? (
+                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
+                          ) : (
+                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
+                          )}
+                        </div>
+                        <div
+                          onMouseDown={(e) => handleStartLibColResize('score', e)}
+                          onDoubleClick={() => handleResetLibColWidth('score')}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
+                          title="Drag left/right to resize (Double-click to reset width)"
+                        >
+                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                        </div>
+                      </th>
+
+                      {/* Actions */}
+                      <th
+                        style={{ width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
+                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap text-right"
+                      >
+                        Actions
+                        <div
+                          onMouseDown={(e) => handleStartLibColResize('actions', e)}
+                          onDoubleClick={() => handleResetLibColWidth('actions')}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
+                          title="Drag left/right to resize (Double-click to reset width)"
+                        >
+                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                        </div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -3283,15 +3812,67 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                       const isSelected = librarySelectedIds.has(lead.id);
                       const isVerified = lead.emailSource === 'company_website' || lead.dataSource === 'openstreetmap' || Boolean(lead.phone && lead.website);
                       const displayScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 82;
+                      const isBeingDragged = draggedLeadId === lead.id;
+                      const isDragOver = dragOverLeadId === lead.id;
 
                       return (
                         <tr
                           key={lead.id}
                           onClick={() => openLeadDrawer(lead, 'details')}
-                          className={`hover:bg-slate-50/80 transition cursor-pointer ${isSelected ? 'bg-indigo-50/30' : ''}`}
+                          onDragOver={(e) => handleDragOverRow(e, lead.id)}
+                          onDrop={(e) => handleDropRow(e, lead.id)}
+                          className={`transition cursor-pointer ${
+                            isBeingDragged
+                              ? 'opacity-35 bg-indigo-50 border-2 border-dashed border-indigo-400'
+                              : isDragOver && dragDropSide === 'top'
+                              ? 'border-t-4 border-indigo-600 bg-indigo-50/40'
+                              : isDragOver && dragDropSide === 'bottom'
+                              ? 'border-b-4 border-indigo-600 bg-indigo-50/40'
+                              : isSelected
+                              ? 'bg-indigo-50/30 hover:bg-indigo-50/50'
+                              : 'hover:bg-slate-50/80'
+                          }`}
                         >
+                          {/* Drag Reorder Handle */}
+                          <td
+                            style={{ width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder, maxWidth: libraryColWidths.reorder }}
+                            className="py-3 px-1 text-center whitespace-nowrap cursor-grab active:cursor-grabbing group/drag"
+                            draggable={true}
+                            onDragStart={(e) => handleDragStartRow(e, lead.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            title="Drag to reposition row (or click arrows to move up/down)"
+                          >
+                            <div className="flex flex-col items-center justify-center text-slate-300 group-hover/drag:text-indigo-600 transition">
+                              <DotsSixVertical className="w-4 h-4" />
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover/drag:opacity-100 transition mt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveRowOneStep(lead.id, 'up')}
+                                  disabled={idx === 0}
+                                  className="text-[9px] text-slate-500 hover:text-indigo-700 disabled:opacity-20 px-0.5 font-bold cursor-pointer"
+                                  title="Move row up"
+                                >
+                                  ▲
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveRowOneStep(lead.id, 'down')}
+                                  disabled={idx === filteredLibraryLeads.length - 1}
+                                  className="text-[9px] text-slate-500 hover:text-indigo-700 disabled:opacity-20 px-0.5 font-bold cursor-pointer"
+                                  title="Move row down"
+                                >
+                                  ▼
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+
                           {/* Checkbox */}
-                          <td className="py-3 px-3 text-center whitespace-nowrap w-10" onClick={(e) => e.stopPropagation()}>
+                          <td
+                            style={{ width: libraryColWidths.check, minWidth: libraryColWidths.check, maxWidth: libraryColWidths.check }}
+                            className="py-3 px-2 text-center whitespace-nowrap"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <input
                               type="checkbox"
                               checked={isSelected}
@@ -3301,12 +3882,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Index */}
-                          <td className="py-3 px-2 text-[11px] text-slate-400 font-medium whitespace-nowrap w-10">
+                          <td
+                            style={{ width: libraryColWidths.index, minWidth: libraryColWidths.index, maxWidth: libraryColWidths.index }}
+                            className="py-3 px-2 text-[11px] text-slate-400 font-medium whitespace-nowrap text-center"
+                          >
                             {idx + 1}
                           </td>
 
                           {/* Business Name with Company Initials Avatar */}
-                          <td className="py-3 px-3 min-w-[200px]">
+                          <td
+                            style={{ width: libraryColWidths.name, minWidth: libraryColWidths.name }}
+                            className="py-3 px-3"
+                          >
                             <div className="flex items-center gap-2.5">
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[11px] flex-shrink-0 border ${getAvatarBg(lead.businessName)}`}>
                                 {getCompanyInitials(lead.businessName)}
@@ -3340,7 +3927,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Location with direct Google Maps link */}
-                          <td className="py-3 px-3 text-slate-600 whitespace-nowrap min-w-[160px]" onClick={(e) => e.stopPropagation()}>
+                          <td
+                            style={{ width: libraryColWidths.location, minWidth: libraryColWidths.location }}
+                            className="py-3 px-3 text-slate-600 whitespace-nowrap"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             {(() => {
                               const locText = [lead.city, lead.region].filter(Boolean).join(', ') || 'United States';
                               const queryParts = [lead.businessName, lead.address, lead.city, lead.region].filter(Boolean);
@@ -3370,14 +3961,21 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Category */}
-                          <td className="py-3 px-3 whitespace-nowrap min-w-[130px]">
+                          <td
+                            style={{ width: libraryColWidths.category, minWidth: libraryColWidths.category }}
+                            className="py-3 px-3 whitespace-nowrap"
+                          >
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-100 whitespace-nowrap">
                               {lead.category || 'Feed Store'}
                             </span>
                           </td>
 
                           {/* Contact Info (Multi-line formatted) */}
-                          <td className="py-3 px-3 text-[11px] whitespace-nowrap min-w-[260px]" onClick={(e) => e.stopPropagation()}>
+                          <td
+                            style={{ width: libraryColWidths.contact, minWidth: libraryColWidths.contact }}
+                            className="py-3 px-3 text-[11px] whitespace-nowrap"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <div className="space-y-1.5">
                               {lead.website ? (
                                 <div className="flex items-center gap-1 text-slate-700">
@@ -3445,12 +4043,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Source */}
-                          <td className="py-3 px-3 whitespace-nowrap min-w-[130px]">
+                          <td
+                            style={{ width: libraryColWidths.source, minWidth: libraryColWidths.source }}
+                            className="py-3 px-3 whitespace-nowrap"
+                          >
                             <SourceBadge source={lead.dataSource || 'Google Maps'} />
                           </td>
 
                           {/* Status */}
-                          <td className="py-3 px-3 whitespace-nowrap min-w-[110px]">
+                          <td
+                            style={{ width: libraryColWidths.status, minWidth: libraryColWidths.status }}
+                            className="py-3 px-3 whitespace-nowrap"
+                          >
                             {isVerified ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                                 <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
@@ -3465,7 +4069,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Fit Score */}
-                          <td className="py-3 px-3 whitespace-nowrap min-w-[70px]">
+                          <td
+                            style={{ width: libraryColWidths.score, minWidth: libraryColWidths.score }}
+                            className="py-3 px-3 whitespace-nowrap"
+                          >
                             <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-bold border ${
                               displayScore >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                               displayScore >= 60 ? 'bg-amber-50 text-amber-700 border-amber-200' :
@@ -3476,7 +4083,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Actions */}
-                          <td className="py-3 px-3 text-right whitespace-nowrap min-w-[190px]" onClick={(e) => e.stopPropagation()}>
+                          <td
+                            style={{ width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
+                            className="py-3 px-3 text-right whitespace-nowrap"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <div className="flex items-center justify-end gap-1.5">
                               {lead.email ? (
                                 <button
