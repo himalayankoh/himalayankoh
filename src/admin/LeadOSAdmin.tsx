@@ -208,14 +208,14 @@ function metricValue(value: unknown): string | number {
 
 function KpiCard({ icon: Icon, label, value, sub, accent }: { icon: any; label: string; value: string | number; sub: string; accent: string }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3">
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${accent}`}>
-        <Icon className="w-4.5 h-4.5" />
+    <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4 flex items-center sm:items-start gap-2.5 sm:gap-3 min-w-0 transition-all hover:shadow-2xs">
+      <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${accent}`}>
+        <Icon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
       </div>
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
-        <p className="text-xl font-bold text-slate-900 mt-0.5 leading-tight">{value}</p>
-        <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate block" title={label}>{label}</p>
+        <p className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5 leading-tight">{value}</p>
+        <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 truncate block">{sub}</p>
       </div>
     </div>
   );
@@ -1461,10 +1461,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       </div>
 
       {/* ── Tab Navigation ── */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-2xs">
-        <div className="max-w-[1400px] mx-auto px-6">
+      <div className="bg-white border-b border-slate-200 shadow-2xs">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6">
           <div role="tablist" aria-label="LeadOS sections" className="flex items-center justify-between">
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px w-full">
               {[
                 { id: 'overview', label: 'Overview', icon: SquaresFour },
                 { id: 'find', label: 'Find Leads', icon: MagnifyingGlass },
@@ -1472,6 +1472,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 { id: 'email', label: 'Email Marketing', icon: PaperPlaneRight },
                 { id: 'marketing', label: 'Marketing Gen', icon: Megaphone },
                 { id: 'seo', label: 'SEO Engine', icon: Sparkle },
+                { id: 'settings', label: 'Settings', icon: GearSix },
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -1483,7 +1484,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     aria-selected={isActive}
                     aria-controls={`leados-panel-${tab.id}`}
                     onClick={() => changeTab(tab.id as TabType)}
-                    className={`flex items-center gap-2 px-4 py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition cursor-pointer ${
+                    className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition cursor-pointer flex-shrink-0 ${
                       isActive
                         ? 'border-[#b86452] text-[#b86452]'
                         : 'border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300'
@@ -1503,23 +1504,6 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 );
               })}
             </div>
-
-            <button
-              type="button"
-              id="leados-tab-settings"
-              role="tab"
-              aria-selected={activeTab === 'settings'}
-              aria-controls="leados-panel-settings"
-              onClick={() => changeTab('settings')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
-                activeTab === 'settings'
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                  : 'bg-white border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              <GearSix className="w-3.5 h-3.5" />
-              <span>Settings</span>
-            </button>
           </div>
         </div>
       </div>
@@ -1554,7 +1538,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           {/* Left: KPIs + Content */}
             <div className="space-y-6">
               {/* KPI Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-2 2xl:grid-cols-4 gap-3">
                 <KpiCard icon={BookBookmark} label="Total Leads" value={metricValue(stats?.savedLeadsCount)} sub="In Lead Library" accent="bg-indigo-50 text-indigo-600" />
                 <KpiCard icon={Star} label="High Opportunity" value={metricValue(stats?.highOpportunityCount)} sub="Score ≥ 70" accent="bg-emerald-50 text-emerald-600" />
                 <KpiCard icon={PaperPlaneRight} label="Contacted" value={metricValue(stats?.contactedCount)} sub="Outreach sent" accent="bg-amber-50 text-amber-600" />
@@ -2283,10 +2267,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               {resultsView === 'table' ? (
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs text-slate-700 border-collapse">
+                    <table className="w-full text-left text-xs text-slate-700 border-collapse min-w-[980px]">
                       <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                         <tr>
-                          <th className="w-10 px-3 py-3 text-center">
+                          <th className="w-10 px-3 py-3 text-center whitespace-nowrap">
                             <input
                               type="checkbox"
                               checked={paginatedFindLeads.length > 0 && paginatedFindLeads.every((l) => selectedLeadIds.has(l.businessName))}
@@ -2294,15 +2278,15 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                               className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                             />
                           </th>
-                          <th className="w-10 px-2 py-3 text-slate-400">#</th>
-                          <th className="px-3 py-3">Business Name</th>
-                          <th className="px-3 py-3">Location</th>
-                          <th className="px-3 py-3">Category</th>
-                          <th className="px-3 py-3">Contact Information</th>
-                          <th className="px-3 py-3">Source</th>
-                          <th className="px-3 py-3">Status</th>
-                          <th className="px-3 py-3">Score</th>
-                          <th className="px-3 py-3 text-right">Actions</th>
+                          <th className="w-10 px-2 py-3 text-slate-400 whitespace-nowrap">#</th>
+                          <th className="px-3 py-3 whitespace-nowrap min-w-[200px]">Business Name</th>
+                          <th className="px-3 py-3 whitespace-nowrap min-w-[140px]">Location</th>
+                          <th className="px-3 py-3 whitespace-nowrap min-w-[130px]">Category</th>
+                          <th className="px-3 py-3 whitespace-nowrap min-w-[220px]">Contact Information</th>
+                          <th className="px-3 py-3 whitespace-nowrap min-w-[100px]">Source</th>
+                          <th className="px-3 py-3 whitespace-nowrap min-w-[110px]">Status</th>
+                          <th className="px-3 py-3 whitespace-nowrap min-w-[70px]">Score</th>
+                          <th className="px-3 py-3 text-right whitespace-nowrap min-w-[120px]">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -2314,7 +2298,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                             const rowNum = (findLeadsPage - 1) * findLeadsPageSize + idx + 1;
                             return (
                               <tr key={`${lead.businessName}-${idx}`} className="hover:bg-slate-50/70 transition">
-                                <td className="px-3 py-3 text-center">
+                                <td className="px-3 py-3 text-center whitespace-nowrap w-10">
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
@@ -2322,20 +2306,20 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                     className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                                   />
                                 </td>
-                                <td className="px-2 py-3 text-slate-400 font-mono text-[11px]">{rowNum}</td>
+                                <td className="px-2 py-3 text-slate-400 font-mono text-[11px] whitespace-nowrap w-10">{rowNum}</td>
                                 
                                 {/* Business Name with Company Initials Avatar */}
-                                <td className="px-3 py-3 font-semibold text-slate-900 max-w-[220px]">
+                                <td className="px-3 py-3 font-semibold text-slate-900 min-w-[200px]">
                                   <div className="flex items-center gap-2.5">
                                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs border flex-shrink-0 ${getAvatarBg(lead.businessName)}`}>
                                       {getCompanyInitials(lead.businessName)}
                                     </div>
-                                    <span className="truncate" title={lead.businessName}>{lead.businessName}</span>
+                                    <span className="truncate max-w-[220px]" title={lead.businessName}>{lead.businessName}</span>
                                   </div>
                                 </td>
 
                                 {/* Location */}
-                                <td className="px-3 py-3 text-slate-600 whitespace-nowrap">
+                                <td className="px-3 py-3 text-slate-600 whitespace-nowrap min-w-[140px]">
                                   <div className="flex items-center gap-1">
                                     <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                                     <span>{[lead.city, lead.region].filter(Boolean).join(', ') || lead.address || 'Texas'}</span>
@@ -2343,8 +2327,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 </td>
 
                                 {/* Category */}
-                                <td className="px-3 py-3 whitespace-nowrap">
-                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                <td className="px-3 py-3 whitespace-nowrap min-w-[130px]">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 whitespace-nowrap">
                                     {lead.category || 'Feed Store'}
                                   </span>
                                 </td>
@@ -3084,10 +3068,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
+                <table className="w-full text-left border-collapse text-xs min-w-[980px]">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      <th className="py-3 px-3 w-8 text-center">
+                      <th className="py-3 px-3 w-10 text-center whitespace-nowrap">
                         <input
                           type="checkbox"
                           checked={librarySelectedIds.size === filteredLibraryLeads.length && filteredLibraryLeads.length > 0}
@@ -3095,15 +3079,15 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                         />
                       </th>
-                      <th className="py-3 px-2 w-8 text-slate-400 font-bold">#</th>
-                      <th className="py-3 px-3 font-bold text-slate-600">Business Name</th>
-                      <th className="py-3 px-3 font-bold text-slate-600">Location</th>
-                      <th className="py-3 px-3 font-bold text-slate-600">Category</th>
-                      <th className="py-3 px-3 font-bold text-slate-600">Contact Information</th>
-                      <th className="py-3 px-3 font-bold text-slate-600">Source</th>
-                      <th className="py-3 px-3 font-bold text-slate-600">Status</th>
-                      <th className="py-3 px-3 font-bold text-slate-600">Score</th>
-                      <th className="py-3 px-3 font-bold text-slate-600 text-right">Actions</th>
+                      <th className="py-3 px-2 w-10 text-slate-400 font-bold whitespace-nowrap">#</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[200px]">Business Name</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[140px]">Location</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[130px]">Category</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[220px]">Contact Information</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[100px]">Source</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[110px]">Status</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap min-w-[70px]">Score</th>
+                      <th className="py-3 px-3 font-bold text-slate-600 whitespace-nowrap text-right min-w-[120px]">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -3119,7 +3103,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           className={`hover:bg-slate-50/80 transition cursor-pointer ${isSelected ? 'bg-indigo-50/30' : ''}`}
                         >
                           {/* Checkbox */}
-                          <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <td className="py-3 px-3 text-center whitespace-nowrap w-10" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={isSelected}
@@ -3129,19 +3113,19 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Index */}
-                          <td className="py-3 px-2 text-[11px] text-slate-400 font-medium">
+                          <td className="py-3 px-2 text-[11px] text-slate-400 font-medium whitespace-nowrap w-10">
                             {idx + 1}
                           </td>
 
                           {/* Business Name with Company Initials Avatar */}
-                          <td className="py-3 px-3">
+                          <td className="py-3 px-3 min-w-[200px]">
                             <div className="flex items-center gap-2.5">
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[11px] flex-shrink-0 border ${getAvatarBg(lead.businessName)}`}>
                                 {getCompanyInitials(lead.businessName)}
                               </div>
                               <div className="min-w-0">
                                 <div className="font-bold text-slate-900 flex items-center gap-1.5 hover:text-indigo-600 transition">
-                                  <span className="truncate max-w-[200px]" title={lead.businessName}>{lead.businessName}</span>
+                                  <span className="truncate max-w-[220px]" title={lead.businessName}>{lead.businessName}</span>
                                   {lead.osmUrl && (
                                     <a
                                       href={lead.osmUrl}
@@ -3158,7 +3142,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
                                   <span>{lead.dataSource || 'OpenStreetMap'}</span>
                                   {lead.notes && (
-                                    <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-semibold">
+                                    <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-semibold whitespace-nowrap">
                                       Has Notes
                                     </span>
                                   )}
@@ -3168,21 +3152,21 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           </td>
 
                           {/* Location */}
-                          <td className="py-3 px-3 text-slate-600">
+                          <td className="py-3 px-3 text-slate-600 whitespace-nowrap min-w-[140px]">
                             <div className="flex items-center gap-1 font-medium text-slate-800">
                               <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                              <span className="truncate max-w-[140px]">{[lead.city, lead.region].filter(Boolean).join(', ') || 'United States'}</span>
+                              <span className="truncate max-w-[150px]">{[lead.city, lead.region].filter(Boolean).join(', ') || 'United States'}</span>
                             </div>
                             {lead.address && (
-                              <div className="text-[10px] text-slate-400 truncate max-w-[140px] pl-4.5" title={lead.address}>
+                              <div className="text-[10px] text-slate-400 truncate max-w-[160px] pl-4.5" title={lead.address}>
                                 {lead.address}
                               </div>
                             )}
                           </td>
 
                           {/* Category */}
-                          <td className="py-3 px-3">
-                            <span className="inline-flex px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-100">
+                          <td className="py-3 px-3 whitespace-nowrap min-w-[130px]">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-100 whitespace-nowrap">
                               {lead.category || 'Feed Store'}
                             </span>
                           </td>
