@@ -41,6 +41,8 @@ export interface NormalizedLead {
 export interface LeadSearchInput {
   category: string;
   location: string;
+  locations?: string[];
+  sources?: string[];
   /** Free-text keyword ("tack shop", "organic feed") — Nominatim name-index half. */
   keyword?: string;
   maxResults?: number;

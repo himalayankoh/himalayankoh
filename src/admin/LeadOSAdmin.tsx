@@ -58,6 +58,7 @@ import type { SearchPlan } from '@/lib/leados/searchPlanner';
 import type { ProductInterest } from '@/lib/leados/types';
 import { parseLeadOSUrlState } from '@/lib/leados/urlState';
 import InteractiveLocationMapPicker from './InteractiveLocationMapPicker';
+import InteractiveUsaMap from './InteractiveUsaMap';
 
 const AMarketingGen = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.AMarketingGen })));
 const ASEOEngine = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.ASEOEngine })));
@@ -170,6 +171,22 @@ export function SourceBadge({ source }: { source?: string }) {
       <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
         <span className="w-4 h-4 rounded-full bg-blue-50 border border-blue-200 text-blue-600 font-bold flex items-center justify-center text-[10px] flex-shrink-0">G</span>
         Google Maps
+      </span>
+    );
+  }
+  if (norm.includes('facebook') || norm.includes('fb')) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-800 whitespace-nowrap flex-shrink-0">
+        <span className="w-4 h-4 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0">f</span>
+        Facebook
+      </span>
+    );
+  }
+  if (norm.includes('instagram') || norm.includes('insta')) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-800 whitespace-nowrap flex-shrink-0">
+        <span className="w-4 h-4 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 text-white font-bold flex items-center justify-center text-[9px] flex-shrink-0">ig</span>
+        Instagram
       </span>
     );
   }
@@ -385,9 +402,12 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [excludeContacted, setExcludeContacted] = useState(true);
   const [wholesaleOnly, setWholesaleOnly] = useState(false);
   const [privateLabelOnly, setPrivateLabelOnly] = useState(false);
-  const [requireWebsite, setRequireWebsite] = useState(true);
+  const [requireWebsite, setRequireWebsite] = useState(false);
   const [requirePhone, setRequirePhone] = useState(true);
   const [requireEmail, setRequireEmail] = useState(false);
+  const [selectedSources, setSelectedSources] = useState<string[]>(['all']);
+  const [showUsaMap, setShowUsaMap] = useState(true);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [searching, setSearching] = useState(false);
   const [searchStep, setSearchStep] = useState('');
   const [leads, setLeads] = useState<ScoredLead[]>([]);
@@ -867,7 +887,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     reqEmailVal: boolean = requireEmail,
     prodInt: ProductInterest = productInterest,
     wsOnly: boolean = wholesaleOnly,
-    plOnly: boolean = privateLabelOnly
+    plOnly: boolean = privateLabelOnly,
+    sourcesVal: string[] = selectedSources
   ) => {
     const generation = ++searchGeneration.current;
     setSearching(true);
@@ -906,6 +927,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               body: JSON.stringify({
                 category: curCat,
                 location: curLoc,
+                locations: locs,
+                sources: sourcesVal,
                 keyword: kwString,
                 productInterest: prodInt,
                 radiusKm: radiusKm || 35,
@@ -1017,7 +1040,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       setLocation(newLocs[0]);
       setKeyword(newKws.join(' '));
       setProductInterest(p.productInterest || 'horse_salt');
-      setRequireWebsite(p.requireWebsite ?? true);
+      const newSources = p.sources && p.sources.length > 0 ? p.sources : ['all'];
+      setSelectedSources(newSources);
+      setRequireWebsite(p.requireWebsite ?? false);
       setRequirePhone(p.requirePhone ?? true);
       setRequireEmail(p.requireEmail ?? false);
       setWholesaleOnly(p.wholesaleOnly ?? false);
@@ -1034,12 +1059,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           newCats,
           newKws,
           newLimit,
-          p.requireWebsite ?? true,
+          p.requireWebsite ?? false,
           p.requirePhone ?? true,
           p.requireEmail ?? false,
           p.productInterest || 'horse_salt',
           p.wholesaleOnly ?? false,
-          p.privateLabelOnly ?? false
+          p.privateLabelOnly ?? false,
+          newSources
         );
       }
     } catch (err) {
@@ -1730,15 +1756,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       <div className="bg-white border-b border-slate-200 shadow-2xs">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6">
           <div role="tablist" aria-label="LeadOS sections" className="flex items-center justify-between">
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px w-full">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px flex-1">
               {[
                 { id: 'overview', label: 'Overview', icon: SquaresFour },
                 { id: 'find', label: 'Find Leads', icon: MagnifyingGlass },
                 { id: 'library', label: 'Lead Library & CRM', icon: BookBookmark },
-                { id: 'email', label: 'Email Marketing', icon: PaperPlaneRight },
-                { id: 'marketing', label: 'Marketing Gen', icon: Megaphone },
-                { id: 'seo', label: 'SEO Engine', icon: Sparkle },
-                { id: 'settings', label: 'Settings', icon: GearSix },
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -1769,6 +1791,68 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   </button>
                 );
               })}
+            </div>
+
+            {/* Tools & Settings Dropdown */}
+            <div className="relative py-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowToolsMenu((v) => !v)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition cursor-pointer ${
+                  ['email', 'marketing', 'seo', 'settings'].includes(activeTab)
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                }`}
+              >
+                <GearSix className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Tools & Settings</span>
+                <span className="sm:hidden">More</span>
+                <CaretDown className="w-3 h-3 text-slate-400" />
+              </button>
+              {showToolsMenu && (
+                <div className="absolute right-0 mt-1.5 w-52 bg-white border border-slate-200 rounded-xl shadow-xl py-1 z-30">
+                  <button
+                    type="button"
+                    onClick={() => { changeTab('settings'); setShowToolsMenu(false); }}
+                    className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer ${
+                      activeTab === 'settings' ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'
+                    }`}
+                  >
+                    <GearSix className="w-3.5 h-3.5 text-slate-500" />
+                    Settings & ICP Engine
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { changeTab('email'); setShowToolsMenu(false); }}
+                    className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer ${
+                      activeTab === 'email' ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'
+                    }`}
+                  >
+                    <PaperPlaneRight className="w-3.5 h-3.5 text-slate-500" />
+                    Email Marketing
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { changeTab('marketing'); setShowToolsMenu(false); }}
+                    className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer ${
+                      activeTab === 'marketing' ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'
+                    }`}
+                  >
+                    <Megaphone className="w-3.5 h-3.5 text-slate-500" />
+                    Marketing Generator
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { changeTab('seo'); setShowToolsMenu(false); }}
+                    className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer ${
+                      activeTab === 'seo' ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'
+                    }`}
+                  >
+                    <Sparkle className="w-3.5 h-3.5 text-slate-500" />
+                    SEO Engine
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2364,10 +2448,116 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                       Private label only
                     </label>
                   </div>
+
+                  {/* Multi-Source Discovery Checkboxes */}
+                  <div className="sm:col-span-3 p-3 rounded-xl bg-slate-50/80 border border-slate-200/90 space-y-2 mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5 text-indigo-600" />
+                        Multi-Source Lead Discovery Engine
+                      </span>
+                      <span className="text-[10px] text-slate-400">Select platforms to query</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                      {[
+                        { id: 'all', label: 'All Available' },
+                        { id: 'osm', label: 'OpenStreetMap' },
+                        { id: 'web', label: 'General Web' },
+                        { id: 'facebook', label: 'Facebook Pages' },
+                        { id: 'instagram', label: 'Instagram' },
+                        { id: 'facebook_groups', label: 'FB Groups' },
+                        { id: 'maps', label: 'Google Maps' },
+                      ].map((src) => {
+                        const isChecked = selectedSources.includes(src.id) || (src.id !== 'all' && selectedSources.includes('all'));
+                        return (
+                          <label
+                            key={src.id}
+                            className={`flex items-center gap-2 p-2 rounded-lg border text-xs font-medium cursor-pointer transition select-none ${
+                              isChecked
+                                ? 'bg-white border-indigo-300 text-indigo-900 shadow-2xs font-semibold'
+                                : 'bg-white/60 border-slate-200 text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                if (src.id === 'all') {
+                                  setSelectedSources(['all']);
+                                } else {
+                                  setSelectedSources((prev) => {
+                                    const withoutAll = prev.filter((s) => s !== 'all');
+                                    const next = withoutAll.includes(src.id)
+                                      ? withoutAll.filter((s) => s !== src.id)
+                                      : [...withoutAll, src.id];
+                                    return next.length ? next : ['all'];
+                                  });
+                                }
+                              }}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                            />
+                            <span className="truncate">{src.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
 
+          </div>
+
+          {/* ── Interactive USA Territory Vector Map ── */}
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowUsaMap((v) => !v)}
+                className="flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-900 hover:text-[#b86452] transition cursor-pointer"
+              >
+                <Globe className="w-4 h-4 text-[#b86452]" />
+                <span>Interactive USA Territory Vector Map (50 States & Commercial Hubs)</span>
+                <span className="text-[10px] text-slate-400 font-normal">
+                  ({showUsaMap ? 'Hide Map' : 'Show Map'})
+                </span>
+              </button>
+              <div className="flex items-center gap-2">
+                {locationsList.length > 0 && (
+                  <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200">
+                    {locationsList.length} Active Locations
+                  </span>
+                )}
+                {leads.length > 0 && (
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                    {leads.length} Discovered Leads Plotted
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {showUsaMap && (
+              <InteractiveUsaMap
+                selectedLocations={locationsList}
+                onToggleLocation={(loc) => {
+                  setLocationsList((prev) => {
+                    const exists = prev.some((l) => l.toLowerCase() === loc.toLowerCase());
+                    const updated = exists ? prev.filter((l) => l.toLowerCase() !== loc.toLowerCase()) : [...prev, loc];
+                    return updated.length ? updated : ['Houston, TX'];
+                  });
+                  setLocation(loc);
+                }}
+                onSelectPreset={(locs) => {
+                  setLocationsList(locs.length ? locs : ['Houston, TX']);
+                  if (locs.length) setLocation(locs[0]);
+                }}
+                leads={leads}
+                onSelectLead={(lead) => {
+                  setSelectedLeadIds(new Set([lead.businessName]));
+                }}
+                activeCategory={category}
+              />
+            )}
           </div>
 
           {/* Live Progressive Search Status Indicator */}

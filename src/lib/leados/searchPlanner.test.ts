@@ -70,4 +70,34 @@ describe('LeadOS search planner', () => {
     expect(r.plan.requireEmail).toBe(true);
     expect(r.plan.requirePhone).toBe(true);
   });
+
+  it('correctly handles Roman Urdu queries with negation (website nahi hai)', () => {
+    const r = rulesPlan('chhote ranches Texas mein jin ki website nahi hai sirf phone ya facebook page ho');
+    expect(r.plan.category).toBe('Ranch & Horse Facility');
+    expect(r.plan.location).toBe('Texas');
+    expect(r.plan.requireWebsite).toBe(false);
+    expect(r.plan.requirePhone).toBe(true);
+    expect(r.plan.sources).toContain('facebook');
+  });
+
+  it('correctly handles Roman Urdu positive requirement queries', () => {
+    const r = rulesPlan('Texas mein livestock feed stores aur farm suppliers dhoondo jin kay paas website ho ya phone number');
+    expect(r.plan.categories).toEqual(expect.arrayContaining(['Feed Store', 'Farm Supply']));
+    expect(r.plan.location).toBe('Texas');
+    expect(r.plan.requireWebsite).toBe(true);
+    expect(r.plan.requirePhone).toBe(true);
+  });
+
+  it('correctly handles namak and mineral distributor queries', () => {
+    const r = rulesPlan('namak aur mineral distributors USA nationwide');
+    expect(r.plan.category).toBe('Salt Wholesaler');
+    expect(r.plan.location).toBe('USA');
+    expect(r.plan.wholesaleOnly).toBe(true);
+  });
+
+  it('extracts multi-city locations in Roman Urdu format', () => {
+    const r = rulesPlan('Houston aur Dallas mein horse stables aur equestrian centers');
+    expect(r.plan.locations).toEqual(expect.arrayContaining(['Houston, TX', 'Dallas, TX']));
+    expect(r.plan.category).toBe('Ranch & Horse Facility');
+  });
 });

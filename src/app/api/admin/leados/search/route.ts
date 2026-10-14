@@ -4,7 +4,7 @@ import { discoverLeads, normalizeSearchResults } from '@/lib/leados/discovery';
 import { BUYER_CATEGORIES, leadIdentity, matchingKnownLead, PRODUCT_INTERESTS, qualifyLead } from '@/lib/leados/intelligence';
 import { calculateOpportunityScore } from '@/lib/leados/scoring';
 import { calculateDeterministicProjectFit } from '@/lib/leados/project-fit';
-import { getProjectById, recordSearchExecution, ensureDefaultProject, listSavedLeads, leadosRequest } from '@/lib/leados/db';
+import { getProjectById, recordSearchExecution, ensureDefaultProject, listSavedLeads, leadosRequest, saveLeadsBatchToLibrary, HK_DEFAULT_PROJECT_ID } from '@/lib/leados/db';
 import type { ScoredLead, ProductInterest } from '@/lib/leados/types';
 import type { LeadSearchInput } from '@/lib/leados/types';
 import { rulesPlan } from '@/lib/leados/searchPlanner';
@@ -40,6 +40,14 @@ export async function GET(request: Request) {
       if (item.payload.input.excludeContacted && prior && ['contacted','replied','interested','quote_requested','negotiating','won','do_not_contact'].includes(prior.status)) return false;
       return (!item.payload.input.requireWebsite || l.website) && (!item.payload.input.requirePhone || l.phone) && (!item.payload.input.requireEmail || Boolean(l.email));
     }).map((l)=>{ const q=qualifyLead(l,item.payload.input.productInterest || 'horse_salt'); return {...l,research:{...l.research,qualification:q},opportunityScore:q.score,opportunitySignals:q.reasons,alreadySaved:Boolean(matchingKnownLead(l,saved))}; }).slice(0,item.payload.input.maxResults || 15);
+    if (leads.length > 0) {
+      try {
+        await saveLeadsBatchToLibrary(leads, undefined, 5);
+        for (const l of leads) { l.alreadySaved = true; }
+      } catch (saveErr) {
+        console.warn('Auto-save to Lead Library non-fatal:', saveErr);
+      }
+    }
     const finalCount = Math.min(item.payload.input.maxResults || 15,new Set([...(item.payload.initialKeys || []),...leads.map(leadIdentity)]).size);
     await recordSearchExecution({category:item.payload.input.category,location:item.payload.input.location,resultsCount:finalCount,executionId:id});
     return NextResponse.json({ok:true,state:item.state,leads,rawCount:item.payload.results?.length || 0,error:item.payload.error || null,upstreamErrors:item.payload.upstreamErrors || []},{headers:{'Cache-Control':'private, no-store'}});
@@ -90,6 +98,8 @@ export async function POST(request: Request) {
     const { leads: rawLeads, diagnostics } = await discoverLeads({
       category: searchCategory,
       location: location.trim(),
+      locations: Array.isArray(body.locations) ? body.locations : undefined,
+      sources: Array.isArray(body.sources) ? body.sources : undefined,
       keyword: searchKeyword,
       maxResults: Math.min(Math.max(Number(maxResults) || 15, 1), 250),
       requireWebsite: Boolean(requireWebsite),
@@ -153,6 +163,18 @@ export async function POST(request: Request) {
       }
       return b.opportunityScore - a.opportunityScore;
     });
+
+    // Auto-persist discovered leads into Lead Library in batches
+    if (scoredLeads.length > 0) {
+      try {
+        await saveLeadsBatchToLibrary(scoredLeads, project?.id || HK_DEFAULT_PROJECT_ID, 5);
+        for (const lead of scoredLeads) {
+          lead.alreadySaved = true;
+        }
+      } catch (saveErr) {
+        console.warn('Auto-save to Lead Library non-fatal:', saveErr);
+      }
+    }
 
     // Record execution for search history
     await recordSearchExecution({

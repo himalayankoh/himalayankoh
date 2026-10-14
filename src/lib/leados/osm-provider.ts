@@ -8,10 +8,9 @@ import type { NormalizedLead, LeadSearchInput, SearchDiagnostics } from './types
  * when set, and becomes the first mirror rather than the only one.
  */
 const OVERPASS_URLS = [
-  process.env.OVERPASS_API_URL || 'https://overpass-api.de/api/interpreter',
+  process.env.OVERPASS_API_URL || 'https://z.overpass-api.de/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
-  'https://z.overpass-api.de/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
 ].filter((u, i, all) => u && all.indexOf(u) === i);
 
 const NOMINATIM_URL = process.env.NOMINATIM_BASE_URL || 'https://nominatim.openstreetmap.org';
@@ -64,21 +63,36 @@ const DEFAULT_CATEGORY_MAPPINGS: Record<string, OsmTag[]> = {
     { key: 'shop', value: 'tack' },
   ],
   'ranch & horse facility': [
+    { key: 'sport', value: 'equestrian' },
+    { key: 'amenity', value: 'riding_school' },
+    { key: 'shop', value: 'equestrian' },
+    { key: 'club', value: 'equestrian' },
     { key: 'leisure', value: 'horse_riding' },
+    { key: 'shop', value: 'saddlery' },
+    { key: 'shop', value: 'tack' },
     { key: 'place', value: 'farm' },
-    { key: 'landuse', value: 'farm' },
     { key: 'shop', value: 'agrarian' },
   ],
   'ranch': [
+    { key: 'sport', value: 'equestrian' },
+    { key: 'amenity', value: 'riding_school' },
+    { key: 'shop', value: 'equestrian' },
+    { key: 'club', value: 'equestrian' },
     { key: 'leisure', value: 'horse_riding' },
+    { key: 'shop', value: 'saddlery' },
+    { key: 'shop', value: 'tack' },
     { key: 'place', value: 'farm' },
-    { key: 'landuse', value: 'farm' },
     { key: 'shop', value: 'agrarian' },
   ],
   'ranches': [
+    { key: 'sport', value: 'equestrian' },
+    { key: 'amenity', value: 'riding_school' },
+    { key: 'shop', value: 'equestrian' },
+    { key: 'club', value: 'equestrian' },
     { key: 'leisure', value: 'horse_riding' },
+    { key: 'shop', value: 'saddlery' },
+    { key: 'shop', value: 'tack' },
     { key: 'place', value: 'farm' },
-    { key: 'landuse', value: 'farm' },
     { key: 'shop', value: 'agrarian' },
   ],
   'livestock distributor': [
@@ -115,7 +129,9 @@ const DEFAULT_CATEGORY_MAPPINGS: Record<string, OsmTag[]> = {
   'salt wholesaler': [
     { key: 'shop', value: 'wholesale' },
     { key: 'shop', value: 'agrarian' },
-    { key: 'shop', value: 'food' },
+    { key: 'shop', value: 'trade' },
+    { key: 'commercial', value: 'agricultural' },
+    { key: 'shop', value: 'farm' },
   ],
   'specialty food distributor': [
     { key: 'shop', value: 'wholesale' },
@@ -258,41 +274,31 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
   // The `[out:json]` query parameter already selects the JSON representation.
   mirrorLoop:
   for (const mirror of OVERPASS_URLS) {
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const remainingMs = 12000 - (Date.now() - start);
-      if (remainingMs < 1000) { lastError = 'Overpass search exceeded its bounded time budget.'; break mirrorLoop; }
-      try {
-        res = await fetch(mirror, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'LeadOS-HimalayanKoh/1.0',
-          },
-          body: `data=${encodeURIComponent(query)}`,
-          signal: AbortSignal.timeout(Math.min(6000, remainingMs)),
-        });
+    const remainingMs = 24000 - (Date.now() - start);
+    if (remainingMs < 1000) { lastError = 'Overpass search exceeded its bounded time budget.'; break mirrorLoop; }
+    try {
+      res = await fetch(mirror, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'LeadOS-HimalayanKoh/1.0',
+        },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(Math.min(10000, remainingMs)),
+      });
 
-        if (res.ok) break mirrorLoop;
+      if (res.ok) break mirrorLoop;
 
-        if (res.status === 429 || res.status === 503 || res.status === 504) {
-          rateLimited = true;
-          lastError = `Overpass rate limited (${res.status})`;
-          if (attempt < 2) {
-            await new Promise((r) => setTimeout(r, 500));
-            continue;
-          }
-        } else {
-          lastError = `Overpass API error HTTP ${res.status}`;
-          break;
-        }
-      } catch (err) {
-        lastError = err instanceof Error ? err.message : String(err);
-        if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, 500));
-        }
+      if (res.status === 429 || res.status === 503 || res.status === 504) {
+        rateLimited = true;
+        lastError = `Overpass rate limited (${res.status})`;
+      } else {
+        lastError = `Overpass API error HTTP ${res.status}`;
       }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
     }
-    // This mirror is exhausted (or errored non-transiently): try the next one.
+    // This mirror is exhausted (or errored): try the next one immediately
     res = null;
   }
 

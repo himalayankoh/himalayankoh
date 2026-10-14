@@ -17,6 +17,7 @@ export interface SearchPlan {
   locations?: string[];
   keywords?: string[];
   resultsLimit?: number;
+  sources?: string[];
   keyword: string;
   productInterest: ProductInterest;
   requireWebsite: boolean;
@@ -38,23 +39,23 @@ export interface PlanResult {
 
 const CATEGORY_RULES: Array<[RegExp, string]> = [
   [/private[\s-]?label/i, 'Private Label Buyer'],
-  [/salt\s+(?:wholesal|import|distribut)|wholesale\s+salt/i, 'Salt Wholesaler'],
+  [/salt\s+(?:wholesal|import|distribut)|wholesale\s+salt|namak/i, 'Salt Wholesaler'],
   [/spice|seasoning|masala/i, 'Spice Retailer'],
   [/specialty\s+food|gourmet|grocer|food\s+distribut|culinary/i, 'Specialty Food Distributor'],
   [/\btack\b|saddle|equestrian\s+(?:store|shop)/i, 'Equestrian Store'],
-  [/feed\s+(?:store|supply|supplies|mill|shop)|farm\s+(?:&|and)\s+feed/i, 'Feed Store'],
-  [/\branc?h(?:es)?\b|\brache?s?\b|stable|boarding|riding|horse\s+(?:train|farm|barn|cent|owner)|training\s+(?:area|cent|barn|facilit)|equestrian\s+(?:cent|facilit)|dairy|cattle|\bcows?\b|goat|sheep|\bfarms?\b/i, 'Ranch & Horse Facility'],
-  [/farm\s+supply|ag(?:ricultural)?\s+supply|tractor|\bco-?op\b/i, 'Farm Supply'],
-  [/livestock\s+(?:distribut|wholesal|supplier)|distributor/i, 'Livestock Distributor'],
+  [/feed\s+(?:store|supply|supplies|mill|shop)|farm\s+(?:&|and)\s+feed|charah|chara|dana/i, 'Feed Store'],
+  [/\branc?h(?:es)?\b|\brache?s?\b|stable|boarding|riding|horse\s+(?:train|farm|barn|cent|owner)|training\s+(?:area|cent|barn|facilit)|equestrian\s+(?:cent|facilit)|dairy|cattle|\bcows?\b|goat|sheep|\bfarms?\b|ghor[aeo]/i, 'Ranch & Horse Facility'],
+  [/farm\s+suppl(?:y|ies|ier|iers)?|ag(?:ricultural)?\s+suppl(?:y|ies|ier|iers)?|tractor|\bco-?op\b|kisan|kisaan|zaraat/i, 'Farm Supply'],
+  [/livestock\s+(?:distribut|wholesal|supplier|store)|distributor/i, 'Livestock Distributor'],
   [/feed/i, 'Feed Store'],
 ];
 
 const INTEREST_RULES: Array<[RegExp, ProductInterest]> = [
   [/private[\s-]?label/i, 'private_label'],
-  [/culinary|food|spice|kitchen|edible|cooking|grocer/i, 'culinary_salt'],
-  [/horse|equine|equestrian|stable|riding|\btack\b|\branc?h/i, 'horse_salt'],
-  [/\bcows?\b|cattle|livestock|goat|sheep|dairy|deer/i, 'livestock_salt'],
-  [/bulk|pallet|truckload/i, 'bulk_wholesale'],
+  [/culinary|food|spice|kitchen|edible|cooking|grocer|masala/i, 'culinary_salt'],
+  [/horse|equine|equestrian|stable|riding|\btack\b|\branc?h|ghor[aeo]/i, 'horse_salt'],
+  [/\bcows?\b|cattle|livestock|goat|sheep|dairy|deer|janwar|maveshi|meweshi/i, 'livestock_salt'],
+  [/bulk|pallet|truckload|namak/i, 'bulk_wholesale'],
 ];
 
 const CATEGORY_INTEREST: Record<string, ProductInterest> = {
@@ -184,18 +185,40 @@ export function extractLimit(text: string): number {
   return 100;
 }
 
-/** Zero-token planner. Always returns a valid plan. */
+export function extractPreferredSources(text: string): string[] {
+  const sources: string[] = [];
+  if (/\b(?:facebook|fb|facebook\s*pages?)\b/i.test(text)) sources.push('facebook');
+  if (/\b(?:instagram|insta|ig)\b/i.test(text)) sources.push('instagram');
+  if (/\b(?:groups?|facebook\s*groups?)\b/i.test(text)) sources.push('facebook_groups');
+  if (/\b(?:google\s*maps?|maps?)\b/i.test(text)) sources.push('maps');
+  if (/\b(?:osm|openstreetmap)\b/i.test(text)) sources.push('osm');
+  if (/\b(?:google|web|search|website)\b/i.test(text) && !sources.length) sources.push('web');
+  return sources.length ? sources : ['all'];
+}
+
+/** Zero-token planner. Always returns a valid plan with correct negation and Roman Urdu support. */
 export function rulesPlan(description: string, fallbackLocation = ''): PlanResult {
   const text = description.slice(0, 300);
   const categories = extractCategories(text);
   const ruled = CATEGORY_RULES.find(([re]) => re.test(text))?.[1];
   const category = ruled || categories[0] || 'Feed Store';
   const locations = extractLocations(text);
-  const location = locations[0] || fallbackLocation;
+  const location = locations[0] || fallbackLocation || 'Texas';
   const productInterest = INTEREST_RULES.find(([re]) => re.test(text))?.[1] || CATEGORY_INTEREST[category] || 'horse_salt';
   const keyword = [...new Set(KEYWORD_TERMS.filter(([re]) => re.test(text)).map(([, term]) => term))].slice(0, 4).join(' ');
   const keywords = extractKeywordsList(text);
   const resultsLimit = extractLimit(text);
+  const sources = extractPreferredSources(text);
+
+  // Robust negation handling (English + Roman Urdu)
+  const hasNegWebsite = /\b(?:no\s+web(?:site)?|without\s+web(?:site)?|website\s+nahi|web\s+nahi|bina\s+web(?:site)?|baghair\s+web(?:site)?|website\s+na\s+ho|website\s+optional)\b/i.test(text);
+  const requireWebsite = !hasNegWebsite && /\b(?:with\s+web(?:site)?s?|websites?|having\s+web(?:site)?s?|website\s+ho|website\s+lazmi|website\s+chahiye|website\s+required|must\s+have\s+web(?:site)?s?)\b/i.test(text);
+
+  const hasNegPhone = /\b(?:no\s+phone|without\s+phone|phone\s+nahi|bina\s+phone|baghair\s+phone)\b/i.test(text);
+  const requirePhone = !hasNegPhone && /\b(?:phone|call|contact\s+number|mobile|rabta|phone\s+numbers?|\bower\b|\bowner\b|\bcontact\b|\bdetails\b)\b/i.test(text);
+
+  const hasNegEmail = /\b(?:no\s+email|without\s+email|email\s+nahi|bina\s+email|baghair\s+email)\b/i.test(text);
+  const requireEmail = !hasNegEmail && /\b(?:with\s+emails?|email\s+ho|emails?|e-mail)\b/i.test(text);
 
   return {
     plan: {
@@ -206,11 +229,12 @@ export function rulesPlan(description: string, fallbackLocation = ''): PlanResul
       keywords: keywords.length ? keywords : (keyword ? keyword.split(' ') : ['feed store', 'livestock', 'mineral']),
       keyword,
       resultsLimit,
+      sources,
       productInterest,
-      requireWebsite: /website|\bsite\b|\bweb\b/i.test(text),
-      requirePhone: /phone|contact\s+number|call|\bower\b|\bowner\b|\bcontact\b|\bdetails\b/i.test(text),
-      requireEmail: /e-?mail/i.test(text),
-      wholesaleOnly: /wholesal|distributor|bulk/i.test(text),
+      requireWebsite,
+      requirePhone,
+      requireEmail,
+      wholesaleOnly: /wholesal|distributor|bulk|namak/i.test(text),
       privateLabelOnly: /private[\s-]?label/i.test(text),
       excludeSaved: /\bnew only\b|not saved|fresh|naye|nayi|naya/i.test(text),
       searchDepth: /deep|expanded|more results|zyada|ziada|zada|maximum|\bmax\b/i.test(text) ? 2 : 1,
@@ -238,13 +262,14 @@ export function mergeAIPlan(raw: string, base: SearchPlan): SearchPlan {
   const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/<[^>]*>/g, '').replace(/[^\w\s,.'&-]/g, '').trim().slice(0, max) : '');
   const category = typeof parsed.c === 'string' && BUYER_CATEGORIES.includes(parsed.c) ? parsed.c : base.category;
   const interest = PRODUCT_INTERESTS.includes(parsed.i as ProductInterest) ? (parsed.i as ProductInterest) : base.productInterest;
+
   return {
     ...base,
     category,
     productInterest: interest,
     location: str(parsed.l, 160) || base.location,
     keyword: str(parsed.k, 80).split(/\s+/).slice(0, 4).join(' ') || base.keyword,
-    requireWebsite: base.requireWebsite || parsed.w === true,
+    requireWebsite: base.requireWebsite && parsed.w !== false ? true : (base.requireWebsite ? true : parsed.w === true),
     requirePhone: base.requirePhone || parsed.p === true,
     requireEmail: base.requireEmail || parsed.e === true,
     wholesaleOnly: base.wholesaleOnly || parsed.ws === true,

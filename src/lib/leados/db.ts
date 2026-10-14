@@ -340,6 +340,42 @@ export async function saveLeadToLibrary(
   }
 }
 
+/**
+ * Saves a list of leads in chunked batches to respect Cloudflare Worker subrequest
+ * budgets (max 50) and MySQL lock concurrency.
+ */
+export async function saveLeadsBatchToLibrary(
+  leads: Array<NormalizedLead & {
+    opportunityScore?: number;
+    opportunitySignals?: string[];
+    projectFitScore?: number;
+    projectFitReasons?: string[];
+    outreachAngles?: string[];
+  }>,
+  projectId?: string,
+  chunkSize = 5
+): Promise<{ savedCount: number; errors: string[] }> {
+  if (!leads.length) return { savedCount: 0, errors: [] };
+  let savedCount = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < leads.length; i += chunkSize) {
+    const chunk = leads.slice(i, i + chunkSize);
+    const results = await Promise.allSettled(
+      chunk.map((lead) => saveLeadToLibrary(lead, projectId))
+    );
+    for (const res of results) {
+      if (res.status === 'fulfilled') {
+        savedCount++;
+      } else {
+        errors.push(res.reason instanceof Error ? res.reason.message : String(res.reason));
+      }
+    }
+  }
+
+  return { savedCount, errors };
+}
+
 /** Lists saved leads with filtering and pagination. */
 export async function listSavedLeads(options?: {
   search?: string;
