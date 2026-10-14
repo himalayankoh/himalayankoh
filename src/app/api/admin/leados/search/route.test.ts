@@ -1,10 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { POST } from './route';
 
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), search: vi.fn(), ensure: vi.fn(), project: vi.fn(), saved: vi.fn(), record: vi.fn(), gate: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  auth: vi.fn(),
+  search: vi.fn(),
+  ensure: vi.fn(),
+  project: vi.fn(),
+  saved: vi.fn(),
+  record: vi.fn(),
+  gate: vi.fn(),
+  checkIdentities: vi.fn(),
+  batchSave: vi.fn(),
+}));
 vi.mock('@/lib/auth/verifyAdminRequest', () => ({ verifyAdminRequest: mocks.auth }));
 vi.mock('@/lib/leados/discovery', () => ({ discoverLeads: mocks.search }));
-vi.mock('@/lib/leados/db', () => ({ ensureDefaultProject: mocks.ensure, getProjectById: mocks.project, listSavedLeads: mocks.saved, recordSearchExecution: mocks.record, leadosRequest: mocks.gate }));
+vi.mock('@/lib/leados/db', () => ({
+  ensureDefaultProject: mocks.ensure,
+  getProjectById: mocks.project,
+  listSavedLeads: mocks.saved,
+  recordSearchExecution: mocks.record,
+  leadosRequest: mocks.gate,
+  checkSavedIdentities: mocks.checkIdentities,
+  saveLeadsBatchToLibrary: mocks.batchSave,
+  HK_DEFAULT_PROJECT_ID: '00000000-0000-0000-0000-000000000002',
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -12,6 +31,8 @@ beforeEach(() => {
   mocks.ensure.mockResolvedValue(undefined);
   mocks.project.mockResolvedValue(null);
   mocks.saved.mockResolvedValue({ leads: [] });
+  mocks.checkIdentities.mockResolvedValue(new Map());
+  mocks.batchSave.mockResolvedValue({ savedCount: 0, failedCount: 0, savedKeys: new Set(), savedIds: [], errors: [] });
   mocks.record.mockResolvedValue(undefined);
   mocks.gate.mockResolvedValue({ok:true});
   mocks.search.mockResolvedValue({ leads: [], diagnostics: { geocodeSuccess: true, errorSummary: null } });

@@ -1,24 +1,27 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { discoverLeads, normalizeSearchResults } from '@/lib/leados/discovery';
-import { BUYER_CATEGORIES, leadIdentity, matchingKnownLead, PRODUCT_INTERESTS, qualifyLead } from '@/lib/leados/intelligence';
+import { BUYER_CATEGORIES, leadIdentity, PRODUCT_INTERESTS, qualifyLead } from '@/lib/leados/intelligence';
 import { calculateOpportunityScore } from '@/lib/leados/scoring';
 import { calculateDeterministicProjectFit } from '@/lib/leados/project-fit';
-import { getProjectById, recordSearchExecution, ensureDefaultProject, listSavedLeads, leadosRequest, saveLeadsBatchToLibrary, HK_DEFAULT_PROJECT_ID } from '@/lib/leados/db';
-import type { ScoredLead, ProductInterest } from '@/lib/leados/types';
+import { getProjectById, recordSearchExecution, ensureDefaultProject, leadosRequest, saveLeadsBatchToLibrary, checkSavedIdentities, HK_DEFAULT_PROJECT_ID } from '@/lib/leados/db';
+import type { ScoredLead, ProductInterest, NormalizedLead } from '@/lib/leados/types';
 import type { LeadSearchInput } from '@/lib/leados/types';
 import { rulesPlan } from '@/lib/leados/searchPlanner';
 
-async function savedLibraryForDiscovery() {
-  const first = await listSavedLeads({limit:200,page:1});
-  if (first.total > 2000) throw new Error('Discovery exclusion requires a bounded library of at most 2,000 leads.');
-  const leads = [...first.leads];
-  for (let page = 2; leads.length < (first.total || 0); page++) {
-    const batch = await listSavedLeads({limit:200,page});
-    if (!batch.leads.length) throw new Error('Saved library changed; retry discovery.');
-    leads.push(...batch.leads);
+function findKnownMatch(lead: Pick<NormalizedLead, 'businessName' | 'website' | 'address' | 'city' | 'region'> & { osmType?: string | null; osmId?: string | null }, savedMap: Map<string, { id: string; status: string }>) {
+  const idKey = leadIdentity(lead);
+  if (savedMap.has(idKey)) return savedMap.get(idKey);
+  if (savedMap.has(`name|${lead.businessName.toLowerCase()}`)) return savedMap.get(`name|${lead.businessName.toLowerCase()}`);
+  if (lead.website) {
+    try {
+      const host = new URL(lead.website).hostname.replace(/^www\./, '').toLowerCase();
+      if (savedMap.has(`host|${host}`)) return savedMap.get(`host|${host}`);
+    } catch {
+      // ignore
+    }
   }
-  return leads;
+  return undefined;
 }
 
 export async function GET(request: Request) {
@@ -33,17 +36,31 @@ export async function GET(request: Request) {
     const stale = Date.now() - Date.parse(item.payload.retrievedAt || '') > 180000;
     if (!['complete','failed'].includes(item.state)) return NextResponse.json({ok:true,state:stale?'expired':item.state,leads:[]},{headers:{'Cache-Control':'private, no-store'}});
     const raw = normalizeSearchResults(item.payload.results || [],item.payload.input,item.payload.retrievedAt);
-    const saved = await savedLibraryForDiscovery();
+    const savedMap = await checkSavedIdentities(raw);
     const leads = raw.filter((l)=>{
-      const prior=matchingKnownLead(l,saved);
+      const prior = findKnownMatch(l, savedMap);
       if (item.payload.input.excludeSaved && prior) return false;
       if (item.payload.input.excludeContacted && prior && ['contacted','replied','interested','quote_requested','negotiating','won','do_not_contact'].includes(prior.status)) return false;
       return (!item.payload.input.requireWebsite || l.website) && (!item.payload.input.requirePhone || l.phone) && (!item.payload.input.requireEmail || Boolean(l.email));
-    }).map((l)=>{ const q=qualifyLead(l,item.payload.input.productInterest || 'horse_salt'); return {...l,research:{...l.research,qualification:q},opportunityScore:q.score,opportunitySignals:q.reasons,alreadySaved:Boolean(matchingKnownLead(l,saved))}; }).slice(0,item.payload.input.maxResults || 15);
+    }).map((l)=>{
+      const prior = findKnownMatch(l, savedMap);
+      const q = qualifyLead(l,item.payload.input.productInterest || 'horse_salt');
+      return {
+        ...l,
+        research: { ...l.research, qualification: q },
+        opportunityScore: q.score,
+        opportunitySignals: q.reasons,
+        alreadySaved: Boolean(prior),
+      };
+    }).slice(0,item.payload.input.maxResults || 15);
     if (leads.length > 0) {
       try {
-        await saveLeadsBatchToLibrary(leads, undefined, 5);
-        for (const l of leads) { l.alreadySaved = true; }
+        const batchRes = await saveLeadsBatchToLibrary(leads, undefined, 25);
+        for (const l of leads) {
+          if (batchRes.savedKeys.has(leadIdentity(l))) {
+            l.alreadySaved = true;
+          }
+        }
       } catch (saveErr) {
         console.warn('Auto-save to Lead Library non-fatal:', saveErr);
       }
@@ -124,19 +141,20 @@ export async function POST(request: Request) {
       }, { status: diagnostics.geocodeSuccess ? 503 : 422 });
     }
 
-    // Check saved leads to mark if already saved
-    const existingSaved = await savedLibraryForDiscovery();
+    // Check saved leads using scalable bounded identity lookup
+    const savedMap = await checkSavedIdentities(rawLeads);
 
     // Score leads deterministically
     const scoredLeads: ScoredLead[] = rawLeads.filter((lead) => {
-      const existing = matchingKnownLead(lead,existingSaved);
+      const existing = findKnownMatch(lead, savedMap);
       if (body.excludeSaved && existing) return false;
       if (body.excludeContacted && existing && ['contacted','replied','interested','quote_requested','negotiating','won','do_not_contact'].includes(existing.status)) return false;
       return !body.requireEmail || Boolean(lead.email);
     }).map((lead) => {
       const fit = project ? calculateDeterministicProjectFit(lead, project) : undefined;
       const opp = calculateOpportunityScore(lead, undefined, fit?.score || 0);
-      const alreadySaved = Boolean(matchingKnownLead(lead,existingSaved));
+      const existing = findKnownMatch(lead, savedMap);
+      const alreadySaved = Boolean(existing);
       const qualification = qualifyLead(lead, interest);
 
       return {
@@ -164,15 +182,28 @@ export async function POST(request: Request) {
       return b.opportunityScore - a.opportunityScore;
     });
 
-    // Auto-persist discovered leads into Lead Library in batches
+    // Auto-persist discovered leads into Lead Library in bounded batches
     if (scoredLeads.length > 0) {
       try {
-        await saveLeadsBatchToLibrary(scoredLeads, project?.id || HK_DEFAULT_PROJECT_ID, 5);
+        const batchResult = await saveLeadsBatchToLibrary(scoredLeads, project?.id || HK_DEFAULT_PROJECT_ID, 25);
+        // Only mark alreadySaved = true for leads that actually succeeded!
         for (const lead of scoredLeads) {
-          lead.alreadySaved = true;
+          if (batchResult.savedKeys.has(leadIdentity(lead))) {
+            lead.alreadySaved = true;
+          }
         }
+        diagnostics.batchPersistence = {
+          savedCount: batchResult.savedCount,
+          failedCount: batchResult.failedCount,
+          errors: batchResult.errors,
+        };
       } catch (saveErr) {
         console.warn('Auto-save to Lead Library non-fatal:', saveErr);
+        diagnostics.batchPersistence = {
+          savedCount: 0,
+          failedCount: scoredLeads.length,
+          errors: [saveErr instanceof Error ? saveErr.message : String(saveErr)],
+        };
       }
     }
 

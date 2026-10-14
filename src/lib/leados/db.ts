@@ -32,6 +32,7 @@ import type {
   SavedLeadRecord,
   NormalizedLead,
 } from './types';
+import { leadIdentity } from './intelligence';
 
 export const HK_DEFAULT_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
 export const HK_DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000002';
@@ -340,9 +341,19 @@ export async function saveLeadToLibrary(
   }
 }
 
+export interface BatchSaveResult {
+  savedCount: number;
+  failedCount: number;
+  savedKeys: Set<string>;
+  savedIds: string[];
+  errors: string[];
+}
+
 /**
- * Saves a list of leads in chunked batches to respect Cloudflare Worker subrequest
- * budgets (max 50) and MySQL lock concurrency.
+ * Genuine server-side batch upsert for Lead Library ingestion.
+ * Sends 20-25 records per bounded HTTP request to the WordPress /leads/batch endpoint.
+ * Features idempotency, duplicate detection, manual field preservation, per-record
+ * reporting, and single retry of failed records.
  */
 export async function saveLeadsBatchToLibrary(
   leads: Array<NormalizedLead & {
@@ -353,27 +364,203 @@ export async function saveLeadsBatchToLibrary(
     outreachAngles?: string[];
   }>,
   projectId?: string,
-  chunkSize = 5
-): Promise<{ savedCount: number; errors: string[] }> {
-  if (!leads.length) return { savedCount: 0, errors: [] };
-  let savedCount = 0;
+  chunkSize = 25
+): Promise<BatchSaveResult> {
+  if (!leads.length) return { savedCount: 0, failedCount: 0, savedKeys: new Set(), savedIds: [], errors: [] };
+  let totalSaved = 0;
+  let totalFailed = 0;
+  const savedKeys = new Set<string>();
+  const savedIds: string[] = [];
   const errors: string[] = [];
 
-  for (let i = 0; i < leads.length; i += chunkSize) {
-    const chunk = leads.slice(i, i + chunkSize);
-    const results = await Promise.allSettled(
-      chunk.map((lead) => saveLeadToLibrary(lead, projectId))
-    );
-    for (const res of results) {
-      if (res.status === 'fulfilled') {
-        savedCount++;
-      } else {
-        errors.push(res.reason instanceof Error ? res.reason.message : String(res.reason));
+  const boundedChunkSize = Math.min(Math.max(chunkSize, 1), 25);
+
+  for (let i = 0; i < leads.length; i += boundedChunkSize) {
+    const chunk = leads.slice(i, i + boundedChunkSize);
+    const chunkPayload = chunk.map((lead) => ({
+      workspace_id: HK_DEFAULT_WORKSPACE_ID,
+      business_name: lead.businessName,
+      category: lead.category || null,
+      address: lead.address || null,
+      city: lead.city || null,
+      region: lead.region || null,
+      country: lead.country || null,
+      website: lead.website || null,
+      phone: lead.phone || null,
+      email: lead.email || null,
+      email_source: lead.emailSource || (lead.email ? 'discovered_osm' : null),
+      latitude: lead.latitude,
+      longitude: lead.longitude,
+      osm_type: lead.osmType,
+      osm_id: lead.osmId,
+      osm_url: lead.osmUrl,
+      data_source: lead.dataSource || 'openstreetmap',
+      research: lead.research || {},
+      opportunity_score: lead.opportunityScore ?? null,
+      opportunity_signals: lead.opportunitySignals || [],
+      tags: lead.category ? [lead.category] : [],
+      project_fit_score: lead.projectFitScore ?? null,
+      project_fit_reasons: lead.projectFitReasons || null,
+      outreach_angles: lead.outreachAngles || null,
+    }));
+
+    let handledBatch = false;
+    try {
+      const response = await leadosRequest<{
+        ok: boolean;
+        savedCount: number;
+        failedCount: number;
+        results: Array<{
+          index: number;
+          success: boolean;
+          id?: string;
+          dedupeKey?: string;
+          businessName: string;
+          error?: string;
+        }>;
+      }>('/leads/batch', {
+        method: 'POST',
+        body: { leads: chunkPayload, projectId: projectId || null },
+      });
+
+      if (response && Array.isArray(response.results)) {
+        handledBatch = true;
+        const failedIndices: number[] = [];
+        for (const item of response.results) {
+          const originalLead = chunk[item.index];
+          if (item.success && item.id) {
+            totalSaved++;
+            savedIds.push(item.id);
+            if (item.dedupeKey) savedKeys.add(item.dedupeKey);
+            if (originalLead) savedKeys.add(leadIdentity(originalLead));
+          } else {
+            totalFailed++;
+            failedIndices.push(item.index);
+            errors.push(`${item.businessName || originalLead?.businessName || 'Lead'}: ${item.error || 'Batch save failed'}`);
+          }
+        }
+
+        // Single retry for failed records
+        if (failedIndices.length > 0) {
+          for (const idx of failedIndices) {
+            const lead = chunk[idx];
+            if (!lead) continue;
+            try {
+              const res = await saveLeadToLibrary(lead, projectId);
+              totalSaved++;
+              totalFailed--;
+              savedIds.push(res.id);
+              savedKeys.add(leadIdentity(lead));
+            } catch {
+              // remains failed
+            }
+          }
+        }
+      }
+    } catch {
+      handledBatch = false;
+    }
+
+    if (!handledBatch) {
+      // Fallback for instances where plugin is not yet updated to 2.1.0
+      const results = await Promise.allSettled(
+        chunk.map((lead) => saveLeadToLibrary(lead, projectId))
+      );
+      for (let idx = 0; idx < results.length; idx++) {
+        const res = results[idx];
+        const lead = chunk[idx];
+        if (res.status === 'fulfilled') {
+          totalSaved++;
+          savedIds.push(res.value.id);
+          savedKeys.add(leadIdentity(lead));
+        } else {
+          totalFailed++;
+          errors.push(res.reason instanceof Error ? res.reason.message : String(res.reason));
+        }
       }
     }
   }
 
-  return { savedCount, errors };
+  return {
+    savedCount: totalSaved,
+    failedCount: totalFailed,
+    savedKeys,
+    savedIds,
+    errors,
+  };
+}
+
+/**
+ * Fast bounded identity checker for candidate discovery leads.
+ * Allows LeadOS to scale to tens of thousands of saved leads without
+ * ever loading the full library into search requests.
+ */
+export async function checkSavedIdentities(
+  candidates: Array<Pick<NormalizedLead, 'businessName' | 'website' | 'address' | 'city' | 'region'> & { osmType?: string | null; osmId?: string | null }>
+): Promise<Map<string, { id: string; status: string }>> {
+  const matchMap = new Map<string, { id: string; status: string }>();
+  if (!candidates.length) return matchMap;
+
+  try {
+    const payload = candidates.slice(0, 250).map((c) => ({
+      dedupeKey: leadIdentity(c),
+      website: c.website || undefined,
+      business_name: c.businessName,
+      address: c.address || undefined,
+      city: c.city || undefined,
+      region: c.region || undefined,
+      osm_type: c.osmType || undefined,
+      osm_id: c.osmId || undefined,
+    }));
+
+    const response = await leadosRequest<{
+      ok: boolean;
+      matched: Array<{ id: string; dedupeKey: string; businessName: string; website: string; status: string }>;
+    }>('/leads/check-identities', {
+      method: 'POST',
+      body: { candidates: payload },
+    });
+
+    if (response?.matched) {
+      for (const m of response.matched) {
+        if (m.dedupeKey) matchMap.set(m.dedupeKey, { id: m.id, status: m.status });
+        if (m.businessName) matchMap.set(`name|${m.businessName.toLowerCase()}`, { id: m.id, status: m.status });
+        if (m.website) {
+          try {
+            const host = new URL(m.website).hostname.replace(/^www\./, '').toLowerCase();
+            matchMap.set(`host|${host}`, { id: m.id, status: m.status });
+          } catch {
+            // ignore
+          }
+        }
+      }
+      return matchMap;
+    }
+  } catch {
+    // Continue to graceful fallback
+  }
+
+  // Graceful fallback: check bounded library (up to 100 leads) without throwing or crashing
+  try {
+    const fallback = await listSavedLeads({ limit: 100, page: 1 });
+    for (const s of fallback.leads) {
+      const idKey = leadIdentity(s);
+      matchMap.set(idKey, { id: s.id, status: s.status });
+      matchMap.set(`name|${s.businessName.toLowerCase()}`, { id: s.id, status: s.status });
+      if (s.website) {
+        try {
+          const host = new URL(s.website).hostname.replace(/^www\./, '').toLowerCase();
+          matchMap.set(`host|${host}`, { id: s.id, status: s.status });
+        } catch {
+          // ignore
+        }
+      }
+    }
+  } catch {
+    // continue with empty map
+  }
+
+  return matchMap;
 }
 
 /** Lists saved leads with filtering and pagination. */

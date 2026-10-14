@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — LeadOS & CRM
  * Description:       Custom tables and REST endpoints for the LeadOS prospect engine and the CRM lead inbox. This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the leados/v1 and crm/v1 namespaces below.
- * Version:           2.0.0
+ * Version:           2.1.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -39,7 +39,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_LEADOS_VERSION', '2.0.0' );
+define( 'HK_LEADOS_VERSION', '2.1.0' );
 define( 'HK_LEADOS_WORKSPACE_ID', '00000000-0000-0000-0000-000000000001' );
 define( 'HK_LEADOS_DEFAULT_PROJECT_ID', '00000000-0000-0000-0000-000000000002' );
 require_once __DIR__ . '/himalayan-koh-leados-intelligence.php';
@@ -600,6 +600,26 @@ add_action( 'rest_api_init', function () {
 
 	register_rest_route(
 		'leados/v1',
+		'/leads/batch',
+		array(
+			'methods'             => 'POST',
+			'permission_callback' => 'hk_leados_can_manage',
+			'callback'            => 'hk_leados_batch_save_leads',
+		)
+	);
+
+	register_rest_route(
+		'leados/v1',
+		'/leads/check-identities',
+		array(
+			'methods'             => 'POST',
+			'permission_callback' => 'hk_leados_can_manage',
+			'callback'            => 'hk_leados_check_identities',
+		)
+	);
+
+	register_rest_route(
+		'leados/v1',
 		'/import',
 		array(
 			'methods'             => 'POST',
@@ -850,6 +870,290 @@ function hk_leados_attach_projects( $row ) {
 	);
 	$row['leados_project_leads'] = $rel ?: array();
 	return $row;
+}
+
+/**
+ * Genuine server-side batch upsert for normal Lead Library ingestion.
+ * Bounded to 25 records per request.
+ * Idempotent, deduplicated, preserves manual fields, with accurate per-record reporting.
+ */
+function hk_leados_batch_save_leads( WP_REST_Request $request ) {
+	global $wpdb;
+	$p          = $wpdb->prefix;
+	$body       = $request->get_json_params() ?: array();
+	$leads      = $body['leads'] ?? array();
+	$project_id = ! empty( $body['projectId'] ) ? sanitize_text_field( $body['projectId'] ) : null;
+	$workspace  = HK_LEADOS_WORKSPACE_ID;
+
+	if ( ! is_array( $leads ) || empty( $leads ) ) {
+		return new WP_Error( 'hk_leados_invalid', 'leads array is required.', array( 'status' => 400 ) );
+	}
+
+	if ( count( $leads ) > 25 ) {
+		return new WP_Error( 'hk_leados_batch_limit', 'Batch upsert is bounded to at most 25 records per request.', array( 'status' => 400 ) );
+	}
+
+	$saved_count  = 0;
+	$failed_count = 0;
+	$results      = array();
+
+	foreach ( $leads as $index => $lead ) {
+		if ( ! is_array( $lead ) ) {
+			$failed_count++;
+			$results[] = array(
+				'index'        => $index,
+				'success'      => false,
+				'error'        => 'Lead record must be an object.',
+				'businessName' => '',
+			);
+			continue;
+		}
+
+		$business_name = sanitize_text_field( $lead['business_name'] ?? ( $lead['businessName'] ?? '' ) );
+		if ( '' === $business_name ) {
+			$failed_count++;
+			$results[] = array(
+				'index'        => $index,
+				'success'      => false,
+				'error'        => 'business_name is required.',
+				'businessName' => '',
+			);
+			continue;
+		}
+
+		$provider = ! empty( $lead['osm_url'] ?? $lead['osmUrl'] )
+			? 'openstreetmap'
+			: ( $lead['data_source'] ?? ( $lead['dataSource'] ?? 'unknown' ) );
+
+		$website = $lead['website'] ?? null;
+		$email   = $lead['email'] ?? null;
+		$phone   = $lead['phone'] ?? null;
+
+		$payload = array(
+			'workspace_id'        => $workspace,
+			'business_name'       => $business_name,
+			'category'            => $lead['category'] ?? null,
+			'address'             => $lead['address'] ?? null,
+			'city'                => $lead['city'] ?? null,
+			'region'              => $lead['region'] ?? null,
+			'country'             => $lead['country'] ?? null,
+			'website'             => $website,
+			'phone'               => $phone,
+			'email'               => $email,
+			'email_source'        => $lead['email_source'] ?? ( $lead['emailSource'] ?? ( empty( $email ) ? null : 'discovered_osm' ) ),
+			'latitude'            => isset( $lead['latitude'] ) ? $lead['latitude'] : null,
+			'longitude'           => isset( $lead['longitude'] ) ? $lead['longitude'] : null,
+			'osm_type'            => $lead['osm_type'] ?? ( $lead['osmType'] ?? null ),
+			'osm_id'              => $lead['osm_id'] ?? ( $lead['osmId'] ?? null ),
+			'osm_url'             => $lead['osm_url'] ?? ( $lead['osmUrl'] ?? null ),
+			'data_source'         => $provider,
+			'research'            => wp_json_encode( hk_leados2_clean_research( $lead['research'] ?? array() ) ),
+			'dedupe_key'          => hk_leados2_identity( $lead ),
+			'opportunity_score'   => isset( $lead['opportunity_score'] ) ? $lead['opportunity_score'] : ( $lead['opportunityScore'] ?? null ),
+			'opportunity_signals' => $lead['opportunity_signals'] ?? ( $lead['opportunitySignals'] ?? array() ),
+			'tags'                => $lead['tags'] ?? ( ! empty( $lead['category'] ) ? array( $lead['category'] ) : array() ),
+			'updated_at'          => current_time( 'mysql', true ),
+		);
+
+		$dedupe_key = $payload['dedupe_key'];
+		$lock_name  = 'hklo2_' . substr( $dedupe_key, 0, 48 );
+
+		if ( '1' !== (string) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 3)', $lock_name ) ) ) {
+			$failed_count++;
+			$results[] = array(
+				'index'        => $index,
+				'success'      => false,
+				'error'        => 'Resource locked by another transaction.',
+				'dedupeKey'    => $dedupe_key,
+				'businessName' => $business_name,
+			);
+			continue;
+		}
+
+		try {
+			$existing_id = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT id FROM {$p}leados_leads WHERE workspace_id = %s AND dedupe_key = %s LIMIT 1",
+					$workspace,
+					$dedupe_key
+				)
+			);
+			if ( ! $existing_id && ! empty( $payload['osm_type'] ) && ! empty( $payload['osm_id'] ) ) {
+				$existing_id = $wpdb->get_var(
+					$wpdb->prepare(
+						"SELECT id FROM {$p}leados_leads
+						 WHERE workspace_id = %s AND data_source = %s AND osm_type = %s AND osm_id = %s
+						 LIMIT 1",
+						$workspace,
+						$provider,
+						$payload['osm_type'],
+						$payload['osm_id']
+					)
+				);
+			}
+
+			if ( $existing_id ) {
+				unset( $payload['tags'] );
+				$prior = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$p}leados_leads WHERE id = %s", $existing_id ), ARRAY_A );
+				$old_research = json_decode( $prior['research'] ?? '{}', true ) ?: array();
+				$new_research = json_decode( $payload['research'], true ) ?: array();
+				$old_research['sources'] = hk_leados2_merge_sources( $old_research['sources'] ?? array(), $new_research['sources'] ?? array() );
+				$payload['research'] = wp_json_encode( $old_research );
+
+				foreach ( array( 'email', 'phone', 'website', 'email_source', 'address', 'city', 'region', 'country' ) as $contact_field ) {
+					if ( ! empty( $prior[ $contact_field ] ) ) {
+						unset( $payload[ $contact_field ] );
+					}
+				}
+
+				$update_res = $wpdb->update( "{$p}leados_leads", hk_leados_encode_payload( 'leados_leads', $payload ), array( 'id' => $existing_id ) );
+				if ( false === $update_res ) {
+					$failed_count++;
+					$results[] = array(
+						'index'        => $index,
+						'success'      => false,
+						'error'        => $wpdb->last_error ?: 'Update failed.',
+						'dedupeKey'    => $dedupe_key,
+						'businessName' => $business_name,
+					);
+					continue;
+				}
+
+				$lead_id = $existing_id;
+				$updated = true;
+			} else {
+				$lead_id                  = hk_leados_uuid();
+				$payload['id']            = $lead_id;
+				$payload['status']        = $lead['status'] ?? 'new';
+				$payload['starred']       = ! empty( $lead['starred'] ) ? 1 : 0;
+				$payload['notes']         = $lead['notes'] ?? null;
+				$payload['discovered_at'] = current_time( 'mysql', true );
+
+				$insert_res = $wpdb->insert( "{$p}leados_leads", hk_leados_encode_payload( 'leados_leads', $payload ) );
+				if ( false === $insert_res ) {
+					$failed_count++;
+					$results[] = array(
+						'index'        => $index,
+						'success'      => false,
+						'error'        => $wpdb->last_error ?: 'Insert failed.',
+						'dedupeKey'    => $dedupe_key,
+						'businessName' => $business_name,
+					);
+					continue;
+				}
+
+				$updated = false;
+			}
+
+			if ( ! empty( $project_id ) ) {
+				$wpdb->query(
+					$wpdb->prepare(
+						"INSERT INTO {$p}leados_project_leads (project_id, lead_id, project_fit_score, project_fit_reasons, outreach_angles)
+						 VALUES (%s, %s, %s, %s, %s)
+						 ON DUPLICATE KEY UPDATE
+							project_fit_score = VALUES(project_fit_score),
+							project_fit_reasons = VALUES(project_fit_reasons),
+							outreach_angles = VALUES(outreach_angles)",
+						$project_id,
+						$lead_id,
+						$lead['project_fit_score'] ?? ( $lead['projectFitScore'] ?? null ),
+						wp_json_encode( $lead['project_fit_reasons'] ?? ( $lead['projectFitReasons'] ?? array() ) ),
+						wp_json_encode( $lead['outreach_angles'] ?? ( $lead['outreachAngles'] ?? array() ) )
+					)
+				);
+			}
+
+			hk_leados_audit( $updated ? 'lead_updated' : 'lead_saved', array( 'lead_id' => $lead_id ) );
+
+			$saved_count++;
+			$results[] = array(
+				'index'        => $index,
+				'success'      => true,
+				'id'           => $lead_id,
+				'dedupeKey'    => $dedupe_key,
+				'businessName' => $business_name,
+				'updated'      => $updated,
+				'created'      => ! $updated,
+			);
+		} finally {
+			$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+		}
+	}
+
+	return rest_ensure_response(
+		array(
+			'ok'          => true,
+			'savedCount'  => $saved_count,
+			'failedCount' => $failed_count,
+			'total'       => count( $leads ),
+			'results'     => $results,
+		)
+	);
+}
+
+/**
+ * Fast bounded identity checker for candidate discovery leads.
+ * Allows LeadOS to scale to tens of thousands of saved leads without
+ * ever loading the full library into search requests.
+ */
+function hk_leados_check_identities( WP_REST_Request $request ) {
+	global $wpdb;
+	$p          = $wpdb->prefix;
+	$body       = $request->get_json_params() ?: array();
+	$candidates = $body['candidates'] ?? array();
+	$workspace  = HK_LEADOS_WORKSPACE_ID;
+
+	if ( ! is_array( $candidates ) || empty( $candidates ) ) {
+		return rest_ensure_response( array( 'ok' => true, 'matched' => array() ) );
+	}
+
+	$candidates = array_slice( $candidates, 0, 250 );
+	$keys       = array();
+
+	foreach ( $candidates as $cand ) {
+		if ( ! is_array( $cand ) ) {
+			continue;
+		}
+		$k = ! empty( $cand['dedupeKey'] ) ? sanitize_text_field( $cand['dedupeKey'] ) : hk_leados2_identity( $cand );
+		if ( $k ) {
+			$keys[] = $k;
+		}
+	}
+
+	$keys = array_values( array_unique( array_filter( $keys ) ) );
+	if ( empty( $keys ) ) {
+		return rest_ensure_response( array( 'ok' => true, 'matched' => array() ) );
+	}
+
+	$placeholders = implode( ',', array_fill( 0, count( $keys ), '%s' ) );
+	$query_args   = array_merge( array( $workspace ), $keys );
+
+	$rows = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT id, dedupe_key, business_name, website, status FROM {$p}leados_leads
+			 WHERE workspace_id = %s AND dedupe_key IN ($placeholders)",
+			$query_args
+		),
+		ARRAY_A
+	);
+
+	$matched = array();
+	foreach ( ( $rows ?: array() ) as $row ) {
+		$matched[] = array(
+			'id'           => $row['id'],
+			'dedupeKey'    => $row['dedupe_key'],
+			'businessName' => $row['business_name'],
+			'website'      => $row['website'],
+			'status'       => $row['status'],
+		);
+	}
+
+	return rest_ensure_response(
+		array(
+			'ok'      => true,
+			'matched' => $matched,
+		)
+	);
 }
 
 /** Paginated, filterable lead list. */

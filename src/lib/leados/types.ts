@@ -112,6 +112,11 @@ export interface SearchDiagnostics {
   responseTimeMs: number;
   errorSummary: string | null;
   queuedJobId?: string;
+  batchPersistence?: {
+    savedCount: number;
+    failedCount: number;
+    errors: string[];
+  };
 }
 
 export interface LeadOSProject {
