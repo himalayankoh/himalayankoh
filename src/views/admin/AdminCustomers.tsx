@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Mail, Phone, Search, Users } from 'lucide-react';
 import {
   ADMIN_TD,
@@ -88,9 +87,8 @@ export default function AdminCustomers() {
   const [search, setSearch] = useState('');
   const [buyersOnly, setBuyersOnly] = useState(false);
   const [kind, setKind] = useState<AdminCustomerKind>('all');
-  /** Per-page counts by kind, and the guest-order summary, both from the same read. */
+  /** Per-page counts by kind from the same read. */
   const [kinds, setKinds] = useState<Record<string, number> | null>(null);
-  const [guests, setGuests] = useState<{ addresses: number; orders: number } | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -108,7 +106,6 @@ export default function AdminCustomers() {
       });
       setCustomers(result.customers);
       setKinds(result.kinds ?? null);
-      setGuests(result.guests ?? null);
       setTotalPages(result.totalPages || 1);
       setTotalCount(result.count);
     } catch (err) {
@@ -132,7 +129,6 @@ export default function AdminCustomers() {
       <AdminPageHeader
         eyebrow="Commerce"
         title="Customers"
-        description="The store’s own customer records, with the order counts and spend WooCommerce reports for them."
         actions={
           <AdminButton icon={Users} onClick={fetchCustomers} disabled={loading}>
             Refresh
@@ -145,51 +141,6 @@ export default function AdminCustomers() {
           {fetchError}
         </AdminNotice>
       )}
-
-      <AdminNotice tone="info" title="This list is every account the store holds">
-        WooCommerce&apos;s customer list answers with role <strong>customer</strong> only, which on this store withholds
-        three accounts that are not shoppers — including the administrator account that made two of its earliest
-        orders. The list therefore asks for every role, and any row that is not a customer is labelled with its role
-        below the customer number rather than dropped, because an account that has bought belongs on this screen
-        whatever role it holds.
-      </AdminNotice>
-
-      <AdminNotice tone="info" title="Where the Orders column comes from">
-        WooCommerce does not report an order count or a spend total on this store&apos;s customer records — both
-        fields are absent from every one of them — so this screen counts orders itself, from the store&apos;s own
-        order records, matched by customer and by billing address for guest orders. <strong>Spend</strong> and
-        <strong>Last order</strong> still read <strong>Not reported</strong>, because those really are missing from the
-        store rather than being counted here. When the order read cannot cover a customer it says so instead of
-        showing a zero. Individual orders are on the Orders screen, which reads the same store.
-      </AdminNotice>
-
-      <AdminNotice tone="info" title="What each row's kind means">
-        <strong>Verified buyer</strong> — an order exists, matched by customer id or by a guest order&apos;s billing
-        address. <strong>No order</strong> — the account exists and no order carries it.
-        <strong>Staff</strong> — a role that is not <em>customer</em>; store administrator accounts carry orders and are labelled accordingly.
-        <strong>Clean Database</strong> — 2,698 legacy machine-generated bot accounts have been permanently purged from WordPress &amp; WooCommerce. Only genuine verified buyers, registered customers, and staff remain. New customer registrations from today onwards appear here automatically.
-      </AdminNotice>
-
-      {kind === 'guest' && (
-        <AdminNotice tone="info" title="Guest orders have no account row">
-          {guests
-            ? `${guests.orders} order(s) in the store carry no customer account — ${guests.addresses} distinct billing ` +
-              'address(es) between them. They cannot appear in a list of accounts, so this filter reports the count ' +
-              'rather than showing every account as if it were the answer. The orders themselves are on the Orders screen.'
-            : 'The order book could not be read, so the guest order count is not reported — it is not shown as zero.'}
-        </AdminNotice>
-      )}
-
-      <AdminNotice tone="info" title="This list is WooCommerce, and it is read-only">
-        WooCommerce owns customer records, order counts and spend. Accounts and roles — who can sign in, and as
-        what — live on the{' '}
-        <Link to="/admin/users" className="font-semibold underline">
-          Users
-        </Link>{' '}
-        screen, because that is a different system. The REST credential configured here can read customers and is
-        not scoped to create them, so this console does not offer an &quot;add customer&quot; button whose request
-        the store would refuse; customers are created by signing up.
-      </AdminNotice>
 
       <AdminPanel bodyClassName="px-0 py-0">
         <div className="flex flex-wrap items-center gap-3 border-b border-admin-line px-5 py-4">
@@ -378,14 +329,6 @@ export default function AdminCustomers() {
           </div>
         )}
       </AdminPanel>
-
-      <p className="text-sm text-admin-muted">
-        A customer&apos;s individual orders live on the{' '}
-        <Link to="/admin/orders" className="font-semibold text-himalayan hover:underline">
-          Orders
-        </Link>{' '}
-        screen, which reads the same store — order history is not duplicated here.
-      </p>
     </>
   );
 }
