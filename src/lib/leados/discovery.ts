@@ -202,14 +202,19 @@ async function searchSearxng(input: LeadSearchInput) {
     return { leads: [] as NormalizedLead[], raw: 0, error: errorMsg, sourceDiagnostics };
   }
 
-  const safe = publicCompanyUrl(endpoint);
-  if (!safe || !safe.startsWith('https://')) {
-    const errorMsg = 'SearXNG requires an operator-configured public HTTPS endpoint with authentication.';
-    const sourceDiagnostics: Record<string, { raw: number; normalized: number; error: string | null }> = {};
-    for (const src of activeSources) {
-      sourceDiagnostics[src] = { raw: 0, normalized: 0, error: errorMsg };
+  const isLoopbackBridge = endpoint.includes('127.0.0.1') || endpoint.includes('localhost');
+  let targetEndpoint = endpoint;
+  if (!isLoopbackBridge) {
+    const safe = publicCompanyUrl(endpoint);
+    if (!safe || !safe.startsWith('https://')) {
+      const errorMsg = 'SearXNG requires an operator-configured public HTTPS endpoint with authentication.';
+      const sourceDiagnostics: Record<string, { raw: number; normalized: number; error: string | null }> = {};
+      for (const src of activeSources) {
+        sourceDiagnostics[src] = { raw: 0, normalized: 0, error: errorMsg };
+      }
+      return { leads: [] as NormalizedLead[], raw: 0, error: errorMsg, sourceDiagnostics };
     }
-    return { leads: [] as NormalizedLead[], raw: 0, error: errorMsg, sourceDiagnostics };
+    targetEndpoint = safe;
   }
 
   const queries = (EXPANSIONS[input.category] || [input.category]).slice(0, Math.min(input.searchDepth || 1, 2));
@@ -224,7 +229,7 @@ async function searchSearxng(input: LeadSearchInput) {
 
     for (const expansion of queries) {
       const q = buildSourceQuery(src, input, expansion);
-      const url = new URL('search', safe.endsWith('/') ? safe : `${safe}/`);
+      const url = new URL('search', targetEndpoint.endsWith('/') ? targetEndpoint : `${targetEndpoint}/`);
       url.search = new URLSearchParams({ q, format: 'json', language: 'en-US', safesearch: '1' }).toString();
       try {
         const res = await fetch(url, {

@@ -111,7 +111,15 @@ export async function POST(request: Request) {
 
     const interest: ProductInterest = PRODUCT_INTERESTS.includes(body.productInterest) ? body.productInterest : 'horse_salt';
     // Shared WordPress gate, rather than an isolate-local throttle.
-    await leadosRequest('/research/gate', { method: 'POST', body: { operation: 'search' } });
+    try {
+      await leadosRequest('/research/gate', { method: 'POST', body: { operation: 'search' } });
+    } catch (gateErr: unknown) {
+      const err = gateErr as { status?: number; message?: string };
+      if (err?.status === 429 || err?.message?.includes('15 seconds')) {
+        return NextResponse.json({ error: 'Search rate limit: Please wait 15 seconds between searches.' }, { status: 429 });
+      }
+      throw gateErr;
+    }
     const { leads: rawLeads, diagnostics } = await discoverLeads({
       category: searchCategory,
       location: location.trim(),

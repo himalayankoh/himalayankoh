@@ -9,8 +9,9 @@ import type { NormalizedLead, LeadSearchInput, SearchDiagnostics } from './types
  */
 const OVERPASS_URLS = [
   process.env.OVERPASS_API_URL || 'https://z.overpass-api.de/api/interpreter',
-  'https://overpass-api.de/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
 ].filter((u, i, all) => u && all.indexOf(u) === i);
 
 const NOMINATIM_URL = process.env.NOMINATIM_BASE_URL || 'https://nominatim.openstreetmap.org';
@@ -232,7 +233,7 @@ function buildOverpassQuery(
     if (!nodeOnly) parts.push(`way${filter}${area};`);
   }
 
-  return `[out:json][timeout:25];(${parts.join('')});out center ${maxResults};`;
+  return `[out:json][timeout:15];(${parts.join('')});out center ${maxResults};`;
 }
 
 function extractAddress(tags: Record<string, string>): {
@@ -284,7 +285,7 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
           'User-Agent': 'LeadOS-HimalayanKoh/1.0',
         },
         body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(Math.min(10000, remainingMs)),
+        signal: AbortSignal.timeout(Math.min(6000, remainingMs)),
       });
 
       if (res.ok) break mirrorLoop;
