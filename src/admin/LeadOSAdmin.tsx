@@ -489,23 +489,23 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
   // ── Lead Library Table Resizing, Sorting, Filtering & Row Reordering ──
   const DEFAULT_LIBRARY_COL_WIDTHS = {
-    reorder: 38,
-    check: 38,
-    index: 38,
-    name: 240,
-    location: 160,
-    category: 140,
-    contact: 280,
-    source: 130,
-    status: 110,
-    score: 80,
-    actions: 190,
+    reorder: 26,
+    check: 26,
+    index: 26,
+    name: 165,
+    location: 105,
+    category: 95,
+    contact: 175,
+    source: 85,
+    status: 80,
+    score: 55,
+    actions: 105,
   };
 
   const [libraryColWidths, setLibraryColWidths] = useState<Record<string, number>>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('hk_leados_lib_col_widths');
+        const saved = localStorage.getItem('hk_leados_lib_col_widths_v4');
         if (saved) return { ...DEFAULT_LIBRARY_COL_WIDTHS, ...JSON.parse(saved) };
       } catch {}
     }
@@ -520,17 +520,17 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     resizingLibColRef.current = {
       colKey,
       startX: e.clientX,
-      startWidth: libraryColWidths[colKey] || 150,
+      startWidth: libraryColWidths[colKey] || 120,
     };
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       if (!resizingLibColRef.current) return;
       const delta = moveEvent.clientX - resizingLibColRef.current.startX;
-      const minW = ['reorder', 'check', 'index'].includes(resizingLibColRef.current.colKey) ? 30 : 60;
+      const minW = ['reorder', 'check', 'index'].includes(resizingLibColRef.current.colKey) ? 22 : 45;
       const newWidth = Math.max(minW, resizingLibColRef.current.startWidth + delta);
       setLibraryColWidths((prev) => {
         const next = { ...prev, [resizingLibColRef.current!.colKey]: newWidth };
-        try { localStorage.setItem('hk_leados_lib_col_widths', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('hk_leados_lib_col_widths_v4', JSON.stringify(next)); } catch {}
         return next;
       });
     };
@@ -551,10 +551,17 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
   const handleResetLibColWidth = (colKey: string) => {
     setLibraryColWidths((prev) => {
-      const next = { ...prev, [colKey]: (DEFAULT_LIBRARY_COL_WIDTHS as any)[colKey] || 150 };
-      try { localStorage.setItem('hk_leados_lib_col_widths', JSON.stringify(next)); } catch {}
+      const next = { ...prev, [colKey]: (DEFAULT_LIBRARY_COL_WIDTHS as any)[colKey] || 100 };
+      try { localStorage.setItem('hk_leados_lib_col_widths_v4', JSON.stringify(next)); } catch {}
       return next;
     });
+  };
+
+  const handleResetAllLibColWidths = () => {
+    setLibraryColWidths(DEFAULT_LIBRARY_COL_WIDTHS);
+    try {
+      localStorage.setItem('hk_leados_lib_col_widths_v4', JSON.stringify(DEFAULT_LIBRARY_COL_WIDTHS));
+    } catch {}
   };
 
   // Sorting state for Lead Library
@@ -2388,36 +2395,30 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           <div className="w-full space-y-4">
             
             {/* Header Action Bar with Integrated Quick Filters & Saved Searches */}
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3">
               
               {/* Left: Title + Segmented Quick Filters */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-slate-900">Leads Found</h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                      {filteredFindLeads.length}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                    <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-500 inline-block flex-shrink-0" />
-                    <span>Verified and deduplicated results. Select leads to save to library.</span>
-                  </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-slate-900 whitespace-nowrap">Leads Found</h3>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    {filteredFindLeads.length}
+                  </span>
                 </div>
 
-                {/* Segmented Quick Filters (Relocated from removed sidebar) */}
-                <div className="flex items-center gap-1 p-1 bg-slate-100/90 rounded-xl border border-slate-200/80 overflow-x-auto no-scrollbar">
+                {/* Compact Segmented Quick Filters (No horizontal scrollbar, perfectly responsive) */}
+                <div className="flex items-center gap-0.5 p-0.5 bg-slate-100 rounded-lg border border-slate-200/90 shrink-0">
                   <button
                     type="button"
                     onClick={() => setFindLeadsQuickFilter('all')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                    className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 whitespace-nowrap ${
                       findLeadsQuickFilter === 'all'
                         ? 'bg-white text-indigo-700 shadow-2xs font-bold'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     <span>All</span>
-                    <span className="px-1.5 py-0.2 rounded-full bg-slate-200/70 text-slate-700 text-[10px] font-bold">
+                    <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 text-[9px] font-bold">
                       {leads.length}
                     </span>
                   </button>
@@ -2425,15 +2426,15 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   <button
                     type="button"
                     onClick={() => setFindLeadsQuickFilter('verified')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                    className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 whitespace-nowrap ${
                       findLeadsQuickFilter === 'verified'
                         ? 'bg-white text-emerald-700 shadow-2xs font-bold'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-600" />
+                    <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
                     <span>Verified</span>
-                    <span className="px-1.5 py-0.2 rounded-full bg-emerald-100/80 text-emerald-800 text-[10px] font-bold">
+                    <span className="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[9px] font-bold">
                       {verifiedFindCount}
                     </span>
                   </button>
@@ -2441,15 +2442,15 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   <button
                     type="button"
                     onClick={() => setFindLeadsQuickFilter('unverified')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                    className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 whitespace-nowrap ${
                       findLeadsQuickFilter === 'unverified'
                         ? 'bg-white text-amber-700 shadow-2xs font-bold'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    <WarningCircle weight="fill" className="w-3.5 h-3.5 text-amber-500" />
+                    <WarningCircle weight="fill" className="w-3 h-3 text-amber-500" />
                     <span>Unverified</span>
-                    <span className="px-1.5 py-0.2 rounded-full bg-amber-100/80 text-amber-800 text-[10px] font-bold">
+                    <span className="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[9px] font-bold">
                       {unverifiedFindCount}
                     </span>
                   </button>
@@ -2457,15 +2458,15 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   <button
                     type="button"
                     onClick={() => setFindLeadsQuickFilter('review')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                    className={`px-2 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 whitespace-nowrap ${
                       findLeadsQuickFilter === 'review'
                         ? 'bg-white text-rose-700 shadow-2xs font-bold'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    <ClockCounterClockwise className="w-3.5 h-3.5 text-rose-500" />
+                    <ClockCounterClockwise className="w-3 h-3 text-rose-500" />
                     <span>Review</span>
-                    <span className="px-1.5 py-0.2 rounded-full bg-rose-100/80 text-rose-800 text-[10px] font-bold">
+                    <span className="px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-800 text-[9px] font-bold">
                       {needsReviewFindCount}
                     </span>
                   </button>
@@ -2622,10 +2623,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   }`}
                   title="Click and drag horizontally to scroll through lead details"
                 >
-                    <table className="w-full text-left text-xs text-slate-700 border-collapse min-w-[980px]">
+                    <table className="w-full text-left text-xs text-slate-700 border-collapse">
                       <thead className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                         <tr>
-                          <th className="w-10 px-3 py-3 text-center whitespace-nowrap">
+                          <th className="w-8 px-2 py-2.5 text-center whitespace-nowrap">
                             <input
                               type="checkbox"
                               checked={paginatedFindLeads.length > 0 && paginatedFindLeads.every((l) => selectedLeadIds.has(l.businessName))}
@@ -2633,15 +2634,15 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                               className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                             />
                           </th>
-                          <th className="w-10 px-2 py-3 text-slate-400 whitespace-nowrap">#</th>
-                          <th className="px-3 py-3 whitespace-nowrap min-w-[200px]">Business Name</th>
-                          <th className="px-3 py-3 whitespace-nowrap min-w-[140px]">Location</th>
-                          <th className="px-3 py-3 whitespace-nowrap min-w-[130px]">Category</th>
-                          <th className="px-3 py-3 whitespace-nowrap min-w-[220px]">Contact Information</th>
-                          <th className="px-3 py-3 whitespace-nowrap min-w-[100px]">Source</th>
-                          <th className="px-3 py-3 whitespace-nowrap min-w-[110px]">Status</th>
-                          <th className="px-3 py-3 whitespace-nowrap min-w-[70px]">Score</th>
-                          <th className="px-3 py-3 text-right whitespace-nowrap min-w-[120px]">Actions</th>
+                          <th className="w-8 px-1 py-2.5 text-slate-400 whitespace-nowrap text-center">#</th>
+                          <th className="px-2.5 py-2.5 whitespace-nowrap min-w-[150px]">Business Name</th>
+                          <th className="px-2.5 py-2.5 whitespace-nowrap min-w-[105px]">Location</th>
+                          <th className="px-2 py-2.5 whitespace-nowrap min-w-[95px]">Category</th>
+                          <th className="px-2.5 py-2.5 whitespace-nowrap min-w-[170px]">Contact Information</th>
+                          <th className="px-2 py-2.5 whitespace-nowrap min-w-[85px]">Source</th>
+                          <th className="px-2 py-2.5 whitespace-nowrap min-w-[80px]">Status</th>
+                          <th className="px-2 py-2.5 whitespace-nowrap min-w-[55px]">Score</th>
+                          <th className="px-2.5 py-2.5 text-right whitespace-nowrap min-w-[100px]">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -3446,8 +3447,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </button>
               </div>
 
-              {/* Active Sort Indicator / Reset */}
+              {/* Active Sort Indicator / Reset / Fit Screen */}
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetAllLibColWidths}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-[11px] font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  title="Reset all column widths to fit cleanly within one screen frame"
+                >
+                  <ArrowsLeftRight className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Fit Screen</span>
+                </button>
+
                 {librarySortField !== 'manual' && (
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-semibold">
                     <span>
@@ -3560,7 +3571,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs min-w-[1080px]">
+                <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold text-slate-500 uppercase tracking-wider select-none">
                       {/* Drag Reorder Handle Header */}
@@ -4085,35 +4096,35 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           {/* Actions */}
                           <td
                             style={{ width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
-                            className="py-3 px-3 text-right whitespace-nowrap"
+                            className="py-2.5 px-2 text-right whitespace-nowrap"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex items-center justify-end gap-1">
                               {lead.email ? (
                                 <button
                                   type="button"
                                   onClick={() => openLeadDrawer(lead, 'outreach')}
-                                  className="px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-[11px] flex items-center gap-1.5 transition cursor-pointer shadow-2xs whitespace-nowrap flex-shrink-0"
+                                  className="px-2 py-0.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-[10px] flex items-center gap-1 transition cursor-pointer shadow-2xs whitespace-nowrap flex-shrink-0"
                                   title={`Send Wholesale Outreach Email to ${lead.email}`}
                                 >
                                   <PaperPlaneRight weight="fill" className="w-3 h-3 text-white" />
-                                  Send Email
+                                  <span>Send</span>
                                 </button>
                               ) : (
                                 <button
                                   type="button"
                                   onClick={() => openLeadDrawer(lead, 'outreach')}
-                                  className="px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[11px] flex items-center gap-1 transition cursor-pointer border border-indigo-200 whitespace-nowrap flex-shrink-0"
+                                  className="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[10px] flex items-center gap-1 transition cursor-pointer border border-indigo-200 whitespace-nowrap flex-shrink-0"
                                   title="Compose Wholesale Outreach"
                                 >
                                   <PaperPlaneRight className="w-3 h-3 text-indigo-600" />
-                                  Outreach
+                                  <span>Outreach</span>
                                 </button>
                               )}
                               <button
                                 type="button"
                                 onClick={() => openLeadDrawer(lead, 'notes')}
-                                className="p-1.5 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition cursor-pointer flex-shrink-0"
+                                className="p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition cursor-pointer flex-shrink-0"
                                 title="Notes & Follow-up Schedule"
                               >
                                 <FileText className="w-3.5 h-3.5" />
@@ -4121,7 +4132,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                               <button
                                 type="button"
                                 onClick={() => handleDeleteSavedLead(lead.id)}
-                                className="p-1.5 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer flex-shrink-0"
+                                className="p-1 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer flex-shrink-0"
                                 title="Delete Lead"
                               >
                                 <Trash className="w-3.5 h-3.5" />
