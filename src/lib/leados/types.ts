@@ -26,6 +26,9 @@ export interface NormalizedLead {
   phone: string | null;
   email: string | null;
   emailSource?: 'discovered_osm' | 'company_website' | 'manually_entered' | 'unverified';
+  facebook?: string | null;
+  instagram?: string | null;
+  googleMapsUrl?: string | null;
   research?: LeadResearch;
   latitude: number | null;
   longitude: number | null;

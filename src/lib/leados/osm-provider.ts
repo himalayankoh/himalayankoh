@@ -9,7 +9,8 @@ import type { NormalizedLead, LeadSearchInput, SearchDiagnostics } from './types
  */
 const OVERPASS_URLS = [
   process.env.OVERPASS_API_URL || 'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://z.overpass-api.de/api/interpreter',
   'https://overpass.private.coffee/api/interpreter',
 ].filter((u, i, all) => u && all.indexOf(u) === i);
 
@@ -31,6 +32,7 @@ export interface CoordSearchInput {
   requireWebsite?: boolean;
   requirePhone?: boolean;
   category: string;
+  boundingBox?: [number, number, number, number] | null;
 }
 
 export interface OverpassResult {
@@ -65,6 +67,19 @@ const DEFAULT_CATEGORY_MAPPINGS: Record<string, OsmTag[]> = {
     { key: 'leisure', value: 'horse_riding' },
     { key: 'place', value: 'farm' },
     { key: 'landuse', value: 'farm' },
+    { key: 'shop', value: 'agrarian' },
+  ],
+  'ranch': [
+    { key: 'leisure', value: 'horse_riding' },
+    { key: 'place', value: 'farm' },
+    { key: 'landuse', value: 'farm' },
+    { key: 'shop', value: 'agrarian' },
+  ],
+  'ranches': [
+    { key: 'leisure', value: 'horse_riding' },
+    { key: 'place', value: 'farm' },
+    { key: 'landuse', value: 'farm' },
+    { key: 'shop', value: 'agrarian' },
   ],
   'livestock distributor': [
     { key: 'shop', value: 'agrarian' },
@@ -72,6 +87,24 @@ const DEFAULT_CATEGORY_MAPPINGS: Record<string, OsmTag[]> = {
     { key: 'shop', value: 'wholesale' },
     { key: 'shop', value: 'trade' },
     { key: 'commercial', value: 'agricultural' },
+  ],
+  'livestock supplier': [
+    { key: 'shop', value: 'agrarian' },
+    { key: 'shop', value: 'farm' },
+    { key: 'shop', value: 'wholesale' },
+    { key: 'shop', value: 'trade' },
+    { key: 'commercial', value: 'agricultural' },
+  ],
+  'livestock': [
+    { key: 'shop', value: 'agrarian' },
+    { key: 'shop', value: 'farm' },
+    { key: 'shop', value: 'wholesale' },
+    { key: 'commercial', value: 'agricultural' },
+  ],
+  'country store': [
+    { key: 'shop', value: 'country_store' },
+    { key: 'shop', value: 'agrarian' },
+    { key: 'shop', value: 'farm' },
   ],
   'mineral distributor': [
     { key: 'shop', value: 'agrarian' },
@@ -158,11 +191,25 @@ function buildOverpassQuery(
   lon: number,
   radiusM: number,
   maxResults: number,
-  nodeOnly: boolean
+  nodeOnly: boolean,
+  boundingBox?: [number, number, number, number] | null
 ): string {
-  const area = `(around:${radiusM},${lat},${lon})`;
   const parts: string[] = [];
 
+  // When city/county bounding box is available, bbox header is dramatically faster
+  // and avoids 504 timeouts on public Overpass instances
+  if (boundingBox && Array.isArray(boundingBox) && boundingBox.length === 4) {
+    const [s, n, w, e] = boundingBox;
+    const bboxHeader = `[bbox:${s},${w},${n},${e}]`;
+    for (const tag of tags) {
+      const filter = `["${sanitizeOsmKey(tag.key)}"="${sanitizeOsmValue(tag.value)}"]`;
+      parts.push(`node${filter};`);
+      if (!nodeOnly) parts.push(`way${filter};`);
+    }
+    return `[out:json][timeout:25]${bboxHeader};(${parts.join('')});out center ${maxResults};`;
+  }
+
+  const area = `(around:${radiusM},${lat},${lon})`;
   for (const tag of tags) {
     const filter = `["${sanitizeOsmKey(tag.key)}"="${sanitizeOsmValue(tag.value)}"]`;
     parts.push(`node${filter}${area};`);
@@ -198,7 +245,8 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
     input.lon,
     input.radiusKm * 1000,
     input.maxResults * 2,
-    input.nodeOnly
+    input.nodeOnly,
+    input.boundingBox
   );
 
   let res: Response | null = null;
@@ -293,6 +341,11 @@ export async function queryOverpass(input: CoordSearchInput): Promise<OverpassRe
         phone: elTags.phone || elTags['contact:phone'] || null,
         email: elTags.email || elTags['contact:email'] || null,
         emailSource: (elTags.email || elTags['contact:email']) ? 'discovered_osm' : undefined,
+        facebook: elTags['contact:facebook'] || elTags.facebook || null,
+        instagram: elTags['contact:instagram'] || elTags.instagram || null,
+        googleMapsUrl: lat && lon
+          ? `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`
+          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name} ${addr.city || ''} ${addr.region || ''}`)}`,
         latitude: lat || null,
         longitude: lon || null,
         osmType,
@@ -451,6 +504,7 @@ export async function searchOpenStreetMap(input: LeadSearchInput): Promise<{
       requireWebsite: input.requireWebsite,
       requirePhone: input.requirePhone,
       category: input.category,
+      boundingBox: geo.boundingBox,
     }),
     keyword
       ? searchNominatimKeywords(keyword, input.location, geo.boundingBox, maxResults, input.category)

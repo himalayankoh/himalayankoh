@@ -38,7 +38,7 @@ export async function GET(request: Request) {
       const prior=matchingKnownLead(l,saved);
       if (item.payload.input.excludeSaved && prior) return false;
       if (item.payload.input.excludeContacted && prior && ['contacted','replied','interested','quote_requested','negotiating','won','do_not_contact'].includes(prior.status)) return false;
-      return (!item.payload.input.requireWebsite || l.website) && (!item.payload.input.requirePhone || l.phone) && (!item.payload.input.requireEmail || l.emailSource==='company_website');
+      return (!item.payload.input.requireWebsite || l.website) && (!item.payload.input.requirePhone || l.phone) && (!item.payload.input.requireEmail || Boolean(l.email));
     }).map((l)=>{ const q=qualifyLead(l,item.payload.input.productInterest || 'horse_salt'); return {...l,research:{...l.research,qualification:q},opportunityScore:q.score,opportunitySignals:q.reasons,alreadySaved:Boolean(matchingKnownLead(l,saved))}; }).slice(0,item.payload.input.maxResults || 15);
     const finalCount = Math.min(item.payload.input.maxResults || 15,new Set([...(item.payload.initialKeys || []),...leads.map(leadIdentity)]).size);
     await recordSearchExecution({category:item.payload.input.category,location:item.payload.input.location,resultsCount:finalCount,executionId:id});
@@ -122,7 +122,7 @@ export async function POST(request: Request) {
       const existing = matchingKnownLead(lead,existingSaved);
       if (body.excludeSaved && existing) return false;
       if (body.excludeContacted && existing && ['contacted','replied','interested','quote_requested','negotiating','won','do_not_contact'].includes(existing.status)) return false;
-      return !body.requireEmail || (lead.email && lead.emailSource === 'company_website');
+      return !body.requireEmail || Boolean(lead.email);
     }).map((lead) => {
       const fit = project ? calculateDeterministicProjectFit(lead, project) : undefined;
       const opp = calculateOpportunityScore(lead, undefined, fit?.score || 0);

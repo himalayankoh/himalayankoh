@@ -81,15 +81,17 @@ export async function discoverLeads(input: LeadSearchInput): Promise<{ leads: No
   if (!BUYER_CATEGORIES.includes(input.category)) throw new Error('Choose a relevant Himalayan Koh B2B buyer category.');
   if (input.country && !/^(us|usa|united states)$/i.test(input.country)) throw new Error('LeadOS targets the United States.');
   const started = Date.now();
-  const localOsm = ['Feed Store', 'Farm Supply', 'Equestrian Store', 'Ranch & Horse Facility'].includes(input.category) && !/^(?:usa|us|united states|texas)(?:,?\s*(?:usa|us|united states))?$/i.test(input.location.trim());
+  const locTrimmed = input.location.trim();
+  const searchLoc = /^texas$/i.test(locTrimmed) ? 'Fort Worth, TX' : locTrimmed;
+  const localOsm = ['Feed Store', 'Farm Supply', 'Equestrian Store', 'Ranch & Horse Facility', 'Livestock Distributor', 'Mineral Distributor', 'Salt Wholesaler', 'Specialty Food Distributor', 'Spice Retailer'].includes(input.category) && !/^(?:usa|us|united states)(?:,?\s*(?:usa|us|united states))?$/i.test(locTrimmed);
   const [osm, web] = await Promise.all([
-    localOsm ? searchOpenStreetMap({ ...input, keyword: '', maxResults: Math.min(input.maxResults || 15, 250), radiusKm: Math.min(Math.max(input.radiusKm || 25, 1), 100) }) : Promise.resolve(null),
+    localOsm ? searchOpenStreetMap({ ...input, location: searchLoc, nodeOnly: true, keyword: '', maxResults: Math.min(input.maxResults || 15, 250), radiusKm: Math.min(Math.max(input.radiusKm || 25, 1), 100) }) : Promise.resolve(null),
     searchSearxng(input),
   ]);
   const timestamp = new Date().toISOString();
   const osmLeads = (osm?.leads || []).map((lead) => ({ ...lead, research: { ...lead.research, productInterest: input.productInterest, sources: lead.research?.sources || [{ url: lead.osmUrl!, retrievedAt: timestamp, kind: 'openstreetmap', status: 'verified' as const, excerpt: `${lead.businessName}: mapped ${lead.category}; ${lead.address || ''} ${lead.city || ''} ${lead.region || ''}` }] } }));
   const merged = deduplicateLeads([...osmLeads, ...web.leads]);
-  const leads = merged.leads.filter((lead) => (!input.requireWebsite || Boolean(lead.website)) && (!input.requirePhone || Boolean(lead.phone)) && (!input.requireEmail || Boolean(lead.email && lead.emailSource === 'company_website'))).slice(0, Math.min(Math.max(input.maxResults || 15, 1), 250));
+  const leads = merged.leads.filter((lead) => (!input.requireWebsite || Boolean(lead.website)) && (!input.requirePhone || Boolean(lead.phone)) && (!input.requireEmail || Boolean(lead.email))).slice(0, Math.min(Math.max(input.maxResults || 15, 1), 250));
   const sources = {
     ...(osm?.diagnostics.sources || {}),
     searxng: { raw: web.raw, normalized: web.leads.length, error: web.error },
