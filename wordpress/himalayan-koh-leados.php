@@ -1527,10 +1527,49 @@ function hk_leados_save_market_job( WP_REST_Request $request ) {
 
 /**
  * Background hook for autonomous market discovery rotation.
- * Registered in WP-Cron and n8n to execute even when browser is closed.
+ * Registered in WP-Cron to execute even when browser is closed.
+ * Triggers genuine market discovery scan and saves durable audit and execution records.
  */
 function hk_leados_run_scheduled_market_discovery() {
-	hk_leados_audit( 'market_discovery_cron_executed', array( 'timestamp' => gmdate( 'c' ) ) );
+	$storefront_url = defined( 'HK_STOREFRONT_URL' ) ? HK_STOREFRONT_URL : 'https://himalayankoh.com';
+	$token = defined( 'HK_LEADOS_WORKER_TOKEN' ) ? HK_LEADOS_WORKER_TOKEN : get_option( 'hk_leados_worker_token', '' );
+
+	$headers = array( 'Content-Type' => 'application/json' );
+	if ( ! empty( $token ) ) {
+		$headers['Authorization'] = 'Bearer ' . $token;
+	}
+
+	$target_url = trailingslashit( $storefront_url ) . 'api/admin/leados/market-map';
+	$response = wp_remote_post(
+		$target_url,
+		array(
+			'timeout'   => 45,
+			'headers'   => $headers,
+			'body'      => wp_json_encode( array( 'action' => 'run_scheduled_scan', 'source' => 'wp_cron' ) ),
+			'sslverify' => true,
+		)
+	);
+
+	$status = wp_remote_retrieve_response_code( $response );
+	$body = wp_remote_retrieve_body( $response );
+	$data = json_decode( $body, true );
+
+	$scan_result = is_array( $data ) && isset( $data['scanResult'] ) ? $data['scanResult'] : null;
+
+	hk_leados_audit(
+		'market_discovery_cron_executed',
+		array(
+			'timestamp'  => gmdate( 'c' ),
+			'httpStatus' => $status,
+			'ok'         => ! empty( $data['ok'] ),
+			'jobId'      => $scan_result['jobId'] ?? null,
+			'state'      => $scan_result['stateCode'] ?? null,
+			'discovered' => $scan_result['leadsDiscovered'] ?? 0,
+			'newSaved'   => $scan_result['newLeadsSaved'] ?? 0,
+		)
+	);
+
+	return $data;
 }
 add_action( 'hk_leados_market_discovery_cron', 'hk_leados_run_scheduled_market_discovery' );
 

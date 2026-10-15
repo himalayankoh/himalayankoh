@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
+import { timingSafeEqual } from '@/lib/auth/sessionToken';
 import { listSavedLeads, getMarketSummaryFromDb, getMarketJobsFromDb } from '@/lib/leados/db';
 import {
   aggregateStateMarketData,
@@ -14,10 +15,25 @@ import {
   type MarketCategoryKey,
 } from '@/lib/leados/market-scheduler';
 
+function isWorkerAuthorized(request: Request): boolean {
+  const authHeader = (request.headers.get('authorization') || '').replace(/^Bearer /, '').trim();
+  if (!authHeader) return false;
+
+  const candidateTokens = [
+    process.env.LEADOS_N8N_TOKEN,
+    process.env.LEADOS_RESEARCH_WORKER_TOKEN,
+  ].filter((t): t is string => typeof t === 'string' && t.trim().length >= 32);
+
+  return candidateTokens.some((token) => timingSafeEqual(token.trim(), authHeader));
+}
+
 export async function GET(request: Request) {
-  const auth = await verifyAdminRequest(request);
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const isWorker = isWorkerAuthorized(request);
+  if (!isWorker) {
+    const auth = await verifyAdminRequest(request);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
   }
 
   try {
@@ -113,9 +129,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await verifyAdminRequest(request);
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const isWorker = isWorkerAuthorized(request);
+  if (!isWorker) {
+    const auth = await verifyAdminRequest(request);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
   }
 
   try {
@@ -124,7 +143,9 @@ export async function POST(request: Request) {
 
     // Real autonomous background scheduled execution (Issue 2 fix)
     if (action === 'run_scheduled_scan') {
-      const scanResult = await runScheduledAutonomousScan();
+      const scanResult = await runScheduledAutonomousScan({
+        triggerSource: isWorker ? 'n8n_workflow' : 'scheduled_cron',
+      });
       return NextResponse.json(
         {
           ok: scanResult.ok,

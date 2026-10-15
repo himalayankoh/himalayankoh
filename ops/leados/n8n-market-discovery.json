@@ -19,6 +19,21 @@
       "typeVersion": 1.2
     },
     {
+      "id": "Discovery-webhook",
+      "name": "Discovery webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 160],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hk-leados-market-discovery",
+        "authentication": "none",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "hk-leados-market-discovery"
+    },
+    {
       "id": "Trigger-market-scan",
       "name": "Trigger market scan",
       "type": "n8n-nodes-base.httpRequest",
@@ -50,22 +65,33 @@
     }
   ],
   "connections": {
-    "Every-6-hours": {
+    "Every 6 hours": {
       "main": [
         [
           {
-            "node": "Trigger-market-scan",
+            "node": "Trigger market scan",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Trigger-market-scan": {
+    "Discovery webhook": {
       "main": [
         [
           {
-            "node": "Scan-result",
+            "node": "Trigger market scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger market scan": {
+      "main": [
+        [
+          {
+            "node": "Scan result",
             "type": "main",
             "index": 0
           }

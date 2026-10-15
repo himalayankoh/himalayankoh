@@ -463,6 +463,7 @@ export interface MarketResearchJob {
   error: string | null;
   durationMs: number;
   nextScheduledRun: string | null;
+  triggerSource?: 'manual' | 'scheduled_cron' | 'n8n_workflow';
 }
 
 // Bounded persistent in-memory job store (synced with WordPress DB)
@@ -519,8 +520,17 @@ export function getSchedulerStatus(): {
     ? Math.max(0, Math.round((Date.now() - new Date(lastSuccess).getTime()) / (1000 * 60)))
     : null;
 
-  // browserClosedExecution is verified true when autonomous job execution history is recorded
-  const isExecutionVerified = Boolean(lastSuccess && completed.length > 0);
+  // browserClosedExecution is verified true ONLY when scheduled execution (n8n or cron) has completed
+  const scheduledCompleted = completed.filter(
+    (j) => j.triggerSource === 'scheduled_cron' || j.triggerSource === 'n8n_workflow'
+  );
+  const isExecutionVerified = Boolean(scheduledCompleted.length > 0);
+
+  const executionEvidence = isExecutionVerified
+    ? `${scheduledCompleted.length} scheduled background scan(s) proven in durable store (last: ${scheduledCompleted[0].completedAt})`
+    : completed.length > 0
+    ? `${completed.length} manual scan(s) completed; awaiting first recurring scheduled execution trigger`
+    : 'Pending initial autonomous execution heartbeat';
 
   return {
     activeJobs,
@@ -534,11 +544,9 @@ export function getSchedulerStatus(): {
     cronHook: 'hk_leados_market_discovery_cron',
     n8nWorkflow: 'ops/leados/n8n-market-discovery.json',
     persistentBackend: 'WordPress MySQL (agent_jobs table & audit logs)',
-    browserClosedExecution: isExecutionVerified || hasDurableExecutionHistory,
+    browserClosedExecution: isExecutionVerified,
     heartbeatAgeMinutes,
-    executionEvidence: hasDurableExecutionHistory
-      ? `${completed.length} completed autonomous scan(s) verified in durable store (last heartbeat: ${lastSuccess || 'recent'})`
-      : 'Pending initial autonomous execution heartbeat',
+    executionEvidence,
   };
 }
 
@@ -771,6 +779,7 @@ export async function runAutonomousMarketScan(options: {
   categoryKey?: MarketCategoryKey;
   limit?: number;
   hubIndex?: number;
+  triggerSource?: 'manual' | 'scheduled_cron' | 'n8n_workflow';
 }): Promise<AutonomousScanResult> {
   const startTime = Date.now();
   const stateCode = options.stateCode.toUpperCase();
@@ -858,6 +867,7 @@ export async function runAutonomousMarketScan(options: {
     error: null,
     durationMs: 0,
     nextScheduledRun: null,
+    triggerSource: options.triggerSource || 'manual',
   };
   JOB_HISTORY.unshift(currentJob);
   if (JOB_HISTORY.length > 50) JOB_HISTORY.pop();
@@ -1058,6 +1068,7 @@ export async function runAutonomousMarketScan(options: {
  */
 export async function runScheduledAutonomousScan(options?: {
   overrideJobs?: MarketResearchJob[];
+  triggerSource?: 'manual' | 'scheduled_cron' | 'n8n_workflow';
 }): Promise<AutonomousScanResult> {
   const dbData = await getMarketJobsFromDb();
   const jobs = options?.overrideJobs || (dbData.jobs && dbData.jobs.length > 0 ? dbData.jobs : getJobHistory());
@@ -1119,6 +1130,7 @@ export async function runScheduledAutonomousScan(options?: {
     categoryKey: nextCategoryKey,
     hubIndex: nextHubIndex,
     limit: 25,
+    triggerSource: options?.triggerSource || 'scheduled_cron',
   });
 }
 

@@ -221,22 +221,54 @@ describe('LeadOS 3.2 Market Scheduler & Intelligence', () => {
     expect(res.errors[0]).toContain('Geographic resolution failed');
   });
 
-  it('tracks job history and scheduler status with persistent indicators', () => {
+  it('tracks job history and scheduler status with persistent indicators', async () => {
     const jobs = getJobHistory();
     expect(Array.isArray(jobs)).toBe(true);
 
-    const scheduler = getSchedulerStatus();
-    expect(scheduler).toHaveProperty('activeJobs');
-    expect(scheduler).toHaveProperty('nextScheduledRun');
-    expect(scheduler.priorityStates).toContain('TX');
-    expect(scheduler.priorityStates).toContain('OK');
-    expect(scheduler.registered).toBe(true);
-    expect(scheduler.cronHook).toBe('hk_leados_market_discovery_cron');
-    expect(scheduler.persistentBackend).toContain('WordPress MySQL');
-    expect(scheduler.browserClosedExecution).toBe(true);
-    expect(scheduler).toHaveProperty('executionEvidence');
-    expect(typeof scheduler.executionEvidence).toBe('string');
-    expect(scheduler).toHaveProperty('heartbeatAgeMinutes');
+    // Initial state before any scheduled job: registered is true (jobs exist), but browserClosedExecution is false
+    const initialStatus = getSchedulerStatus();
+    expect(initialStatus).toHaveProperty('activeJobs');
+    expect(initialStatus).toHaveProperty('nextScheduledRun');
+    expect(initialStatus.priorityStates).toContain('TX');
+    expect(initialStatus.priorityStates).toContain('OK');
+    expect(initialStatus.registered).toBe(true);
+    expect(initialStatus.cronHook).toBe('hk_leados_market_discovery_cron');
+    expect(initialStatus.persistentBackend).toContain('WordPress MySQL');
+    expect(initialStatus.browserClosedExecution).toBe(false);
+    expect(initialStatus.executionEvidence).toMatch(/awaiting first recurring scheduled execution|Pending initial autonomous execution/);
+
+    // When a recurring scheduled job is recorded, browserClosedExecution becomes true
+    const { syncJobsWithDb } = await import('./market-scheduler');
+    syncJobsWithDb([
+      {
+        jobId: 'job-scheduled-proof-1',
+        stateCode: 'KY',
+        stateName: 'Kentucky',
+        metroHub: 'Lexington Bluegrass',
+        categoryKey: 'agriculture',
+        status: 'completed',
+        priority: 1,
+        scheduledAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+        startedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+        completedAt: new Date(Date.now() - 29 * 60 * 1000).toISOString(),
+        discoveredCount: 15,
+        newSavedCount: 10,
+        existingUpdatedCount: 5,
+        failedCount: 0,
+        provider: 'OpenStreetMap / Overpass',
+        retryCount: 0,
+        maxRetries: 2,
+        error: null,
+        durationMs: 4200,
+        nextScheduledRun: new Date(Date.now() + 5.5 * 3600 * 1000).toISOString(),
+        triggerSource: 'scheduled_cron',
+      },
+    ]);
+
+    const provenStatus = getSchedulerStatus();
+    expect(provenStatus.browserClosedExecution).toBe(true);
+    expect(provenStatus.executionEvidence).toContain('1 scheduled background scan(s) proven');
+    expect(provenStatus.heartbeatAgeMinutes).toBeGreaterThanOrEqual(0);
   });
 
   it('aggregates accurate state counts across the entire library via dbSummary', () => {
