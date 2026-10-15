@@ -1,5 +1,5 @@
 import { searchOpenStreetMap } from './osm-provider';
-import { BUYER_CATEGORIES, deduplicateLeads, publicCompanyUrl } from './intelligence';
+import { BUYER_CATEGORIES, deduplicateLeads, publicCompanyUrl, isInformationalDomain, classifyLeadEntity } from './intelligence';
 import type { LeadSearchInput, NormalizedLead, SearchDiagnostics } from './types';
 import { leadosRequest } from './db';
 
@@ -83,6 +83,9 @@ export function normalizeSearchResults(results: WebSearchResult[], input: LeadSe
   const leads: NormalizedLead[] = [];
   for (const result of results) {
     if (!result.title || !result.url) continue;
+    if (isInformationalDomain(result.url) || classifyLeadEntity({ businessName: result.title, website: result.url }).entityType === 'informational_content') {
+      continue;
+    }
     const isFbGroup = /(?:facebook\.com|fb\.com)\/groups\//i.test(result.url);
     const isFacebook = !isFbGroup && /(?:facebook\.com|fb\.com)\/(?:pages\/|people\/|[A-Za-z0-9._-]+)/i.test(result.url);
     const isInstagram = /(?:instagram\.com|instagr\.am)\/[A-Za-z0-9._-]+/i.test(result.url) && !/\/(?:p|reel|stories|explore)\//i.test(result.url);

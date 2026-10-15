@@ -12,6 +12,8 @@ export interface LeadResearch {
   packagingPreference?: string;
   buyerQuestions?: string;
   quoteRequired?: boolean;
+  facebook?: string | null;
+  instagram?: string | null;
   qualification?: { score: number; reasons: string[]; breakdown: Record<string, number>; interest: ProductInterest; qualified: boolean };
   errors?: string[];
 }
@@ -174,6 +176,8 @@ export interface SavedLeadRecord {
   phone: string | null;
   email: string | null;
   emailSource?: 'discovered_osm' | 'company_website' | 'manually_entered' | 'unverified';
+  facebook?: string | null;
+  instagram?: string | null;
   research?: LeadResearch;
   dataSource?: string;
   osmType?: string | null;

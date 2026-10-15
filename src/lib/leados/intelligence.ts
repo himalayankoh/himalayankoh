@@ -14,6 +14,165 @@ export const OFFER_PROFILES: Record<ProductInterest, { label: string; productIds
   private_label: { label: 'Private-label opportunity', productIds: [], caveat: 'Potential buyer research only. Manufacturing, packaging and private-label capabilities require owner confirmation.' },
 };
 
+export const INFORMATIONAL_DOMAINS = [
+  'merriam-webster.com',
+  'dictionary.com',
+  'thesaurus.com',
+  'cambridge.org',
+  'oxfordlearnersdictionaries.com',
+  'collinsdictionary.com',
+  'wiktionary.org',
+  'thefreedictionary.com',
+  'vocabulary.com',
+  'yourdictionary.com',
+  'macmillandictionary.com',
+  'wordnik.com',
+  'urbandictionary.com',
+  'wikipedia.org',
+  'wikimedia.org',
+  'britannica.com',
+  'encyclopedia.com',
+  'animals.net',
+  'sportsfoundation.org',
+  'nationalgeographic.com',
+  'about.com',
+  'wikihow.com',
+  'investopedia.com',
+  'quora.com',
+  'reddit.com',
+  'medium.com',
+  'pinterest.com',
+  'pickyourown.farm',
+  'yellowpages.com',
+  'superpages.com',
+  'whitepages.com',
+  'manta.com',
+  'bbb.org',
+  'chamberofcommerce.com',
+  'zoominfo.com',
+  'thehorse.com',
+  'equimed.com',
+  'equusmagazine.com',
+  'horseandhound.co.uk',
+  'horsesciencenews.com',
+  'horsechannel.com',
+  'horseillustrated.com',
+];
+
+export const INFORMATIONAL_TITLE_PATTERNS = [
+  /definition & meaning/i,
+  /meaning of/i,
+  /wikipedia/i,
+  /britannica/i,
+  /dictionary/i,
+  /thesaurus/i,
+  /how it started/i,
+  /interesting facts/i,
+  /description, habitat/i,
+  /timeline & how/i,
+  /guide to/i,
+  /ultimate guide/i,
+  /everything you need to know/i,
+  /facts & history/i,
+];
+
+export type LeadEntityType =
+  | 'business_prospect'
+  | 'potential_distributor'
+  | 'social_business_page'
+  | 'public_community'
+  | 'directory_source'
+  | 'informational_content'
+  | 'unqualified';
+
+export function isInformationalDomain(domainOrUrl: string): boolean {
+  if (!domainOrUrl) return false;
+  let hostname = domainOrUrl.toLowerCase();
+  try {
+    if (hostname.includes('://')) hostname = new URL(hostname).hostname;
+  } catch {
+    // fallback
+  }
+  hostname = hostname.replace(/^www\./, '');
+  return INFORMATIONAL_DOMAINS.some((d) => hostname === d || hostname.endsWith(`.${d}`));
+}
+
+export function classifyLeadEntity(lead: {
+  businessName: string;
+  website?: string | null;
+  category?: string | null;
+  osmUrl?: string | null;
+  facebook?: string | null;
+  instagram?: string | null;
+  dataSource?: string | null;
+}): {
+  entityType: LeadEntityType;
+  isActionableProspect: boolean;
+  exclusionReason: string | null;
+} {
+  const name = lead.businessName || '';
+  const web = lead.website || '';
+  const fb = lead.facebook || '';
+  const ig = lead.instagram || '';
+  const cat = lead.category || '';
+
+  // 1. Informational domain or encyclopedia/dictionary title check
+  if (isInformationalDomain(web) || INFORMATIONAL_TITLE_PATTERNS.some((p) => p.test(name))) {
+    return {
+      entityType: 'informational_content',
+      isActionableProspect: false,
+      exclusionReason: 'Educational reference, encyclopedia or dictionary definition — not a commercial buyer.',
+    };
+  }
+
+  // 2. Facebook Group check
+  if (
+    web.includes('facebook.com/groups') ||
+    fb.includes('facebook.com/groups') ||
+    /public.*group/i.test(cat) ||
+    (name.includes('- Facebook') && /group|boarding|services/i.test(name))
+  ) {
+    return {
+      entityType: 'public_community',
+      isActionableProspect: false,
+      exclusionReason: 'Community group or public discussion forum — not an individual purchasing entity.',
+    };
+  }
+
+  // 3. Social business page check
+  if (
+    web.includes('facebook.com') ||
+    web.includes('instagram.com') ||
+    (fb && !web.includes('http')) ||
+    (ig && !web.includes('http'))
+  ) {
+    return {
+      entityType: 'social_business_page',
+      isActionableProspect: true,
+      exclusionReason: null,
+    };
+  }
+
+  // 4. Commercial wholesale / distributor check
+  if (
+    /wholesal|distribut/i.test(cat) ||
+    /wholesal|distribut|feed mill|grain elevator|supply co-op/i.test(name)
+  ) {
+    return {
+      entityType: 'potential_distributor',
+      isActionableProspect: true,
+      exclusionReason: null,
+    };
+  }
+
+  // 5. Standard verified business prospect
+  return {
+    entityType: 'business_prospect',
+    isActionableProspect: true,
+    exclusionReason: null,
+  };
+}
+
 export function publicCompanyUrl(raw: string): string | null {
   const check = checkFetchableUrl(raw);
   if (!check.ok) return null;
@@ -22,6 +181,7 @@ export function publicCompanyUrl(raw: string): string | null {
   if (!u.hostname.includes('.') || u.hostname.includes(':')) return null;
   if (/\/(?:wp-admin|wp-login|login|signin|account|checkout|cart)(?:\/|\.|$)/i.test(u.pathname)) return null;
   if (/(^|\.)(?:facebook|instagram|linkedin|youtube|yelp|google|bing|amazon|yellowpages|superpages|mapquest)\.com$/i.test(u.hostname)) return null;
+  if (isInformationalDomain(u.hostname)) return null;
   u.hash = ''; u.search = '';
   return u.toString();
 }
@@ -93,6 +253,18 @@ const PRODUCT_MATCH: Record<ProductInterest, RegExp> = {
 
 /** No revenue, company-size or guessed-email inputs. Snippets do not verify facts. */
 export function qualifyLead(lead: NormalizedLead, interest: ProductInterest = 'horse_salt') {
+  // Check Commercial Business Qualification Gate
+  const classification = classifyLeadEntity(lead);
+  if (!classification.isActionableProspect) {
+    return {
+      score: 0,
+      reasons: [classification.exclusionReason || 'Filtered by Commercial Business Qualification Gate: non-commercial content.'],
+      breakdown: { category: 0, product: 0, usMarket: 0, wholesale: 0, privateLabel: 0, assortment: 0, contact: 0, sources: 0 },
+      interest,
+      qualified: false,
+    };
+  }
+
   const observed = (lead.research?.sources || []).filter((s) => s.status === 'verified' && ['company_page','browser_page'].includes(s.kind)).map((s) => s.excerpt || '').join(' ');
   const category = lead.category || '';
   // A search's requested category is not a fact about a discovered website.
@@ -125,5 +297,59 @@ export function createIntroduction(lead: { businessName: string; city?: string |
   return {
     subject: `Himalayan Koh ${offer.label.toLowerCase()} inquiry — ${name}`,
     message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh while researching ${lead.category || 'relevant businesses'}${lead.city ? ` in ${lead.city}` : ''}.\n\nWe would welcome a conversation about ${product}. Would this be relevant to your purchasing team? We can share current product details for review. Packaging, availability, pricing, minimum quantities and freight would be confirmed in a separate quote.\n\nIf you are not the right contact, please let us know. To opt out of further outreach, reply “unsubscribe”.\n\nHimalayan Koh\nsales@himalayankoh.com\nhttps://himalayankoh.com`,
+  };
+}
+
+export interface OutreachMessageOptions {
+  mode: 'retail' | 'wholesale' | 'private_label';
+  couponCode?: string;
+  senderEmail?: string;
+}
+
+export function createOutreachMessage(
+  lead: {
+    businessName: string;
+    city?: string | null;
+    category?: string | null;
+    research?: LeadResearch;
+    website?: string | null;
+  },
+  options: OutreachMessageOptions = { mode: 'wholesale' }
+) {
+  const name = lead.research?.publicCompanyName || lead.businessName;
+  const sender = options.senderEmail || 'sales@himalayankoh.com';
+  const city = lead.city ? ` in ${lead.city}` : '';
+  const coupon = options.couponCode || 'WELCOME5';
+
+  if (options.mode === 'retail') {
+    return {
+      mode: 'retail' as const,
+      subject: `Special 5% Welcome Offer for ${name} — Himalayan Koh Pink Salt`,
+      sender,
+      productUrl: 'https://himalayankoh.com/products/pink-salt-block-lick-2lb',
+      couponCode: coupon,
+      message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh. We noticed your storefront${city} and would love to introduce our hand-carved Himalayan Pink Salt licks and mineral products.\n\nTo welcome you as a new partner, please enjoy 5% off your first retail trial order with coupon code ${coupon} at checkout:\n👉 https://himalayankoh.com/products/pink-salt-block-lick-2lb\n\nOffer terms: Valid on single orders for verified retail store buyers. Cannot be combined with wholesale contracted volume pricing.\n\nIf you have any questions about our mineral products or would like a product sample, feel free to reply directly to this email.\n\nWarm regards,\n\nHimalayan Koh Sales Team\n${sender}\nhttps://himalayankoh.com`,
+    };
+  }
+
+  if (options.mode === 'private_label') {
+    return {
+      mode: 'private_label' as const,
+      subject: `Private-Label Mineral Salt Discussion — ${name} & Himalayan Koh`,
+      sender,
+      productUrl: 'https://himalayankoh.com/wholesale',
+      couponCode: undefined,
+      message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh regarding potential private-label Himalayan mineral salt packaging for your brand${city}.\n\nWe supply authentic agricultural and livestock pink salt blocks and granular minerals directly from Himalayan salt deposits. We would welcome an introductory discussion regarding your custom packaging specifications, target volume, and private-label timelines.\n\nPlease note: Manufacturing schedules and minimum order quantities are confirmed upon technical review of your requirements.\n\nWould your brand development team be available for a brief inquiry call next week?\n\nSincerely,\n\nHimalayan Koh B2B Operations\n${sender}\nhttps://himalayankoh.com/wholesale`,
+    };
+  }
+
+  // Default: Wholesale
+  return {
+    mode: 'wholesale' as const,
+    subject: `Wholesale Himalayan Salt Distribution Inquiry — ${name}`,
+    sender,
+    productUrl: 'https://himalayankoh.com/wholesale',
+    couponCode: undefined,
+    message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh while researching agricultural and feed distribution partners${city}.\n\nWe supply premium Himalayan pink salt blocks (2 lb & 30 lb) and 45 lb livestock feed mineral bags. You can review our wholesale line and commercial specifications here:\n👉 https://himalayankoh.com/wholesale\n\nWould this assortment be relevant to your purchasing catalog? We would be delighted to provide commercial tiered pricing, pallet logistics, and freight quotes.\n\nTo opt out of further communications, please reply with "unsubscribe".\n\nBest regards,\n\nHimalayan Koh Commercial Sales\n${sender}\nhttps://himalayankoh.com`,
   };
 }

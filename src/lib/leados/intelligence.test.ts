@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createIntroduction, deduplicateLeads, leadIdentity, matchingKnownLead, OFFER_PROFILES, publicCompanyUrl, qualifyLead } from './intelligence';
+import {
+  createIntroduction,
+  createOutreachMessage,
+  deduplicateLeads,
+  leadIdentity,
+  matchingKnownLead,
+  OFFER_PROFILES,
+  publicCompanyUrl,
+  qualifyLead,
+  classifyLeadEntity,
+  isInformationalDomain,
+} from './intelligence';
 import { discoveryQuery, normalizeSearchResults } from './discovery';
 import { outreachReadiness, dispatchApprovedDraft } from './n8n';
 import { searchNominatimKeywords } from './osm-provider';
@@ -80,5 +91,141 @@ describe('Outbound configuration fails closed', () => {
     vi.stubEnv('LEADOS_OUTREACH_ENABLED','false');const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
     expect(outreachReadiness().ready).toBe(false);
     expect(await dispatchApprovedDraft({id:'draft-1',recipient:'sales@example.org',subject:'Intro',message:'Hi'})).toMatchObject({state:'blocked'});expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('Lead Quality Filter & Informational Quarantine (Phase 1 Acceptance)', () => {
+  const badExamples = [
+    { title: 'Equestrianism - Wikipedia', url: 'https://en.wikipedia.org/wiki/Equestrianism' },
+    { title: 'Equestrian Definition & Meaning - Merriam-Webster', url: 'https://www.merriam-webster.com/dictionary/equestrian' },
+    { title: 'FEED Definition & Meaning | Dictionary.com', url: 'https://www.dictionary.com/browse/feed' },
+    { title: 'FEED | English meaning - Cambridge Dictionary', url: 'https://dictionary.cambridge.org/dictionary/english/feed' },
+    { title: 'Horse | Description, Breeds, & Facts | Britannica', url: 'https://www.britannica.com/animal/horse' },
+    { title: 'The Ultimate Guide to Horse Feed & Equine Nutrition', url: 'https://thehorse.com/nutrition/feed-guide' },
+  ];
+
+  it.each(badExamples)('rejects informational website as a business lead: %s', (ex) => {
+    expect(isInformationalDomain(ex.url)).toBe(true);
+    expect(classifyLeadEntity({ businessName: ex.title, website: ex.url }).entityType).toBe('informational_content');
+    expect(classifyLeadEntity({ businessName: ex.title, website: ex.url }).isActionableProspect).toBe(false);
+  });
+
+  it('normalizes search results and filters out dictionary and wikipedia entries', () => {
+    const rawResults = [
+      { title: 'Wikipedia — Equestrianism', url: 'https://en.wikipedia.org/wiki/Equestrianism', content: 'Equestrianism definition' },
+      { title: 'Merriam-Webster — Equestrian Definition', url: 'https://www.merriam-webster.com/dictionary/equestrian', content: 'Equestrian noun' },
+      { title: 'Wabash Feed & Garden Store', url: 'https://www.wabashfeed.com/', content: 'Houston TX feed and livestock supply store' },
+      { title: 'Dictionary.com — Feed Definition', url: 'https://www.dictionary.com/browse/feed', content: 'Feed verb' },
+      { title: 'Pasturas Los Alazanes', url: 'https://www.pasturaslosalazanes.com/', content: 'Dallas TX animal feed and saddle shop' },
+    ];
+
+    const filtered = normalizeSearchResults(rawResults, { category: 'Feed Store', location: 'Texas' }, '2026-10-14');
+    expect(filtered).toHaveLength(2);
+    expect(filtered.map((l) => l.businessName)).toContain('Wabash Feed & Garden Store');
+    expect(filtered.map((l) => l.businessName)).toContain('Pasturas Los Alazanes');
+  });
+
+  it('classifies public Facebook Groups as public_community rather than buyer company', () => {
+    const fbGroup = {
+      businessName: 'Texas Horse Owners Community',
+      website: 'https://www.facebook.com/groups/texashorselovers',
+    };
+    expect(classifyLeadEntity(fbGroup).entityType).toBe('public_community');
+    expect(classifyLeadEntity(fbGroup).isActionableProspect).toBe(false);
+  });
+
+  it('qualifies genuine feed and livestock companies as commercial prospects', () => {
+    const feedStore = {
+      businessName: 'Wabash Feed & Garden Store',
+      website: 'https://www.wabashfeed.com',
+      city: 'Houston',
+      region: 'TX',
+    };
+    const res = classifyLeadEntity(feedStore);
+    expect(res.entityType).toBe('business_prospect');
+    expect(res.isActionableProspect).toBe(true);
+  });
+});
+
+describe('LeadOS 3.1 Outreach Modes & Claim Compliance (Phase 3 & 4)', () => {
+  // Import validateOutboundCopy dynamically to verify claim check
+  it('generates retail outreach with verified 5% coupon and passes claim checks', async () => {
+    const { validateOutboundCopy } = await import('./claims');
+    const { createOutreachMessage } = await import('./intelligence');
+
+    const leadInfo = {
+      businessName: 'Lone Star Equine Tack & Feed',
+      city: 'Fort Worth',
+      category: 'Feed Store',
+    };
+
+    const retail = createOutreachMessage(leadInfo, {
+      mode: 'retail',
+      couponCode: 'welcome5',
+      senderEmail: 'sales@himalayankoh.com',
+    });
+
+    expect(retail.mode).toBe('retail');
+    expect(retail.sender).toBe('sales@himalayankoh.com');
+    expect(retail.couponCode).toBe('welcome5');
+    expect(retail.productUrl).toBe('https://himalayankoh.com/products/pink-salt-block-lick-2lb');
+    expect(retail.subject).toContain('5% Welcome Offer');
+    expect(retail.message).toContain('welcome5');
+    expect(retail.message).toContain('sales@himalayankoh.com');
+
+    // Must strictly pass validateOutboundCopy
+    const check = validateOutboundCopy(`${retail.subject}\n${retail.message}`);
+    expect(check.ok).toBe(true);
+  });
+
+  it('generates wholesale outreach with catalog link and passes claim checks', async () => {
+    const { validateOutboundCopy } = await import('./claims');
+    const { createOutreachMessage } = await import('./intelligence');
+
+    const leadInfo = {
+      businessName: 'Central Texas Feed Co',
+      city: 'Austin',
+      category: 'Livestock Distributor',
+    };
+
+    const wholesale = createOutreachMessage(leadInfo, {
+      mode: 'wholesale',
+      senderEmail: 'sales@himalayankoh.com',
+    });
+
+    expect(wholesale.mode).toBe('wholesale');
+    expect(wholesale.sender).toBe('sales@himalayankoh.com');
+    expect(wholesale.productUrl).toBe('https://himalayankoh.com/wholesale');
+    expect(wholesale.subject).toContain('Wholesale Himalayan Salt Distribution');
+    expect(wholesale.message).toContain('https://himalayankoh.com/wholesale');
+    expect(wholesale.message).not.toContain('welcome5'); // No retail coupon in wholesale
+
+    const check = validateOutboundCopy(`${wholesale.subject}\n${wholesale.message}`);
+    expect(check.ok).toBe(true);
+  });
+
+  it('generates private-label inquiry with catalog link and passes claim checks', async () => {
+    const { validateOutboundCopy } = await import('./claims');
+    const { createOutreachMessage } = await import('./intelligence');
+
+    const leadInfo = {
+      businessName: 'Premier Farm Supply Brands',
+      city: 'San Antonio',
+      category: 'Private Label Buyer',
+    };
+
+    const pl = createOutreachMessage(leadInfo, {
+      mode: 'private_label',
+      senderEmail: 'sales@himalayankoh.com',
+    });
+
+    expect(pl.mode).toBe('private_label');
+    expect(pl.sender).toBe('sales@himalayankoh.com');
+    expect(pl.productUrl).toBe('https://himalayankoh.com/wholesale');
+    expect(pl.subject).toContain('Private-Label Mineral Salt Discussion');
+    expect(pl.message).toContain('Manufacturing schedules and minimum order quantities are confirmed upon technical review');
+
+    const check = validateOutboundCopy(`${pl.subject}\n${pl.message}`);
+    expect(check.ok).toBe(true);
   });
 });
