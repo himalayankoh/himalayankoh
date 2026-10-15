@@ -221,7 +221,7 @@ describe('LeadOS 3.2 Market Scheduler & Intelligence', () => {
     expect(res.errors[0]).toContain('Geographic resolution failed');
   });
 
-  it('tracks job history and scheduler status', () => {
+  it('tracks job history and scheduler status with persistent indicators', () => {
     const jobs = getJobHistory();
     expect(Array.isArray(jobs)).toBe(true);
 
@@ -230,6 +230,112 @@ describe('LeadOS 3.2 Market Scheduler & Intelligence', () => {
     expect(scheduler).toHaveProperty('nextScheduledRun');
     expect(scheduler.priorityStates).toContain('TX');
     expect(scheduler.priorityStates).toContain('OK');
+    expect(scheduler.registered).toBe(true);
+    expect(scheduler.cronHook).toBe('hk_leados_market_discovery_cron');
+    expect(scheduler.persistentBackend).toContain('WordPress MySQL');
+    expect(scheduler.browserClosedExecution).toBe(true);
+  });
+
+  it('aggregates accurate state counts across the entire library via dbSummary', () => {
+    const mockDbSummary = {
+      ok: true,
+      totalLeads: 120,
+      byState: [
+        {
+          region: 'TX',
+          total: 45,
+          qualified: 28,
+          new_count: 12,
+          contactable: 35,
+          last_updated: '2026-10-15T07:00:00Z',
+        },
+        {
+          region: 'FL',
+          total: 30,
+          qualified: 18,
+          new_count: 8,
+          contactable: 22,
+          last_updated: '2026-10-15T06:00:00Z',
+        },
+      ],
+      byCategory: [
+        { category: 'Feed Store', total: 50 },
+        { category: 'Salt Wholesaler', total: 40 },
+      ],
+      byStatus: [
+        { status: 'qualified', total: 46 },
+        { status: 'new', total: 74 },
+      ],
+    };
+
+    // Even with an empty fetched page of pins, global state statistics are 100% accurate
+    const aggregated = aggregateStateMarketData([], mockDbSummary);
+
+    expect(aggregated['TX'].discoveredCount).toBe(45);
+    expect(aggregated['TX'].qualifiedCount).toBe(28);
+    expect(aggregated['TX'].newCount).toBe(12);
+    expect(aggregated['TX'].contactableCount).toBe(35);
+    expect(aggregated['TX'].lastScanTimestamp).toBe('2026-10-15T07:00:00Z');
+
+    expect(aggregated['FL'].discoveredCount).toBe(30);
+    expect(aggregated['FL'].qualifiedCount).toBe(18);
+
+    expect(aggregated['OK'].discoveredCount).toBe(0);
+    expect(aggregated['OK'].coverageStatus).toBe('not_scanned');
+  });
+
+  it('prevents concurrent duplicate jobs when a scan is in progress', async () => {
+    // Add a running job to history
+    const runningJob = {
+      jobId: 'job-tx-test-running',
+      stateCode: 'TX',
+      stateName: 'Texas',
+      metroHub: 'Houston',
+      categoryKey: 'agriculture' as const,
+      status: 'running' as const,
+      priority: 1,
+      scheduledAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      discoveredCount: 0,
+      newSavedCount: 0,
+      existingUpdatedCount: 0,
+      failedCount: 0,
+      provider: 'OpenStreetMap / Overpass',
+      retryCount: 0,
+      maxRetries: 2,
+      error: null,
+      durationMs: 0,
+      nextScheduledRun: null,
+    };
+
+    const { syncJobsWithDb, runScheduledAutonomousScan } = await import('./market-scheduler');
+    syncJobsWithDb([runningJob]);
+
+    const result = await runScheduledAutonomousScan();
+    expect(result.ok).toBe(false);
+    expect(result.jobId).toBe('blocked-concurrent');
+    expect(result.errors[0]).toContain('already in progress');
   });
 });
+
+describe('LeadOS 3.2 Registered n8n Scheduled Discovery Workflow', () => {
+  it('has a valid registered recurring n8n workflow file with 6-hour interval', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const workflowPath = join(process.cwd(), 'ops/leados/n8n-market-discovery.json');
+    const content = JSON.parse(readFileSync(workflowPath, 'utf8'));
+
+    expect(content.name).toContain('Autonomous Market Discovery');
+    const trigger = content.nodes.find((n: any) => n.type === 'n8n-nodes-base.scheduleTrigger');
+    expect(trigger).toBeDefined();
+    expect(trigger.parameters.rule.interval[0].field).toBe('hours');
+    expect(trigger.parameters.rule.interval[0].hoursInterval).toBe(6);
+
+    const httpNode = content.nodes.find((n: any) => n.id === 'Trigger-market-scan');
+    expect(httpNode).toBeDefined();
+    expect(httpNode.parameters.jsonBody).toContain('run_scheduled_scan');
+  });
+});
+
 

@@ -1,0 +1,82 @@
+{
+  "name": "HK LeadOS 3.2 — Autonomous Market Discovery Worker",
+  "nodes": [
+    {
+      "id": "Every-6-hours",
+      "name": "Every 6 hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "position": [0, 0],
+      "typeVersion": 1.2
+    },
+    {
+      "id": "Trigger-market-scan",
+      "name": "Trigger market scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://himalayankoh.com/api/admin/leados/market-map",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"action\":\"run_scheduled_scan\"}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "position": [240, 0],
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "Scan-result",
+      "name": "Scan result",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const res = $input.first().json;\nreturn [{ json: { status: res.ok ? 'success' : 'failed', scanResult: res.result || res.scanResult, timestamp: new Date().toISOString() } }];"
+      },
+      "position": [480, 0],
+      "typeVersion": 2
+    }
+  ],
+  "connections": {
+    "Every-6-hours": {
+      "main": [
+        [
+          {
+            "node": "Trigger-market-scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger-market-scan": {
+      "main": [
+        [
+          {
+            "node": "Scan-result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 120
+  }
+}

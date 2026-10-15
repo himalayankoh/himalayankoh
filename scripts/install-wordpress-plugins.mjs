@@ -53,9 +53,9 @@ const UPDATE_SLUG = (() => {
 })();
 
 const PLUGINS = [
-  { slug: 'himalayan-koh-storefront', version: '1.5.1' },
-  { slug: 'himalayan-koh-leados', version: '1.0.0' },
-  { slug: 'hk-wholesale', version: '1.1.0' },
+  { slug: 'himalayan-koh-storefront', version: '1.5.5' },
+  { slug: 'himalayan-koh-leados', version: '2.2.0' },
+  { slug: 'hk-wholesale', version: '1.2.1' },
 ];
 
 function credentials() {
@@ -112,7 +112,7 @@ function curl(args) {
  * every request below, and the page is also retried if it appears anyway.
  */
 const JS_GATE = /Checking your browser/i;
-const INTERSTITIAL = /One moment, please|<title>\s*Loader\s*<\/title>/i;
+const INTERSTITIAL = /One moment, please|<title>\s*Loader\s*<\/title>|429 Too Many Requests/i;
 const RETRY_WAIT_MS = 7000;
 const MAX_TRIES = 6;
 
@@ -159,6 +159,10 @@ function logIn({ base, user, password }) {
   }, resolve(WORK, 'wp-login-response.html'));
 
   const body = readFileSync(resolve(WORK, 'wp-login-response.html'), 'utf8');
+  if (/429 Too Many Requests/i.test(body)) {
+    console.log('login: FAILED — rate limited by host (HTTP 429)');
+    return false;
+  }
   const failed = /login_error/.test(body) || /<form[^>]*id="loginform"/.test(body);
   if (failed) {
     console.log('login: FAILED — the site returned the login form with an error');
@@ -332,7 +336,7 @@ if (DRY) {
 const namespaces = (() => {
   try {
     return (JSON.parse(curlPage(`${creds.base}/wp-json/`)).namespaces || []).filter((ns) =>
-      /hk-storefront|crm|hk-wholesale/.test(ns)
+      /hk-storefront|crm|hk-wholesale|leados/.test(ns)
     );
   } catch {
     // The interstitial is HTML, so this is also the answer when the site is throttling

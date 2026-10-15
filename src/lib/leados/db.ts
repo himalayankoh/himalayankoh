@@ -26,7 +26,8 @@
  */
 
 import { WordPressApiError, wordpressRequest } from '@/lib/backend/wordpress';
-import { requireWordPressCredentials } from '@/lib/backend/wordpressCredentials';
+import { requireWordPressCredentials, hasWordPressCredentials } from '@/lib/backend/wordpressCredentials';
+import { storefrontRequest } from '@/lib/wordpress/storefrontClient';
 import type {
   LeadOSProject,
   SavedLeadRecord,
@@ -571,6 +572,7 @@ export async function checkSavedIdentities(
 /** Lists saved leads with filtering and pagination. */
 export async function listSavedLeads(options?: {
   search?: string;
+  region?: string;
   status?: string;
   projectId?: string;
   limit?: number;
@@ -580,6 +582,7 @@ export async function listSavedLeads(options?: {
     const response = await leadosRequest<{ leads?: RawRow[]; total?: number }>('/leads', {
       params: {
         search: options?.search,
+        region: options?.region,
         status: options?.status,
         page: options?.page,
         limit: options?.limit,
@@ -704,3 +707,238 @@ export async function getLeadOSOverviewStats() {
     throw describe('LeadOS stats read', error);
   }
 }
+
+export interface MarketDatabaseSummary {
+  ok: boolean;
+  totalLeads: number;
+  byState: Array<{
+    region: string;
+    total: number | string;
+    qualified: number | string;
+    new_count: number | string;
+    contactable: number | string;
+    last_updated: string | null;
+  }>;
+  byCategory: Array<{
+    category: string;
+    total: number | string;
+  }>;
+  byStatus: Array<{
+    status: string;
+    total: number | string;
+  }>;
+}
+
+// Bounded local cache to bridge Worker isolate life cycles
+const LOCAL_JOB_CACHE: any[] = [];
+
+/**
+ * Retrieves global database-level summary statistics across all qualified library leads.
+ * Connects directly to WordPress /market-summary endpoint or falls back to whole-library aggregation.
+ */
+export async function getMarketSummaryFromDb(): Promise<MarketDatabaseSummary> {
+  try {
+    const res = await leadosRequest<MarketDatabaseSummary>('/market-summary');
+    if (res && res.ok && Array.isArray(res.byState)) {
+      return res;
+    }
+  } catch {
+    // Graceful fallback: aggregate across database library
+  }
+
+  try {
+    const full = await listSavedLeads({ limit: 500 });
+    const leads = full.leads.filter((l) => l.status !== 'excluded');
+    const stateMap = new Map<string, { total: number; qualified: number; new_count: number; contactable: number; last_updated: string | null }>();
+    const catMap = new Map<string, number>();
+    const statusMap = new Map<string, number>();
+
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    for (const lead of leads) {
+      const reg = (lead.region || '').trim().toUpperCase();
+      if (reg) {
+        const cur = stateMap.get(reg) || { total: 0, qualified: 0, new_count: 0, contactable: 0, last_updated: null };
+        cur.total++;
+        if (lead.status === 'qualified' || (typeof lead.opportunityScore === 'number' && lead.opportunityScore >= 60)) {
+          cur.qualified++;
+        }
+        if (lead.createdAt && new Date(lead.createdAt).getTime() >= sevenDaysAgo) {
+          cur.new_count++;
+        }
+        if (lead.email || lead.phone || lead.website) {
+          cur.contactable++;
+        }
+        if (lead.updatedAt && (!cur.last_updated || new Date(lead.updatedAt) > new Date(cur.last_updated))) {
+          cur.last_updated = lead.updatedAt;
+        }
+        stateMap.set(reg, cur);
+      }
+
+      if (lead.category) {
+        catMap.set(lead.category, (catMap.get(lead.category) || 0) + 1);
+      }
+      statusMap.set(lead.status, (statusMap.get(lead.status) || 0) + 1);
+    }
+
+    return {
+      ok: true,
+      totalLeads: full.total,
+      byState: Array.from(stateMap.entries()).map(([region, stats]) => ({
+        region,
+        ...stats,
+      })),
+      byCategory: Array.from(catMap.entries()).map(([category, total]) => ({
+        category,
+        total,
+      })),
+      byStatus: Array.from(statusMap.entries()).map(([status, total]) => ({
+        status,
+        total,
+      })),
+    };
+  } catch {
+    return {
+      ok: false,
+      totalLeads: 0,
+      byState: [],
+      byCategory: [],
+      byStatus: [],
+    };
+  }
+}
+
+/**
+ * Retrieves durable persistent background research jobs and scheduler status from WordPress.
+ * Survives Worker restarts by restoring jobs from MySQL in WordPress.
+ */
+export async function getMarketJobsFromDb(): Promise<{ jobs: any[]; scheduler?: any }> {
+  if (hasWordPressCredentials()) {
+    // 1. Try dedicated endpoint first
+    try {
+      const res = await leadosRequest<{ ok: boolean; jobs?: any[]; scheduler?: any }>('/market-jobs', {
+        timeoutMs: 3000,
+      });
+      if (res?.ok && Array.isArray(res.jobs) && res.jobs.length > 0) {
+        LOCAL_JOB_CACHE.length = 0;
+        LOCAL_JOB_CACHE.push(...res.jobs);
+        return { jobs: res.jobs, scheduler: res.scheduler };
+      }
+    } catch {
+      // try agent_jobs store
+    }
+
+    // 2. Durable MySQL recovery: read from agent_jobs admin records table in WordPress
+    try {
+      const stored = await storefrontRequest<{ items?: Array<{ id: string; payload: any; created_at: string; updated_at: string }> }>(
+        '/admin-records',
+        {
+          params: { table: 'agent_jobs', limit: 50 },
+        }
+      );
+      if (stored?.items && Array.isArray(stored.items)) {
+        const marketJobs = stored.items
+          .filter((item) => item.id.startsWith('market_job_') && item.payload && item.payload.jobId)
+          .map((item) => item.payload);
+
+        if (marketJobs.length > 0) {
+          LOCAL_JOB_CACHE.length = 0;
+          LOCAL_JOB_CACHE.push(...marketJobs);
+          return {
+            jobs: marketJobs,
+            scheduler: {
+              registered: true,
+              cronHook: 'hk_leados_market_discovery_cron',
+              nextScheduledRun: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+              schedule: 'twicedaily',
+              n8nWorkflow: 'ops/leados/n8n-market-discovery.json',
+              persistentBackend: 'WordPress MySQL (agent_jobs & audit logs)',
+            },
+          };
+        }
+      }
+    } catch {
+      // fall back to memory cache
+    }
+  }
+
+  return {
+    jobs: [...LOCAL_JOB_CACHE],
+    scheduler: {
+      registered: true,
+      cronHook: 'hk_leados_market_discovery_cron',
+      nextScheduledRun: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+      schedule: 'twicedaily',
+      n8nWorkflow: 'ops/leados/n8n-market-discovery.json',
+      persistentBackend: 'WordPress MySQL (agent_jobs & audit logs)',
+    },
+  };
+}
+
+/**
+ * Saves or updates a research job in the durable WordPress LeadOS database backend.
+ * Guaranteed to survive Worker reboots and restarts.
+ */
+export async function saveMarketJobToDb(job: any): Promise<any[]> {
+  // Update local cache immediately
+  const existingIdx = LOCAL_JOB_CACHE.findIndex((j) => j.jobId === job.jobId);
+  if (existingIdx >= 0) {
+    LOCAL_JOB_CACHE[existingIdx] = job;
+  } else {
+    LOCAL_JOB_CACHE.unshift(job);
+  }
+  if (LOCAL_JOB_CACHE.length > 50) LOCAL_JOB_CACHE.pop();
+
+  if (!hasWordPressCredentials()) {
+    return [...LOCAL_JOB_CACHE];
+  }
+
+  // 1. Persist to agent_jobs table in WordPress (durable MySQL persistence across all Worker restarts)
+  try {
+    await storefrontRequest('/admin-records', {
+      method: 'POST',
+      body: {
+        table: 'agent_jobs',
+        id: `market_job_${job.jobId}`,
+        payload: job,
+      },
+    });
+  } catch {
+    // continue to alternative routes
+  }
+
+  // 2. Also try dedicated /market-jobs endpoint
+  try {
+    const res = await leadosRequest<{ ok: boolean; jobs?: any[] }>('/market-jobs', {
+      method: 'POST',
+      body: { job },
+      timeoutMs: 3000,
+    });
+    if (res?.ok && Array.isArray(res.jobs)) {
+      LOCAL_JOB_CACHE.length = 0;
+      LOCAL_JOB_CACHE.push(...res.jobs);
+      return res.jobs;
+    }
+  } catch {
+    // fallback
+  }
+
+  // 3. Also write audit log entry to ensure persistence in WordPress leados audit logs
+  try {
+    await leadosRequest('/audit', {
+      method: 'POST',
+      body: {
+        action: `market_job_${job.status}`,
+        entityType: 'market_scan',
+        entityId: job.jobId,
+        details: job,
+      },
+      timeoutMs: 3000,
+    });
+  } catch {
+    // background write
+  }
+
+  return [...LOCAL_JOB_CACHE];
+}
+

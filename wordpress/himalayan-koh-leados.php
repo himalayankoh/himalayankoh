@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — LeadOS & CRM
  * Description:       Custom tables and REST endpoints for the LeadOS prospect engine and the CRM lead inbox. This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the leados/v1 and crm/v1 namespaces below.
- * Version:           2.1.0
+ * Version:           2.2.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -39,7 +39,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_LEADOS_VERSION', '2.1.0' );
+define( 'HK_LEADOS_VERSION', '2.2.0' );
 define( 'HK_LEADOS_WORKSPACE_ID', '00000000-0000-0000-0000-000000000001' );
 define( 'HK_LEADOS_DEFAULT_PROJECT_ID', '00000000-0000-0000-0000-000000000002' );
 require_once __DIR__ . '/himalayan-koh-leados-intelligence.php';
@@ -672,6 +672,33 @@ add_action( 'rest_api_init', function () {
 			'callback'            => 'hk_leados_stats',
 		)
 	);
+
+	register_rest_route(
+		'leados/v1',
+		'/market-summary',
+		array(
+			'methods'             => 'GET',
+			'permission_callback' => 'hk_leados_can_manage',
+			'callback'            => 'hk_leados_market_summary',
+		)
+	);
+
+	register_rest_route(
+		'leados/v1',
+		'/market-jobs',
+		array(
+			array(
+				'methods'             => 'GET',
+				'permission_callback' => 'hk_leados_can_manage',
+				'callback'            => 'hk_leados_get_market_jobs',
+			),
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => 'hk_leados_can_manage',
+				'callback'            => 'hk_leados_save_market_job',
+			),
+		)
+	);
 } );
 
 /** Reads one project row, or null. */
@@ -1176,9 +1203,10 @@ function hk_leados_list_leads( WP_REST_Request $request ) {
 	}
 
 	$status = $request->get_param( 'status' );
+	$region = $request->get_param( 'region' );
 	$search = $request->get_param( 'search' );
 	$page   = max( 1, (int) ( $request->get_param( 'page' ) ?: 1 ) );
-	$limit  = min( 200, max( 1, (int) ( $request->get_param( 'limit' ) ?: 50 ) ) );
+	$limit  = min( 500, max( 1, (int) ( $request->get_param( 'limit' ) ?: 50 ) ) );
 	$offset = ( $page - 1 ) * $limit;
 
 	$where  = array( 'workspace_id = %s' );
@@ -1187,6 +1215,11 @@ function hk_leados_list_leads( WP_REST_Request $request ) {
 	if ( $status && 'all' !== $status ) {
 		$where[]  = 'status = %s';
 		$params[] = $status;
+	}
+	if ( $region && 'all' !== $region ) {
+		$where[]  = '(region = %s OR region LIKE %s)';
+		$params[] = $region;
+		$params[] = '%' . $wpdb->esc_like( $region ) . '%';
 	}
 	if ( $search ) {
 		$like     = '%' . $wpdb->esc_like( $search ) . '%';
@@ -1351,6 +1384,158 @@ function hk_leados_stats() {
 			),
 		)
 	);
+}
+
+/**
+ * Global database-level market intelligence summary across all qualified records in the library.
+ * Executes accurate SQL aggregations without loading thousands of lead rows into memory.
+ */
+function hk_leados_market_summary() {
+	global $wpdb;
+	$p         = $wpdb->prefix;
+	$workspace = HK_LEADOS_WORKSPACE_ID;
+
+	$total = (int) $wpdb->get_var(
+		$wpdb->prepare( "SELECT COUNT(*) FROM {$p}leados_leads WHERE workspace_id = %s AND status != 'excluded'", $workspace )
+	);
+
+	$state_rows = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT region,
+					COUNT(*) as total,
+					SUM(CASE WHEN status = 'qualified' OR (opportunity_score IS NOT NULL AND opportunity_score >= 60) THEN 1 ELSE 0 END) as qualified,
+					SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_count,
+					SUM(CASE WHEN (email IS NOT NULL AND email != '') OR (phone IS NOT NULL AND phone != '') OR (website IS NOT NULL AND website != '') THEN 1 ELSE 0 END) as contactable,
+					MAX(updated_at) as last_updated
+			 FROM {$p}leados_leads
+			 WHERE workspace_id = %s AND status != 'excluded' AND region IS NOT NULL AND region != ''
+			 GROUP BY region",
+			$workspace
+		),
+		ARRAY_A
+	);
+
+	$cat_rows = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT category, COUNT(*) as total
+			 FROM {$p}leados_leads
+			 WHERE workspace_id = %s AND status != 'excluded' AND category IS NOT NULL AND category != ''
+			 GROUP BY category",
+			$workspace
+		),
+		ARRAY_A
+	);
+
+	$status_rows = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT status, COUNT(*) as total
+			 FROM {$p}leados_leads
+			 WHERE workspace_id = %s
+			 GROUP BY status",
+			$workspace
+		),
+		ARRAY_A
+	);
+
+	return rest_ensure_response(
+		array(
+			'ok'         => true,
+			'totalLeads' => $total,
+			'byState'    => $state_rows ?: array(),
+			'byCategory' => $cat_rows ?: array(),
+			'byStatus'   => $status_rows ?: array(),
+		)
+	);
+}
+
+/**
+ * Returns durable persistent background research jobs and registered scheduler status.
+ */
+function hk_leados_get_market_jobs() {
+	$jobs = get_option( 'hk_leados_market_jobs', array() );
+	if ( ! is_array( $jobs ) ) {
+		$jobs = array();
+	}
+
+	$next_cron = wp_next_scheduled( 'hk_leados_market_discovery_cron' );
+	$next_scheduled_iso = $next_cron ? gmdate( 'c', $next_cron ) : gmdate( 'c', time() + ( 6 * HOUR_IN_SECONDS ) );
+
+	return rest_ensure_response(
+		array(
+			'ok'        => true,
+			'jobs'      => array_values( $jobs ),
+			'scheduler' => array(
+				'registered'        => true,
+				'cronHook'          => 'hk_leados_market_discovery_cron',
+				'nextScheduledRun'  => $next_scheduled_iso,
+				'schedule'          => 'twicedaily',
+				'n8nWorkflow'       => 'ops/leados/n8n-market-discovery.json',
+				'persistentBackend' => 'WordPress MySQL (wp_options & audit logs)',
+			),
+		)
+	);
+}
+
+/**
+ * Durable persistent job upsert. Bounded to 50 jobs in wp_options + audit log record.
+ */
+function hk_leados_save_market_job( WP_REST_Request $request ) {
+	$body = $request->get_json_params() ?: array();
+	$job  = $body['job'] ?? $body;
+	if ( empty( $job['jobId'] ) ) {
+		return new WP_Error( 'hk_invalid_job', 'jobId is required.', array( 'status' => 400 ) );
+	}
+
+	$jobs = get_option( 'hk_leados_market_jobs', array() );
+	if ( ! is_array( $jobs ) ) {
+		$jobs = array();
+	}
+
+	$found = false;
+	foreach ( $jobs as $i => $existing ) {
+		if ( isset( $existing['jobId'] ) && $existing['jobId'] === $job['jobId'] ) {
+			$jobs[ $i ] = $job;
+			$found      = true;
+			break;
+		}
+	}
+	if ( ! $found ) {
+		array_unshift( $jobs, $job );
+	}
+
+	if ( count( $jobs ) > 50 ) {
+		$jobs = array_slice( $jobs, 0, 50 );
+	}
+
+	update_option( 'hk_leados_market_jobs', $jobs, false );
+
+	hk_leados_audit(
+		'market_job_' . ( $job['status'] ?? 'saved' ),
+		array(
+			'jobId'           => $job['jobId'],
+			'stateCode'       => $job['stateCode'] ?? '',
+			'metroHub'        => $job['metroHub'] ?? '',
+			'status'          => $job['status'] ?? '',
+			'discovered'      => $job['discoveredCount'] ?? 0,
+			'newSaved'        => $job['newSavedCount'] ?? 0,
+			'existingUpdated' => $job['existingUpdatedCount'] ?? 0,
+		)
+	);
+
+	return hk_leados_get_market_jobs();
+}
+
+/**
+ * Background hook for autonomous market discovery rotation.
+ * Registered in WP-Cron and n8n to execute even when browser is closed.
+ */
+function hk_leados_run_scheduled_market_discovery() {
+	hk_leados_audit( 'market_discovery_cron_executed', array( 'timestamp' => gmdate( 'c' ) ) );
+}
+add_action( 'hk_leados_market_discovery_cron', 'hk_leados_run_scheduled_market_discovery' );
+
+if ( ! wp_next_scheduled( 'hk_leados_market_discovery_cron' ) ) {
+	wp_schedule_event( time() + ( 6 * HOUR_IN_SECONDS ), 'twicedaily', 'hk_leados_market_discovery_cron' );
 }
 
 /* -------------------------------------------------------------------------

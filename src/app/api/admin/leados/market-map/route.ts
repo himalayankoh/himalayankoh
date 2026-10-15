@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { listSavedLeads } from '@/lib/leados/db';
+import { listSavedLeads, getMarketSummaryFromDb, getMarketJobsFromDb } from '@/lib/leados/db';
 import {
   aggregateStateMarketData,
   classifyMarketCategory,
   runAutonomousMarketScan,
+  runScheduledAutonomousScan,
   getGooglePlacesStatus,
   getJobHistory,
   getSchedulerStatus,
+  syncJobsWithDb,
   AUTONOMOUS_PRIORITY_STATES,
   type MarketCategoryKey,
 } from '@/lib/leados/market-scheduler';
@@ -25,21 +27,33 @@ export async function GET(request: Request) {
     const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
     const limit = Math.min(1000, Math.max(10, parseInt(url.searchParams.get('limit') || '500', 10)));
 
-    // Read genuine leads from WordPress LeadOS database with pagination/state support
-    const listOptions: { limit: number; page: number; search?: string } = {
+    // 1. Fetch accurate database-side aggregations across all qualified library records (Issue 3 fix)
+    // and sync durable persistent job history (Issue 1 fix)
+    const [dbSummary, dbJobsData] = await Promise.all([
+      getMarketSummaryFromDb(),
+      getMarketJobsFromDb(),
+    ]);
+
+    if (dbJobsData?.jobs) {
+      syncJobsWithDb(dbJobsData.jobs);
+    }
+
+    // 2. Read genuine leads for interactive pins with exact geographic state filter
+    // (Never substitutes free-text search for exact geographic state filtering)
+    const listOptions: { limit: number; page: number; region?: string } = {
       limit,
       page,
     };
     if (targetState) {
-      listOptions.search = targetState;
+      listOptions.region = targetState;
     }
 
     const { leads, total } = await listSavedLeads(listOptions);
 
-    // Aggregate state-level intelligence from genuine leads
-    const stateMetrics = aggregateStateMarketData(leads);
+    // 3. Aggregate state-level intelligence combining global DB summary + pin coverage
+    const stateMetrics = aggregateStateMarketData(leads, dbSummary, dbJobsData?.jobs);
 
-    // Filter leads with valid coordinates for the interactive map
+    // 4. Map pins with valid coordinates for the interactive map
     const pins = leads
       .filter((l) => {
         if (typeof l.latitude !== 'number' || typeof l.longitude !== 'number' || l.status === 'excluded') {
@@ -79,7 +93,8 @@ export async function GET(request: Request) {
         stateMetrics,
         pins,
         totalPinsCount: pins.length,
-        totalLeadsCount: total || leads.filter((l) => l.status !== 'excluded').length,
+        totalLeadsCount: dbSummary?.totalLeads || total || leads.filter((l) => l.status !== 'excluded').length,
+        summary: dbSummary,
         jobs: getJobHistory(),
         scheduler: getSchedulerStatus(),
         googlePlaces: getGooglePlacesStatus(),
@@ -107,6 +122,20 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const action = body.action || 'scan_state';
 
+    // Real autonomous background scheduled execution (Issue 2 fix)
+    if (action === 'run_scheduled_scan') {
+      const scanResult = await runScheduledAutonomousScan();
+      return NextResponse.json(
+        {
+          ok: scanResult.ok,
+          scanResult,
+          jobs: getJobHistory(),
+          scheduler: getSchedulerStatus(),
+        },
+        { headers: { 'Cache-Control': 'private, no-store' } }
+      );
+    }
+
     if (action === 'scan_state' || action === 'enqueue_scan') {
       const stateCode = (body.stateCode || 'TX').toUpperCase();
       const categoryKey: MarketCategoryKey = body.categoryKey || 'agriculture';
@@ -132,6 +161,8 @@ export async function POST(request: Request) {
     }
 
     if (action === 'get_jobs') {
+      const { jobs } = await getMarketJobsFromDb();
+      if (jobs) syncJobsWithDb(jobs);
       return NextResponse.json({
         ok: true,
         jobs: getJobHistory(),
