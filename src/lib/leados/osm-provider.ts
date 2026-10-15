@@ -8,9 +8,10 @@ import type { NormalizedLead, LeadSearchInput, SearchDiagnostics } from './types
  * when set, and becomes the first mirror rather than the only one.
  */
 const OVERPASS_URLS = [
-  process.env.OVERPASS_API_URL || 'https://z.overpass-api.de/api/interpreter',
-  'https://lz4.overpass-api.de/api/interpreter',
+  process.env.OVERPASS_API_URL || 'https://overpass.openstreetmap.fr/api/interpreter',
   'https://overpass-api.de/api/interpreter',
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://z.overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ].filter((u, i, all) => u && all.indexOf(u) === i);
 
