@@ -37,6 +37,7 @@ import {
   type StateMarketIntelligence,
   type MarketResearchJob,
 } from '@/lib/leados/market-scheduler';
+import { getAccessToken } from '../services/wordpressAdminAuth';
 
 export interface MarketMapLeadPin {
   id: string;
@@ -123,7 +124,10 @@ export default function LiveUsaMarketMap({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/admin/leados/market-map');
+      const token = getAccessToken();
+      const res = await fetch('/api/admin/leados/market-map', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
         throw new Error(errJson.error || 'Failed to load market map data');
@@ -151,9 +155,13 @@ export default function LiveUsaMarketMap({
     setScanningState(stateCode);
     setScanMessage(`Scanning ${stateCode} for ${catKey || 'agriculture'} commercial leads...`);
     try {
+      const token = getAccessToken();
       const res = await fetch('/api/admin/leados/market-map', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           action: 'scan_state',
           stateCode,
