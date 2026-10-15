@@ -191,7 +191,7 @@ export function normalizeSearchResults(results: WebSearchResult[], input: LeadSe
 async function searchSearxng(input: LeadSearchInput) {
   const endpoint = process.env.LEADOS_SEARXNG_URL?.trim();
   const token = process.env.LEADOS_SEARXNG_TOKEN?.trim();
-  const activeSources = getActiveSources(input.sources).filter((s) => ['web', 'facebook', 'instagram', 'facebook_groups', 'maps'].includes(s));
+  const activeSources = getActiveSources(input.sources).filter((s) => ['web', 'facebook', 'instagram', 'facebook_groups'].includes(s));
 
   if (!endpoint || !token) {
     const errorMsg = 'Self-hosted SearXNG endpoint not configured on host. Social and general web queries require an active SearXNG endpoint or private n8n research worker.';
@@ -281,7 +281,7 @@ export async function discoverLeads(input: LeadSearchInput): Promise<{ leads: No
     : (stateHubsList ? stateHubsList.slice(0, 3) : [locTrimmed]);
 
   const activeSources = getActiveSources(input.sources);
-  const localOsm = (activeSources.includes('osm') || activeSources.includes('all')) && ['Feed Store', 'Farm Supply', 'Equestrian Store', 'Ranch & Horse Facility', 'Livestock Distributor', 'Mineral Distributor', 'Salt Wholesaler', 'Specialty Food Distributor', 'Spice Retailer'].includes(input.category);
+  const localOsm = (activeSources.includes('osm') || activeSources.includes('maps') || activeSources.includes('all')) && ['Feed Store', 'Farm Supply', 'Equestrian Store', 'Ranch & Horse Facility', 'Livestock Distributor', 'Mineral Distributor', 'Salt Wholesaler', 'Specialty Food Distributor', 'Spice Retailer'].includes(input.category);
 
   const [osmSettled, web] = await Promise.all([
     localOsm
@@ -334,7 +334,10 @@ export async function discoverLeads(input: LeadSearchInput): Promise<{ leads: No
   const primaryOsm = osmResults[0];
 
   const sources = {
-    ...(localOsm && primaryOsm ? { osm: { raw: totalOsmRaw, normalized: osmLeads.length, error: primaryOsm?.diagnostics.errorSummary || null } } : {}),
+    ...(localOsm && primaryOsm ? {
+      osm: { raw: totalOsmRaw, normalized: osmLeads.length, error: primaryOsm?.diagnostics.errorSummary || null },
+      ...(activeSources.includes('maps') ? { maps: { raw: totalOsmRaw, normalized: osmLeads.length, error: primaryOsm?.diagnostics.errorSummary || null } } : {}),
+    } : {}),
     ...(web.sourceDiagnostics || { searxng: { raw: web.raw, normalized: web.leads.length, error: web.error } }),
   };
 
