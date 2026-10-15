@@ -878,6 +878,14 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const d = await res.json();
       if (!Array.isArray(d.leads)) throw new Error('Lead Library returned an invalid response.');
       setLibraryLeads(d.leads);
+
+      // Priority 5: Background prefetch of subsequent page for instant pagination
+      if (typeof d.total === 'number' && d.total > 50) {
+        const nextParams = new URLSearchParams(params);
+        nextParams.set('page', '2');
+        nextParams.set('limit', '50');
+        void fetch(`/api/admin/leados/leads?${nextParams.toString()}`, { headers }).catch(() => {});
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Lead Library failed to load.';
       setLibraryError(message);

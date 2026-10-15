@@ -34,6 +34,13 @@ import type {
   NormalizedLead,
 } from './types';
 import { leadIdentity } from './intelligence';
+import {
+  buildCacheKey,
+  getCachedLeads,
+  setCachedLeads,
+  invalidateLeadCache,
+  getLeadFromIndex,
+} from './lead-cache';
 
 export const HK_DEFAULT_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
 export const HK_DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000002';
@@ -341,6 +348,7 @@ export async function saveLeadToLibrary(
       body: { lead: payload, projectId: projectId || null },
     });
     if (!response?.lead) throw new Error('WordPress returned no lead.');
+    invalidateLeadCache();
     return toSavedLead(response.lead);
   } catch (error) {
     throw describe('LeadOS lead save', error);
@@ -487,6 +495,10 @@ export async function saveLeadsBatchToLibrary(
     }
   }
 
+  if (totalSaved > 0) {
+    invalidateLeadCache();
+  }
+
   return {
     savedCount: totalSaved,
     failedCount: totalFailed,
@@ -577,7 +589,38 @@ export async function listSavedLeads(options?: {
   projectId?: string;
   limit?: number;
   page?: number;
+  skipCache?: boolean;
 }): Promise<{ leads: SavedLeadRecord[]; total: number }> {
+  const cacheKey = buildCacheKey(options);
+
+  const isTest = typeof process !== 'undefined' && (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST));
+  if (!options?.skipCache && !isTest) {
+    const cached = getCachedLeads(cacheKey);
+    if (cached.hit && cached.data) {
+      if (cached.isStale) {
+        // Stale-While-Revalidate: trigger background revalidation
+        void (async () => {
+          try {
+            const fresh = await leadosRequest<{ leads?: RawRow[]; total?: number }>('/leads', {
+              params: {
+                search: options?.search,
+                region: options?.region,
+                status: options?.status,
+                page: options?.page,
+                limit: options?.limit,
+              },
+            });
+            const freshLeads = (fresh.leads || []).map(toSavedLead);
+            setCachedLeads(cacheKey, { leads: freshLeads, total: fresh.total ?? freshLeads.length });
+          } catch {
+            // SWR background refresh failure is non-fatal
+          }
+        })();
+      }
+      return cached.data;
+    }
+  }
+
   try {
     const response = await leadosRequest<{ leads?: RawRow[]; total?: number }>('/leads', {
       params: {
@@ -589,7 +632,9 @@ export async function listSavedLeads(options?: {
       },
     });
     const leads = (response.leads || []).map(toSavedLead);
-    return { leads, total: response.total ?? leads.length };
+    const result = { leads, total: response.total ?? leads.length };
+    setCachedLeads(cacheKey, result);
+    return result;
   } catch (error) {
     throw describe('LeadOS lead read', error);
   }
@@ -597,6 +642,9 @@ export async function listSavedLeads(options?: {
 
 /** One saved lead by id, or null. */
 export async function getSavedLeadById(id: string): Promise<SavedLeadRecord | null> {
+  const indexed = getLeadFromIndex(id);
+  if (indexed) return indexed;
+
   try {
     const response = await leadosRequest<{ leads?: RawRow[] }>('/leads', {
       params: { id, limit: 1 },
@@ -632,6 +680,9 @@ export async function updateSavedLead(
       `/leads/${encodeURIComponent(id)}`,
       { method: 'PATCH', body }
     );
+    if (response?.lead) {
+      invalidateLeadCache();
+    }
     return response?.lead ? toSavedLead(response.lead) : null;
   } catch (error) {
     throw describe('LeadOS lead update', error);
@@ -645,6 +696,9 @@ export async function deleteSavedLead(id: string): Promise<boolean> {
       `/leads/${encodeURIComponent(id)}`,
       { method: 'DELETE' }
     );
+    if (response?.deleted) {
+      invalidateLeadCache();
+    }
     return Boolean(response?.deleted);
   } catch (error) {
     throw describe('LeadOS lead delete', error);

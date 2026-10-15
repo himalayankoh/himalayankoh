@@ -56,17 +56,52 @@ async function main() {
     credId = createdCred.id;
     console.log('  Created credential ID:', credId);
   } else {
-    console.log('  Found existing credential ID:', credId);
+    console.log('  Updating existing credential ID with rotated token:', credId);
+    try {
+      await api(`/credentials/${credId}`, 'PATCH', {
+        name: 'HK LeadOS Discovery Worker',
+        type: 'httpHeaderAuth',
+        data: {
+          name: 'Authorization',
+          value: `Bearer ${n8nToken}`,
+        },
+      });
+      console.log('  Credential updated successfully via PATCH.');
+    } catch (err) {
+      console.log('  PATCH failed (' + err.message + '), recreating credential...');
+      await api(`/credentials/${credId}`, 'DELETE').catch(() => {});
+      const createdCred = await api('/credentials', 'POST', {
+        name: 'HK LeadOS Discovery Worker',
+        type: 'httpHeaderAuth',
+        data: {
+          name: 'Authorization',
+          value: `Bearer ${n8nToken}`,
+        },
+      });
+      credId = createdCred.id;
+      console.log('  Recreated credential ID:', credId);
+    }
   }
 
   // 2. Read workflow template
   console.log('[2/4] Loading ops/leados/n8n-market-discovery.json...');
   const workflowJson = JSON.parse(fs.readFileSync(join(ROOT, 'ops', 'leados', 'n8n-market-discovery.json'), 'utf8'));
 
-  // Attach credential to HttpRequest node
+  // Attach credential to HttpRequest and Webhook nodes
   const httpNode = workflowJson.nodes.find(n => n.id === 'Trigger-market-scan');
   if (httpNode) {
     httpNode.credentials = {
+      httpHeaderAuth: {
+        id: credId,
+        name: 'HK LeadOS Discovery Worker',
+      },
+    };
+  }
+
+  const webhookNode = workflowJson.nodes.find(n => n.id === 'Discovery-webhook');
+  if (webhookNode) {
+    webhookNode.parameters.authentication = 'headerAuth';
+    webhookNode.credentials = {
       httpHeaderAuth: {
         id: credId,
         name: 'HK LeadOS Discovery Worker',

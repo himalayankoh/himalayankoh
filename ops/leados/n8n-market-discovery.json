@@ -27,7 +27,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "hk-leados-market-discovery",
-        "authentication": "none",
+        "authentication": "headerAuth",
         "responseMode": "lastNode",
         "options": {}
       },

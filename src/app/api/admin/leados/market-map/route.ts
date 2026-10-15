@@ -43,6 +43,8 @@ export async function GET(request: Request) {
     const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
     const limit = Math.min(1000, Math.max(10, parseInt(url.searchParams.get('limit') || '500', 10)));
 
+    const since = url.searchParams.get('since');
+
     // 1. Fetch accurate database-side aggregations across all qualified library records (Issue 3 fix)
     // and sync durable persistent job history (Issue 1 fix)
     const [dbSummary, dbJobsData] = await Promise.all([
@@ -52,6 +54,28 @@ export async function GET(request: Request) {
 
     if (dbJobsData?.jobs) {
       syncJobsWithDb(dbJobsData.jobs);
+    }
+
+    const allJobs = getJobHistory();
+    const completedJobs = allJobs.filter((j) => j.status === 'completed');
+    const sortedCompleted = [...completedJobs].sort(
+      (a, b) => new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime()
+    );
+    const lastSuccessfulScanTime = sortedCompleted[0]?.completedAt || null;
+
+    // Incremental polling shortcut: if since is provided and no jobs completed since then, check if summary changed
+    if (since && lastSuccessfulScanTime && new Date(lastSuccessfulScanTime).getTime() <= new Date(since).getTime()) {
+      return NextResponse.json(
+        {
+          ok: true,
+          incremental: true,
+          hasUpdates: false,
+          lastSuccessfulScanTime,
+          summary: dbSummary,
+          lastUpdated: new Date().toISOString(),
+        },
+        { headers: { 'Cache-Control': 'private, no-store' } }
+      );
     }
 
     // 2. Read genuine leads for interactive pins with exact geographic state filter
@@ -70,6 +94,9 @@ export async function GET(request: Request) {
     const stateMetrics = aggregateStateMarketData(leads, dbSummary, dbJobsData?.jobs);
 
     // 4. Map pins with valid coordinates for the interactive map
+    const now = Date.now();
+    const fortyEightHoursAgo = now - 48 * 60 * 60 * 1000;
+
     const pins = leads
       .filter((l) => {
         if (typeof l.latitude !== 'number' || typeof l.longitude !== 'number' || l.status === 'excluded') {
@@ -83,38 +110,49 @@ export async function GET(request: Request) {
         }
         return true;
       })
-      .map((lead) => ({
-        id: lead.id,
-        businessName: lead.businessName,
-        category: lead.category,
-        marketCategory: classifyMarketCategory(lead),
-        latitude: lead.latitude!,
-        longitude: lead.longitude!,
-        address: lead.address,
-        city: lead.city,
-        region: lead.region,
-        opportunityScore: lead.opportunityScore,
-        status: lead.status,
-        phone: lead.phone,
-        email: lead.email,
-        website: lead.website,
-        facebook: lead.facebook,
-        instagram: lead.instagram,
-        opportunitySignals: lead.opportunitySignals,
-      }));
+      .map((lead) => {
+        const isNew = Boolean(lead.createdAt && new Date(lead.createdAt).getTime() >= fortyEightHoursAgo);
+        const qualityTag = (lead.tags || []).find((t) => t.startsWith('quality:'))?.replace('quality:', '') || null;
+
+        return {
+          id: lead.id,
+          businessName: lead.businessName,
+          category: lead.category,
+          marketCategory: classifyMarketCategory(lead),
+          latitude: lead.latitude!,
+          longitude: lead.longitude!,
+          address: lead.address,
+          city: lead.city,
+          region: lead.region,
+          opportunityScore: lead.opportunityScore,
+          status: lead.status,
+          qualityStage: qualityTag,
+          isNew,
+          createdAt: lead.createdAt,
+          phone: lead.phone,
+          email: lead.email,
+          website: lead.website,
+          facebook: lead.facebook,
+          instagram: lead.instagram,
+          opportunitySignals: lead.opportunitySignals,
+        };
+      });
 
     return NextResponse.json(
       {
         ok: true,
+        incremental: Boolean(since),
+        hasUpdates: true,
         stateMetrics,
         pins,
         totalPinsCount: pins.length,
         totalLeadsCount: dbSummary?.totalLeads || total || leads.filter((l) => l.status !== 'excluded').length,
         summary: dbSummary,
-        jobs: getJobHistory(),
+        jobs: allJobs,
         scheduler: getSchedulerStatus(),
         googlePlaces: getGooglePlacesStatus(),
         priorityStates: AUTONOMOUS_PRIORITY_STATES,
+        lastSuccessfulScanTime,
         lastUpdated: new Date().toISOString(),
       },
       { headers: { 'Cache-Control': 'private, no-store' } }

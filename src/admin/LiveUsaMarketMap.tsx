@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Globe,
   MapPin,
@@ -27,7 +27,7 @@ import {
   Info,
   ClockCountdown,
 } from '@phosphor-icons/react';
-import { USA_STATE_PATHS, type StateMapPath } from './usaStatePaths';
+import { USA_STATE_PATHS, computeStateViewBox, type StateMapPath } from './usaStatePaths';
 import { projectCoordinates } from './InteractiveUsaMap';
 import {
   MARKET_CATEGORIES,
@@ -57,6 +57,9 @@ export interface MarketMapLeadPin {
   facebook?: string | null;
   instagram?: string | null;
   opportunitySignals?: string[];
+  isNew?: boolean;
+  qualityStage?: string | null;
+  createdAt?: string;
 }
 
 export type OpportunityMode =
@@ -96,6 +99,7 @@ export default function LiveUsaMarketMap({
     nextScheduledRun: string | null;
   } | null>(null);
   const [showJobsModal, setShowJobsModal] = useState(false);
+  const [lastSuccessfulScanTime, setLastSuccessfulScanTime] = useState<string | null>(null);
 
   // Filter & Mode states
   const [activeCategory, setActiveCategory] = useState<'all' | MarketCategoryKey>('all');
@@ -137,6 +141,7 @@ export default function LiveUsaMarketMap({
       setPins(data.pins || []);
       setTotalLeadsCount(data.totalLeadsCount || 0);
       setLastUpdated(data.lastUpdated || new Date().toISOString());
+      if (data.lastSuccessfulScanTime) setLastSuccessfulScanTime(data.lastSuccessfulScanTime);
       if (data.jobs) setJobs(data.jobs);
       if (data.scheduler) setScheduler(data.scheduler);
     } catch (err) {
@@ -149,6 +154,36 @@ export default function LiveUsaMarketMap({
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  // Priority 6: Bounded incremental live map updates (catches up on background discoveries)
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      try {
+        const token = getAccessToken();
+        const sinceParam = lastSuccessfulScanTime ? `?since=${encodeURIComponent(lastSuccessfulScanTime)}` : '';
+        const res = await fetch(`/api/admin/leados/market-map${sinceParam}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.lastSuccessfulScanTime) {
+          setLastSuccessfulScanTime(data.lastSuccessfulScanTime);
+        }
+        if (data.hasUpdates) {
+          if (data.stateMetrics) setStateMetrics(data.stateMetrics);
+          if (data.pins) setPins(data.pins);
+          if (data.totalLeadsCount) setTotalLeadsCount(data.totalLeadsCount);
+          if (data.jobs) setJobs(data.jobs);
+          if (data.scheduler) setScheduler(data.scheduler);
+          setLastUpdated(data.lastUpdated || new Date().toISOString());
+        }
+      } catch {
+        // Quiet background polling
+      }
+    }, 20000);
+
+    return () => clearInterval(timer);
+  }, [lastSuccessfulScanTime]);
 
   // Handle autonomous background scan trigger
   const handleRunScan = async (stateCode: string, catKey?: MarketCategoryKey) => {
@@ -187,28 +222,203 @@ export default function LiveUsaMarketMap({
     }
   };
 
-  // Zoom to a state bounds
-  const handleZoomToState = (state: StateMapPath) => {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number; vbX: number; vbY: number }>({ x: 0, y: 0, vbX: 0, vbY: 0 });
+
+  // Zoom to a state bounds using actual geographic coordinates
+  const handleZoomToState = useCallback((state: StateMapPath) => {
     setSelectedStateCode(state.code);
     setSelectedPin(null);
 
-    // Approximate bounding box centered on label
-    const w = 260;
-    const h = 180;
-    const x = Math.max(0, Math.min(960 - w, state.labelX - w / 2));
-    const y = Math.max(0, Math.min(600 - h, state.labelY - h / 2));
+    const vb = computeStateViewBox(state);
+    setViewBox({ x: vb.x, y: vb.y, w: vb.w, h: vb.h });
+    setZoomLevel(vb.zoomLevel);
+  }, []);
 
-    setViewBox({ x, y, w, h });
-    setZoomLevel(2.5);
-  };
+  // Fit current selected state
+  const handleFitState = useCallback(() => {
+    if (!selectedStateCode) return;
+    const st = USA_STATE_PATHS.find((s) => s.code === selectedStateCode);
+    if (st) handleZoomToState(st);
+  }, [selectedStateCode, handleZoomToState]);
+
+  // Zoom progressively toward a city or geographic coordinate
+  const handleZoomToCity = useCallback((lat: number, lon: number) => {
+    const coords = projectCoordinates(lat, lon);
+    if (!coords) return;
+    const [cx, cy] = coords;
+
+    setViewBox((prev) => {
+      // Step zoom in progressively (factor ~0.72)
+      const factor = 0.72;
+      const nextW = Math.max(160, prev.w * factor);
+      const nextH = nextW / 1.6;
+      return {
+        x: Math.max(-20, Math.min(980 - nextW, cx - nextW / 2)),
+        y: Math.max(-20, Math.min(620 - nextH, cy - nextH / 2)),
+        w: nextW,
+        h: nextH,
+      };
+    });
+    setZoomLevel((prev) => Math.min(5.5, Number((prev * 1.35).toFixed(2))));
+  }, []);
+
+  // Expand cluster gradually without selecting arbitrary lead
+  const handleClusterClick = useCallback((cluster: { x: number; y: number; pins: MarketMapLeadPin[] }) => {
+    setViewBox((prev) => {
+      const factor = 0.75; // gentle step
+      const nextW = Math.max(140, prev.w * factor);
+      const nextH = nextW / 1.6;
+      return {
+        x: Math.max(-20, Math.min(980 - nextW, cluster.x - nextW / 2)),
+        y: Math.max(-20, Math.min(620 - nextH, cluster.y - nextH / 2)),
+        w: nextW,
+        h: nextH,
+      };
+    });
+    setZoomLevel((prev) => Math.min(5.5, Number((prev * 1.33).toFixed(2))));
+  }, []);
+
+  // Open lead details without unexpectedly changing zoom
+  const handlePinClick = useCallback((pin: MarketMapLeadPin) => {
+    setSelectedPin(pin);
+  }, []);
+
+  // Small, consistent Zoom In
+  const handleZoomIn = useCallback(() => {
+    setViewBox((prev) => {
+      const factor = 0.8; // 1.25x zoom step
+      const nextW = Math.max(140, prev.w * factor);
+      const nextH = nextW / 1.6;
+      const centerX = prev.x + prev.w / 2;
+      const centerY = prev.y + prev.h / 2;
+      return {
+        x: Math.max(-20, Math.min(980 - nextW, centerX - nextW / 2)),
+        y: Math.max(-20, Math.min(620 - nextH, centerY - nextH / 2)),
+        w: nextW,
+        h: nextH,
+      };
+    });
+    setZoomLevel((prev) => Math.min(5.5, Number((prev * 1.25).toFixed(2))));
+  }, []);
+
+  // Small, consistent Zoom Out (does NOT immediately snap back to full USA)
+  const handleZoomOut = useCallback(() => {
+    setViewBox((prev) => {
+      const factor = 1.25;
+      const nextW = Math.min(960, prev.w * factor);
+      const nextH = nextW / 1.6;
+      const centerX = prev.x + prev.w / 2;
+      const centerY = prev.y + prev.h / 2;
+
+      if (nextW >= 930) {
+        return { x: 0, y: 0, w: 960, h: 600 };
+      }
+
+      return {
+        x: Math.max(0, Math.min(960 - nextW, centerX - nextW / 2)),
+        y: Math.max(0, Math.min(600 - nextH, centerY - nextH / 2)),
+        w: nextW,
+        h: nextH,
+      };
+    });
+    setZoomLevel((prev) => {
+      const next = prev / 1.25;
+      return next <= 1.08 ? 1 : Number(next.toFixed(2));
+    });
+  }, []);
 
   // Reset zoom to full USA
-  const handleResetZoom = () => {
+  const handleResetZoom = useCallback(() => {
     setViewBox({ x: 0, y: 0, w: 960, h: 600 });
     setZoomLevel(1);
     setSelectedStateCode(null);
     setSelectedPin(null);
-  };
+  }, []);
+
+  // Mouse pan handling
+  const handleMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return;
+    isDraggingRef.current = true;
+    dragStartRef.current = { x: e.clientX, y: e.clientY, vbX: viewBox.x, vbY: viewBox.y };
+  }, [viewBox]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!isDraggingRef.current || !svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const scaleX = viewBox.w / rect.width;
+    const scaleY = viewBox.h / rect.height;
+    const dx = (e.clientX - dragStartRef.current.x) * scaleX;
+    const dy = (e.clientY - dragStartRef.current.y) * scaleY;
+    setViewBox((prev) => ({
+      ...prev,
+      x: Math.max(-40, Math.min(1000 - prev.w, dragStartRef.current.vbX - dx)),
+      y: Math.max(-40, Math.min(640 - prev.h, dragStartRef.current.vbY - dy)),
+    }));
+  }, [viewBox]);
+
+  const handleMouseUp = useCallback(() => {
+    isDraggingRef.current = false;
+  }, []);
+
+  // Touch pan handling
+  const handleTouchStart = useCallback((e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      isDraggingRef.current = true;
+      dragStartRef.current = { x: touch.clientX, y: touch.clientY, vbX: viewBox.x, vbY: viewBox.y };
+    }
+  }, [viewBox]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<SVGSVGElement>) => {
+    if (!isDraggingRef.current || !svgRef.current || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const rect = svgRef.current.getBoundingClientRect();
+    const scaleX = viewBox.w / rect.width;
+    const scaleY = viewBox.h / rect.height;
+    const dx = (touch.clientX - dragStartRef.current.x) * scaleX;
+    const dy = (touch.clientY - dragStartRef.current.y) * scaleY;
+    setViewBox((prev) => ({
+      ...prev,
+      x: Math.max(-40, Math.min(1000 - prev.w, dragStartRef.current.vbX - dx)),
+      y: Math.max(-40, Math.min(640 - prev.h, dragStartRef.current.vbY - dy)),
+    }));
+  }, [viewBox]);
+
+  const handleTouchEnd = useCallback(() => {
+    isDraggingRef.current = false;
+  }, []);
+
+  // Smooth mouse wheel zoom
+  const handleWheel = useCallback((e: React.WheelEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    if (!svgRef.current) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const mouseX = viewBox.x + ((e.clientX - rect.left) / rect.width) * viewBox.w;
+    const mouseY = viewBox.y + ((e.clientY - rect.top) / rect.height) * viewBox.h;
+
+    const zoomFactor = e.deltaY < 0 ? 0.88 : 1.14;
+    const nextW = Math.max(140, Math.min(960, viewBox.w * zoomFactor));
+    const nextH = nextW / 1.6;
+
+    if (nextW >= 940 && zoomFactor > 1) {
+      handleResetZoom();
+      return;
+    }
+
+    const ratio = nextW / viewBox.w;
+    const nextX = mouseX - (mouseX - viewBox.x) * ratio;
+    const nextY = mouseY - (mouseY - viewBox.y) * ratio;
+
+    setViewBox({
+      x: Math.max(-20, Math.min(980 - nextW, nextX)),
+      y: Math.max(-20, Math.min(620 - nextH, nextY)),
+      w: nextW,
+      h: nextH,
+    });
+    setZoomLevel(Number((960 / nextW).toFixed(2)));
+  }, [viewBox, handleResetZoom]);
 
   // Filter pins based on category, state, and opportunity mode
   const filteredPins = useMemo(() => {
@@ -498,6 +708,12 @@ export default function LiveUsaMarketMap({
               <Globe className="w-3.5 h-3.5 text-blue-500" />
               <span><strong>{overallMetrics.statesScanned} / 51</strong> States Scanned</span>
             </div>
+            {lastSuccessfulScanTime && (
+              <div className="flex items-center gap-1.5 text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
+                <ClockCountdown className="w-3 h-3 text-indigo-500" />
+                <span>Last Scan: <strong>{new Date(lastSuccessfulScanTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
+              </div>
+            )}
             <button
               type="button"
               onClick={fetchData}
@@ -536,36 +752,30 @@ export default function LiveUsaMarketMap({
         <div className="absolute top-4 left-4 z-20 flex flex-col gap-1.5 bg-slate-800/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-md">
           <button
             type="button"
-            onClick={() => {
-              if (zoomLevel < 3.5) {
-                const nextZoom = zoomLevel + 0.5;
-                setZoomLevel(nextZoom);
-                setViewBox((prev) => ({
-                  x: prev.x + prev.w * 0.1,
-                  y: prev.y + prev.h * 0.1,
-                  w: prev.w * 0.8,
-                  h: prev.h * 0.8,
-                }));
-              }
-            }}
+            onClick={handleZoomIn}
             className="p-2 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
-            title="Zoom In"
+            title="Zoom In (Consistent 1.25x step)"
           >
             <Plus className="w-4 h-4" />
           </button>
           <button
             type="button"
-            onClick={() => {
-              if (zoomLevel > 1) {
-                setZoomLevel(1);
-                handleResetZoom();
-              }
-            }}
+            onClick={handleZoomOut}
             className="p-2 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
-            title="Zoom Out / Fit USA"
+            title="Zoom Out (Consistent 1.25x step)"
           >
             <Minus className="w-4 h-4" />
           </button>
+          {selectedStateCode && (
+            <button
+              type="button"
+              onClick={handleFitState}
+              className="p-2 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 transition cursor-pointer border border-indigo-700/60"
+              title={`Fit ${selectedStateCode} to Screen`}
+            >
+              <Target className="w-4 h-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={handleResetZoom}
@@ -574,6 +784,9 @@ export default function LiveUsaMarketMap({
           >
             <ArrowsOut className="w-4 h-4" />
           </button>
+          <div className="text-[9px] font-mono text-center text-slate-400 py-0.5 border-t border-slate-700">
+            {zoomLevel.toFixed(1)}x
+          </div>
         </div>
 
         {/* Legend / Overlay Badge */}
@@ -601,8 +814,19 @@ export default function LiveUsaMarketMap({
         {/* SVG Interactive Canvas */}
         <div className="w-full h-full flex items-center justify-center p-2 relative">
           <svg
+            ref={svgRef}
             viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
-            className="w-full h-full max-h-[700px] select-none transition-all duration-300"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onWheel={handleWheel}
+            className={`w-full h-full max-h-[700px] select-none transition-all duration-300 ${
+              zoomLevel > 1.05 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
+            }`}
             style={{ filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.5))' }}
           >
             <defs>
@@ -735,6 +959,7 @@ export default function LiveUsaMarketMap({
 
                   if (isSingle && singleLead) {
                     const isSelected = selectedPin?.id === singleLead.id;
+                    const isNew = Boolean(singleLead.isNew);
                     return (
                       <g
                         key={cluster.id}
@@ -747,11 +972,22 @@ export default function LiveUsaMarketMap({
                       >
                         {/* Outer pulse */}
                         <circle
-                          r={isSelected ? 10 : 7}
+                          r={isSelected ? 10 : isNew ? 8.5 : 7}
                           fill={catColor}
-                          opacity={0.3}
-                          className="animate-pulse"
+                          opacity={isNew ? 0.45 : 0.3}
+                          className={isNew ? 'animate-pulse' : undefined}
                         />
+                        {/* Subtle discovery ring for newly discovered businesses */}
+                        {isNew && (
+                          <circle
+                            r={10.5}
+                            fill="none"
+                            stroke="#38bdf8"
+                            strokeWidth="0.8"
+                            strokeDasharray="2 2"
+                            opacity={0.85}
+                          />
+                        )}
                         {/* Marker Core */}
                         <circle
                           r={isSelected ? 6 : 4.5}
@@ -772,18 +1008,7 @@ export default function LiveUsaMarketMap({
                       className="cursor-pointer group"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Zoom into cluster bounds
-                        const w = 180;
-                        const h = 130;
-                        setViewBox({
-                          x: Math.max(0, cluster.x - w / 2),
-                          y: Math.max(0, cluster.y - h / 2),
-                          w,
-                          h,
-                        });
-                        setZoomLevel(3);
-                        // If only a few leads, open first
-                        if (cluster.pins[0]) setSelectedPin(cluster.pins[0]);
+                        handleClusterClick(cluster);
                       }}
                     >
                       <circle
@@ -1059,14 +1284,28 @@ export default function LiveUsaMarketMap({
                       Target Commercial Hubs
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                      {focusedState.topHubs.map((hub) => (
-                        <span
-                          key={hub}
-                          className="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-[11px]"
-                        >
-                          {hub}
-                        </span>
-                      ))}
+                      {focusedState.topHubs.map((hub) => {
+                        const hubs = STATE_METRO_HUBS[focusedState.code] || [];
+                        const metro = hubs.find(
+                          (h) => h.name.toLowerCase().includes(hub.toLowerCase()) || hub.toLowerCase().includes(h.name.toLowerCase())
+                        );
+                        return (
+                          <button
+                            key={hub}
+                            type="button"
+                            onClick={() => {
+                              if (metro) {
+                                handleZoomToCity(metro.lat, metro.lon);
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-950/80 hover:border-indigo-600 text-slate-300 hover:text-indigo-200 border border-slate-700 text-[11px] font-medium transition cursor-pointer flex items-center gap-1"
+                            title={`Zoom to ${hub}`}
+                          >
+                            <MapPin className="w-3 h-3 text-indigo-400" />
+                            <span>{hub}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

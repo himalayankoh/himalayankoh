@@ -656,3 +656,80 @@ export const USA_STATE_PATHS: StateMapPath[] = [
     "region": "West"
   }
 ];
+
+export interface StateBoundingBox {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  w: number;
+  h: number;
+}
+
+export interface StateViewBoxResult {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  zoomLevel: number;
+  bounds: StateBoundingBox;
+}
+
+export function computeStateBounds(path: string): StateBoundingBox {
+  const matches = path.matchAll(/([0-9.-]+),([0-9.-]+)/g);
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const m of matches) {
+    const x = parseFloat(m[1]), y = parseFloat(m[2]);
+    if (!isNaN(x) && !isNaN(y)) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (!isFinite(minX)) return { minX: 0, maxX: 960, minY: 0, maxY: 600, w: 960, h: 600 };
+  return { minX, maxX, minY, maxY, w: maxX - minX, h: maxY - minY };
+}
+
+export function computeStateViewBox(state: StateMapPath): StateViewBoxResult {
+  const b = computeStateBounds(state.path);
+  const padX = Math.max(32, b.w * 0.16);
+  const padY = Math.max(26, b.h * 0.16);
+
+  let contentW = b.w + padX * 2;
+  let contentH = b.h + padY * 2;
+
+  // Maintain 960:600 (1.6) aspect ratio
+  if (contentW / contentH > 1.6) {
+    contentH = contentW / 1.6;
+  } else {
+    contentW = contentH * 1.6;
+  }
+
+  // Clamp minimum width to 280 (so small states like RI/DE don't overzoom into a blur)
+  contentW = Math.max(280, Math.min(960, contentW));
+  contentH = contentW / 1.6;
+
+  const centerX = (b.minX + b.maxX) / 2;
+  const centerY = (b.minY + b.maxY) / 2;
+
+  let targetX = centerX - contentW / 2;
+  let targetY = centerY - contentH / 2;
+
+  // Ensure state borders fit comfortably inside
+  if (b.minX < targetX + padX) targetX = b.minX - padX;
+  if (b.maxX > targetX + contentW - padX) targetX = b.maxX + padX - contentW;
+  if (b.minY < targetY + padY) targetY = b.minY - padY;
+  if (b.maxY > targetY + contentH - padY) targetY = b.maxY + padY - contentH;
+
+  const zoomLevel = Number((960 / contentW).toFixed(2));
+
+  return {
+    x: targetX,
+    y: targetY,
+    w: contentW,
+    h: contentH,
+    zoomLevel,
+    bounds: b,
+  };
+}

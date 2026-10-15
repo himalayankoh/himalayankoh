@@ -22,7 +22,7 @@ import {
   ArrowSquareOut,
 } from '@phosphor-icons/react';
 import type { ScoredLead } from '@/lib/leados/types';
-import { USA_STATE_PATHS, type StateMapPath } from './usaStatePaths';
+import { USA_STATE_PATHS, computeStateViewBox, type StateMapPath } from './usaStatePaths';
 
 export { USA_STATE_PATHS, type StateMapPath };
 
@@ -731,24 +731,23 @@ export default function InteractiveUsaMap({
     [selectedLocations]
   );
 
-  // Zoom into a specific state smoothly
+  // Zoom into a specific state smoothly using genuine geographic bounds
   const handleZoomToState = useCallback(
     (state: StateMapPath) => {
-      const bounds = stateBoundsMap.get(state.code);
-      if (!bounds) return;
-
-      const pad = 24;
-      const targetW = Math.max(220, bounds.w + pad * 2);
-      const targetH = Math.max(160, bounds.h + pad * 2);
-      const targetX = Math.max(0, Math.min(960 - targetW, bounds.minX - pad));
-      const targetY = Math.max(0, Math.min(600 - targetH, bounds.minY - pad));
-
-      setViewBox({ x: targetX, y: targetY, w: targetW, h: targetH });
-      setZoomLevel(2.5);
+      const vb = computeStateViewBox(state);
+      setViewBox({ x: vb.x, y: vb.y, w: vb.w, h: vb.h });
+      setZoomLevel(vb.zoomLevel);
       setActiveZoomedState(state);
     },
-    [stateBoundsMap]
+    []
   );
+
+  // Fit current active state
+  const handleFitState = useCallback(() => {
+    if (activeZoomedState) {
+      handleZoomToState(activeZoomedState);
+    }
+  }, [activeZoomedState, handleZoomToState]);
 
   // Reset zoom back to full USA
   const handleResetZoom = useCallback(() => {
@@ -759,31 +758,36 @@ export default function InteractiveUsaMap({
     setHoveredLead(null);
   }, []);
 
-  // Zoom In / Zoom Out by factor
+  // Zoom In / Zoom Out with consistent small steps
   const handleZoomIn = () => {
     setViewBox((prev) => {
-      const factor = 0.75;
-      const nextW = Math.max(120, prev.w * factor);
-      const nextH = Math.max(80, prev.h * factor);
+      const factor = 0.8;
+      const nextW = Math.max(140, prev.w * factor);
+      const nextH = nextW / 1.6;
       const centerX = prev.x + prev.w / 2;
       const centerY = prev.y + prev.h / 2;
       return {
-        x: Math.max(0, Math.min(960 - nextW, centerX - nextW / 2)),
-        y: Math.max(0, Math.min(600 - nextH, centerY - nextH / 2)),
+        x: Math.max(-20, Math.min(980 - nextW, centerX - nextW / 2)),
+        y: Math.max(-20, Math.min(620 - nextH, centerY - nextH / 2)),
         w: nextW,
         h: nextH,
       };
     });
-    setZoomLevel((z) => Math.min(6, z * 1.35));
+    setZoomLevel((z) => Math.min(5.5, Number((z * 1.25).toFixed(2))));
   };
 
   const handleZoomOut = () => {
     setViewBox((prev) => {
-      const factor = 1.35;
+      const factor = 1.25;
       const nextW = Math.min(960, prev.w * factor);
-      const nextH = Math.min(600, prev.h * factor);
+      const nextH = nextW / 1.6;
       const centerX = prev.x + prev.w / 2;
       const centerY = prev.y + prev.h / 2;
+
+      if (nextW >= 930) {
+        return { x: 0, y: 0, w: 960, h: 600 };
+      }
+
       return {
         x: Math.max(0, Math.min(960 - nextW, centerX - nextW / 2)),
         y: Math.max(0, Math.min(600 - nextH, centerY - nextH / 2)),
@@ -791,10 +795,14 @@ export default function InteractiveUsaMap({
         h: nextH,
       };
     });
-    setZoomLevel((z) => Math.max(1, z / 1.35));
-    if (zoomLevel <= 1.4) {
-      setActiveZoomedState(null);
-    }
+    setZoomLevel((z) => {
+      const next = z / 1.25;
+      if (next <= 1.08) {
+        setActiveZoomedState(null);
+        return 1;
+      }
+      return Number(next.toFixed(2));
+    });
   };
 
   // Double click on map canvas: deep zoom into clicked point
@@ -1051,7 +1059,7 @@ export default function InteractiveUsaMap({
             type="button"
             onClick={handleZoomIn}
             className="p-1.5 hover:bg-slate-800 text-slate-200 hover:text-white rounded-lg transition cursor-pointer"
-            title="Zoom In"
+            title="Zoom In (Consistent 1.25x step)"
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -1059,10 +1067,20 @@ export default function InteractiveUsaMap({
             type="button"
             onClick={handleZoomOut}
             className="p-1.5 hover:bg-slate-800 text-slate-200 hover:text-white rounded-lg transition cursor-pointer"
-            title="Zoom Out"
+            title="Zoom Out (Consistent 1.25x step)"
           >
             <Minus className="w-4 h-4" />
           </button>
+          {activeZoomedState && (
+            <button
+              type="button"
+              onClick={handleFitState}
+              className="p-1.5 hover:bg-indigo-950 text-indigo-300 hover:text-indigo-100 rounded-lg transition cursor-pointer"
+              title={`Fit ${activeZoomedState.name} to screen`}
+            >
+              <Target className="w-4 h-4" />
+            </button>
+          )}
           <div className="w-full h-px bg-slate-800 my-0.5" />
           <button
             type="button"

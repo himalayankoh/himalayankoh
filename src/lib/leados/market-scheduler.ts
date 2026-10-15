@@ -26,6 +26,7 @@ import {
 import { queryOverpass, type OsmTag } from './osm-provider';
 import { discoverLeads } from './discovery';
 import { USA_STATE_PATHS } from '@/admin/usaStatePaths';
+import { enrichLeadWithCrawler } from './crawler';
 
 // ---------------------------------------------------------------------------
 // 1. Commercial Market Categories
@@ -435,8 +436,14 @@ export const STATE_METRO_HUBS: Record<string, StateMetroHub[]> = {
   ],
 };
 
-// Priority states for autonomous research
-export const AUTONOMOUS_PRIORITY_STATES = ['TX', 'FL', 'CA', 'OK', 'CO', 'KY', 'IA', 'NE', 'TN', 'GA'];
+// Priority states for autonomous research: starts with top livestock & agricultural hubs (TX, FL, CA, OK, CO, KY, IA, NE, TN, GA) then cycles through all US states
+const TOP_PRIORITY_STATES = ['TX', 'FL', 'CA', 'OK', 'CO', 'KY', 'IA', 'NE', 'TN', 'GA'];
+export const AUTONOMOUS_PRIORITY_STATES: string[] = [
+  ...TOP_PRIORITY_STATES,
+  ...USA_STATE_PATHS.map((s) => s.code).filter(
+    (c) => !TOP_PRIORITY_STATES.includes(c) && c !== 'US' && STATE_METRO_HUBS[c]
+  ),
+];
 
 // ---------------------------------------------------------------------------
 // 4. Job History & Background Queue Engine
@@ -947,11 +954,45 @@ export async function runAutonomousMarketScan(options: {
       if (isExisting) existingCount++;
     }
 
-    // 5. Score leads and save through authenticated WordPress Lead Library batch persistence
-    const scoredBatch = commercialLeads.map((lead) => {
+    // 5. Deep Autonomous Website Crawling & Verification (Priority 3 & 4)
+    // Inspects permitted pages (About, Contact, Wholesale, Products) for candidates with websites
+    const enrichedCommercialLeads: NormalizedLead[] = [];
+    for (let i = 0; i < commercialLeads.length; i++) {
+      const candidate = commercialLeads[i];
+      if (candidate.website && i < 5) {
+        try {
+          const enriched = await enrichLeadWithCrawler(candidate);
+          enrichedCommercialLeads.push(enriched);
+        } catch {
+          enrichedCommercialLeads.push(candidate);
+        }
+      } else {
+        enrichedCommercialLeads.push(candidate);
+      }
+    }
+
+    // 6. Score leads and assign quality stages (Quality over Quantity)
+    const scoredBatch = enrichedCommercialLeads.map((lead) => {
       const evidence = calculateLeadEvidence(lead, 75);
+
+      // Distinguish quality stages: discovered -> commercial_prospect -> qualified_buyer -> verified_contactable
+      let qualityStage: 'discovered' | 'commercial_prospect' | 'qualified_buyer' | 'verified_contactable' = 'discovered';
+      if ((lead.phone || lead.email) && evidence.reachability >= 65) {
+        qualityStage = 'verified_contactable';
+      } else if (evidence.commercialPriority >= 60) {
+        qualityStage = 'qualified_buyer';
+      } else if (evidence.commercialPriority >= 35) {
+        qualityStage = 'commercial_prospect';
+      }
+
+      const qualityTag = `quality:${qualityStage}`;
+      const catTag = `cat:${categoryKey}`;
+      const tags = Array.from(new Set([targetCategoryDef.label, qualityTag, catTag]));
+
       return {
         ...lead,
+        status: qualityStage === 'verified_contactable' || qualityStage === 'qualified_buyer' ? 'qualified' : 'discovered',
+        tags,
         opportunityScore: evidence.commercialPriority,
         opportunitySignals: evidence.reasons,
         projectFitScore: evidence.icpFit,

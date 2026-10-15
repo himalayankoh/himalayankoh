@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — LeadOS & CRM
  * Description:       Custom tables and REST endpoints for the LeadOS prospect engine and the CRM lead inbox. This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the leados/v1 and crm/v1 namespaces below.
- * Version:           2.2.0
+ * Version:           2.3.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -39,7 +39,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_LEADOS_VERSION', '2.2.0' );
+define( 'HK_LEADOS_VERSION', '2.3.0' );
 define( 'HK_LEADOS_WORKSPACE_ID', '00000000-0000-0000-0000-000000000001' );
 define( 'HK_LEADOS_DEFAULT_PROJECT_ID', '00000000-0000-0000-0000-000000000002' );
 require_once __DIR__ . '/himalayan-koh-leados-intelligence.php';
@@ -141,7 +141,10 @@ function hk_leados_install() {
 		KEY workspace_status (workspace_id, status),
 		UNIQUE KEY workspace_identity (workspace_id, dedupe_key),
 		KEY osm_lookup (workspace_id, data_source, osm_type, osm_id),
-		KEY business_name (business_name)
+		KEY business_name (business_name),
+		KEY region_idx (region),
+		KEY category_idx (category),
+		KEY created_at_idx (created_at)
 	) $charset;";
 
 	$sql[] = "CREATE TABLE {$p}leados_project_leads (
@@ -1244,8 +1247,30 @@ function hk_leados_list_leads( WP_REST_Request $request ) {
 	);
 
 	$leads = array();
-	foreach ( ( $rows ?: array() ) as $row ) {
-		$leads[] = hk_leados_decode_row( 'leados_leads', hk_leados_attach_projects( $row ) );
+	$rows  = $rows ?: array();
+	$lead_ids = array_filter( array_column( $rows, 'id' ) );
+	$proj_rel = array();
+
+	if ( ! empty( $lead_ids ) ) {
+		$placeholders = implode( ',', array_fill( 0, count( $lead_ids ), '%s' ) );
+		$rels = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT lead_id, project_id, project_fit_score FROM {$p}leados_project_leads WHERE lead_id IN ($placeholders)",
+				$lead_ids
+			),
+			ARRAY_A
+		);
+		foreach ( ( $rels ?: array() ) as $r ) {
+			$proj_rel[ $r['lead_id'] ][] = array(
+				'project_id' => $r['project_id'],
+				'project_fit_score' => $r['project_fit_score'],
+			);
+		}
+	}
+
+	foreach ( $rows as $row ) {
+		$row['leados_project_leads'] = $proj_rel[ $row['id'] ] ?? array();
+		$leads[] = hk_leados_decode_row( 'leados_leads', $row );
 	}
 
 	return rest_ensure_response( array( 'leads' => $leads, 'total' => $total ) );
