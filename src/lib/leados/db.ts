@@ -208,6 +208,11 @@ function toSavedLead(row: RawRow): SavedLeadRecord {
     osmUrl: row.osm_url,
     discoveredAt: row.discovered_at || row.created_at,
     createdAt: row.created_at,
+    updatedAt: row.updated_at || row.created_at,
+    latitude: row.latitude !== null && row.latitude !== undefined ? Number(row.latitude) : null,
+    longitude: row.longitude !== null && row.longitude !== undefined ? Number(row.longitude) : null,
+    facebook: row.facebook || null,
+    instagram: row.instagram || null,
     projects: (row.leados_project_leads || []).map((link: RawRow) => ({
       leadId: row.id,
       projectId: link.project_id,

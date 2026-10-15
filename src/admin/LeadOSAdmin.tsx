@@ -73,12 +73,13 @@ import type { ProductInterest } from '@/lib/leados/types';
 import { parseLeadOSUrlState } from '@/lib/leados/urlState';
 import InteractiveLocationMapPicker from './InteractiveLocationMapPicker';
 import InteractiveUsaMap from './InteractiveUsaMap';
+import LiveUsaMarketMap from './LiveUsaMarketMap';
 
 const AMarketingGen = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.AMarketingGen })));
 const ASEOEngine = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.ASEOEngine })));
 const AEmailMarketing = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.AEmailMarketing })));
 
-type TabType = 'overview' | 'find' | 'library' | 'email' | 'marketing' | 'seo' | 'settings';
+type TabType = 'overview' | 'find' | 'market-map' | 'library' | 'email' | 'marketing' | 'seo' | 'settings';
 
 
 const PRESET_CATEGORIES = BUYER_CATEGORIES.map((value) => ({label: value, value}));
@@ -519,7 +520,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
 
   // Settings active section
-  const [settingsSection, setSettingsSection] = useState<'ai' | 'social' | 'icp' | 'scoring' | 'system'>('ai');
+  const [settingsSection, setSettingsSection] = useState<'ai' | 'social' | 'maps' | 'icp' | 'scoring' | 'system'>('ai');
 
   // ── Lead Library Table Resizing, Sorting, Filtering & Row Reordering ──
   const DEFAULT_LIBRARY_COL_WIDTHS = {
@@ -1933,6 +1934,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               {[
                 { id: 'overview', label: 'Overview', icon: SquaresFour },
                 { id: 'find', label: 'Find Leads', icon: MagnifyingGlass },
+                { id: 'market-map', label: 'Live USA Map', icon: Globe },
                 { id: 'library', label: 'Lead Library & CRM', icon: BookBookmark },
               ].map((tab) => {
                 const Icon = tab.icon;
@@ -2334,356 +2336,322 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               ))}
             </div>
 
-            {/* AI Detected Parameters: Harmonious, Compact 4-Card Parameter Deck */}
-            <div className="pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between pb-2">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                  <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>AI Detected Parameters</span>
-                  <span className="text-[10px] text-slate-400 font-normal">(editable)</span>
-                </div>
+            {/* ── Compact Filter Chips & Controls Bar ── */}
+            <div className="pt-2 border-t border-slate-100 space-y-2">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
                 {planNote && (
-                  <span className="text-[10px] text-indigo-600 font-medium bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                  <span className="text-[10px] text-indigo-700 font-semibold bg-indigo-50/80 px-2.5 py-0.5 rounded-full border border-indigo-100 inline-flex items-center gap-1">
+                    <CheckCircle weight="fill" className="w-3 h-3 text-emerald-500" />
                     {planNote}
                   </span>
                 )}
+
+                {/* Selected Category Chips */}
+                {categoriesList.map((cat, idx) => (
+                  <span
+                    key={`cat-${idx}`}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50/80 border border-indigo-200/90 text-indigo-800 text-[11px] font-semibold shadow-2xs"
+                  >
+                    <Storefront className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                    <span className="truncate max-w-[120px]">{cat}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveCategory(idx)}
+                      className="text-indigo-400 hover:text-indigo-900 cursor-pointer"
+                      title={`Remove ${cat}`}
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+
+                {/* Selected Location Chips */}
+                {locationsList.map((loc, idx) => (
+                  <span
+                    key={`loc-${idx}`}
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-800 text-[11px] font-semibold hover:border-indigo-300 transition shadow-2xs"
+                  >
+                    <MapPin className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                    <span className="truncate max-w-[120px]">{loc}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveLocation(idx)}
+                      className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                      title={`Remove ${loc}`}
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+
+                {/* Contact Requirement Toggle Chips */}
+                <button
+                  type="button"
+                  onClick={() => setRequireWebsite((v) => !v)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition cursor-pointer shadow-2xs ${
+                    requireWebsite
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold'
+                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'
+                  }`}
+                  title={requireWebsite ? 'Website required (active)' : 'Click to require website'}
+                >
+                  <Check weight="bold" className={`w-2.5 h-2.5 ${requireWebsite ? 'text-emerald-600' : 'text-slate-300'}`} />
+                  <span>Web</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRequireEmail((v) => !v)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition cursor-pointer shadow-2xs ${
+                    requireEmail
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold'
+                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'
+                  }`}
+                  title={requireEmail ? 'Email required (active)' : 'Click to require email'}
+                >
+                  <Check weight="bold" className={`w-2.5 h-2.5 ${requireEmail ? 'text-emerald-600' : 'text-slate-300'}`} />
+                  <span>Email</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRequirePhone((v) => !v)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition cursor-pointer shadow-2xs ${
+                    requirePhone
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold'
+                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'
+                  }`}
+                  title={requirePhone ? 'Phone required (active)' : 'Click to require phone'}
+                >
+                  <Check weight="bold" className={`w-2.5 h-2.5 ${requirePhone ? 'text-emerald-600' : 'text-slate-300'}`} />
+                  <span>Phone</span>
+                </button>
+
+                {/* Target Count Chip */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const opts = [25, 50, 100, 150, 200];
+                    const next = opts[(opts.indexOf(resultsLimit) + 1) % opts.length] || 100;
+                    setResultsLimit(next);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-[11px] font-bold transition cursor-pointer shadow-2xs"
+                  title="Click to cycle target count (25, 50, 100, 150, 200)"
+                >
+                  <Target className="w-2.5 h-2.5 text-indigo-600" />
+                  <span>{resultsLimit} Target</span>
+                </button>
+
+                {/* Map Studio Trigger */}
+                <button
+                  type="button"
+                  onClick={() => setShowMapPicker(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 text-indigo-700 hover:from-indigo-100 hover:to-blue-100 text-[11px] font-bold transition cursor-pointer shadow-2xs group"
+                  title="Open interactive USA & World map studio"
+                >
+                  <Globe className="w-3 h-3 text-indigo-600 group-hover:rotate-12 transition" />
+                  <span>Map Studio</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                </button>
+
+                {/* Filters Collapse Control */}
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters((v) => !v)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition cursor-pointer shadow-2xs ml-auto ${
+                    showAdvancedFilters
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                  }`}
+                  title="Toggle detailed filters & manual inputs"
+                >
+                  <Sliders className="w-3 h-3" />
+                  <span>Filters</span>
+                  {showAdvancedFilters ? <CaretUp className="w-2.5 h-2.5" /> : <CaretDown className="w-2.5 h-2.5" />}
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                
-                {/* Parameter Card 1: Business Types */}
-                <div className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 flex flex-col justify-between space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
-                      <Storefront className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Business Types</span>
-                    </div>
-                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-indigo-100/70 text-indigo-700">
-                      {categoriesList.length}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 items-center min-h-[30px]">
-                    {categoriesList.map((cat, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-indigo-200 text-indigo-700 text-[11px] font-semibold shadow-2xs"
-                      >
-                        <span className="truncate max-w-[120px]">{cat}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveCategory(idx)}
-                          className="text-indigo-400 hover:text-indigo-700 cursor-pointer"
-                          title={`Remove ${cat}`}
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
-                    {showAddCategory ? (
+              {/* Lightweight Collapsible Filters Panel */}
+              {showAdvancedFilters && (
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/90 shadow-xs space-y-3 mt-1.5 text-xs animate-in fade-in duration-150">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                    {/* Add Category */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Add Business Category</label>
                       <div className="flex items-center gap-1">
                         <input
                           type="text"
-                          autoFocus
                           value={newCategoryInput}
                           onChange={(e) => setNewCategoryInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); if (e.key === 'Escape') setShowAddCategory(false); }}
-                          placeholder="Category"
-                          className="px-2 py-0.5 text-[11px] border border-indigo-300 rounded w-24 focus:outline-none bg-white"
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); }}
+                          placeholder="e.g. Ranch, Spa, Tack"
+                          className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                         />
-                        <button type="button" onClick={handleAddCategory} className="text-xs text-indigo-600 font-bold cursor-pointer">Add</button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setShowAddCategory(true)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-[10px] font-medium transition cursor-pointer bg-white"
-                      >
-                        <Plus className="w-2.5 h-2.5" /> Add
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Parameter Card 2: Locations (Compact Map Studio Trigger + Chips) */}
-                <div className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 flex flex-col justify-between space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
-                      <MapPin className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Locations</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowMapPicker(true)}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 text-indigo-700 hover:from-indigo-100 hover:to-blue-100 text-[10px] font-bold transition cursor-pointer shadow-2xs group"
-                      title="Open interactive USA & World map studio"
-                    >
-                      <Globe className="w-3 h-3 text-indigo-600 group-hover:rotate-12 transition" />
-                      <span>Map Studio</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    </button>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5 items-center min-h-[30px]">
-                    {locationsList.map((loc, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800 text-[11px] font-semibold hover:border-indigo-200 transition shadow-2xs"
-                      >
-                        <MapPin className="w-2.5 h-2.5 text-indigo-500 flex-shrink-0" />
-                        <span className="truncate max-w-[110px]">{loc}</span>
                         <button
                           type="button"
-                          onClick={() => handleRemoveLocation(idx)}
-                          className="text-slate-400 hover:text-rose-600 cursor-pointer"
-                          title={`Remove ${loc}`}
+                          onClick={handleAddCategory}
+                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg cursor-pointer shrink-0"
                         >
-                          <X className="w-2.5 h-2.5" />
+                          Add
                         </button>
-                      </span>
-                    ))}
-                    {showAddLocation ? (
+                      </div>
+                    </div>
+
+                    {/* Add Location */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Add Location / City</label>
                       <div className="flex items-center gap-1">
                         <input
                           type="text"
-                          autoFocus
                           value={newLocationInput}
                           onChange={(e) => setNewLocationInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddLocation(); if (e.key === 'Escape') setShowAddLocation(false); }}
-                          placeholder="City, State"
-                          className="px-2 py-0.5 text-[11px] border border-indigo-300 rounded w-24 focus:outline-none bg-white"
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleAddLocation(); }}
+                          placeholder="e.g. Ocala, FL or Texas"
+                          className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                         />
-                        <button type="button" onClick={handleAddLocation} className="text-xs text-indigo-600 font-bold cursor-pointer">Add</button>
+                        <button
+                          type="button"
+                          onClick={handleAddLocation}
+                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg cursor-pointer shrink-0"
+                        >
+                          Add
+                        </button>
                       </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setShowAddLocation(true)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 text-[10px] font-medium transition cursor-pointer bg-white"
+                    </div>
+
+                    {/* Target Results Volume */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Target Results Volume</label>
+                      <select
+                        value={resultsLimit}
+                        onChange={(e) => setResultsLimit(Number(e.target.value))}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold bg-white focus:ring-1 focus:ring-indigo-500 focus:outline-none cursor-pointer"
                       >
-                        <Plus className="w-2.5 h-2.5" /> Add
-                      </button>
-                    )}
-                  </div>
-                </div>
+                        <option value={25}>25 businesses</option>
+                        <option value={50}>50 businesses</option>
+                        <option value={100}>100 businesses (default)</option>
+                        <option value={150}>150 businesses</option>
+                        <option value={200}>200 businesses</option>
+                      </select>
+                    </div>
 
-                {/* Parameter Card 3: Required Contacts (Modern Toggle Buttons) */}
-                <div className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 flex flex-col justify-between space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
-                      <Phone className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Required Contacts</span>
+                    {/* Product to Offer */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Product to Offer</label>
+                      <select
+                        aria-label="Product interest"
+                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                        value={productInterest}
+                        onChange={(e) => setProductInterest(e.target.value as ProductInterest)}
+                      >
+                        {PRODUCT_INTERESTS.map((p) => (
+                          <option key={p} value={p}>{OFFER_PROFILES[p].label}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 min-h-[30px]">
-                    <button
-                      type="button"
-                      onClick={() => setRequireWebsite((v) => !v)}
-                      className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-semibold border transition inline-flex items-center justify-center gap-1 cursor-pointer ${
-                        requireWebsite
-                          ? 'bg-white border-indigo-300 text-indigo-700 shadow-2xs font-bold'
-                          : 'bg-white/60 border-slate-200 text-slate-400 hover:text-slate-600'
-                      }`}
-                      title={requireWebsite ? 'Website required (active)' : 'Website optional'}
-                    >
-                      <Check weight="bold" className={`w-3 h-3 ${requireWebsite ? 'text-indigo-600' : 'text-slate-300'}`} />
-                      <span>Web</span>
-                    </button>
+                  {/* Additional parameters */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
+                    <div className="flex items-center gap-3">
+                      <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1.5">
+                        Radius:
+                        <input
+                          aria-label="Radius in kilometers"
+                          className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-xs bg-white font-medium"
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={radiusKm}
+                          onChange={(e) => setRadiusKm(Number(e.target.value))}
+                        />
+                        km
+                      </label>
 
-                    <button
-                      type="button"
-                      onClick={() => setRequireEmail((v) => !v)}
-                      className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-semibold border transition inline-flex items-center justify-center gap-1 cursor-pointer ${
-                        requireEmail
-                          ? 'bg-white border-indigo-300 text-indigo-700 shadow-2xs font-bold'
-                          : 'bg-white/60 border-slate-200 text-slate-400 hover:text-slate-600'
-                      }`}
-                      title={requireEmail ? 'Email required (active)' : 'Email optional'}
-                    >
-                      <Check weight="bold" className={`w-3 h-3 ${requireEmail ? 'text-indigo-600' : 'text-slate-300'}`} />
-                      <span>Email</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setRequirePhone((v) => !v)}
-                      className={`flex-1 py-1 px-1.5 rounded-lg text-[11px] font-semibold border transition inline-flex items-center justify-center gap-1 cursor-pointer ${
-                        requirePhone
-                          ? 'bg-white border-indigo-300 text-indigo-700 shadow-2xs font-bold'
-                          : 'bg-white/60 border-slate-200 text-slate-400 hover:text-slate-600'
-                      }`}
-                      title={requirePhone ? 'Phone required (active)' : 'Phone optional'}
-                    >
-                      <Check weight="bold" className={`w-3 h-3 ${requirePhone ? 'text-indigo-600' : 'text-slate-300'}`} />
-                      <span>Phone</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Parameter Card 4: Results Volume */}
-                <div className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 flex flex-col justify-between space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
-                      <Target className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>Target Results</span>
+                      <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1.5 ml-2">
+                        Depth:
+                        <select
+                          aria-label="Search depth"
+                          className="border border-slate-200 rounded-lg px-2 py-1 text-xs bg-white font-medium"
+                          value={searchDepth}
+                          onChange={(e) => setSearchDepth(Number(e.target.value))}
+                        >
+                          <option value={1}>Standard (1 query)</option>
+                          <option value={2}>Expanded (2 queries)</option>
+                        </select>
+                      </label>
                     </div>
-                  </div>
 
-                  <div className="relative min-h-[30px] flex items-center">
-                    <select
-                      value={resultsLimit}
-                      onChange={(e) => setResultsLimit(Number(e.target.value))}
-                      className="w-full appearance-none pl-3 pr-8 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-800 bg-white hover:border-indigo-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer shadow-2xs"
-                    >
-                      <option value={25}>25 businesses</option>
-                      <option value={50}>50 businesses</option>
-                      <option value={100}>100 businesses</option>
-                      <option value={150}>150 businesses</option>
-                      <option value={200}>200 businesses</option>
-                    </select>
-                    <CaretDown className="w-3 h-3 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-            {/* Collapsible Advanced Options */}
-            <div className="border-t border-slate-100 pt-2.5">
-              <button
-                type="button"
-                onClick={() => setShowAdvancedFilters((v) => !v)}
-                className="w-full flex items-center justify-between text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
-              >
-                <span className="flex items-center gap-1.5">
-                  <GearSix className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Advanced Options</span>
-                  <span className="text-slate-400 text-[11px] font-normal hidden sm:inline">— Search sources, radius, additional keywords, exclusions, and more.</span>
-                </span>
-                {showAdvancedFilters ? <CaretUp className="w-3.5 h-3.5" /> : <CaretDown className="w-3.5 h-3.5" />}
-              </button>
-
-              {showAdvancedFilters && (
-                <div className="grid sm:grid-cols-3 gap-3 pt-3 text-xs">
-                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">
-                    Product to offer
-                    <select
-                      aria-label="Product interest"
-                      className="w-full border border-slate-200 rounded-lg p-2 font-normal bg-white"
-                      value={productInterest}
-                      onChange={(e) => setProductInterest(e.target.value as ProductInterest)}
-                    >
-                      {PRODUCT_INTERESTS.map((p) => (
-                        <option key={p} value={p}>{OFFER_PROFILES[p].label}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">
-                    Map search radius (km)
-                    <input
-                      aria-label="Radius in kilometers"
-                      className="w-full border border-slate-200 rounded-lg p-2 font-normal"
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={radiusKm}
-                      onChange={(e) => setRadiusKm(Number(e.target.value))}
-                    />
-                  </label>
-                  <label className="space-y-1 text-[11px] font-semibold text-slate-600">
-                    Search depth
-                    <select
-                      aria-label="Search depth"
-                      className="w-full border border-slate-200 rounded-lg p-2 font-normal bg-white"
-                      value={searchDepth}
-                      onChange={(e) => setSearchDepth(Number(e.target.value))}
-                    >
-                      <option value={1}>Standard (1 web query)</option>
-                      <option value={2}>Expanded (2 queries)</option>
-                    </select>
-                  </label>
-                  <div className="col-span-full flex flex-wrap gap-x-4 gap-y-2 pt-2 text-[11px] text-slate-600">
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="checkbox" checked={excludeSaved} onChange={(e) => setExcludeSaved(e.target.checked)} />
-                      New leads only (exclude already saved)
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="checkbox" checked={excludeContacted} onChange={(e) => setExcludeContacted(e.target.checked)} />
-                      Skip contacted
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="checkbox" checked={wholesaleOnly} onChange={(e) => setWholesaleOnly(e.target.checked)} />
-                      Wholesale only
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="checkbox" checked={privateLabelOnly} onChange={(e) => setPrivateLabelOnly(e.target.checked)} />
-                      Private label only
-                    </label>
-                  </div>
-
-                  {/* Multi-Source Discovery Checkboxes */}
-                  <div className="sm:col-span-3 p-3 rounded-xl bg-slate-50/80 border border-slate-200/90 space-y-2 mt-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <Globe className="w-3.5 h-3.5 text-indigo-600" />
-                        Multi-Source Lead Discovery Engine
-                      </span>
-                      <span className="text-[10px] text-slate-400">Select platforms to query</span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
-                      {[
-                        { id: 'all', label: 'All Available' },
-                        { id: 'osm', label: 'OpenStreetMap' },
-                        { id: 'web', label: 'General Web', req: 'Web' },
-                        { id: 'facebook', label: 'Facebook Pages', req: 'Meta' },
-                        { id: 'instagram', label: 'Instagram', req: 'Meta' },
-                        { id: 'facebook_groups', label: 'FB Groups', req: 'Meta' },
-                        { id: 'maps', label: 'Google Maps', req: 'Maps' },
-                      ].map((src) => {
-                        const isChecked = selectedSources.includes(src.id) || (src.id !== 'all' && selectedSources.includes('all'));
-                        return (
-                          <label
-                            key={src.id}
-                            className={`flex items-center justify-between gap-1.5 p-2 rounded-lg border text-xs font-medium cursor-pointer transition select-none ${
-                              isChecked
-                                ? 'bg-white border-indigo-300 text-indigo-900 shadow-2xs font-semibold'
-                                : 'bg-white/60 border-slate-200 text-slate-500 hover:text-slate-800'
-                            }`}
-                          >
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => {
-                                  if (src.id === 'all') {
-                                    setSelectedSources(['all']);
-                                  } else {
-                                    setSelectedSources((prev) => {
-                                      const withoutAll = prev.filter((s) => s !== 'all');
-                                      const next = withoutAll.includes(src.id)
-                                        ? withoutAll.filter((s) => s !== src.id)
-                                        : [...withoutAll, src.id];
-                                      return next.length ? next : ['all'];
-                                    });
-                                  }
-                                }}
-                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 shrink-0"
-                              />
-                              <span className="truncate">{src.label}</span>
-                            </div>
-                            {src.req && (
-                              <span className="text-[9px] px-1 py-0.2 rounded bg-slate-100 text-slate-400 font-normal shrink-0">
-                                {src.req}
-                              </span>
-                            )}
-                          </label>
-                        );
-                      })}
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-slate-600">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" checked={excludeSaved} onChange={(e) => setExcludeSaved(e.target.checked)} className="rounded text-indigo-600" />
+                        New leads only
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" checked={excludeContacted} onChange={(e) => setExcludeContacted(e.target.checked)} className="rounded text-indigo-600" />
+                        Skip contacted
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" checked={wholesaleOnly} onChange={(e) => setWholesaleOnly(e.target.checked)} className="rounded text-indigo-600" />
+                        Wholesale only
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" checked={privateLabelOnly} onChange={(e) => setPrivateLabelOnly(e.target.checked)} className="rounded text-indigo-600" />
+                        Private label only
+                      </label>
                     </div>
                   </div>
                 </div>
               )}
+
+              {/* Compact Multi-Source Discovery Selector */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-0.5 flex items-center gap-1">
+                  <Globe className="w-3 h-3 text-slate-400" />
+                  <span>Sources:</span>
+                </span>
+                {[
+                  { id: 'all', label: 'All Available' },
+                  { id: 'osm', label: 'OpenStreetMap', req: 'OSM' },
+                  { id: 'web', label: 'Web', req: 'Web' },
+                  { id: 'facebook', label: 'Facebook', req: 'Meta' },
+                  { id: 'instagram', label: 'Instagram', req: 'Meta' },
+                  { id: 'facebook_groups', label: 'FB Groups', req: 'Meta' },
+                  { id: 'maps', label: 'Google Maps', req: 'Maps' },
+                ].map((src) => {
+                  const isChecked = selectedSources.includes(src.id) || (src.id !== 'all' && selectedSources.includes('all'));
+                  return (
+                    <label
+                      key={src.id}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-medium cursor-pointer transition select-none ${
+                        isChecked
+                          ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-semibold shadow-2xs'
+                          : 'bg-white/60 border-slate-200 text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {
+                          if (src.id === 'all') {
+                            setSelectedSources(['all']);
+                          } else {
+                            setSelectedSources((prev) => {
+                              const withoutAll = prev.filter((s) => s !== 'all');
+                              const next = withoutAll.includes(src.id)
+                                ? withoutAll.filter((s) => s !== src.id)
+                                : [...withoutAll, src.id];
+                              return next.length ? next : ['all'];
+                            });
+                          }
+                        }}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3 w-3 shrink-0"
+                      />
+                      <span>{src.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
 
           </div>
@@ -3669,6 +3637,16 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
             </div>
           )}
+        </div>
+
+        {/* ══════════ LIVE USA MARKET MAP TAB ══════════ */}
+        <div id="leados-panel-market-map" role="tabpanel" aria-labelledby="leados-tab-market-map" className={activeTab === 'market-map' ? "space-y-6" : "hidden"}>
+          <LiveUsaMarketMap
+            onSelectLeadInLibrary={(searchQuery) => {
+              setLibrarySearch(searchQuery);
+              changeTab('library');
+            }}
+          />
         </div>
 
         {/* ══════════ LEAD LIBRARY TAB ══════════ */}
@@ -5266,6 +5244,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             {[
               { id: 'ai' as const, label: 'AI Intelligence Engine', icon: Robot },
               { id: 'social' as const, label: 'Social Accounts & CRM', icon: FacebookLogo },
+              { id: 'maps' as const, label: 'Google Maps / Places (Optional)', icon: Globe },
               { id: 'icp' as const, label: 'Target Market & ICP', icon: Target },
               { id: 'scoring' as const, label: 'Scoring Rules', icon: Sliders },
               { id: 'system' as const, label: 'System & Providers', icon: GearSix },
@@ -5574,6 +5553,89 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 <div className="p-2.5 bg-white rounded-lg border border-slate-200 text-[10px] font-mono text-slate-600 space-y-1">
                   <div><strong>OAuth Redirect URI:</strong> https://himalayankoh.com/api/leados/meta/callback</div>
                   <div><strong>Webhook Callback URL:</strong> https://himalayankoh.com/api/leados/meta/webhook</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Section: Google Maps & Places (Optional) */}
+          {settingsSection === 'maps' && (
+            <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-indigo-600" />
+                  Google Maps &amp; Google Places API (New) — Optional
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  LeadOS runs 100% free with OpenStreetMap and Overpass by default. Google Places is an optional paid layer for commercial place details and autocomplete.
+                </p>
+              </div>
+
+              {/* Status Banner */}
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+                    <span className="font-bold text-slate-900 text-sm">Status: Not Configured / Disabled</span>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700">
+                    Free-First OSM Active
+                  </span>
+                </div>
+
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  No Google Maps API key is configured in your environment. Live USA Map and Lead Discovery continue working seamlessly via OpenStreetMap and verified Overpass mirrors at zero API cost.
+                </p>
+
+                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-amber-900 text-xs space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-[11px]">
+                    <WarningCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Billing &amp; License Guardrails</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-normal">
+                    Google Places API charges per request (e.g. $17 per 1,000 Text Searches). Never enable paid search without explicit owner budget approval. Google licensed place content is subject to Google Maps Platform Terms of Service.
+                  </p>
+                </div>
+
+                {/* Quotas & Budget Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                  <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Monthly Request Budget</div>
+                    <div className="text-sm font-bold text-slate-900">500 requests / month</div>
+                    <div className="text-[10px] text-slate-500">Hard limit to prevent unexpected billing</div>
+                  </div>
+                  <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Estimated Cost</div>
+                    <div className="text-sm font-bold text-indigo-600">~$8.50 / month</div>
+                    <div className="text-[10px] text-slate-500">Based on standard $17.00/1,000 quota</div>
+                  </div>
+                  <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-1">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Field Masks</div>
+                    <div className="text-sm font-bold text-emerald-600">Basic &amp; Contact Only</div>
+                    <div className="text-[10px] text-slate-500">Restricted to avoid expensive Atmosphere SKUs</div>
+                  </div>
+                </div>
+
+                {/* Setup Instructions */}
+                <div className="pt-2 border-t border-slate-200 space-y-2">
+                  <div className="text-xs font-bold text-slate-800">To Connect Google Places (Optional):</div>
+                  <ol className="list-decimal list-inside text-[11px] text-slate-600 space-y-1">
+                    <li>Create an API project on <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">Google Cloud Console</a>.</li>
+                    <li>Enable <strong>Places API (New)</strong> and <strong>Maps JavaScript API</strong>.</li>
+                    <li>Generate an API key and restrict it by HTTP referrer and IP.</li>
+                    <li>Add <code className="bg-white px-1 py-0.5 rounded border border-slate-200">GOOGLE_MAPS_API_KEY</code> and <code className="bg-white px-1 py-0.5 rounded border border-slate-200">ENABLE_GOOGLE_PLACES=true</code> in Cloudflare Worker secrets.</li>
+                  </ol>
+                </div>
+
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => alert('Google Maps Platform is not configured. Free OpenStreetMap & Overpass discovery is active.')}
+                    className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 font-semibold text-slate-700 hover:bg-slate-100 text-xs shadow-2xs cursor-pointer"
+                  >
+                    Test Connection
+                  </button>
+                  <span className="text-[11px] text-slate-400">Free-first OSM active &bull; 0 API bill</span>
                 </div>
               </div>
             </div>

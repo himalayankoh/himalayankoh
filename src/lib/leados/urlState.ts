@@ -1,6 +1,6 @@
-export type LeadOSTab = 'overview' | 'find' | 'library' | 'email' | 'marketing' | 'seo' | 'settings';
+export type LeadOSTab = 'overview' | 'find' | 'market-map' | 'library' | 'email' | 'marketing' | 'seo' | 'settings';
 
-const supportedTabs = new Set<LeadOSTab>(['overview', 'find', 'library', 'email', 'marketing', 'seo', 'settings']);
+const supportedTabs = new Set<LeadOSTab>(['overview', 'find', 'market-map', 'library', 'email', 'marketing', 'seo', 'settings']);
 
 export function parseLeadOSUrlState(input: string | URL): { tab: LeadOSTab; search: string; status: string } {
   const url = typeof input === 'string' ? new URL(input, 'https://preview.himalayankoh.com') : input;
@@ -9,6 +9,8 @@ export function parseLeadOSUrlState(input: string | URL): { tab: LeadOSTab; sear
 
   if (rawTab && supportedTabs.has(rawTab as LeadOSTab)) {
     tab = rawTab as LeadOSTab;
+  } else if (rawTab === 'market-map' || rawTab === 'map' || rawTab === 'market' || rawTab === 'usa-map') {
+    tab = 'market-map';
   } else if (rawTab === 'outreach') {
     tab = 'library';
   } else if (rawTab === 'email-marketing' || rawTab === 'mail') {

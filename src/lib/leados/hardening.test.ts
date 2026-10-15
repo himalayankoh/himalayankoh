@@ -39,6 +39,8 @@ describe('LeadOS hardening boundaries', () => {
   it('preserves safe tab, search, and status URL state', () => {
     const parsed = parseLeadOSUrlState('https://preview.himalayankoh.com/admin/leados?tab=library&search=farm%20supply&status=qualified');
     expect(parsed).toEqual({ tab: 'library', search: 'farm supply', status: 'qualified' });
+    expect(parseLeadOSUrlState('https://preview.himalayankoh.com/admin/leados?tab=market-map').tab).toBe('market-map');
+    expect(parseLeadOSUrlState('https://preview.himalayankoh.com/admin/leados?tab=map').tab).toBe('market-map');
     expect(parseLeadOSUrlState('https://preview.himalayankoh.com/admin/leados?tab=private-note').tab).toBe('overview');
   });
 

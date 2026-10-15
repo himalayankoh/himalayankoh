@@ -198,6 +198,9 @@ export interface SavedLeadRecord {
   osmUrl: string | null;
   discoveredAt: string;
   createdAt: string;
+  updatedAt?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   projects?: Array<{
     leadId: string;
     projectId: string;
