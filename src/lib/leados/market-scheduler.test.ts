@@ -234,6 +234,9 @@ describe('LeadOS 3.2 Market Scheduler & Intelligence', () => {
     expect(scheduler.cronHook).toBe('hk_leados_market_discovery_cron');
     expect(scheduler.persistentBackend).toContain('WordPress MySQL');
     expect(scheduler.browserClosedExecution).toBe(true);
+    expect(scheduler).toHaveProperty('executionEvidence');
+    expect(typeof scheduler.executionEvidence).toBe('string');
+    expect(scheduler).toHaveProperty('heartbeatAgeMinutes');
   });
 
   it('aggregates accurate state counts across the entire library via dbSummary', () => {
