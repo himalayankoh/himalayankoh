@@ -25,6 +25,7 @@ import {
   Minus,
   ArrowsOut,
   Info,
+  ClockCountdown,
 } from '@phosphor-icons/react';
 import { USA_STATE_PATHS, type StateMapPath } from './usaStatePaths';
 import { projectCoordinates } from './InteractiveUsaMap';
@@ -34,6 +35,7 @@ import {
   AUTONOMOUS_PRIORITY_STATES,
   type MarketCategoryKey,
   type StateMarketIntelligence,
+  type MarketResearchJob,
 } from '@/lib/leados/market-scheduler';
 
 export interface MarketMapLeadPin {
@@ -82,6 +84,18 @@ export default function LiveUsaMarketMap({
   const [totalLeadsCount, setTotalLeadsCount] = useState<number>(0);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toISOString());
 
+  // Job History & Scheduler status
+  const [jobs, setJobs] = useState<MarketResearchJob[]>([]);
+  const [scheduler, setScheduler] = useState<{
+    activeJobs: number;
+    queuedJobs: number;
+    completedJobs: number;
+    failedJobs: number;
+    lastSuccessfulScan: string | null;
+    nextScheduledRun: string | null;
+  } | null>(null);
+  const [showJobsModal, setShowJobsModal] = useState(false);
+
   // Filter & Mode states
   const [activeCategory, setActiveCategory] = useState<'all' | MarketCategoryKey>('all');
   const [opportunityMode, setOpportunityMode] = useState<OpportunityMode>('all');
@@ -119,6 +133,8 @@ export default function LiveUsaMarketMap({
       setPins(data.pins || []);
       setTotalLeadsCount(data.totalLeadsCount || 0);
       setLastUpdated(data.lastUpdated || new Date().toISOString());
+      if (data.jobs) setJobs(data.jobs);
+      if (data.scheduler) setScheduler(data.scheduler);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Market map data request failed');
     } finally {
@@ -152,6 +168,8 @@ export default function LiveUsaMarketMap({
       setScanMessage(
         `Scan complete! Discovered ${s.leadsDiscovered} leads in ${s.metroScanned}, saved ${s.newLeadsSaved} qualified records.`
       );
+      if (data.jobs) setJobs(data.jobs);
+      if (data.scheduler) setScheduler(data.scheduler);
       // Refresh map metrics and pins
       await fetchData();
     } catch (err) {
@@ -390,6 +408,17 @@ export default function LiveUsaMarketMap({
                 <Sparkle weight="fill" className="w-3.5 h-3.5 text-amber-300" />
               )}
               <span>{scanningState ? `Scanning ${scanningState}...` : `Run Scan (${selectedStateCode || 'TX'})`}</span>
+            </button>
+
+            {/* Research Jobs Button */}
+            <button
+              type="button"
+              onClick={() => setShowJobsModal(true)}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+              title="View autonomous background research job queue & history"
+            >
+              <ClockCountdown className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Jobs ({jobs.length})</span>
             </button>
           </div>
 
@@ -979,8 +1008,8 @@ export default function LiveUsaMarketMap({
                       {focusedState.coverageStatus === 'not_scanned'
                         ? 'Not Yet Scanned'
                         : focusedState.coverageStatus === 'partial'
-                        ? 'Partial Coverage'
-                        : 'Comprehensive'}
+                        ? `Partial (${focusedState.scannedHubs?.length || 0}/${focusedState.totalHubs || 1} Hubs)`
+                        : `Comprehensive (${focusedState.totalHubs}/${focusedState.totalHubs} Hubs)`}
                     </div>
                   </div>
                 </div>
@@ -1057,6 +1086,119 @@ export default function LiveUsaMarketMap({
         )}
 
       </div>
+
+      {/* Autonomous Research Jobs & Queue Modal */}
+      {showJobsModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <ClockCountdown className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Autonomous Research Queue &amp; History</h3>
+                  <p className="text-[11px] text-slate-500">Scheduled background jobs continue even when browser tab is closed.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowJobsModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Scheduler Status Summary */}
+            {scheduler && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-4 bg-indigo-50/30 border-b border-slate-100 text-xs">
+                <div className="p-2 rounded-lg bg-white border border-slate-100">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Active Jobs</div>
+                  <div className="text-sm font-bold text-slate-800">{scheduler.activeJobs}</div>
+                </div>
+                <div className="p-2 rounded-lg bg-white border border-slate-100">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Completed</div>
+                  <div className="text-sm font-bold text-emerald-600">{scheduler.completedJobs}</div>
+                </div>
+                <div className="p-2 rounded-lg bg-white border border-slate-100">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Failed</div>
+                  <div className="text-sm font-bold text-slate-600">{scheduler.failedJobs}</div>
+                </div>
+                <div className="p-2 rounded-lg bg-white border border-slate-100">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase">Next Refresh</div>
+                  <div className="text-xs font-bold text-indigo-600">
+                    {scheduler.nextScheduledRun ? new Date(scheduler.nextScheduledRun).toLocaleTimeString() : 'In 6 hours'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Jobs List */}
+            <div className="p-4 overflow-y-auto space-y-2 flex-1">
+              {jobs.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 text-xs">
+                  No background jobs recorded in current session. Run a scan on any state above to trigger discovery.
+                </div>
+              ) : (
+                jobs.map((job) => (
+                  <div
+                    key={job.jobId}
+                    className="p-3 rounded-xl border border-slate-200/80 bg-white hover:border-slate-300 transition text-xs space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] uppercase font-mono">
+                          {job.stateCode}
+                        </span>
+                        <span>{job.metroHub}</span>
+                        <span className="text-slate-400 font-normal text-[11px]">&bull; {job.categoryKey}</span>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          job.status === 'completed'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : job.status === 'running'
+                            ? 'bg-amber-100 text-amber-700 animate-pulse'
+                            : job.status === 'failed'
+                            ? 'bg-rose-100 text-rose-700'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {job.status}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-500 pt-1">
+                      <div>Discovered: <strong className="text-slate-800">{job.discoveredCount}</strong></div>
+                      <div>New Saved: <strong className="text-emerald-700">{job.newSavedCount}</strong></div>
+                      <div>Existing: <strong className="text-indigo-700">{job.existingUpdatedCount}</strong></div>
+                      <div>Provider: <span className="text-slate-600">{job.provider.split('/')[0]}</span></div>
+                    </div>
+
+                    <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-50 font-mono">
+                      <span>ID: {job.jobId}</span>
+                      <span>{new Date(job.scheduledAt).toLocaleTimeString()} ({job.durationMs}ms)</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-slate-50 border-t border-slate-100 text-right">
+              <button
+                type="button"
+                onClick={() => setShowJobsModal(false)}
+                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

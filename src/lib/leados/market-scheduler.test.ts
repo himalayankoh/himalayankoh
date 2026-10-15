@@ -4,6 +4,10 @@ import {
   aggregateStateMarketData,
   MARKET_CATEGORIES,
   getGooglePlacesStatus,
+  resolveStateTargetLocation,
+  runAutonomousMarketScan,
+  getJobHistory,
+  getSchedulerStatus,
 } from './market-scheduler';
 import type { SavedLeadRecord } from './types';
 
@@ -179,4 +183,53 @@ describe('LeadOS 3.2 Market Scheduler & Intelligence', () => {
     expect(MARKET_CATEGORIES.wellness.label).toBe('Wellness & Lifestyle');
     expect(MARKET_CATEGORIES.agriculture.osmTags.length).toBeGreaterThan(0);
   });
+
+  it('accurately resolves geographic coordinates for US states without cross-state fallback', () => {
+    // Texas
+    const txLoc = resolveStateTargetLocation('TX');
+    expect(txLoc).not.toBeNull();
+    expect(txLoc!.metroName).toBe('Houston Metro');
+    expect(txLoc!.lat).toBeCloseTo(29.76, 1);
+
+    // Oklahoma must NOT return Texas coordinates
+    const okLoc = resolveStateTargetLocation('OK');
+    expect(okLoc).not.toBeNull();
+    expect(okLoc!.metroName).toContain('Oklahoma City');
+    expect(okLoc!.lat).toBeCloseTo(35.46, 1);
+    expect(okLoc!.lat).not.toBe(txLoc!.lat);
+
+    // California
+    const caLoc = resolveStateTargetLocation('CA');
+    expect(caLoc).not.toBeNull();
+    expect(caLoc!.metroName).toContain('Fresno');
+    expect(caLoc!.lon).toBeLessThan(-115);
+
+    // Colorado
+    const coLoc = resolveStateTargetLocation('CO');
+    expect(coLoc).not.toBeNull();
+    expect(coLoc!.metroName).toContain('Denver');
+
+    // Invalid state must return null
+    const invalidLoc = resolveStateTargetLocation('ZZ');
+    expect(invalidLoc).toBeNull();
+  });
+
+  it('rejects autonomous scan when an invalid state cannot be resolved', async () => {
+    const res = await runAutonomousMarketScan({ stateCode: 'ZZ' });
+    expect(res.ok).toBe(false);
+    expect(res.leadsDiscovered).toBe(0);
+    expect(res.errors[0]).toContain('Geographic resolution failed');
+  });
+
+  it('tracks job history and scheduler status', () => {
+    const jobs = getJobHistory();
+    expect(Array.isArray(jobs)).toBe(true);
+
+    const scheduler = getSchedulerStatus();
+    expect(scheduler).toHaveProperty('activeJobs');
+    expect(scheduler).toHaveProperty('nextScheduledRun');
+    expect(scheduler.priorityStates).toContain('TX');
+    expect(scheduler.priorityStates).toContain('OK');
+  });
 });
+
