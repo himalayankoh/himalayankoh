@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { timingSafeEqual } from '@/lib/auth/sessionToken';
 import { listSavedLeads, getMarketSummaryFromDb, getMarketJobsFromDb } from '@/lib/leados/db';
+import { getLastLeadsMutationTime } from '@/lib/leados/lead-cache';
 import {
   aggregateStateMarketData,
   classifyMarketCategory,
@@ -63,14 +64,22 @@ export async function GET(request: Request) {
     );
     const lastSuccessfulScanTime = sortedCompleted[0]?.completedAt || null;
 
-    // Incremental polling shortcut: if since is provided and no jobs completed since then, check if summary changed
-    if (since && lastSuccessfulScanTime && new Date(lastSuccessfulScanTime).getTime() <= new Date(since).getTime()) {
+    // Incremental polling: check if a scan completed, or if any manual lead save, edit, deletion, or exclusion occurred
+    const lastMutationTime = getLastLeadsMutationTime();
+    const sinceTime = since ? new Date(since).getTime() : 0;
+    const scanTime = lastSuccessfulScanTime ? new Date(lastSuccessfulScanTime).getTime() : 0;
+
+    const hasJobUpdates = scanTime > sinceTime;
+    const hasMutationUpdates = lastMutationTime > sinceTime;
+
+    if (since && !hasJobUpdates && !hasMutationUpdates) {
       return NextResponse.json(
         {
           ok: true,
           incremental: true,
           hasUpdates: false,
           lastSuccessfulScanTime,
+          lastMutationTime: new Date(lastMutationTime).toISOString(),
           summary: dbSummary,
           lastUpdated: new Date().toISOString(),
         },

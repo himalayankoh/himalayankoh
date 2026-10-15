@@ -72,3 +72,9 @@ docs/production/*-manifest-*.csv
 docs/production/*-census-*.csv
 docs/production/*-export-*.csv
 docs/production/*customer*.csv
+
+# SQLite research databases and runtime caches
+*.sqlite
+*.sqlite-journal
+ops/leados/data/
+

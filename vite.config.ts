@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import vinext from "vinext";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { cdnAdapter } from "@vinext/cloudflare/cache/cdn-adapter";
-import { preserveCdnStageRedirects } from "./src/lib/cloudflare/cdnRedirects";
+import { preserveCdnStageRedirects } from "./src/lib/cloudflare/cdnRedirects.ts";
 
 export default defineConfig({
   plugins: [

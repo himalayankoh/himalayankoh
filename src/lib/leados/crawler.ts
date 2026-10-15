@@ -86,6 +86,122 @@ const TARGET_PAGE_PATTERNS = [
   { slug: 'products', regex: /\b(products|services|feed|equine|livestock|salt)\b/i },
 ];
 
+/** Cached robots.txt rules per hostname (1 hour TTL) */
+interface RobotsPolicy {
+  disallowPaths: string[];
+  allowPaths: string[];
+  expiresAt: number;
+}
+const ROBOTS_CACHE = new Map<string, RobotsPolicy>();
+
+/**
+ * Checks whether a given path is allowed by robots.txt
+ */
+export async function isRobotsAllowed(targetUrl: string, timeoutMs = 4000): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(targetUrl);
+  } catch {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  const now = Date.now();
+  const cached = ROBOTS_CACHE.get(hostname);
+
+  if (cached && cached.expiresAt > now) {
+    return evaluateRobotsRules(parsed.pathname, cached);
+  }
+
+  // Fetch robots.txt with SSRF guard and small 16KB limit
+  const robotsUrl = `${parsed.protocol}//${parsed.host}/robots.txt`;
+  const safety = checkFetchableUrl(robotsUrl);
+  if (!safety.ok) {
+    return false;
+  }
+
+  let policy: RobotsPolicy = { disallowPaths: [], allowPaths: [], expiresAt: now + 3600 * 1000 };
+
+  try {
+    const res = await fetch(safety.url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) HimalayanKohResearchBot/3.3 (+https://himalayankoh.com)',
+        'Accept': 'text/plain,*/*;q=0.8',
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+      cache: 'no-store',
+      redirect: 'manual',
+    });
+
+    if (res.status === 200) {
+      const reader = res.body?.getReader();
+      if (reader) {
+        let text = '';
+        const decoder = new TextDecoder('utf-8');
+        let bytes = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          bytes += value.length;
+          text += decoder.decode(value, { stream: true });
+          if (bytes >= 16 * 1024) {
+            await reader.cancel();
+            break;
+          }
+        }
+        text += decoder.decode();
+        policy = parseRobotsTxt(text, now);
+      }
+    }
+  } catch {
+    // If robots.txt fails or is unreachable, allow with short 10m fallback
+    policy.expiresAt = now + 600 * 1000;
+  }
+
+  ROBOTS_CACHE.set(hostname, policy);
+  return evaluateRobotsRules(parsed.pathname, policy);
+}
+
+function parseRobotsTxt(content: string, now: number): RobotsPolicy {
+  const lines = content.split(/\r?\n/);
+  let relevantAgent = false;
+  const disallowPaths: string[] = [];
+  const allowPaths: string[] = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/#.*$/, '').trim();
+    if (!line) continue;
+
+    const [directive, ...rest] = line.split(':');
+    const key = (directive || '').trim().toLowerCase();
+    const val = rest.join(':').trim();
+
+    if (key === 'user-agent') {
+      const agent = val.toLowerCase();
+      relevantAgent = agent === '*' || agent.includes('himalayankoh');
+    } else if (relevantAgent) {
+      if (key === 'disallow' && val) {
+        disallowPaths.push(val);
+      } else if (key === 'allow' && val) {
+        allowPaths.push(val);
+      }
+    }
+  }
+
+  return { disallowPaths, allowPaths, expiresAt: now + 3600 * 1000 };
+}
+
+function evaluateRobotsRules(pathname: string, policy: RobotsPolicy): boolean {
+  for (const allow of policy.allowPaths) {
+    if (pathname.startsWith(allow)) return true;
+  }
+  for (const disallow of policy.disallowPaths) {
+    if (disallow === '/' || pathname.startsWith(disallow)) return false;
+  }
+  return true;
+}
+
 /**
  * Throttle requests to the same domain to respect host resources
  */
@@ -101,56 +217,117 @@ async function throttleDomain(hostname: string): Promise<void> {
 }
 
 /**
- * Safe fetch with SSRF guard, timeout, and size limits
+ * Safe fetch with manual redirect validation against SSRF restrictions,
+ * robots.txt verification, and response streaming with early byte ceiling cancellation.
  */
-async function safeFetchHtml(rawUrl: string, timeoutMs = 8000): Promise<{ html: string; status: number } | null> {
-  const safety = checkFetchableUrl(rawUrl);
-  if (!safety.ok) {
-    return null;
-  }
+export async function safeFetchHtml(
+  rawUrl: string,
+  timeoutMs = 8000,
+  maxRedirects = 3
+): Promise<{ html: string; status: number; finalUrl: string } | null> {
+  let currentUrl = rawUrl;
+  let redirectsRemaining = maxRedirects;
 
-  let parsed: URL;
-  try {
-    parsed = new URL(safety.url);
-  } catch {
-    return null;
-  }
-
-  if (isInformationalDomain(parsed.hostname)) {
-    return null;
-  }
-
-  await throttleDomain(parsed.hostname);
-
-  try {
-    const res = await fetch(safety.url, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) HimalayanKohResearchBot/3.3 (+https://himalayankoh.com)',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      signal: AbortSignal.timeout(timeoutMs),
-      cache: 'no-store',
-      redirect: 'follow',
-    });
-
-    if (!res.ok) {
-      return { html: '', status: res.status };
-    }
-
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+  while (redirectsRemaining >= 0) {
+    const safety = checkFetchableUrl(currentUrl);
+    if (!safety.ok) {
       return null;
     }
 
-    // Limit read to 1 MB
-    const text = await res.text();
-    const truncated = text.length > 1_000_000 ? text.slice(0, 1_000_000) : text;
-    return { html: truncated, status: res.status };
-  } catch {
-    return null;
+    let parsed: URL;
+    try {
+      parsed = new URL(safety.url);
+    } catch {
+      return null;
+    }
+
+    if (isInformationalDomain(parsed.hostname)) {
+      return null;
+    }
+
+    const robotsOk = await isRobotsAllowed(safety.url, Math.min(timeoutMs, 4000));
+    if (!robotsOk) {
+      return null;
+    }
+
+    await throttleDomain(parsed.hostname);
+
+    try {
+      const res = await fetch(safety.url, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) HimalayanKohResearchBot/3.3 (+https://himalayankoh.com)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+        cache: 'no-store',
+        redirect: 'manual',
+      });
+
+      // Handle HTTP redirects manually with SSRF validation on every hop
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location');
+        if (!location || redirectsRemaining === 0) {
+          return null;
+        }
+        let nextUrl: string;
+        try {
+          nextUrl = new URL(location, currentUrl).toString();
+        } catch {
+          return null;
+        }
+
+        // Validate redirected URL against SSRF rules before following
+        const nextSafety = checkFetchableUrl(nextUrl);
+        if (!nextSafety.ok) {
+          return null;
+        }
+
+        currentUrl = nextSafety.url;
+        redirectsRemaining--;
+        continue;
+      }
+
+      if (!res.ok) {
+        return { html: '', status: res.status, finalUrl: currentUrl };
+      }
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+        return null;
+      }
+
+      // Stream response chunks up to 512 KB, canceling reader immediately once ceiling is met
+      const reader = res.body?.getReader();
+      if (!reader) {
+        return null;
+      }
+
+      const decoder = new TextDecoder('utf-8');
+      let html = '';
+      let receivedBytes = 0;
+      const MAX_BYTES = 512 * 1024; // 512 KB streaming limit
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        receivedBytes += value.length;
+        html += decoder.decode(value, { stream: true });
+        if (receivedBytes >= MAX_BYTES) {
+          await reader.cancel();
+          break;
+        }
+      }
+      html += decoder.decode();
+
+      return { html, status: res.status, finalUrl: currentUrl };
+    } catch {
+      return null;
+    }
   }
+
+  return null;
 }
 
 /**
@@ -245,7 +422,7 @@ function extractEmails(html: string): string[] {
   return Array.from(emails);
 }
 
-function isValidBusinessEmail(email: string): boolean {
+export function isValidBusinessEmail(email: string): boolean {
   if (!email || email.length < 6 || email.length > 80) return false;
   if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email)) return false;
   return !JUNK_EMAIL_PATTERNS.some((p) => p.test(email));
@@ -280,30 +457,61 @@ function extractSocialProfiles(html: string): { facebook?: string; instagram?: s
 /**
  * Detect wholesale / dealer opportunities in page text
  */
-function detectWholesaleOpportunity(html: string): { hasWholesale: boolean; excerpt?: string } {
+export function detectWholesaleOpportunity(html: string): { hasWholesale: boolean; excerpt?: string } {
   const plainText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
   const wholesaleKeywords = [
-    /wholesale inquiries/i,
+    /\bwholesale\b/i,
     /become a dealer/i,
     /dealer application/i,
-    /distributor opportunities/i,
+    /\bdealers?\b/i,
+    /\bdistributors?\b/i,
     /wholesale pricing/i,
-    /bulk orders/i,
+    /\bbulk (?:orders?|feed|supply|pallet|livestock)\b/i,
     /retailer partnership/i,
     /private label/i,
   ];
 
   for (const re of wholesaleKeywords) {
-    const match = plainText.match(new RegExp(`(?:[\\w\\s]{0,40})?${re.source}(?:[\\w\\s]{0,40})?`, 'i'));
+    const match = re.exec(plainText);
     if (match) {
+      const idx = match.index;
+      const start = Math.max(0, idx - 40);
+      const end = Math.min(plainText.length, idx + match[0].length + 40);
       return {
         hasWholesale: true,
-        excerpt: match[0].trim(),
+        excerpt: plainText.slice(start, end).trim(),
       };
     }
   }
 
   return { hasWholesale: false };
+}
+
+export function detectWholesaleSignals(html: string): { hasOpportunity: boolean; signals: string[]; excerpt?: string } {
+  const opp = detectWholesaleOpportunity(html);
+  return {
+    hasOpportunity: opp.hasWholesale,
+    signals: opp.hasWholesale ? [opp.excerpt || 'wholesale'] : [],
+    excerpt: opp.excerpt,
+  };
+}
+
+export function calculateExtractionConfidence(details: {
+  companyName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  hasWholesale?: boolean;
+  sourceCount?: number;
+}): number {
+  let score = 25;
+  if (details.companyName) score += 20;
+  if (details.phone) score += 15;
+  if (details.email) score += 15;
+  if (details.address) score += 10;
+  if (details.hasWholesale) score += 10;
+  if ((details.sourceCount || 0) > 1) score += 10;
+  return Math.min(100, score);
 }
 
 /**

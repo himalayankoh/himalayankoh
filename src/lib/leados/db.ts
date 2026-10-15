@@ -595,7 +595,7 @@ export async function listSavedLeads(options?: {
 
   const isTest = typeof process !== 'undefined' && (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST));
   if (!options?.skipCache && !isTest) {
-    const cached = getCachedLeads(cacheKey);
+    const cached = getCachedLeads(cacheKey, options);
     if (cached.hit && cached.data) {
       if (cached.isStale) {
         // Stale-While-Revalidate: trigger background revalidation
