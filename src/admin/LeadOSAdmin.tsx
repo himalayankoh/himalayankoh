@@ -2338,137 +2338,145 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
             {/* ── Compact Filter Chips & Controls Bar ── */}
             <div className="pt-2 border-t border-slate-100 space-y-2">
-              <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                {planNote && (
-                  <span className="text-[10px] text-indigo-700 font-semibold bg-indigo-50/80 px-2.5 py-0.5 rounded-full border border-indigo-100 inline-flex items-center gap-1">
-                    <CheckCircle weight="fill" className="w-3 h-3 text-emerald-500" />
-                    {planNote}
-                  </span>
-                )}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                {/* Left: Active criteria badges */}
+                <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
+                  {planNote && (
+                    <span className="text-[10px] text-indigo-700 font-semibold bg-indigo-50/80 px-2 py-0.5 rounded-full border border-indigo-100 inline-flex items-center gap-1">
+                      <CheckCircle weight="fill" className="w-3 h-3 text-emerald-500" />
+                      {planNote}
+                    </span>
+                  )}
 
-                {/* Selected Category Chips */}
-                {categoriesList.map((cat, idx) => (
-                  <span
-                    key={`cat-${idx}`}
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50/80 border border-indigo-200/90 text-indigo-800 text-[11px] font-semibold shadow-2xs"
-                  >
-                    <Storefront className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
-                    <span className="truncate max-w-[120px]">{cat}</span>
+                  {/* Selected Category Chips */}
+                  {categoriesList.map((cat, idx) => (
+                    <span
+                      key={`cat-${idx}`}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50/80 border border-indigo-200/90 text-indigo-800 text-[11px] font-semibold shadow-2xs"
+                    >
+                      <Storefront className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                      <span className="truncate max-w-[120px]">{cat}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCategory(idx)}
+                        className="text-indigo-400 hover:text-indigo-900 cursor-pointer ml-0.5"
+                        title={`Remove ${cat}`}
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  ))}
+
+                  {/* Selected Location Chips */}
+                  {locationsList.map((loc, idx) => (
+                    <span
+                      key={`loc-${idx}`}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-800 text-[11px] font-semibold hover:border-indigo-300 transition shadow-2xs"
+                    >
+                      <MapPin className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
+                      <span className="truncate max-w-[120px]">{loc}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLocation(idx)}
+                        className="text-slate-400 hover:text-rose-600 cursor-pointer ml-0.5"
+                        title={`Remove ${loc}`}
+                      >
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                    </span>
+                  ))}
+
+                  {/* Contact Requirement Toggle Chips */}
+                  <div className="inline-flex items-center gap-1 bg-slate-50 p-0.5 rounded-full border border-slate-200">
                     <button
                       type="button"
-                      onClick={() => handleRemoveCategory(idx)}
-                      className="text-indigo-400 hover:text-indigo-900 cursor-pointer"
-                      title={`Remove ${cat}`}
+                      onClick={() => setRequireWebsite((v) => !v)}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition cursor-pointer ${
+                        requireWebsite
+                          ? 'bg-emerald-500 text-white font-bold shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                      title={requireWebsite ? 'Website required (active)' : 'Click to require website'}
                     >
-                      <X className="w-2.5 h-2.5" />
+                      <Check weight="bold" className={`w-2.5 h-2.5 ${requireWebsite ? 'text-white' : 'text-slate-400'}`} />
+                      <span>Web</span>
                     </button>
-                  </span>
-                ))}
 
-                {/* Selected Location Chips */}
-                {locationsList.map((loc, idx) => (
-                  <span
-                    key={`loc-${idx}`}
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-50 border border-slate-200 text-slate-800 text-[11px] font-semibold hover:border-indigo-300 transition shadow-2xs"
-                  >
-                    <MapPin className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
-                    <span className="truncate max-w-[120px]">{loc}</span>
                     <button
                       type="button"
-                      onClick={() => handleRemoveLocation(idx)}
-                      className="text-slate-400 hover:text-rose-600 cursor-pointer"
-                      title={`Remove ${loc}`}
+                      onClick={() => setRequireEmail((v) => !v)}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition cursor-pointer ${
+                        requireEmail
+                          ? 'bg-emerald-500 text-white font-bold shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                      title={requireEmail ? 'Email required (active)' : 'Click to require email'}
                     >
-                      <X className="w-2.5 h-2.5" />
+                      <Check weight="bold" className={`w-2.5 h-2.5 ${requireEmail ? 'text-white' : 'text-slate-400'}`} />
+                      <span>Email</span>
                     </button>
-                  </span>
-                ))}
 
-                {/* Contact Requirement Toggle Chips */}
-                <button
-                  type="button"
-                  onClick={() => setRequireWebsite((v) => !v)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition cursor-pointer shadow-2xs ${
-                    requireWebsite
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold'
-                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'
-                  }`}
-                  title={requireWebsite ? 'Website required (active)' : 'Click to require website'}
-                >
-                  <Check weight="bold" className={`w-2.5 h-2.5 ${requireWebsite ? 'text-emerald-600' : 'text-slate-300'}`} />
-                  <span>Web</span>
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => setRequirePhone((v) => !v)}
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition cursor-pointer ${
+                        requirePhone
+                          ? 'bg-emerald-500 text-white font-bold shadow-2xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                      title={requirePhone ? 'Phone required (active)' : 'Click to require phone'}
+                    >
+                      <Check weight="bold" className={`w-2.5 h-2.5 ${requirePhone ? 'text-white' : 'text-slate-400'}`} />
+                      <span>Phone</span>
+                    </button>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => setRequireEmail((v) => !v)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition cursor-pointer shadow-2xs ${
-                    requireEmail
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold'
-                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'
-                  }`}
-                  title={requireEmail ? 'Email required (active)' : 'Click to require email'}
-                >
-                  <Check weight="bold" className={`w-2.5 h-2.5 ${requireEmail ? 'text-emerald-600' : 'text-slate-300'}`} />
-                  <span>Email</span>
-                </button>
+                  {/* Target Count Chip */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const opts = [25, 50, 100, 150, 200];
+                      const next = opts[(opts.indexOf(resultsLimit) + 1) % opts.length] || 100;
+                      setResultsLimit(next);
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-[10px] font-bold transition cursor-pointer shadow-2xs"
+                    title="Click to cycle target count (25, 50, 100, 150, 200)"
+                  >
+                    <Target className="w-2.5 h-2.5 text-indigo-600" />
+                    <span>{resultsLimit} Target</span>
+                  </button>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => setRequirePhone((v) => !v)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition cursor-pointer shadow-2xs ${
-                    requirePhone
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold'
-                      : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600'
-                  }`}
-                  title={requirePhone ? 'Phone required (active)' : 'Click to require phone'}
-                >
-                  <Check weight="bold" className={`w-2.5 h-2.5 ${requirePhone ? 'text-emerald-600' : 'text-slate-300'}`} />
-                  <span>Phone</span>
-                </button>
+                {/* Right: Actions Cluster (Map Studio + Filters) strictly unified */}
+                <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+                  {/* Map Studio Trigger */}
+                  <button
+                    type="button"
+                    onClick={() => setShowMapPicker(true)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50/90 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-[11px] font-bold transition cursor-pointer shadow-2xs group"
+                    title="Open interactive USA & World map studio"
+                  >
+                    <Globe className="w-3.5 h-3.5 text-indigo-600 group-hover:rotate-12 transition" />
+                    <span>Map Studio</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  </button>
 
-                {/* Target Count Chip */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const opts = [25, 50, 100, 150, 200];
-                    const next = opts[(opts.indexOf(resultsLimit) + 1) % opts.length] || 100;
-                    setResultsLimit(next);
-                  }}
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-[11px] font-bold transition cursor-pointer shadow-2xs"
-                  title="Click to cycle target count (25, 50, 100, 150, 200)"
-                >
-                  <Target className="w-2.5 h-2.5 text-indigo-600" />
-                  <span>{resultsLimit} Target</span>
-                </button>
-
-                {/* Map Studio Trigger */}
-                <button
-                  type="button"
-                  onClick={() => setShowMapPicker(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 text-indigo-700 hover:from-indigo-100 hover:to-blue-100 text-[11px] font-bold transition cursor-pointer shadow-2xs group"
-                  title="Open interactive USA & World map studio"
-                >
-                  <Globe className="w-3 h-3 text-indigo-600 group-hover:rotate-12 transition" />
-                  <span>Map Studio</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                </button>
-
-                {/* Filters Collapse Control */}
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedFilters((v) => !v)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition cursor-pointer shadow-2xs ml-auto ${
-                    showAdvancedFilters
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
-                  }`}
-                  title="Toggle detailed filters & manual inputs"
-                >
-                  <Sliders className="w-3 h-3" />
-                  <span>Filters</span>
-                  {showAdvancedFilters ? <CaretUp className="w-2.5 h-2.5" /> : <CaretDown className="w-2.5 h-2.5" />}
-                </button>
+                  {/* Filters Collapse Control */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedFilters((v) => !v)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer shadow-2xs ${
+                      showAdvancedFilters
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                    }`}
+                    title="Toggle detailed filters & manual inputs"
+                  >
+                    <Sliders className="w-3.5 h-3.5" />
+                    <span>Filters</span>
+                    {showAdvancedFilters ? <CaretUp className="w-2.5 h-2.5" /> : <CaretDown className="w-2.5 h-2.5" />}
+                  </button>
+                </div>
               </div>
 
               {/* Lightweight Collapsible Filters Panel */}
