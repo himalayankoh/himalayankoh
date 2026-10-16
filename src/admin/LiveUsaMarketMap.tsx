@@ -24,6 +24,7 @@ import {
   Plus,
   Minus,
   ArrowsOut,
+  ArrowsIn,
   Info,
   ClockCountdown,
 } from '@phosphor-icons/react';
@@ -115,6 +116,7 @@ export default function LiveUsaMarketMap({
   const [scanMessage, setScanMessage] = useState<string | null>(null);
 
   // Zoom & Pan transformation state
+  const [isExpanded, setIsExpanded] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [viewBox, setViewBox] = useState<{ x: number; y: number; w: number; h: number }>({
     x: 0,
@@ -530,7 +532,7 @@ export default function LiveUsaMarketMap({
   return (
     <div className={`space-y-4 ${className}`}>
       {/* ── Top Bar Controls: Compact, professional command strip ── */}
-      <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-3">
+      <div className="p-2 sm:p-2.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs space-y-2">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
           
           {/* Segment 1: Market Category Pills */}
@@ -745,74 +747,87 @@ export default function LiveUsaMarketMap({
         )}
       </div>
 
-      {/* ── Main Map Workspace: Occupies screen with interactive SVG Canvas ── */}
-      <div className="relative w-full rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-lg min-h-[580px] lg:min-h-[640px] flex">
-        
+      {/* ── Main Map Workspace: Compact (420-450px desktop / 340-380px mobile) with Fullscreen Expansion ── */}
+      <div
+        className={`relative w-full rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-lg flex transition-all duration-300 ${
+          isExpanded
+            ? 'h-[75vh] min-h-[560px]'
+            : 'h-[340px] sm:h-[380px] md:h-[430px] lg:h-[450px]'
+        }`}
+      >
         {/* Floating Zoom & Control Bar */}
-        <div className="absolute top-4 left-4 z-20 flex flex-col gap-1.5 bg-slate-800/90 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-md">
+        <div className="absolute top-3 left-3 z-20 flex flex-col gap-1 bg-slate-800/90 backdrop-blur-md p-1 rounded-xl border border-slate-700/80 shadow-md">
           <button
             type="button"
             onClick={handleZoomIn}
-            className="p-2 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
+            className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
             title="Zoom In (Consistent 1.25x step)"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
           </button>
           <button
             type="button"
             onClick={handleZoomOut}
-            className="p-2 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
+            className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
             title="Zoom Out (Consistent 1.25x step)"
           >
-            <Minus className="w-4 h-4" />
+            <Minus className="w-3.5 h-3.5" />
           </button>
           {selectedStateCode && (
             <button
               type="button"
               onClick={handleFitState}
-              className="p-2 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 transition cursor-pointer border border-indigo-700/60"
+              className="p-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 transition cursor-pointer border border-indigo-700/60"
               title={`Fit ${selectedStateCode} to Screen`}
             >
-              <Target className="w-4 h-4" />
+              <Target className="w-3.5 h-3.5" />
             </button>
           )}
           <button
             type="button"
             onClick={handleResetZoom}
-            className="p-2 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
+            className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
             title="Reset to Full USA Map"
           >
-            <ArrowsOut className="w-4 h-4" />
+            <Globe className="w-3.5 h-3.5" />
           </button>
-          <div className="text-[9px] font-mono text-center text-slate-400 py-0.5 border-t border-slate-700">
+          <button
+            type="button"
+            onClick={() => setIsExpanded((prev) => !prev)}
+            className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer border-t border-slate-700"
+            title={isExpanded ? 'Collapse to Compact View (450px)' : 'Expand Fullscreen Map View'}
+          >
+            {isExpanded ? <ArrowsIn className="w-3.5 h-3.5 text-amber-300" /> : <ArrowsOut className="w-3.5 h-3.5 text-slate-300" />}
+          </button>
+          <div className="text-[8px] font-mono text-center text-slate-400 py-0.5 border-t border-slate-700">
             {zoomLevel.toFixed(1)}x
           </div>
         </div>
 
         {/* Legend / Overlay Badge */}
-        <div className="absolute bottom-4 left-4 z-20 bg-slate-800/90 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-700 text-[11px] text-slate-300 space-y-1 shadow-md">
-          <div className="font-bold text-slate-100 flex items-center gap-1.5 text-xs">
-            <Globe className="w-3.5 h-3.5 text-indigo-400" />
+        <div className="absolute bottom-3 left-3 z-20 bg-slate-800/90 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-slate-700 text-[10px] text-slate-300 space-y-0.5 shadow-md hidden sm:block">
+          <div className="font-bold text-slate-100 flex items-center gap-1.5 text-[11px]">
+            <Globe className="w-3 h-3 text-indigo-400" />
             <span>US Market Opportunity Layer</span>
           </div>
-          <div className="flex items-center gap-3 pt-0.5 text-[10px]">
+          <div className="flex items-center gap-2.5 pt-0.5 text-[9px]">
             <div className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
               <span>Agriculture & Livestock</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+              <span className="w-2 h-2 rounded-full bg-indigo-500" />
               <span>Salt & Wholesalers</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
               <span>Spas & Wellness</span>
             </div>
           </div>
         </div>
 
         {/* SVG Interactive Canvas */}
-        <div className="w-full h-full flex items-center justify-center p-2 relative">
+        <div className="w-full h-full flex items-center justify-center p-1 sm:p-2 relative">
           <svg
             ref={svgRef}
             viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
@@ -824,7 +839,11 @@ export default function LiveUsaMarketMap({
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             onWheel={handleWheel}
-            className={`w-full h-full max-h-[700px] select-none transition-all duration-300 ${
+            className={`w-full h-full ${
+              isExpanded
+                ? 'max-h-[75vh]'
+                : 'max-h-[330px] sm:max-h-[370px] md:max-h-[420px] lg:max-h-[440px]'
+            } select-none transition-all duration-300 ${
               zoomLevel > 1.05 ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
             }`}
             style={{ filter: 'drop-shadow(0 10px 20px rgba(0,0,0,0.5))' }}

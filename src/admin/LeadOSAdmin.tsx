@@ -48,7 +48,7 @@ import {
   InstagramLogo,
   Chats,
 } from '@phosphor-icons/react';
-import { getAccessToken } from '@/services/wordpressAdminAuth';
+import { getAccessToken, onAuthStateChange } from '@/services/wordpressAdminAuth';
 import type {
   ScoredLead,
   LeadOSProject,
@@ -429,11 +429,66 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [diagnostics, setDiagnostics] = useState<SearchDiagnostics | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  // User-isolated session cache key generator (prevents cross-session data leakage)
+  const getSessionLibraryCacheKey = useCallback((): string => {
+    if (typeof window === 'undefined') return 'hk_leados_library_leads';
+    try {
+      const raw = localStorage.getItem('luxedge_sb_session');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const uid = parsed?.user?.id || parsed?.user?.email;
+        if (uid) return `hk_leados_library_leads_${uid}`;
+      }
+    } catch {}
+    return 'hk_leados_library_leads_guest';
+  }, []);
+
+  const syncSessionLibraryCache = useCallback((cachedLeads: SavedLeadRecord[]): void => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem(getSessionLibraryCacheKey(), JSON.stringify(cachedLeads));
+    } catch {}
+  }, [getSessionLibraryCacheKey]);
+
+  const invalidateSessionLibraryCache = useCallback((): void => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.removeItem(getSessionLibraryCacheKey());
+    } catch {}
+  }, [getSessionLibraryCacheKey]);
+
+  // Invalidate and clear leads on sign out
+  useEffect(() => {
+    const unsubscribe = onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        try {
+          if (typeof window !== 'undefined') {
+            for (let i = sessionStorage.length - 1; i >= 0; i--) {
+              const k = sessionStorage.key(i);
+              if (k && k.startsWith('hk_leados_library_leads')) {
+                sessionStorage.removeItem(k);
+              }
+            }
+          }
+        } catch {}
+        setLibraryLeads([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Library state with client-side SWR memory/session caching
   const [libraryLeads, setLibraryLeads] = useState<SavedLeadRecord[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
-      const stored = sessionStorage.getItem('hk_leados_library_leads');
+      const raw = localStorage.getItem('luxedge_sb_session');
+      let key = 'hk_leados_library_leads_guest';
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const uid = parsed?.user?.id || parsed?.user?.email;
+        if (uid) key = `hk_leados_library_leads_${uid}`;
+      }
+      const stored = sessionStorage.getItem(key);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -444,7 +499,14 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [loadingLibrary, setLoadingLibrary] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try {
-      const stored = sessionStorage.getItem('hk_leados_library_leads');
+      const raw = localStorage.getItem('luxedge_sb_session');
+      let key = 'hk_leados_library_leads_guest';
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const uid = parsed?.user?.id || parsed?.user?.email;
+        if (uid) key = `hk_leados_library_leads_${uid}`;
+      }
+      const stored = sessionStorage.getItem(key);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) return false;
@@ -452,6 +514,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     } catch {}
     return false;
   });
+  const libraryRequestSeq = useRef(0);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [librarySearch, setLibrarySearch] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).search : '');
   const [statusFilter, setStatusFilter] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).status : 'all');
@@ -683,6 +746,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         ? (sourceIndex < targetIndex ? targetIndex - 1 : targetIndex)
         : (sourceIndex < targetIndex ? targetIndex : targetIndex + 1);
       next.splice(Math.max(0, insertAt), 0, movedItem);
+      syncSessionLibraryCache(next);
       return next;
     });
 
@@ -700,6 +764,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const next = [...prev];
       const [moved] = next.splice(idx, 1);
       next.splice(targetIdx, 0, moved);
+      syncSessionLibraryCache(next);
       return next;
     });
   };
@@ -885,6 +950,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
   // Load saved library
   const loadLibrary = useCallback(async () => {
+    const reqSeq = ++libraryRequestSeq.current;
     // Only show full blocking spinner if no leads are available to display
     setLibraryLeads((current) => {
       if (current.length === 0) {
@@ -900,14 +966,16 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       if (statusFilter !== 'all') params.set('status', statusFilter);
 
       const res = await fetch(`/api/admin/leados/leads?${params.toString()}`, { headers });
+      if (reqSeq !== libraryRequestSeq.current) return; // Stale request discarded
+
       if (!res.ok) throw new Error(`Lead Library request failed (${res.status})`);
       const d = await res.json();
+      if (reqSeq !== libraryRequestSeq.current) return; // Stale response discarded
+
       if (!Array.isArray(d.leads)) throw new Error('Lead Library returned an invalid response.');
       setLibraryLeads(d.leads);
       if (!librarySearch && statusFilter === 'all') {
-        try {
-          sessionStorage.setItem('hk_leados_library_leads', JSON.stringify(d.leads));
-        } catch {}
+        syncSessionLibraryCache(d.leads);
       }
 
       // Priority 5: Background prefetch of subsequent page for instant pagination
@@ -918,13 +986,16 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         void fetch(`/api/admin/leados/leads?${nextParams.toString()}`, { headers }).catch(() => {});
       }
     } catch (err) {
+      if (reqSeq !== libraryRequestSeq.current) return;
       const message = err instanceof Error ? err.message : 'Lead Library failed to load.';
       setLibraryError(message);
       console.error('Failed to load library:', err);
     } finally {
-      setLoadingLibrary(false);
+      if (reqSeq === libraryRequestSeq.current) {
+        setLoadingLibrary(false);
+      }
     }
-  }, [getAuthHeaders, librarySearch, statusFilter]);
+  }, [getAuthHeaders, librarySearch, statusFilter, syncSessionLibraryCache]);
 
   // Load weights
   const loadWeights = useCallback(async () => {
@@ -1509,7 +1580,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         body: JSON.stringify({ id, status: newStatus }),
       });
       if (!res.ok) throw new Error(`Status update failed (${res.status})`);
-      setLibraryLeads((prev) => prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l)));
+      setLibraryLeads((prev) => {
+        const next = prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l));
+        syncSessionLibraryCache(next);
+        return next;
+      });
     } catch (err) {
       console.error('Update lead status error:', err);
       setLibraryError(err instanceof Error ? err.message : 'Unable to update lead status.');
@@ -1526,7 +1601,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         headers,
       });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
-      setLibraryLeads((prev) => prev.filter((l) => l.id !== id));
+      setLibraryLeads((prev) => {
+        const next = prev.filter((l) => l.id !== id);
+        syncSessionLibraryCache(next);
+        return next;
+      });
       loadStatsAndProjects();
     } catch (err) {
       console.error('Delete lead error:', err);
@@ -1645,7 +1724,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         research: updatedResearch,
       };
       setSelectedDrawerLead(updatedLead);
-      setLibraryLeads((prev) => prev.map((l) => (l.id === selectedDrawerLead.id ? updatedLead : l)));
+      setLibraryLeads((prev) => {
+        const next = prev.map((l) => (l.id === selectedDrawerLead.id ? updatedLead : l));
+        syncSessionLibraryCache(next);
+        return next;
+      });
       setDrawerSavedMsg('Notes & follow-up schedule saved successfully.');
       setTimeout(() => setDrawerSavedMsg(null), 3000);
     } catch (err: any) {
@@ -1710,7 +1793,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           body: JSON.stringify({ id, status: newStatus }),
         });
       }
-      setLibraryLeads((prev) => prev.map((l) => librarySelectedIds.has(l.id) ? { ...l, status: newStatus } : l));
+      setLibraryLeads((prev) => {
+        const next = prev.map((l) => (librarySelectedIds.has(l.id) ? { ...l, status: newStatus } : l));
+        syncSessionLibraryCache(next);
+        return next;
+      });
       setLibrarySelectedIds(new Set());
       setSavedSuccessMsg(`Updated ${ids.length} leads to "${newStatus.replace('_', ' ')}"`);
       setTimeout(() => setSavedSuccessMsg(null), 3000);
@@ -1731,7 +1818,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           headers,
         });
       }
-      setLibraryLeads((prev) => prev.filter((l) => !librarySelectedIds.has(l.id)));
+      setLibraryLeads((prev) => {
+        const next = prev.filter((l) => !librarySelectedIds.has(l.id));
+        syncSessionLibraryCache(next);
+        return next;
+      });
       setLibrarySelectedIds(new Set());
       setSavedSuccessMsg(`Deleted ${ids.length} leads from Lead Library`);
       setTimeout(() => setSavedSuccessMsg(null), 3000);
