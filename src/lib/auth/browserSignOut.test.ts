@@ -136,18 +136,27 @@ describe('signOutOfBrowser', () => {
 describe('sign-out ownership', () => {
   const SRC = fileURLToPath(new URL('../..', import.meta.url));
 
-  function sourceFiles(): string[] {
-    return readdirSync(SRC, { recursive: true, encoding: 'utf8' })
-      .map((entry) => entry.replace(/\\/g, '/'))
-      .filter((entry) => /\.tsx?$/.test(entry) && !entry.endsWith('.test.ts') && !entry.endsWith('.test.tsx'));
+  let cachedFiles: string[] | null = null;
+  let fileContents: Map<string, string> | null = null;
+  function getFileContents(): Map<string, string> {
+    if (!fileContents) {
+      if (!cachedFiles) {
+        cachedFiles = readdirSync(SRC, { recursive: true, encoding: 'utf8' })
+          .map((entry) => entry.replace(/\\/g, '/'))
+          .filter((entry) => /\.tsx?$/.test(entry) && !entry.endsWith('.test.ts') && !entry.endsWith('.test.tsx'));
+      }
+      fileContents = new Map(cachedFiles.map((entry) => [entry, readFileSync(`${SRC}/${entry}`, 'utf8')]));
+    }
+    return fileContents;
   }
 
   it('has exactly one place that ends every credential together', () => {
     // The *call*, not the definition or the import: `customerClient` owns the
     // store, and this module owns ending it.
-    const callers = sourceFiles().filter((entry) =>
-      readFileSync(`${SRC}/${entry}`, 'utf8').includes('clearStoredCustomerSession();')
-    );
+    const contents = getFileContents();
+    const callers = Array.from(contents.entries())
+      .filter(([, code]) => code.includes('clearStoredCustomerSession();'))
+      .map(([entry]) => entry);
 
     expect(callers).toEqual(['lib/auth/browserSignOut.ts']);
   });
@@ -156,9 +165,10 @@ describe('sign-out ownership', () => {
     // Prose may still explain what this replaced. A *call* may not exist: the
     // Supabase store is not this app's to clear, and reaching for it is how a
     // sign-out ends up clearing the wrong one.
-    const callers = sourceFiles().filter((entry) =>
-      readFileSync(`${SRC}/${entry}`, 'utf8').includes('clearSupabaseSession()'),
-    );
+    const contents = getFileContents();
+    const callers = Array.from(contents.entries())
+      .filter(([, code]) => code.includes('clearSupabaseSession()'))
+      .map(([entry]) => entry);
 
     expect(callers).toEqual([]);
   });

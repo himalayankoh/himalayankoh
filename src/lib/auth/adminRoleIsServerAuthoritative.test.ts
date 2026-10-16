@@ -32,13 +32,15 @@ function sourceFiles(dir: string): string[] {
 describe('admin role is server-authoritative', () => {
   const files = sourceFiles(SRC);
 
+  const fileContents = new Map(files.map((file) => [file, readFileSync(file, 'utf8')]));
+
   it('scans a real source tree, so it cannot pass vacuously', () => {
     expect(files.length).toBeGreaterThan(200);
   });
 
   it('never grants admin from an `admin@` prefix', () => {
     const offenders = files.filter((file) =>
-      /startsWith\(\s*['"]admin@/.test(readFileSync(file, 'utf8'))
+      /startsWith\(\s*['"]admin@/.test(fileContents.get(file) || '')
     );
     expect(offenders.map((file) => relative(process.cwd(), file))).toEqual([]);
   });
@@ -47,7 +49,7 @@ describe('admin role is server-authoritative', () => {
     // `if (user.email === 'someone@…') return 'admin'` — the shape the defect had.
     const pattern =
       /if\s*\([^)]*\.email\s*===\s*['"][^'"]+['"][^)]*\)\s*(?:\{[^}]*)?return\s*['"]admin['"]/;
-    const offenders = files.filter((file) => pattern.test(readFileSync(file, 'utf8')));
+    const offenders = files.filter((file) => pattern.test(fileContents.get(file) || ''));
     expect(offenders.map((file) => relative(process.cwd(), file))).toEqual([]);
   });
 

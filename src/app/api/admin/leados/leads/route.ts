@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     const { leads, total } = await listSavedLeads({ search, status, page, limit });
     return NextResponse.json(
       { ok: true, leads, total, page, limit },
-      { headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=120' } }
+      { headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=300' } }
     );
   } catch (error) {
     console.error('LeadOS get leads error:', error);

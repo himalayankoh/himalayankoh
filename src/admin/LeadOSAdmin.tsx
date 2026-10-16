@@ -429,9 +429,29 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [diagnostics, setDiagnostics] = useState<SearchDiagnostics | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  // Library state
-  const [libraryLeads, setLibraryLeads] = useState<SavedLeadRecord[]>([]);
-  const [loadingLibrary, setLoadingLibrary] = useState(false);
+  // Library state with client-side SWR memory/session caching
+  const [libraryLeads, setLibraryLeads] = useState<SavedLeadRecord[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = sessionStorage.getItem('hk_leados_library_leads');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const [loadingLibrary, setLoadingLibrary] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const stored = sessionStorage.getItem('hk_leados_library_leads');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return false;
+      }
+    } catch {}
+    return false;
+  });
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [librarySearch, setLibrarySearch] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).search : '');
   const [statusFilter, setStatusFilter] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).status : 'all');
@@ -865,7 +885,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
   // Load saved library
   const loadLibrary = useCallback(async () => {
-    setLoadingLibrary(true);
+    // Only show full blocking spinner if no leads are available to display
+    setLibraryLeads((current) => {
+      if (current.length === 0) {
+        setLoadingLibrary(true);
+      }
+      return current;
+    });
     setLibraryError(null);
     try {
       const headers = await getAuthHeaders();
@@ -878,6 +904,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const d = await res.json();
       if (!Array.isArray(d.leads)) throw new Error('Lead Library returned an invalid response.');
       setLibraryLeads(d.leads);
+      if (!librarySearch && statusFilter === 'all') {
+        try {
+          sessionStorage.setItem('hk_leados_library_leads', JSON.stringify(d.leads));
+        } catch {}
+      }
 
       // Priority 5: Background prefetch of subsequent page for instant pagination
       if (typeof d.total === 'number' && d.total > 50) {
@@ -1006,20 +1037,25 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   };
 
   useEffect(() => {
-    loadStatsAndProjects();
-    loadWeights();
-    const timer = setTimeout(() => {
-      loadCouponStatus();
-      loadMetaState();
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [loadStatsAndProjects, loadWeights, loadCouponStatus, loadMetaState]);
-
-  useEffect(() => {
     if (activeTab === 'library') {
       loadLibrary();
+      const timer = setTimeout(() => {
+        loadStatsAndProjects();
+        loadWeights();
+        loadCouponStatus();
+        loadMetaState();
+      }, 400);
+      return () => clearTimeout(timer);
+    } else {
+      loadStatsAndProjects();
+      loadWeights();
+      const timer = setTimeout(() => {
+        loadCouponStatus();
+        loadMetaState();
+      }, 800);
+      return () => clearTimeout(timer);
     }
-  }, [activeTab, loadLibrary]);
+  }, [activeTab, loadLibrary, loadStatsAndProjects, loadWeights, loadCouponStatus, loadMetaState]);
 
   // Progressive Multi-Entity / Multi-Location Search runner
   const runProgressiveSearch = async (
