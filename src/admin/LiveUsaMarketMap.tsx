@@ -749,6 +749,8 @@ export default function LiveUsaMarketMap({
 
       {/* ── Main Map Workspace: Compact (420-450px desktop / 340-380px mobile) with Fullscreen Expansion ── */}
       <div
+        id="live-usa-market-map-container"
+        data-testid="market-map-container"
         className={`relative w-full rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-lg flex transition-all duration-300 ${
           isExpanded
             ? 'h-[75vh] min-h-[560px]'
@@ -759,6 +761,7 @@ export default function LiveUsaMarketMap({
         <div className="absolute top-3 left-3 z-20 flex flex-col gap-1 bg-slate-800/90 backdrop-blur-md p-1 rounded-xl border border-slate-700/80 shadow-md">
           <button
             type="button"
+            id="map-zoom-in-button"
             onClick={handleZoomIn}
             className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
             title="Zoom In (Consistent 1.25x step)"
@@ -767,6 +770,7 @@ export default function LiveUsaMarketMap({
           </button>
           <button
             type="button"
+            id="map-zoom-out-button"
             onClick={handleZoomOut}
             className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
             title="Zoom Out (Consistent 1.25x step)"
@@ -776,6 +780,7 @@ export default function LiveUsaMarketMap({
           {selectedStateCode && (
             <button
               type="button"
+              id="map-fit-state-button"
               onClick={handleFitState}
               className="p-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 transition cursor-pointer border border-indigo-700/60"
               title={`Fit ${selectedStateCode} to Screen`}
@@ -785,6 +790,7 @@ export default function LiveUsaMarketMap({
           )}
           <button
             type="button"
+            id="map-reset-usa-button"
             onClick={handleResetZoom}
             className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
             title="Reset to Full USA Map"
@@ -793,6 +799,7 @@ export default function LiveUsaMarketMap({
           </button>
           <button
             type="button"
+            id="map-expand-fullscreen-toggle"
             onClick={() => setIsExpanded((prev) => !prev)}
             className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer border-t border-slate-700"
             title={isExpanded ? 'Collapse to Compact View (450px)' : 'Expand Fullscreen Map View'}
@@ -830,6 +837,8 @@ export default function LiveUsaMarketMap({
         <div className="w-full h-full flex items-center justify-center p-1 sm:p-2 relative">
           <svg
             ref={svgRef}
+            id="live-usa-market-map-svg"
+            data-testid="market-map-svg"
             viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
