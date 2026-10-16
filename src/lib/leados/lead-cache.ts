@@ -55,15 +55,15 @@ function getSqliteDb(): any {
   if (sqliteAttempted) return null;
   sqliteAttempted = true;
 
-  // Never attempt SQLite on Cloudflare Worker or non-Node environments
-  if (typeof process === 'undefined' || !process.versions?.node || process.env.CF_PAGES || process.env.WORKER) {
+  // Never attempt SQLite on client, Cloudflare Worker or non-Node environments
+  if (typeof window !== 'undefined' || typeof process === 'undefined' || !process.versions?.node || process.env.CF_PAGES || process.env.WORKER) {
     return null;
   }
 
   try {
-    // Dynamic import/require of node:sqlite
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { createRequire } = require('node:module');
+    // Dynamic import/require of node:sqlite via dynamic evaluation so webpack does not attempt static module bundling
+    const dynamicRequire = (new Function('m', 'return require(m)')) as (m: string) => any;
+    const { createRequire } = dynamicRequire('node:module');
     const req = createRequire(import.meta.url);
     const sqliteMod = req('node:sqlite');
     if (!sqliteMod?.DatabaseSync) return null;
