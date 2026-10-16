@@ -150,6 +150,9 @@ describe('sign-out ownership', () => {
     return fileContents;
   }
 
+  // This first test reads every source file in `src`, so it inherits the whole
+  // tree's I/O cost (about 1.5s idle). Under the full suite's parallelism that
+  // pushes past the 5s default and fails on timing alone, not on behaviour.
   it('has exactly one place that ends every credential together', () => {
     // The *call*, not the definition or the import: `customerClient` owns the
     // store, and this module owns ending it.
@@ -159,7 +162,7 @@ describe('sign-out ownership', () => {
       .map(([entry]) => entry);
 
     expect(callers).toEqual(['lib/auth/browserSignOut.ts']);
-  });
+  }, 20_000);
 
   it('clears no Supabase session anywhere', () => {
     // Prose may still explain what this replaced. A *call* may not exist: the
@@ -171,7 +174,7 @@ describe('sign-out ownership', () => {
       .map(([entry]) => entry);
 
     expect(callers).toEqual([]);
-  });
+  }, 20_000);
 
   it('keeps the owner synchronous, so it finishes before any navigation', () => {
     const owner = readFileSync(`${SRC}/lib/auth/browserSignOut.ts`, 'utf8');
