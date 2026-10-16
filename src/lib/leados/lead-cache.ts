@@ -142,7 +142,7 @@ function saveLeadsToDurableSqlite(leads: SavedLeadRecord[]): void {
     for (const lead of leads) {
       upsertStmt.run(
         lead.id,
-        lead.dedupeKey || null,
+        (lead as any).dedupeKey || null,
         lead.businessName,
         lead.category || null,
         lead.city || null,

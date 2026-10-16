@@ -29,6 +29,7 @@ const mockLead: SavedLeadRecord = {
   longitude: -97.7972,
   osmType: 'node',
   osmId: '987654321',
+  osmUrl: 'https://www.openstreetmap.org/node/987654321',
   dataSource: 'openstreetmap',
   opportunityScore: 85,
   opportunitySignals: ['equine_feed', 'bulk_livestock'],
@@ -40,7 +41,7 @@ const mockLead: SavedLeadRecord = {
   createdAt: '2026-10-15T12:00:00Z',
   updatedAt: '2026-10-15T12:00:00Z',
   research: {
-    productInterest: 'Salt Licks',
+    productInterest: 'horse_salt',
     sources: [
       {
         url: 'https://www.lonestarfeedtx.com',

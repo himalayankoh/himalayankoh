@@ -1008,8 +1008,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   useEffect(() => {
     loadStatsAndProjects();
     loadWeights();
-    loadCouponStatus();
-    loadMetaState();
+    const timer = setTimeout(() => {
+      loadCouponStatus();
+      loadMetaState();
+    }, 800);
+    return () => clearTimeout(timer);
   }, [loadStatsAndProjects, loadWeights, loadCouponStatus, loadMetaState]);
 
   useEffect(() => {

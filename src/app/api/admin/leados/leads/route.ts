@@ -16,7 +16,10 @@ export async function GET(request: Request) {
 
   try {
     const { leads, total } = await listSavedLeads({ search, status, page, limit });
-    return NextResponse.json({ ok: true, leads, total, page, limit });
+    return NextResponse.json(
+      { ok: true, leads, total, page, limit },
+      { headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=120' } }
+    );
   } catch (error) {
     console.error('LeadOS get leads error:', error);
     return NextResponse.json({ error: 'Failed to retrieve saved leads' }, { status: 500 });
