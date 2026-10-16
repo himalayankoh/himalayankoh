@@ -42,16 +42,43 @@ export async function GET(request: Request) {
     const targetState = url.searchParams.get('state')?.toUpperCase() || null;
     const targetCategory = url.searchParams.get('category') || null;
     const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
-    const limit = Math.min(1000, Math.max(10, parseInt(url.searchParams.get('limit') || '500', 10)));
+    const limit = Math.min(1000, Math.max(10, parseInt(url.searchParams.get('limit') || '200', 10)));
 
     const since = url.searchParams.get('since');
 
-    // 1. Fetch accurate database-side aggregations across all qualified library records (Issue 3 fix)
-    // and sync durable persistent job history (Issue 1 fix)
-    const [dbSummary, dbJobsData] = await Promise.all([
-      getMarketSummaryFromDb(),
-      getMarketJobsFromDb(),
-    ]);
+    const listOptions: { limit: number; page: number; region?: string } = {
+      limit,
+      page,
+    };
+    if (targetState) {
+      listOptions.region = targetState;
+    }
+
+    // 1. Fetch accurate database-side aggregations across all qualified library records (Issue 3 fix),
+    // sync durable persistent job history (Issue 1 fix), and read genuine leads for interactive pins.
+    // When 'since' is omitted (e.g. cold/warm map loads), fetch all three concurrently in parallel via Promise.all.
+    // When 'since' is present, fetch summary and jobs first to allow an early return if unchanged.
+    let dbSummary: Awaited<ReturnType<typeof getMarketSummaryFromDb>>;
+    let dbJobsData: Awaited<ReturnType<typeof getMarketJobsFromDb>>;
+    let leadsData: Awaited<ReturnType<typeof listSavedLeads>> | null = null;
+
+    if (!since) {
+      const [summaryRes, jobsRes, leadsRes] = await Promise.all([
+        getMarketSummaryFromDb(),
+        getMarketJobsFromDb(),
+        listSavedLeads(listOptions),
+      ]);
+      dbSummary = summaryRes;
+      dbJobsData = jobsRes;
+      leadsData = leadsRes;
+    } else {
+      const [summaryRes, jobsRes] = await Promise.all([
+        getMarketSummaryFromDb(),
+        getMarketJobsFromDb(),
+      ]);
+      dbSummary = summaryRes;
+      dbJobsData = jobsRes;
+    }
 
     if (dbJobsData?.jobs) {
       syncJobsWithDb(dbJobsData.jobs);
@@ -89,15 +116,7 @@ export async function GET(request: Request) {
 
     // 2. Read genuine leads for interactive pins with exact geographic state filter
     // (Never substitutes free-text search for exact geographic state filtering)
-    const listOptions: { limit: number; page: number; region?: string } = {
-      limit,
-      page,
-    };
-    if (targetState) {
-      listOptions.region = targetState;
-    }
-
-    const { leads, total } = await listSavedLeads(listOptions);
+    const { leads, total } = leadsData || (await listSavedLeads(listOptions));
 
     // 3. Aggregate state-level intelligence combining global DB summary + pin coverage
     const stateMetrics = aggregateStateMarketData(leads, dbSummary, dbJobsData?.jobs);
