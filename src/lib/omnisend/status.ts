@@ -103,10 +103,21 @@ function base(state: OmnisendState, message: string, action: string | null, retr
   };
 }
 
-function countFrom(payload: unknown): number | null {
-  const paging = (payload as { paging?: { total?: unknown } } | null)?.paging;
-  const total = paging?.total;
-  return typeof total === 'number' && Number.isFinite(total) ? total : null;
+/**
+ * How many contacts this page holds, and whether it is all of them.
+ *
+ * Omnisend v3's paging object carries `offset`, `limit` and `next` — there is no
+ * `total`, which is why the first version reported null for every count. Rather than
+ * invent one, ask for a full free-tier page (250) and only claim the number when the
+ * response says there is no next page. "At least 250" is reported as unavailable,
+ * because a status card must not present a truncated page as the whole list.
+ */
+function countFromPage(payload: unknown): number | null {
+  const body = payload as { contacts?: unknown; paging?: { next?: unknown } } | null;
+  const contacts = body?.contacts;
+  if (!Array.isArray(contacts)) return null;
+  if (body?.paging?.next) return null;
+  return contacts.length;
 }
 
 async function providerGet(url: string, apiKey: string): Promise<{ status: number; body: unknown; failed: boolean }> {
@@ -246,13 +257,19 @@ export async function readOmnisendStatus(options: { fresh?: boolean } = {}): Pro
   }
 
   const [subscribed, unsubscribed, campaigns] = await Promise.all([
-    providerGet(`${CONTACTS_URL}?status=subscribed&limit=1`, credential.key),
-    providerGet(`${CONTACTS_URL}?status=unsubscribed&limit=1`, credential.key),
+    providerGet(`${CONTACTS_URL}?status=subscribed&limit=250`, credential.key),
+    providerGet(`${CONTACTS_URL}?status=unsubscribed&limit=250`, credential.key),
     providerGet(`${CAMPAIGNS_URL}?limit=10`, credential.key),
   ]);
 
-  const campaignsBody = (campaigns.body ?? {}) as { campaigns?: unknown };
-  const campaignRows = Array.isArray(campaignsBody.campaigns) ? campaignsBody.campaigns : [];
+  // The campaigns list answers with `campaigns: []` on some plans and
+  // `campaign: null | {...}` on others, so both shapes are read.
+  const campaignsBody = (campaigns.body ?? {}) as { campaigns?: unknown; campaign?: unknown };
+  const campaignRows = Array.isArray(campaignsBody.campaigns)
+    ? campaignsBody.campaigns
+    : campaignsBody.campaign && typeof campaignsBody.campaign === 'object'
+    ? [campaignsBody.campaign]
+    : [];
   const campaignSummaries: OmnisendCampaignSummary[] = campaignRows
     .map((row) => {
       const c = row as Record<string, unknown>;
@@ -265,8 +282,8 @@ export async function readOmnisendStatus(options: { fresh?: boolean } = {}): Pro
     })
     .filter((c) => c.id !== '');
 
-  const subscribedCount = subscribed.status === 200 ? countFrom(subscribed.body) : null;
-  const unsubscribedCount = unsubscribed.status === 200 ? countFrom(unsubscribed.body) : null;
+  const subscribedCount = subscribed.status === 200 ? countFromPage(subscribed.body) : null;
+  const unsubscribedCount = unsubscribed.status === 200 ? countFromPage(unsubscribed.body) : null;
   const contactsCount = subscribedCount !== null && unsubscribedCount !== null ? subscribedCount + unsubscribedCount : null;
 
   const permissions = accountBody.apiKeyPermissions;

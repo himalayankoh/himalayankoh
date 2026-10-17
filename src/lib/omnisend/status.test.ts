@@ -104,10 +104,13 @@ describe('readOmnisendStatus', () => {
           });
         }
         if (url.includes('status=subscribed')) {
-          return res(200, { contacts: [{ email: 'someone@example.com' }], paging: { total: 12 } });
+          return res(200, {
+            contacts: [{ email: 'someone@example.com' }, { email: 'second@example.com' }],
+            paging: { next: null },
+          });
         }
         if (url.includes('status=unsubscribed')) {
-          return res(200, { contacts: [{ email: 'gone@example.com' }], paging: { total: 3 } });
+          return res(200, { contacts: [{ email: 'gone@example.com' }], paging: { next: null } });
         }
         return res(200, {
           campaigns: [
@@ -124,9 +127,9 @@ describe('readOmnisendStatus', () => {
     expect(status.connected).toBe(true);
     expect(status.brandID).toBe('brand-123');
     expect(status.accountName).toBe('Himalayan Koh');
-    expect(status.subscribedCount).toBe(12);
-    expect(status.unsubscribedCount).toBe(3);
-    expect(status.contactsCount).toBe(15);
+    expect(status.subscribedCount).toBe(2);
+    expect(status.unsubscribedCount).toBe(1);
+    expect(status.contactsCount).toBe(3);
     expect(status.campaignsDraftCount).toBe(1);
     expect(status.domainVerified).toBe(false);
 
@@ -135,5 +138,29 @@ describe('readOmnisendStatus', () => {
     expect(JSON.stringify(status)).not.toContain('gone@example.com');
     // No invented fallbacks.
     expect(JSON.stringify(status)).not.toContain('6ad2c802990511dbe285b33e');
+  });
+
+  it('reports a truncated contact page as unavailable instead of presenting it as the whole list', async () => {
+    credential.current = { key: 'k', source: 'wordpress', storeFailure: null };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/accounts')) {
+          return res(200, { brandID: 'brand-123', name: 'Himalayan Koh', verified: true });
+        }
+        if (url.includes('/contacts')) {
+          return res(200, { contacts: [{ email: 'a@example.com' }], paging: { next: 'cursor' } });
+        }
+        return res(200, { campaign: null, paging: { next: null } });
+      }),
+    );
+
+    const status = await readOmnisendStatus();
+
+    expect(status.state).toBe('connected');
+    expect(status.subscribedCount).toBeNull();
+    expect(status.unsubscribedCount).toBeNull();
+    expect(status.contactsCount).toBeNull();
   });
 });
