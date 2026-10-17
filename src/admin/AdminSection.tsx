@@ -6553,6 +6553,7 @@ export function AMarketingTraffic() {
   const [loadingOmnisend, setLoadingOmnisend] = useState(false);
   const [emailHealthData, setEmailHealthData] = useState<any>(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
+  const [emailHealthError, setEmailHealthError] = useState('');
 
   /**
    * The status route is admin-only now, so this carries the console's bearer token.
@@ -6595,13 +6596,25 @@ export function AMarketingTraffic() {
   const fetchEmailHealth = useCallback(async () => {
     setLoadingHealth(true);
     try {
-      const res = await fetch('/api/admin/email/dns-audit');
-      if (res.ok) {
-        const d = await res.json();
-        setEmailHealthData(d);
+      const token = getAccessToken();
+      // The route is admin-only, so this has to carry the console's token. Without
+      // it the 401 failed the `if (res.ok)` silently and the card kept drawing its
+      // hardcoded fallbacks: an SPF PASS nobody had checked, and a DMARC verdict
+      // that came from a literal in this file.
+      const res = await fetch('/api/admin/email/dns-audit', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok || !d?.ok) {
+        setEmailHealthError(d?.error || `The DNS audit could not be read (HTTP ${res.status}).`);
+        return;
       }
-    } catch {}
-    finally {
+      setEmailHealthError('');
+      setEmailHealthData(d);
+    } catch (err) {
+      setEmailHealthError((err as Error).message || 'The DNS audit request failed.');
+    } finally {
       setLoadingHealth(false);
     }
   }, []);
@@ -7063,11 +7076,17 @@ export function AMarketingTraffic() {
           <StatusPill
             ok={emailHealthData?.overallHealth === 'OPTIMAL'}
             text={
-              emailHealthData?.overallHealth === 'OPTIMAL'
+              loadingHealth
+                ? 'Auditing DNS…'
+                : emailHealthError
+                ? 'Audit unavailable'
+                : emailHealthData?.overallHealth === 'OPTIMAL'
                 ? 'All Records Aligned'
                 : emailHealthData?.dmarc?.status === 'MISSING'
                 ? 'DMARC Record Missing'
-                : 'Auditing DNS…'
+                : emailHealthData
+                ? 'Records Need Attention'
+                : 'Not checked'
             }
           />
         }
@@ -7078,6 +7097,11 @@ export function AMarketingTraffic() {
             <p className="text-xs text-gray-500 mt-0.5">
               Verified via Cloudflare DNS-over-HTTPS (DoH) for <code className="bg-gray-100 px-1 rounded">himalayankoh.com</code>.
             </p>
+            {emailHealthError && (
+              <p className="text-xs text-red-600 mt-1" role="status">
+                {emailHealthError}
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -7097,14 +7121,14 @@ export function AMarketingTraffic() {
             <div className="flex items-center justify-between">
               <span className="font-bold text-gray-800 uppercase text-[10px] tracking-wider">SPF Status</span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${emailHealthData?.spf?.status === 'PASS' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                {emailHealthData?.spf?.status || 'PASS'}
+                {loadingHealth ? 'Checking…' : emailHealthData?.spf?.status || 'Not checked'}
               </span>
             </div>
             <p className="text-gray-600 text-[11px] leading-relaxed">
-              cPanel Namecheap hosting IP authorized.
+              {emailHealthData?.spf?.note || 'No SPF audit has been read yet.'}
             </p>
             <code className="text-[10px] font-mono text-gray-600 block bg-white p-1.5 rounded border border-gray-200 break-all">
-              {emailHealthData?.spf?.record || 'v=spf1 +mx +a +ip4:162.0.209.25 +include:spf.web-hosting.com ~all'}
+              {emailHealthData?.spf?.record || '—'}
             </code>
           </div>
 
@@ -7113,7 +7137,13 @@ export function AMarketingTraffic() {
             <div className="flex items-center justify-between">
               <span className="font-bold text-gray-800 uppercase text-[10px] tracking-wider">DKIM Signature</span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${emailHealthData?.dkim?.defaultSelector ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                {emailHealthData?.dkim?.defaultSelector ? 'cPanel 2048-bit Active' : 'Not Verified'}
+                {loadingHealth
+                  ? 'Checking…'
+                  : emailHealthData?.dkim?.defaultSelector
+                  ? 'cPanel 2048-bit Active'
+                  : emailHealthData?.dkim
+                  ? 'Not Verified'
+                  : 'Not checked'}
               </span>
             </div>
             <p className="text-gray-600 text-[11px] leading-relaxed">
@@ -7129,11 +7159,17 @@ export function AMarketingTraffic() {
             <div className="flex items-center justify-between">
               <span className="font-bold text-gray-800 uppercase text-[10px] tracking-wider">DMARC Policy</span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${emailHealthData?.dmarc?.status === 'PASS' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                {emailHealthData?.dmarc?.status === 'PASS' ? 'PASS' : 'MISSING (Action Needed)'}
+                {loadingHealth
+                  ? 'Checking…'
+                  : emailHealthData?.dmarc?.status === 'PASS'
+                  ? 'PASS'
+                  : emailHealthData?.dmarc
+                  ? 'MISSING (Action Needed)'
+                  : 'Not checked'}
               </span>
             </div>
             <p className="text-gray-600 text-[11px] leading-relaxed">
-              _dmarc.himalayankoh.com currently has no published record.
+              {emailHealthData?.dmarc?.note || 'No DMARC audit has been read yet.'}
             </p>
             <p className="text-[10px] text-gray-500">
               Recommended: publish <code className="bg-white px-1 py-0.5 rounded font-mono text-[10px]">p=none</code> to monitor delivery.
