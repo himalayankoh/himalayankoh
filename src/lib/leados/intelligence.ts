@@ -1,17 +1,50 @@
 import { checkFetchableUrl } from '@/lib/scrape/urlSafety';
 import type { NormalizedLead, LeadResearch, ProductInterest } from './types';
+export type { ProductInterest };
 
 export const LEAD_PIPELINE = ['new', 'researched', 'qualified', 'approved_for_outreach', 'contacted', 'replied', 'interested', 'quote_requested', 'negotiating', 'won', 'lost', 'do_not_contact'] as const;
 export const PRODUCT_INTERESTS: ProductInterest[] = ['horse_salt', 'livestock_salt', 'culinary_salt', 'bulk_wholesale', 'private_label'];
 export const BUYER_CATEGORIES = ['Feed Store', 'Farm Supply', 'Equestrian Store', 'Ranch & Horse Facility', 'Livestock Distributor', 'Salt Wholesaler', 'Specialty Food Distributor', 'Spice Retailer', 'Private Label Buyer'];
 
 /** These are catalog references, not guaranteed wholesale manufacturing capabilities. */
-export const OFFER_PROFILES: Record<ProductInterest, { label: string; productIds: string[]; caveat: string }> = {
-  horse_salt: { label: 'Horse salt', productIds: ['2543', '2544'], caveat: 'Confirm current catalog specifications and availability before quoting.' },
-  livestock_salt: { label: 'Livestock salt', productIds: ['2536', '2539', '2544'], caveat: 'Animal products must not be offered for human food use.' },
-  culinary_salt: { label: 'Culinary salt', productIds: ['2526'], caveat: 'Only the active 16 oz edible jar; no invented bulk culinary sizes.' },
-  bulk_wholesale: { label: 'Bulk wholesale', productIds: ['2539', '2544'], caveat: 'Current 45 lb livestock bag and 30 lb lick; MOQ, freight and terms require a quote.' },
-  private_label: { label: 'Private-label opportunity', productIds: [], caveat: 'Potential buyer research only. Manufacturing, packaging and private-label capabilities require owner confirmation.' },
+export interface OfferProfile {
+  label: string;
+  productIds: string[];
+  caveat: string;
+  defaultUrl: string;
+}
+
+export const OFFER_PROFILES: Record<ProductInterest, OfferProfile> = {
+  horse_salt: {
+    label: 'Horse salt',
+    productIds: ['2543'],
+    caveat: 'Confirm current catalog specifications and availability before quoting.',
+    defaultUrl: 'https://himalayankoh.com/products/himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh',
+  },
+  livestock_salt: {
+    label: 'Livestock salt',
+    productIds: ['2544', '2536', '2539'],
+    caveat: 'Animal products must not be offered for human food use.',
+    defaultUrl: 'https://himalayankoh.com/products/himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh',
+  },
+  culinary_salt: {
+    label: 'Culinary salt',
+    productIds: ['2526'],
+    caveat: 'Only the active 16 oz edible jar; no invented bulk culinary sizes.',
+    defaultUrl: 'https://himalayankoh.com/products/himalayan-edible-pink-salt-16-oz-jar-fine-grain',
+  },
+  bulk_wholesale: {
+    label: 'Bulk wholesale',
+    productIds: ['2544', '2539'],
+    caveat: 'Current 45 lb livestock bag and 30 lb lick; MOQ, freight and terms require a quote.',
+    defaultUrl: 'https://himalayankoh.com/wholesale',
+  },
+  private_label: {
+    label: 'Private-label opportunity',
+    productIds: [],
+    caveat: 'Potential buyer research only. Manufacturing, packaging and private-label capabilities require owner confirmation.',
+    defaultUrl: 'https://himalayankoh.com/wholesale',
+  },
 };
 
 export const INFORMATIONAL_DOMAINS = [
@@ -290,13 +323,117 @@ export function qualifyLead(lead: NormalizedLead, interest: ProductInterest = 'h
   return { score: excluded ? 0 : Object.values(breakdown).reduce((a, b) => a + b, 0), reasons, breakdown, interest, qualified: !excluded && breakdown.category > 0 && breakdown.product > 0 && breakdown.sources === 5 };
 }
 
+export interface ProductRecommendationResult {
+  productInterest: ProductInterest;
+  productName: string;
+  productUrl: string;
+  fitLevel: 'high' | 'moderate' | 'low';
+  relevanceReason: string;
+  isLowFit: boolean;
+}
+
+/**
+ * Deterministic product recommendation based on real business category & evidence.
+ * Ensures wellness businesses are never pitched livestock licks, and unrelated businesses
+ * are flagged for manual review rather than sent misleading pitches.
+ */
+export function determineProductRelevance(lead: {
+  businessName: string;
+  category?: string | null;
+  research?: LeadResearch;
+}): ProductRecommendationResult {
+  const name = (lead.businessName || '').toLowerCase();
+  const cat = (lead.category || '').toLowerCase();
+  const text = `${name} ${cat}`;
+
+  // 1. Wellness / Spa / Massage / Therapy / Health / Salon / Yoga
+  if (/massage|spa\b|wellness|therapy|therapeutic|esthetic|beauty|salon|yoga|relaxation/i.test(text)) {
+    return {
+      productInterest: 'culinary_salt',
+      productName: 'Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain',
+      productUrl: 'https://himalayankoh.com/products/himalayan-edible-pink-salt-16-oz-jar-fine-grain',
+      fitLevel: 'moderate',
+      relevanceReason: 'Wellness and therapeutic practitioner: matched with pure food-grade pink mineral salt line. Animal feed products strictly excluded.',
+      isLowFit: false,
+    };
+  }
+
+  // 2. Horse / Equine / Equestrian / Tack
+  if (/horse|equine|equestrian|tack|stallion|riding|colt|pony/i.test(text)) {
+    return {
+      productInterest: 'horse_salt',
+      productName: 'Himalayan Pink Salt Licks for Horses (2 lb & 6 lb)',
+      productUrl: 'https://himalayankoh.com/products/himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh',
+      fitLevel: 'high',
+      relevanceReason: 'Equine facility or equestrian specialty store: matched with equine salt licks on rope.',
+      isLowFit: false,
+    };
+  }
+
+  // 3. Ranch / Cattle / Livestock / Farm & Feed Store
+  if (/feed|cattle|livestock|ranch|farm|co-?op|grain|mill\b|pasture/i.test(text)) {
+    return {
+      productInterest: 'livestock_salt',
+      productName: 'Himalayan Koh 30 lb Red Rock Salt Lick & 45 lb Feed Minerals',
+      productUrl: 'https://himalayankoh.com/products/himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh',
+      fitLevel: 'high',
+      relevanceReason: 'Commercial livestock, feed or ranch supplier: matched with 30 lb rock salt licks and livestock feed bags.',
+      isLowFit: false,
+    };
+  }
+
+  // 4. Commercial Salt Wholesaler / Distributor
+  if (/salt\s*wholesal|mineral\s*distribut|bulk\s*salt|spice\s*wholesal/i.test(text)) {
+    return {
+      productInterest: 'bulk_wholesale',
+      productName: 'Commercial Wholesale Himalayan Salt Line',
+      productUrl: 'https://himalayankoh.com/wholesale',
+      fitLevel: 'high',
+      relevanceReason: 'Wholesale distributor or B2B dealer: matched with pallet & container bulk wholesale program.',
+      isLowFit: false,
+    };
+  }
+
+  // 5. Specialty Food / Spice / Grocery / Gourmet
+  if (/grocery|supermarket|food|spice|gourmet|culinary|produce|market/i.test(text)) {
+    return {
+      productInterest: 'culinary_salt',
+      productName: 'Himalayan Edible Pink Salt – 16 oz Jar | Fine Grain',
+      productUrl: 'https://himalayankoh.com/products/himalayan-edible-pink-salt-16-oz-jar-fine-grain',
+      fitLevel: 'high',
+      relevanceReason: 'Food retailer or specialty grocer: matched with premium 16 oz fine grain edible jar.',
+      isLowFit: false,
+    };
+  }
+
+  // 6. Unrelated or dubious category (Deli, hardware, auto, construction, industrial)
+  return {
+    productInterest: 'bulk_wholesale',
+    productName: 'None (Unverified Product Fit)',
+    productUrl: 'https://himalayankoh.com/wholesale',
+    fitLevel: 'low',
+    relevanceReason: 'Low Product Fit — Manual Review required. Business has no established commercial relevance to agricultural minerals or gourmet salt.',
+    isLowFit: true,
+  };
+}
+
 export function createIntroduction(lead: { businessName: string; city?: string | null; category?: string | null; research?: LeadResearch }, interest: ProductInterest) {
   const name = lead.research?.publicCompanyName || lead.businessName;
-  const offer = OFFER_PROFILES[interest];
-  const product = interest === 'horse_salt' ? 'our listed 2 lb horse salt lick and 30 lb salt lick' : interest === 'livestock_salt' ? 'our listed 6 lb livestock pouch, 45 lb livestock bag and 30 lb lick' : interest === 'culinary_salt' ? 'our listed 16 oz edible pink salt jar' : interest === 'bulk_wholesale' ? 'our listed livestock bags and salt licks' : 'a potential private-label salt opportunity, subject to confirming our capabilities and your requirements';
+  const offer = OFFER_PROFILES[interest] || OFFER_PROFILES.bulk_wholesale;
+  const product =
+    interest === 'horse_salt'
+      ? 'our listed Himalayan Pink Salt Licks for Horses (2 lb & 6 lb)'
+      : interest === 'livestock_salt'
+      ? 'our listed 30 lb red rock salt lick for cattle and 45 lb livestock feed mineral bags'
+      : interest === 'culinary_salt'
+      ? 'our listed 16 oz edible pink salt jar'
+      : interest === 'bulk_wholesale'
+      ? 'our commercial wholesale Himalayan mineral salt line'
+      : 'a potential private-label mineral salt discussion, subject to confirming our capabilities';
+
   return {
     subject: `Himalayan Koh ${offer.label.toLowerCase()} inquiry — ${name}`,
-    message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh while researching ${lead.category || 'relevant businesses'}${lead.city ? ` in ${lead.city}` : ''}.\n\nWe would welcome a conversation about ${product}. Would this be relevant to your purchasing team? We can share current product details for review. Packaging, availability, pricing, minimum quantities and freight would be confirmed in a separate quote.\n\nIf you are not the right contact, please let us know. To opt out of further outreach, reply “unsubscribe”.\n\nHimalayan Koh\nsales@himalayankoh.com\nhttps://himalayankoh.com`,
+    message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh while researching ${lead.category || 'relevant businesses'}${lead.city ? ` in ${lead.city}` : ''}.\n\nWe would welcome an introductory conversation about ${product}. Would this be relevant to your purchasing requirements? We can share current product specifications for review. Packaging, availability, pricing, minimum quantities and freight are confirmed in a separate quote.\n\nIf you are not the right contact, please let us know. To opt out of further communications, please reply “unsubscribe”.\n\nHimalayan Koh Commercial Sales\nsales@himalayankoh.com\nhttps://himalayankoh.com`,
   };
 }
 
@@ -321,14 +458,38 @@ export function createOutreachMessage(
   const city = lead.city ? ` in ${lead.city}` : '';
   const coupon = options.couponCode || 'WELCOME5';
 
+  const rec = determineProductRelevance(lead);
+
+  // If low product fit, flag explicitly
+  if (rec.isLowFit) {
+    return {
+      mode: options.mode,
+      subject: `[Manual Review Needed] Potential Product Fit for ${name}`,
+      sender,
+      productUrl: 'https://himalayankoh.com/wholesale',
+      couponCode: undefined,
+      isLowFit: true,
+      fitLevel: 'low' as const,
+      relevanceReason: rec.relevanceReason,
+      message: `[LOW PRODUCT FIT — MANUAL REVIEW REQUIRED]\n\nProspect: ${name}\nCategory: ${lead.category || 'Unclassified'}\n\nOur system detected that this business may not have demonstrated commercial alignment with livestock salt licks or gourmet culinary salt.\n\nPlease inspect the business manually and choose a verified product before approving any sales pitch.`,
+    };
+  }
+
   if (options.mode === 'retail') {
+    const productUrl =
+      rec.productInterest === 'culinary_salt'
+        ? rec.productUrl
+        : 'https://himalayankoh.com/products/pink-salt-block-lick-2lb';
     return {
       mode: 'retail' as const,
       subject: `Special 5% Welcome Offer for ${name} — Himalayan Koh Pink Salt`,
       sender,
-      productUrl: 'https://himalayankoh.com/products/pink-salt-block-lick-2lb',
+      productUrl,
       couponCode: coupon,
-      message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh. We noticed your storefront${city} and would love to introduce our hand-carved Himalayan Pink Salt licks and mineral products.\n\nTo welcome you as a new partner, please enjoy 5% off your first retail trial order with coupon code ${coupon} at checkout:\n👉 https://himalayankoh.com/products/pink-salt-block-lick-2lb\n\nOffer terms: Valid on single orders for verified retail store buyers. Cannot be combined with wholesale contracted volume pricing.\n\nIf you have any questions about our mineral products or would like a product sample, feel free to reply directly to this email.\n\nWarm regards,\n\nHimalayan Koh Sales Team\n${sender}\nhttps://himalayankoh.com`,
+      isLowFit: false,
+      fitLevel: rec.fitLevel,
+      relevanceReason: rec.relevanceReason,
+      message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh. We noticed your storefront${city} and would love to introduce our hand-carved Himalayan Pink Salt licks and mineral products.\n\nTo welcome you as a new partner, please enjoy 5% off your first retail trial order with coupon code ${coupon} at checkout:\n👉 ${productUrl}\n\nOffer terms: Valid on single orders for verified retail store buyers. Cannot be combined with wholesale contracted volume pricing.\n\nIf you have any questions about our mineral products or would like a product sample, feel free to reply directly to this email.\n\nWarm regards,\n\nHimalayan Koh Sales Team\n${sender}\nhttps://himalayankoh.com`,
     };
   }
 
@@ -339,6 +500,9 @@ export function createOutreachMessage(
       sender,
       productUrl: 'https://himalayankoh.com/wholesale',
       couponCode: undefined,
+      isLowFit: false,
+      fitLevel: rec.fitLevel,
+      relevanceReason: rec.relevanceReason,
       message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh regarding potential private-label Himalayan mineral salt packaging for your brand${city}.\n\nWe supply authentic agricultural and livestock pink salt blocks and granular minerals directly from Himalayan salt deposits. We would welcome an introductory discussion regarding your custom packaging specifications, target volume, and private-label timelines.\n\nPlease note: Manufacturing schedules and minimum order quantities are confirmed upon technical review of your requirements.\n\nWould your brand development team be available for a brief inquiry call next week?\n\nSincerely,\n\nHimalayan Koh B2B Operations\n${sender}\nhttps://himalayankoh.com/wholesale`,
     };
   }
@@ -350,6 +514,9 @@ export function createOutreachMessage(
     sender,
     productUrl: 'https://himalayankoh.com/wholesale',
     couponCode: undefined,
+    isLowFit: false,
+    fitLevel: rec.fitLevel,
+    relevanceReason: rec.relevanceReason,
     message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh while researching agricultural and feed distribution partners${city}.\n\nWe supply premium Himalayan pink salt blocks (2 lb & 30 lb) and 45 lb livestock feed mineral bags. You can review our wholesale line and commercial specifications here:\n👉 https://himalayankoh.com/wholesale\n\nWould this assortment be relevant to your purchasing catalog? We would be delighted to provide commercial tiered pricing, pallet logistics, and freight quotes.\n\nTo opt out of further communications, please reply with "unsubscribe".\n\nBest regards,\n\nHimalayan Koh Commercial Sales\n${sender}\nhttps://himalayankoh.com`,
   };
 }

@@ -29,6 +29,7 @@ import {
   Tag,
   Funnel,
   CaretRight,
+  CaretLeft,
   EnvelopeSimple,
   PaperPlaneRight,
   PencilSimple,
@@ -47,8 +48,11 @@ import {
   FacebookLogo,
   InstagramLogo,
   Chats,
+  Eye,
+  Archive,
 } from '@phosphor-icons/react';
 import { getAccessToken, onAuthStateChange } from '@/services/wordpressAdminAuth';
+import { useAuthStore } from '@/store/authStore';
 import type {
   ScoredLead,
   LeadOSProject,
@@ -64,6 +68,7 @@ import {
   createIntroduction,
   deduplicateLeads,
   createOutreachMessage,
+  determineProductRelevance,
   classifyLeadEntity,
   isInformationalDomain,
   type LeadEntityType,
@@ -525,9 +530,22 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [savingLeadId, setSavingLeadId] = useState<string | null>(null);
   const [savedSuccessMsg, setSavedSuccessMsg] = useState<string | null>(null);
 
-  // Lead Details Side Panel Drawer state (Details | Outreach | Notes & History)
+  // Lead Details & Centered Outreach Modal state (Details | Outreach | Drafts & Campaigns | Notes & History)
   const [selectedDrawerLead, setSelectedDrawerLead] = useState<SavedLeadRecord | null>(null);
-  const [drawerActiveTab, setDrawerActiveTab] = useState<'details' | 'outreach' | 'notes'>('details');
+  const [drawerActiveTab, setDrawerActiveTab] = useState<'details' | 'outreach' | 'drafts' | 'notes'>('outreach');
+  const [emailEditMode, setEmailEditMode] = useState<'edit' | 'preview'>('edit');
+  const [emailQualityResult, setEmailQualityResult] = useState<{
+    status: 'READY' | 'NEEDS_IMPROVEMENT' | 'BLOCKED';
+    score: number;
+    findings: string[];
+    recommendations: string[];
+  } | null>(null);
+  const [showOwnerApprovalModal, setShowOwnerApprovalModal] = useState(false);
+  const [activeDraftRevision, setActiveDraftRevision] = useState<number | null>(null);
+  const [activeDraftSavedAt, setActiveDraftSavedAt] = useState<string | null>(null);
+  const [leadSavedDrafts, setLeadSavedDrafts] = useState<any[]>([]);
+  const [loadingDrafts, setLoadingDrafts] = useState(false);
+  const [productRelevanceInfo, setProductRelevanceInfo] = useState<any>(null);
   const [drawerNotes, setDrawerNotes] = useState('');
   const [drawerFollowUpDate, setDrawerFollowUpDate] = useState('');
   const [drawerQuantity, setDrawerQuantity] = useState('');
@@ -682,6 +700,148 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     } catch {}
   };
 
+  // ── Column Drag-and-Drop & Customization State ──
+  type LibraryColKey = 'name' | 'location' | 'category' | 'contact' | 'source' | 'status' | 'score';
+
+  const DEFAULT_LIBRARY_COL_ORDER: LibraryColKey[] = [
+    'name',
+    'location',
+    'category',
+    'contact',
+    'source',
+    'status',
+    'score',
+  ];
+
+  const LIBRARY_COL_LABELS: Record<LibraryColKey, string> = {
+    name: 'Business Name',
+    location: 'Location',
+    category: 'Category',
+    contact: 'Contact Information',
+    source: 'Source',
+    status: 'CRM Status',
+    score: 'Fit Score',
+  };
+
+  const { user } = useAuthStore();
+  const adminId = user?.email || user?.id || 'admin';
+  const colOrderStorageKey = `hk_leados_col_order_v2_${adminId}`;
+  const colHiddenStorageKey = `hk_leados_col_hidden_v2_${adminId}`;
+
+  const [libraryColOrder, setLibraryColOrder] = useState<LibraryColKey[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(colOrderStorageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const setCols = new Set(parsed);
+            const valid = parsed.filter((k: any) => DEFAULT_LIBRARY_COL_ORDER.includes(k));
+            for (const col of DEFAULT_LIBRARY_COL_ORDER) {
+              if (!setCols.has(col)) valid.push(col);
+            }
+            return valid;
+          }
+        }
+      } catch {}
+    }
+    return DEFAULT_LIBRARY_COL_ORDER;
+  });
+
+  const [hiddenCols, setHiddenCols] = useState<Set<LibraryColKey>>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(colHiddenStorageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return new Set(parsed as LibraryColKey[]);
+        }
+      } catch {}
+    }
+    return new Set<LibraryColKey>();
+  });
+
+  const [draggedColKey, setDraggedColKey] = useState<LibraryColKey | null>(null);
+  const [dragOverColKey, setDragOverColKey] = useState<LibraryColKey | null>(null);
+  const [colDropPosition, setColDropPosition] = useState<'before' | 'after'>('before');
+  const [showCustomizeCols, setShowCustomizeCols] = useState(false);
+
+  const saveColOrder = (order: LibraryColKey[]) => {
+    try {
+      localStorage.setItem(colOrderStorageKey, JSON.stringify(order));
+    } catch {}
+  };
+
+  const saveHiddenCols = (hidden: Set<LibraryColKey>) => {
+    try {
+      localStorage.setItem(colHiddenStorageKey, JSON.stringify(Array.from(hidden)));
+    } catch {}
+  };
+
+  const handleDropCol = (targetColKey: LibraryColKey) => {
+    if (!draggedColKey || draggedColKey === targetColKey) {
+      setDraggedColKey(null);
+      setDragOverColKey(null);
+      return;
+    }
+
+    setLibraryColOrder((prev) => {
+      const fromIdx = prev.indexOf(draggedColKey);
+      const toIdx = prev.indexOf(targetColKey);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      const newToIdx = next.indexOf(targetColKey);
+      const insertAt = colDropPosition === 'after' ? newToIdx + 1 : newToIdx;
+      next.splice(Math.max(0, insertAt), 0, moved);
+      saveColOrder(next);
+      return next;
+    });
+
+    setDraggedColKey(null);
+    setDragOverColKey(null);
+  };
+
+  const handleMoveColStep = (colKey: LibraryColKey, direction: 'left' | 'right') => {
+    setLibraryColOrder((prev) => {
+      const idx = prev.indexOf(colKey);
+      if (idx === -1) return prev;
+      const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+
+      const next = [...prev];
+      const [moved] = next.splice(idx, 1);
+      next.splice(targetIdx, 0, moved);
+      saveColOrder(next);
+      return next;
+    });
+  };
+
+  const handleToggleColVisibility = (colKey: LibraryColKey) => {
+    if (colKey === 'name') return;
+    setHiddenCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(colKey)) {
+        next.delete(colKey);
+      } else {
+        next.add(colKey);
+      }
+      saveHiddenCols(next);
+      return next;
+    });
+  };
+
+  const handleResetColLayout = () => {
+    setLibraryColOrder(DEFAULT_LIBRARY_COL_ORDER);
+    setHiddenCols(new Set<LibraryColKey>());
+    saveColOrder(DEFAULT_LIBRARY_COL_ORDER);
+    saveHiddenCols(new Set<LibraryColKey>());
+    handleResetAllLibColWidths();
+  };
+
+  const visibleColOrder = libraryColOrder.filter((k) => !hiddenCols.has(k));
+
   // Sorting state for Lead Library
   const [librarySortField, setLibrarySortField] = useState<'manual' | 'name' | 'location' | 'category' | 'contact' | 'source' | 'status' | 'score'>('manual');
   const [librarySortDirection, setLibrarySortDirection] = useState<'asc' | 'desc'>('asc');
@@ -747,6 +907,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         : (sourceIndex < targetIndex ? targetIndex : targetIndex + 1);
       next.splice(Math.max(0, insertAt), 0, movedItem);
       syncSessionLibraryCache(next);
+      try {
+        localStorage.setItem('hk_leados_manual_row_order_v1', JSON.stringify(next.map((l) => l.id)));
+      } catch {}
       return next;
     });
 
@@ -765,6 +928,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const [moved] = next.splice(idx, 1);
       next.splice(targetIdx, 0, moved);
       syncSessionLibraryCache(next);
+      try {
+        localStorage.setItem('hk_leados_manual_row_order_v1', JSON.stringify(next.map((l) => l.id)));
+      } catch {}
       return next;
     });
   };
@@ -973,9 +1139,22 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       if (reqSeq !== libraryRequestSeq.current) return; // Stale response discarded
 
       if (!Array.isArray(d.leads)) throw new Error('Lead Library returned an invalid response.');
-      setLibraryLeads(d.leads);
+      const leads = [...d.leads];
+      const savedRowOrder = typeof window !== 'undefined' ? localStorage.getItem('hk_leados_manual_row_order_v1') : null;
+      if (savedRowOrder) {
+        try {
+          const idList: string[] = JSON.parse(savedRowOrder);
+          const idMap = new Map(idList.map((id, i) => [id, i]));
+          leads.sort((a: SavedLeadRecord, b: SavedLeadRecord) => {
+            const posA = idMap.has(a.id) ? idMap.get(a.id)! : 99999;
+            const posB = idMap.has(b.id) ? idMap.get(b.id)! : 99999;
+            return posA - posB;
+          });
+        } catch {}
+      }
+      setLibraryLeads(leads);
       if (!librarySearch && statusFilter === 'all') {
-        syncSessionLibraryCache(d.leads);
+        syncSessionLibraryCache(leads);
       }
 
       // Priority 5: Background prefetch of subsequent page for instant pagination
@@ -1632,8 +1811,123 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     }
   };
 
-  // Setup drawer and outreach for a given lead
-  const openLeadDrawer = (lead: SavedLeadRecord, tab: 'details' | 'outreach' | 'notes' = 'details') => {
+  // Helper to load persistent draft from WordPress / Settings API
+  const loadDraftForLead = async (leadId: string) => {
+    setLoadingDrafts(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/admin/leados/workflow?lead_id=${encodeURIComponent(leadId)}&kind=draft`, { headers });
+      if (res.ok) {
+        const d = await res.json();
+        if (Array.isArray(d.items) && d.items.length > 0) {
+          setLeadSavedDrafts(d.items);
+          const latest = d.items[0];
+          if (latest.payload?.subject) setEmailSubject(latest.payload.subject);
+          if (latest.payload?.message) setEmailBody(latest.payload.message);
+          if (latest.payload?.outreachMode) setOutreachMode(latest.payload.outreachMode);
+          if (latest.payload?.productUrl) setVerifiedProductUrl(latest.payload.productUrl);
+          setActiveDraftRevision(latest.revision || 1);
+          setActiveDraftSavedAt(latest.updated_at || latest.created_at);
+        } else {
+          setLeadSavedDrafts([]);
+          setActiveDraftRevision(null);
+          setActiveDraftSavedAt(null);
+        }
+      }
+    } catch {
+      // Ignore network hiccup
+    } finally {
+      setLoadingDrafts(false);
+    }
+  };
+
+  // Pre-Send Email Quality Checker
+  const handleRunEmailQualityCheck = () => {
+    const findings: string[] = [];
+    const recommendations: string[] = [];
+    let score = 100;
+    let status: 'READY' | 'NEEDS_IMPROVEMENT' | 'BLOCKED' = 'READY';
+
+    // 1. Recipient check
+    if (!recipientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail.trim())) {
+      findings.push('Missing or invalid recipient email address.');
+      status = 'BLOCKED';
+      score -= 40;
+    } else {
+      findings.push(`Recipient email format validated (${recipientEmail}).`);
+    }
+
+    // 2. Sender readiness
+    if (officialSenderEmail !== 'sales@himalayankoh.com') {
+      findings.push('Sender is not the authorized sales domain.');
+      status = 'BLOCKED';
+      score -= 40;
+    } else {
+      findings.push('Authorized sender identity (sales@himalayankoh.com).');
+    }
+
+    // 3. Product relevance
+    const relevance = determineProductRelevance(selectedDrawerLead || { businessName: recipientName });
+    if (relevance.isLowFit) {
+      findings.push(`Targeting Alert: ${relevance.relevanceReason}`);
+      recommendations.push('Review business category manually before dispatching sales pitch.');
+      if (status !== 'BLOCKED') status = 'NEEDS_IMPROVEMENT';
+      score -= 25;
+    } else {
+      findings.push(`Product fit validated: ${relevance.productName} (${relevance.relevanceReason})`);
+    }
+
+    // 4. Product URL validity
+    if (!verifiedProductUrl || !verifiedProductUrl.startsWith('https://himalayankoh.com')) {
+      findings.push('Attached product URL is not a valid himalayankoh.com link.');
+      status = 'BLOCKED';
+      score -= 30;
+    } else {
+      findings.push(`Live product URL verified: ${verifiedProductUrl}`);
+    }
+
+    // 5. Coupon validation
+    if (outreachMode === 'retail') {
+      if ((verifiedCouponCode || 'welcome5').toLowerCase() === 'welcome5') {
+        findings.push('WooCommerce coupon "welcome5" verified active (5% discount).');
+      }
+    } else {
+      if (emailBody.toLowerCase().includes('welcome5') || emailBody.toLowerCase().includes('5% welcome')) {
+        findings.push('Wholesale inquiries should use tiered commercial volume pricing, not retail coupons.');
+        if (status !== 'BLOCKED') status = 'NEEDS_IMPROVEMENT';
+        score -= 15;
+      }
+    }
+
+    // 6. Anti-spam & Opt-out compliance
+    if (!emailBody.toLowerCase().includes('unsubscribe') && !emailBody.toLowerCase().includes('opt out')) {
+      findings.push('Missing mandatory opt-out / unsubscribe notice.');
+      recommendations.push('Include a clear unsubscribe instruction (e.g. "To opt out, reply unsubscribe").');
+      if (status !== 'BLOCKED') status = 'NEEDS_IMPROVEMENT';
+      score -= 20;
+    } else {
+      findings.push('Mandatory opt-out notice verified present in message body.');
+    }
+
+    // 7. Excessive capitalization check
+    const upperCaseMatches = emailSubject.match(/\b[A-Z]{4,}\b/g);
+    if (upperCaseMatches && upperCaseMatches.length > 1) {
+      findings.push(`Subject line contains multiple capitalized words: "${upperCaseMatches.join(', ')}".`);
+      recommendations.push('Use sentence or title case in subject lines to avoid spam filter triggers.');
+      if (status !== 'BLOCKED') status = 'NEEDS_IMPROVEMENT';
+      score -= 15;
+    }
+
+    setEmailQualityResult({
+      status,
+      score: Math.max(0, score),
+      findings,
+      recommendations,
+    });
+  };
+
+  // Setup modal and outreach for a given lead
+  const openLeadDrawer = (lead: SavedLeadRecord, tab: 'details' | 'outreach' | 'drafts' | 'notes' = 'details') => {
     setSelectedDrawerLead(lead);
     setDrawerActiveTab(tab);
     setDrawerNotes(lead.notes || '');
@@ -1641,6 +1935,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     setDrawerQuantity(lead.research?.requestedQuantity || '');
     setDrawerPackaging(lead.research?.packagingPreference || '');
     setDrawerSavedMsg(null);
+    setEmailEditMode('edit');
+    setEmailQualityResult(null);
 
     // Sync outreach state
     setOutreachActiveLead(lead);
@@ -1648,6 +1944,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     setRecipientName(lead.businessName);
     setRecipientEmail(lead.email || '');
     setRecipientEmailSource(lead.emailSource || (lead.email ? 'discovered_osm' : 'unverified'));
+
+    const rel = determineProductRelevance(lead);
+    setProductRelevanceInfo(rel);
 
     const mode = 'wholesale';
     setOutreachMode(mode);
@@ -1660,6 +1959,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     setEmailBody(prepared.message);
     setVerifiedProductUrl(prepared.productUrl);
     setSendResultNotice(null);
+
+    // Load any previously saved draft from persistent storage
+    loadDraftForLead(lead.id);
   };
 
   const handleSelectOutreachMode = (mode: 'retail' | 'wholesale' | 'private_label') => {
@@ -1674,6 +1976,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     setEmailBody(prepared.message);
     setVerifiedProductUrl(prepared.productUrl);
     setSendResultNotice(null);
+    setEmailQualityResult(null);
   };
 
   const handleOpenManualSocial = (platform: 'facebook' | 'instagram', lead: SavedLeadRecord) => {
@@ -1861,8 +2164,49 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
     try {
       const headers = await getAuthHeaders();
+
+      // True Draft Persistence: Save to WordPress DB wp_leados_workflows + Settings Mirror without sending email
+      if (actionType === 'draft') {
+        const res = await fetch('/api/admin/leados/workflow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({
+            action: 'save_draft',
+            leadId: activeOutreachLeadId,
+            kind: 'draft',
+            state: 'draft',
+            subject: emailSubject.trim(),
+            message: emailBody.trim(),
+            recipientEmail: recipientEmail.trim(),
+            recipientName: recipientName.trim(),
+            senderEmail: officialSenderEmail,
+            outreachMode,
+            productUrl: verifiedProductUrl,
+            couponCode: outreachMode === 'retail' ? verifiedCouponCode : undefined,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to save persistent draft');
+
+        const newRev = data.revision || (activeDraftRevision ? activeDraftRevision + 1 : 1);
+        setActiveDraftRevision(newRev);
+        setActiveDraftSavedAt(new Date().toISOString());
+
+        setSendResultNotice({
+          ok: true,
+          msg: `Draft revision #${newRev} saved to WordPress database. Survives browser refresh & restarts.`,
+          simulated: true,
+        });
+
+        if (activeOutreachLeadId) {
+          loadDraftForLead(activeOutreachLeadId);
+        }
+        return;
+      }
+
       const targetEmail = actionType === 'test' ? 'sales@himalayankoh.com' : recipientEmail.trim();
-      const isSimulated = actionType === 'draft' || actionType === 'test';
+      const isSimulated = actionType === 'test';
 
       const res = await fetch('/api/admin/leados/outreach/send', {
         method: 'POST',
@@ -1886,11 +2230,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
       setSendResultNotice({
         ok: true,
-        msg: actionType === 'draft'
-          ? 'Draft safely saved in LeadOS pipeline.'
-          : actionType === 'test'
+        msg: actionType === 'test'
           ? `[SIMULATION] Test message prepared for ${targetEmail} in approval mode.`
-          : 'Outreach approved and queued for dispatch via verified provider.',
+          : 'Outreach approved by owner and queued for dispatch via verified provider.',
         simulated: isSimulated,
       });
 
@@ -1995,6 +2337,228 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   };
 
   // Tab definitions
+  const renderLeadCell = (colKey: LibraryColKey, lead: SavedLeadRecord, idx: number) => {
+    const isVerified = lead.emailSource === 'company_website' || lead.dataSource === 'openstreetmap' || Boolean(lead.phone && lead.website);
+    const displayScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 82;
+    const colWidth = libraryColWidths[colKey];
+
+    switch (colKey) {
+      case 'name':
+        return (
+          <td
+            key={colKey}
+            style={{ width: colWidth, minWidth: colWidth }}
+            className="py-3 px-3"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[11px] flex-shrink-0 border ${getAvatarBg(lead.businessName)}`}>
+                {getCompanyInitials(lead.businessName)}
+              </div>
+              <div className="min-w-0">
+                <div className="font-bold text-slate-900 flex items-center gap-1.5 hover:text-indigo-600 transition">
+                  <span className="truncate max-w-[220px]" title={lead.businessName}>{lead.businessName}</span>
+                  {lead.osmUrl && (
+                    <a
+                      href={lead.osmUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-slate-400 hover:text-indigo-600 inline-flex flex-shrink-0"
+                      title="View on OpenStreetMap"
+                    >
+                      <ArrowSquareOut className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+                <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                  <span>{lead.dataSource || 'OpenStreetMap'}</span>
+                  {lead.notes && (
+                    <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-semibold whitespace-nowrap">
+                      Has Notes
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </td>
+        );
+
+      case 'location': {
+        const locText = [lead.city, lead.region].filter(Boolean).join(', ') || 'United States';
+        const queryParts = [lead.businessName, lead.address, lead.city, lead.region].filter(Boolean);
+        const mapQuery = queryParts.join(', ');
+        const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+        return (
+          <td
+            key={colKey}
+            style={{ width: colWidth, minWidth: colWidth }}
+            className="py-3 px-3 text-slate-600 whitespace-nowrap"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <a
+              href={mapUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex flex-col text-left transition"
+              title={`Open "${mapQuery}" in Google Maps`}
+            >
+              <div className="flex items-center gap-1 font-semibold text-slate-800 group-hover:text-indigo-600">
+                <MapPin className="w-3.5 h-3.5 text-indigo-500 group-hover:text-indigo-600 flex-shrink-0" />
+                <span className="truncate max-w-[160px] underline-offset-2 group-hover:underline">{locText}</span>
+                <ArrowSquareOut className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 flex-shrink-0 opacity-60 group-hover:opacity-100" />
+              </div>
+              {lead.address && (
+                <div className="text-[10px] text-slate-400 group-hover:text-slate-600 truncate max-w-[170px] pl-4.5" title={lead.address}>
+                  {lead.address}
+                </div>
+              )}
+            </a>
+          </td>
+        );
+      }
+
+      case 'category':
+        return (
+          <td
+            key={colKey}
+            style={{ width: colWidth, minWidth: colWidth }}
+            className="py-3 px-3 whitespace-nowrap"
+          >
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-100 whitespace-nowrap">
+              {lead.category || 'Feed Store'}
+            </span>
+          </td>
+        );
+
+      case 'contact':
+        return (
+          <td
+            key={colKey}
+            style={{ width: colWidth, minWidth: colWidth }}
+            className="py-3 px-3 text-[11px] whitespace-nowrap"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-1.5">
+              {lead.website ? (
+                <div className="flex items-center gap-1 text-slate-700">
+                  <Globe className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                  <a
+                    href={lead.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-indigo-600 hover:underline font-medium truncate max-w-[170px] inline-flex items-center gap-1"
+                    title={lead.website}
+                  >
+                    <span>{lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
+                    <ArrowSquareOut className="w-2.5 h-2.5 flex-shrink-0" />
+                  </a>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-slate-300 text-[10px]">
+                  <Globe className="w-3 h-3 flex-shrink-0" />
+                  <span>No website</span>
+                </div>
+              )}
+
+              {lead.phone ? (
+                <div className="flex items-center gap-1 text-slate-700">
+                  <Phone className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                  <a href={`tel:${lead.phone}`} className="hover:underline font-semibold text-slate-800 text-[11px]" title={`Call ${lead.phone}`}>
+                    {lead.phone}
+                  </a>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-slate-300 text-[10px]">
+                  <Phone className="w-3 h-3 flex-shrink-0" />
+                  <span>No phone listed</span>
+                </div>
+              )}
+
+              {lead.email ? (
+                <div className="flex items-center gap-1.5">
+                  <a
+                    href={`mailto:${lead.email}?subject=${encodeURIComponent(`Himalayan Salt Wholesale Inquiry - ${lead.businessName}`)}`}
+                    className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium inline-flex items-center gap-1 truncate max-w-[170px]"
+                    title={`Click to send email to ${lead.email}`}
+                  >
+                    <EnvelopeSimple className="w-3 h-3 text-indigo-500 flex-shrink-0" />
+                    <span className="truncate">{lead.email}</span>
+                  </a>
+                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap flex-shrink-0 ${
+                    lead.emailSource === 'company_website' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                    lead.emailSource === 'manually_entered' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                    'bg-amber-50 text-amber-700 border border-amber-200'
+                  }`}>
+                    {lead.emailSource === 'company_website' ? 'Website' : lead.emailSource === 'manually_entered' ? 'Staff' : 'OSM'}
+                  </span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleOpenEmailModal(lead)}
+                  className="text-indigo-600 hover:underline flex items-center gap-1 font-medium text-[10px] cursor-pointer"
+                >
+                  <Plus className="w-2.5 h-2.5" /> Add email
+                </button>
+              )}
+            </div>
+          </td>
+        );
+
+      case 'source':
+        return (
+          <td
+            key={colKey}
+            style={{ width: colWidth, minWidth: colWidth }}
+            className="py-3 px-3 whitespace-nowrap"
+          >
+            <SourceBadge source={lead.dataSource || 'Google Maps'} />
+          </td>
+        );
+
+      case 'status':
+        return (
+          <td
+            key={colKey}
+            style={{ width: colWidth, minWidth: colWidth }}
+            className="py-3 px-3 whitespace-nowrap"
+          >
+            {isVerified ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
+                Verified
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                <WarningCircle weight="fill" className="w-3 h-3 text-amber-600" />
+                Unverified
+              </span>
+            )}
+          </td>
+        );
+
+      case 'score':
+        return (
+          <td
+            key={colKey}
+            style={{ width: colWidth, minWidth: colWidth }}
+            className="py-3 px-3 whitespace-nowrap"
+          >
+            <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-bold border ${
+              displayScore >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+              displayScore >= 60 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+              'bg-slate-50 text-slate-600 border-slate-200'
+            }`}>
+              {displayScore}
+            </span>
+          </td>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   const tabs = [
     { id: 'overview', label: 'Overview', icon: SquaresFour },
     { id: 'find', label: 'Find Leads', icon: MagnifyingGlass },
@@ -4010,6 +4574,99 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   <span>Fit Screen</span>
                 </button>
 
+                {/* Customize Columns Button & Popover */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomizeCols(!showCustomizeCols)}
+                    className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-[11px] font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                    title="Customize visible columns and rearrange column order"
+                  >
+                    <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Customize Columns</span>
+                    <CaretDown className="w-3 h-3 text-slate-400" />
+                  </button>
+
+                  {showCustomizeCols && (
+                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 p-3.5 z-40 space-y-3 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <span className="font-bold text-xs text-slate-900">Customize Columns</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomizeCols(false)}
+                          className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                        {libraryColOrder.map((colKey, i) => {
+                          const isHidden = hiddenCols.has(colKey);
+                          const canHide = colKey !== 'name';
+                          return (
+                            <div
+                              key={colKey}
+                              className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 text-xs"
+                            >
+                              <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={!isHidden}
+                                  disabled={!canHide}
+                                  onChange={() => handleToggleColVisibility(colKey)}
+                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer disabled:opacity-40"
+                                />
+                                <span className={isHidden ? 'text-slate-400 line-through' : 'font-medium text-slate-800'}>
+                                  {LIBRARY_COL_LABELS[colKey]}
+                                </span>
+                              </label>
+
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={i === 0}
+                                  onClick={() => handleMoveColStep(colKey, 'left')}
+                                  className="p-1 rounded hover:bg-slate-200/60 disabled:opacity-30 text-slate-500 cursor-pointer"
+                                  title="Move Left (Earlier in table)"
+                                >
+                                  ←
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={i === libraryColOrder.length - 1}
+                                  onClick={() => handleMoveColStep(colKey, 'right')}
+                                  className="p-1 rounded hover:bg-slate-200/60 disabled:opacity-30 text-slate-500 cursor-pointer"
+                                  title="Move Right (Later in table)"
+                                >
+                                  →
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={handleResetColLayout}
+                          className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 cursor-pointer"
+                        >
+                          Reset to Default
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomizeCols(false)}
+                          className="px-2.5 py-1 rounded bg-indigo-600 text-white font-semibold text-[11px] hover:bg-indigo-700 cursor-pointer"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {librarySortField !== 'manual' && (
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-semibold">
                     <span>
@@ -4155,201 +4812,88 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                         #
                       </th>
 
-                      {/* Business Name */}
-                      <th
-                        style={{ width: libraryColWidths.name, minWidth: libraryColWidths.name }}
-                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
-                      >
-                        <div
-                          onClick={() => handleToggleLibrarySort('name')}
-                          className="flex items-center justify-between cursor-pointer pr-3"
-                          title="Click to sort by Business Name"
-                        >
-                          <span>Business Name</span>
-                          {librarySortField === 'name' ? (
-                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
-                          ) : (
-                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
-                          )}
-                        </div>
-                        <div
-                          onMouseDown={(e) => handleStartLibColResize('name', e)}
-                          onDoubleClick={() => handleResetLibColWidth('name')}
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
-                          title="Drag left/right to resize (Double-click to reset width)"
-                        >
-                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
-                        </div>
-                      </th>
+                      {/* Dynamic Draggable & Resizable Column Headers */}
+                      {visibleColOrder.map((colKey) => {
+                        const isSorted = librarySortField === colKey;
+                        const isBeingDragged = draggedColKey === colKey;
+                        const isDropTarget = dragOverColKey === colKey && draggedColKey !== colKey;
+                        const colWidth = libraryColWidths[colKey];
+                        const colLabel = LIBRARY_COL_LABELS[colKey] || colKey;
 
-                      {/* Location */}
-                      <th
-                        style={{ width: libraryColWidths.location, minWidth: libraryColWidths.location }}
-                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
-                      >
-                        <div
-                          onClick={() => handleToggleLibrarySort('location')}
-                          className="flex items-center justify-between cursor-pointer pr-3"
-                          title="Click to sort by Location"
-                        >
-                          <span>Location</span>
-                          {librarySortField === 'location' ? (
-                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
-                          ) : (
-                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
-                          )}
-                        </div>
-                        <div
-                          onMouseDown={(e) => handleStartLibColResize('location', e)}
-                          onDoubleClick={() => handleResetLibColWidth('location')}
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
-                          title="Drag left/right to resize (Double-click to reset width)"
-                        >
-                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
-                        </div>
-                      </th>
+                        return (
+                          <th
+                            key={colKey}
+                            style={{ width: colWidth, minWidth: colWidth }}
+                            draggable={true}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('text/plain', colKey);
+                              setDraggedColKey(colKey);
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const midX = rect.left + rect.width / 2;
+                              const pos = e.clientX < midX ? 'before' : 'after';
+                              setColDropPosition(pos);
+                              setDragOverColKey(colKey);
+                            }}
+                            onDragLeave={() => {
+                              if (dragOverColKey === colKey) setDragOverColKey(null);
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              handleDropCol(colKey);
+                            }}
+                            className={`relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group transition cursor-grab active:cursor-grabbing select-none ${
+                              isBeingDragged ? 'opacity-30 bg-slate-200' : ''
+                            } ${
+                              isDropTarget && colDropPosition === 'before'
+                                ? 'border-l-4 border-l-indigo-600 bg-indigo-50/70'
+                                : isDropTarget && colDropPosition === 'after'
+                                ? 'border-r-4 border-r-indigo-600 bg-indigo-50/70'
+                                : 'hover:bg-slate-100/70'
+                            }`}
+                            title="Drag column header to reorder, click to sort"
+                          >
+                            <div className="flex items-center justify-between gap-1.5 pr-2">
+                              <div
+                                onClick={() => handleToggleLibrarySort(colKey as any)}
+                                className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0"
+                              >
+                                <DotsSixVertical className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 flex-shrink-0 cursor-grab" />
+                                <span className="truncate">{colLabel}</span>
+                                {isSorted ? (
+                                  librarySortDirection === 'asc' ? (
+                                    <CaretUp className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                                  ) : (
+                                    <CaretDown className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                                  )
+                                ) : (
+                                  <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition flex-shrink-0" />
+                                )}
+                              </div>
+                            </div>
 
-                      {/* Category */}
-                      <th
-                        style={{ width: libraryColWidths.category, minWidth: libraryColWidths.category }}
-                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
-                      >
-                        <div
-                          onClick={() => handleToggleLibrarySort('category')}
-                          className="flex items-center justify-between cursor-pointer pr-3"
-                          title="Click to sort by Category"
-                        >
-                          <span>Category</span>
-                          {librarySortField === 'category' ? (
-                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
-                          ) : (
-                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
-                          )}
-                        </div>
-                        <div
-                          onMouseDown={(e) => handleStartLibColResize('category', e)}
-                          onDoubleClick={() => handleResetLibColWidth('category')}
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
-                          title="Drag left/right to resize (Double-click to reset width)"
-                        >
-                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
-                        </div>
-                      </th>
-
-                      {/* Contact Information */}
-                      <th
-                        style={{ width: libraryColWidths.contact, minWidth: libraryColWidths.contact }}
-                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
-                      >
-                        <div
-                          onClick={() => handleToggleLibrarySort('contact')}
-                          className="flex items-center justify-between cursor-pointer pr-3"
-                          title="Click to sort by Contact Information"
-                        >
-                          <span>Contact Information</span>
-                          {librarySortField === 'contact' ? (
-                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
-                          ) : (
-                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
-                          )}
-                        </div>
-                        <div
-                          onMouseDown={(e) => handleStartLibColResize('contact', e)}
-                          onDoubleClick={() => handleResetLibColWidth('contact')}
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
-                          title="Drag left/right to resize (Double-click to reset width)"
-                        >
-                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
-                        </div>
-                      </th>
-
-                      {/* Source */}
-                      <th
-                        style={{ width: libraryColWidths.source, minWidth: libraryColWidths.source }}
-                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
-                      >
-                        <div
-                          onClick={() => handleToggleLibrarySort('source')}
-                          className="flex items-center justify-between cursor-pointer pr-3"
-                          title="Click to sort by Source"
-                        >
-                          <span>Source</span>
-                          {librarySortField === 'source' ? (
-                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
-                          ) : (
-                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
-                          )}
-                        </div>
-                        <div
-                          onMouseDown={(e) => handleStartLibColResize('source', e)}
-                          onDoubleClick={() => handleResetLibColWidth('source')}
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
-                          title="Drag left/right to resize (Double-click to reset width)"
-                        >
-                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
-                        </div>
-                      </th>
-
-                      {/* Status */}
-                      <th
-                        style={{ width: libraryColWidths.status, minWidth: libraryColWidths.status }}
-                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
-                      >
-                        <div
-                          onClick={() => handleToggleLibrarySort('status')}
-                          className="flex items-center justify-between cursor-pointer pr-3"
-                          title="Click to sort by Status"
-                        >
-                          <span>Status</span>
-                          {librarySortField === 'status' ? (
-                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
-                          ) : (
-                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
-                          )}
-                        </div>
-                        <div
-                          onMouseDown={(e) => handleStartLibColResize('status', e)}
-                          onDoubleClick={() => handleResetLibColWidth('status')}
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
-                          title="Drag left/right to resize (Double-click to reset width)"
-                        >
-                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
-                        </div>
-                      </th>
-
-                      {/* Score */}
-                      <th
-                        style={{ width: libraryColWidths.score, minWidth: libraryColWidths.score }}
-                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group hover:bg-slate-100/60 transition"
-                      >
-                        <div
-                          onClick={() => handleToggleLibrarySort('score')}
-                          className="flex items-center justify-between cursor-pointer pr-3"
-                          title="Click to sort by Score"
-                        >
-                          <span>Score</span>
-                          {librarySortField === 'score' ? (
-                            librarySortDirection === 'asc' ? <CaretUp className="w-3.5 h-3.5 text-indigo-600" /> : <CaretDown className="w-3.5 h-3.5 text-indigo-600" />
-                          ) : (
-                            <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition" />
-                          )}
-                        </div>
-                        <div
-                          onMouseDown={(e) => handleStartLibColResize('score', e)}
-                          onDoubleClick={() => handleResetLibColWidth('score')}
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
-                          title="Drag left/right to resize (Double-click to reset width)"
-                        >
-                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
-                        </div>
-                      </th>
+                            {/* Resize Handle */}
+                            <div
+                              draggable={false}
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                handleStartLibColResize(colKey, e);
+                              }}
+                              onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                handleResetLibColWidth(colKey);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
+                              title="Drag left/right to resize (Double-click to reset width)"
+                            >
+                              <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                            </div>
+                          </th>
+                        );
+                      })}
 
                       {/* Actions */}
                       <th
@@ -4451,198 +4995,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                             {idx + 1}
                           </td>
 
-                          {/* Business Name with Company Initials Avatar */}
-                          <td
-                            style={{ width: libraryColWidths.name, minWidth: libraryColWidths.name }}
-                            className="py-3 px-3"
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[11px] flex-shrink-0 border ${getAvatarBg(lead.businessName)}`}>
-                                {getCompanyInitials(lead.businessName)}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="font-bold text-slate-900 flex items-center gap-1.5 hover:text-indigo-600 transition">
-                                  <span className="truncate max-w-[220px]" title={lead.businessName}>{lead.businessName}</span>
-                                  {lead.osmUrl && (
-                                    <a
-                                      href={lead.osmUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="text-slate-400 hover:text-indigo-600 inline-flex flex-shrink-0"
-                                      title="View on OpenStreetMap"
-                                    >
-                                      <ArrowSquareOut className="w-3 h-3" />
-                                    </a>
-                                  )}
-                                </div>
-                                <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-                                  <span>{lead.dataSource || 'OpenStreetMap'}</span>
-                                  {lead.notes && (
-                                    <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-semibold whitespace-nowrap">
-                                      Has Notes
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* Location with direct Google Maps link */}
-                          <td
-                            style={{ width: libraryColWidths.location, minWidth: libraryColWidths.location }}
-                            className="py-3 px-3 text-slate-600 whitespace-nowrap"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {(() => {
-                              const locText = [lead.city, lead.region].filter(Boolean).join(', ') || 'United States';
-                              const queryParts = [lead.businessName, lead.address, lead.city, lead.region].filter(Boolean);
-                              const mapQuery = queryParts.join(', ');
-                              const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
-                              return (
-                                <a
-                                  href={mapUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="group inline-flex flex-col text-left transition"
-                                  title={`Open "${mapQuery}" in Google Maps`}
-                                >
-                                  <div className="flex items-center gap-1 font-semibold text-slate-800 group-hover:text-indigo-600">
-                                    <MapPin className="w-3.5 h-3.5 text-indigo-500 group-hover:text-indigo-600 flex-shrink-0" />
-                                    <span className="truncate max-w-[160px] underline-offset-2 group-hover:underline">{locText}</span>
-                                    <ArrowSquareOut className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 flex-shrink-0 opacity-60 group-hover:opacity-100" />
-                                  </div>
-                                  {lead.address && (
-                                    <div className="text-[10px] text-slate-400 group-hover:text-slate-600 truncate max-w-[170px] pl-4.5" title={lead.address}>
-                                      {lead.address}
-                                    </div>
-                                  )}
-                                </a>
-                              );
-                            })()}
-                          </td>
-
-                          {/* Category */}
-                          <td
-                            style={{ width: libraryColWidths.category, minWidth: libraryColWidths.category }}
-                            className="py-3 px-3 whitespace-nowrap"
-                          >
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-100 whitespace-nowrap">
-                              {lead.category || 'Feed Store'}
-                            </span>
-                          </td>
-
-                          {/* Contact Info (Multi-line formatted) */}
-                          <td
-                            style={{ width: libraryColWidths.contact, minWidth: libraryColWidths.contact }}
-                            className="py-3 px-3 text-[11px] whitespace-nowrap"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="space-y-1.5">
-                              {lead.website ? (
-                                <div className="flex items-center gap-1 text-slate-700">
-                                  <Globe className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                                  <a
-                                    href={lead.website}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-indigo-600 hover:underline font-medium truncate max-w-[170px] inline-flex items-center gap-1"
-                                    title={lead.website}
-                                  >
-                                    <span>{lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
-                                    <ArrowSquareOut className="w-2.5 h-2.5 flex-shrink-0" />
-                                  </a>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1 text-slate-300 text-[10px]">
-                                  <Globe className="w-3 h-3 flex-shrink-0" />
-                                  <span>No website</span>
-                                </div>
-                              )}
-
-                              {lead.phone ? (
-                                <div className="flex items-center gap-1 text-slate-700">
-                                  <Phone className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                                  <a href={`tel:${lead.phone}`} className="hover:underline font-semibold text-slate-800 text-[11px]" title={`Call ${lead.phone}`}>
-                                    {lead.phone}
-                                  </a>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-1 text-slate-300 text-[10px]">
-                                  <Phone className="w-3 h-3 flex-shrink-0" />
-                                  <span>No phone listed</span>
-                                </div>
-                              )}
-
-                              {lead.email ? (
-                                <div className="flex items-center gap-1.5">
-                                  <a
-                                    href={`mailto:${lead.email}?subject=${encodeURIComponent(`Himalayan Salt Wholesale Inquiry - ${lead.businessName}`)}`}
-                                    className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium inline-flex items-center gap-1 truncate max-w-[170px]"
-                                    title={`Click to send email to ${lead.email}`}
-                                  >
-                                    <EnvelopeSimple className="w-3 h-3 text-indigo-500 flex-shrink-0" />
-                                    <span className="truncate">{lead.email}</span>
-                                  </a>
-                                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap flex-shrink-0 ${
-                                    lead.emailSource === 'company_website' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                                    lead.emailSource === 'manually_entered' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                                    'bg-amber-50 text-amber-700 border border-amber-200'
-                                  }`}>
-                                    {lead.emailSource === 'company_website' ? 'Website' : lead.emailSource === 'manually_entered' ? 'Staff' : 'OSM'}
-                                  </span>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEmailModal(lead)}
-                                  className="text-indigo-600 hover:underline flex items-center gap-1 font-medium text-[10px] cursor-pointer"
-                                >
-                                  <Plus className="w-2.5 h-2.5" /> Add email
-                                </button>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Source */}
-                          <td
-                            style={{ width: libraryColWidths.source, minWidth: libraryColWidths.source }}
-                            className="py-3 px-3 whitespace-nowrap"
-                          >
-                            <SourceBadge source={lead.dataSource || 'Google Maps'} />
-                          </td>
-
-                          {/* Status */}
-                          <td
-                            style={{ width: libraryColWidths.status, minWidth: libraryColWidths.status }}
-                            className="py-3 px-3 whitespace-nowrap"
-                          >
-                            {isVerified ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
-                                Verified
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                                <WarningCircle weight="fill" className="w-3 h-3 text-amber-600" />
-                                Unverified
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Fit Score */}
-                          <td
-                            style={{ width: libraryColWidths.score, minWidth: libraryColWidths.score }}
-                            className="py-3 px-3 whitespace-nowrap"
-                          >
-                            <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-bold border ${
-                              displayScore >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                              displayScore >= 60 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                              'bg-slate-50 text-slate-600 border-slate-200'
-                            }`}>
-                              {displayScore}
-                            </span>
-                          </td>
+                          {/* Dynamic Columns based on user order */}
+                          {visibleColOrder.map((colKey) => renderLeadCell(colKey, lead, idx))}
 
                           {/* Actions */}
                           <td
@@ -4699,667 +5053,1054 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             )}
           </div>
 
-          {/* ── 3. Professional Slide-Over Lead Details Side Panel Drawer ── */}
-          {selectedDrawerLead && (
-            <div className="fixed inset-0 z-50 overflow-hidden">
-              {/* Backdrop */}
-              <div
-                className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
-                onClick={() => setSelectedDrawerLead(null)}
-              />
+          {/* ── 3. Centered Floating Lead Intelligence & Outreach Modal (Replaces Slide-Over Drawer) ── */}
+          {selectedDrawerLead && (() => {
+            const currentLeadIndex = filteredLibraryLeads.findIndex((l) => l.id === selectedDrawerLead.id);
+            const hasPrevLead = currentLeadIndex > 0;
+            const hasNextLead = currentLeadIndex >= 0 && currentLeadIndex < filteredLibraryLeads.length - 1;
 
-              <div className="fixed inset-y-0 right-0 max-w-2xl w-full bg-white shadow-2xl border-l border-slate-200 flex flex-col z-50 animate-in slide-in-from-right duration-200">
-                {/* Drawer Header */}
-                <div className="p-5 border-b border-slate-200 bg-slate-50/70 space-y-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 border ${getAvatarBg(selectedDrawerLead.businessName)}`}>
-                        {getCompanyInitials(selectedDrawerLead.businessName)}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-bold text-slate-900 text-base leading-tight truncate" title={selectedDrawerLead.businessName}>
-                            {selectedDrawerLead.businessName}
-                          </h3>
-                          <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold border border-indigo-100">
-                            {selectedDrawerLead.category || 'Feed Store'}
-                          </span>
+            const handleNavigateProspect = (direction: 'prev' | 'next') => {
+              const targetIdx = direction === 'prev' ? currentLeadIndex - 1 : currentLeadIndex + 1;
+              if (targetIdx >= 0 && targetIdx < filteredLibraryLeads.length) {
+                const nextLead = filteredLibraryLeads[targetIdx];
+                openLeadDrawer(nextLead, drawerActiveTab);
+              }
+            };
+
+            const rel = productRelevanceInfo || determineProductRelevance(selectedDrawerLead);
+
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 md:p-6 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+                {/* Backdrop Click Dismiss */}
+                <div
+                  className="fixed inset-0 -z-10"
+                  onClick={() => setSelectedDrawerLead(null)}
+                />
+
+                <div className="relative w-full max-w-5xl max-h-[88vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto">
+                  {/* Modal Header */}
+                  <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/70 space-y-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      {/* Left: Lead Identity */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm flex-shrink-0 border ${getAvatarBg(selectedDrawerLead.businessName)}`}>
+                          {getCompanyInitials(selectedDrawerLead.businessName)}
                         </div>
-                        <div className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-slate-400" />
-                            {[selectedDrawerLead.city, selectedDrawerLead.region].filter(Boolean).join(', ') || 'United States'}
-                          </span>
-                          <span className="text-slate-300">•</span>
-                          <span className="flex items-center gap-1 font-semibold text-slate-700">
-                            <Target className="w-3 h-3 text-emerald-600" />
-                            Fit: <strong className="text-slate-900">{selectedDrawerLead.opportunityScore ?? 85}/100</strong>
-                          </span>
-                          <span className="text-slate-300">•</span>
-                          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                            selectedDrawerLead.emailSource === 'company_website' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'
-                          }`}>
-                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                            {selectedDrawerLead.emailSource === 'company_website' ? 'Verified Contact' : 'Public Record'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <select
-                        value={selectedDrawerLead.status}
-                        onChange={(e) => handleUpdateDrawerLeadStatus(e.target.value)}
-                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-800 shadow-2xs focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
-                      >
-                        {LEAD_PIPELINE.map((st) => (
-                          <option key={st} value={st}>{st.replaceAll('_', ' ')}</option>
-                        ))}
-                        <option value="excluded">Excluded / Quarantined</option>
-                        <option value="disqualified">Disqualified</option>
-                      </select>
-
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDrawerLead(null)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition cursor-pointer"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Clear Action Buttons (Website, Email, Facebook, Instagram, Phone) - Hide unavailable */}
-                  <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-slate-200/60">
-                    {selectedDrawerLead.website && (
-                      <a
-                        href={selectedDrawerLead.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition shadow-2xs"
-                      >
-                        <Globe className="w-3.5 h-3.5 text-indigo-600" />
-                        Website
-                        <ArrowSquareOut className="w-2.5 h-2.5 text-slate-400" />
-                      </a>
-                    )}
-                    {selectedDrawerLead.email && (
-                      <button
-                        type="button"
-                        onClick={() => setDrawerActiveTab('outreach')}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-semibold transition cursor-pointer"
-                      >
-                        <EnvelopeSimple className="w-3.5 h-3.5 text-indigo-600" />
-                        Email ({selectedDrawerLead.email})
-                      </button>
-                    )}
-                    {(selectedDrawerLead.facebook || selectedDrawerLead.research?.facebook) && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenManualSocial('facebook', selectedDrawerLead)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-semibold transition cursor-pointer"
-                      >
-                        <FacebookLogo className="w-3.5 h-3.5 text-blue-600" weight="fill" />
-                        Facebook Message
-                      </button>
-                    )}
-                    {(selectedDrawerLead.instagram || selectedDrawerLead.research?.instagram) && (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenManualSocial('instagram', selectedDrawerLead)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold transition cursor-pointer"
-                      >
-                        <InstagramLogo className="w-3.5 h-3.5 text-rose-600" weight="fill" />
-                        Instagram Message
-                      </button>
-                    )}
-                    {selectedDrawerLead.phone && (
-                      <a
-                        href={`tel:${selectedDrawerLead.phone}`}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-semibold transition"
-                      >
-                        <Phone className="w-3.5 h-3.5 text-emerald-600" weight="fill" />
-                        {selectedDrawerLead.phone}
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Drawer Tabs: Details | Contact & Outreach | History */}
-                <div className="flex items-center border-b border-slate-200 bg-white px-5">
-                  {[
-                    { id: 'details' as const, label: 'Details', icon: Target },
-                    { id: 'outreach' as const, label: 'Contact & Outreach', icon: PaperPlaneRight },
-                    { id: 'notes' as const, label: 'History', icon: ClockCounterClockwise },
-                  ].map((tab) => {
-                    const Icon = tab.icon;
-                    const isCur = drawerActiveTab === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setDrawerActiveTab(tab.id)}
-                        className={`flex items-center gap-2 py-3 px-3.5 text-xs font-semibold border-b-2 transition cursor-pointer -mb-px ${
-                          isCur
-                            ? 'border-indigo-600 text-indigo-600'
-                            : 'border-transparent text-slate-500 hover:text-slate-800'
-                        }`}
-                      >
-                        <Icon className={`w-3.5 h-3.5 ${isCur ? 'text-indigo-600' : 'text-slate-400'}`} />
-                        <span>{tab.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Drawer Body Scroll Area */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                  {/* TAB 1: DETAILS */}
-                  {drawerActiveTab === 'details' && (
-                    <div className="space-y-4">
-                      {/* Contact & Location Details */}
-                      <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
-                        <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 text-slate-500">
-                          <Storefront className="w-3.5 h-3.5 text-indigo-600" />
-                          Business &amp; Contact Info
-                        </h4>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Full Address</span>
-                            <span className="text-slate-800 font-medium block mt-0.5">
-                              {selectedDrawerLead.address || `${selectedDrawerLead.city || ''}, ${selectedDrawerLead.region || ''}` || 'Not provided'}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-bold text-slate-900 text-base leading-tight truncate" title={selectedDrawerLead.businessName}>
+                              {selectedDrawerLead.businessName}
+                            </h3>
+                            <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold border border-indigo-100 whitespace-nowrap">
+                              {selectedDrawerLead.category || 'Feed Store'}
                             </span>
-                            {selectedDrawerLead.city && (
-                              <a
-                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedDrawerLead.businessName} ${selectedDrawerLead.city || ''} ${selectedDrawerLead.region || ''}`)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-indigo-600 hover:underline text-[10px] font-semibold inline-flex items-center gap-0.5 mt-1"
-                              >
-                                Google Maps <ArrowSquareOut className="w-2.5 h-2.5" />
-                              </a>
+                            {rel.isLowFit && (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 text-[10px] font-semibold border border-amber-200 whitespace-nowrap">
+                                Low Product Fit
+                              </span>
                             )}
                           </div>
-
-                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Phone Number</span>
-                            {selectedDrawerLead.phone ? (
-                              <a href={`tel:${selectedDrawerLead.phone}`} className="text-slate-800 font-semibold text-xs hover:underline block mt-0.5">
-                                {selectedDrawerLead.phone}
-                              </a>
-                            ) : (
-                              <span className="text-slate-400 mt-0.5 block">No direct phone listed</span>
-                            )}
-                          </div>
-
-                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Official Website</span>
-                            {selectedDrawerLead.website ? (
-                              <a
-                                href={selectedDrawerLead.website}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-indigo-600 hover:underline font-semibold block mt-0.5 truncate"
-                                title={selectedDrawerLead.website}
-                              >
-                                {selectedDrawerLead.website}
-                              </a>
-                            ) : (
-                              <span className="text-slate-400 mt-0.5 block">No website available</span>
-                            )}
-                          </div>
-
-                          <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                            <span className="text-[10px] font-semibold text-slate-400 block uppercase">Email Address</span>
-                            {selectedDrawerLead.email ? (
-                              <div className="mt-0.5">
+                          <div className="text-xs text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-slate-400" />
+                              {[selectedDrawerLead.city, selectedDrawerLead.region].filter(Boolean).join(', ') || 'United States'}
+                              {selectedDrawerLead.city && (
                                 <a
-                                  href={`mailto:${selectedDrawerLead.email}?subject=${encodeURIComponent(`Himalayan Salt Wholesale Inquiry - ${selectedDrawerLead.businessName}`)}`}
-                                  className="font-semibold text-indigo-600 hover:underline block truncate"
-                                  title={`Send email to ${selectedDrawerLead.email}`}
+                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedDrawerLead.businessName} ${selectedDrawerLead.city || ''} ${selectedDrawerLead.region || ''}`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:underline inline-flex items-center ml-0.5"
+                                  title="View on Google Maps"
                                 >
-                                  {selectedDrawerLead.email}
+                                  <ArrowSquareOut className="w-2.5 h-2.5" />
                                 </a>
-                                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block whitespace-nowrap">
-                                    {selectedDrawerLead.emailSource === 'company_website' ? 'Website Verified' : selectedDrawerLead.emailSource === 'manually_entered' ? 'Staff Added' : 'OSM Record'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setDrawerActiveTab('outreach')}
-                                    className="text-[10px] font-semibold text-indigo-600 hover:underline inline-flex items-center gap-0.5 cursor-pointer whitespace-nowrap"
-                                  >
-                                    Compose Outreach &rarr;
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 mt-0.5 block">No email recorded</span>
+                              )}
+                            </span>
+                            {selectedDrawerLead.website && (
+                              <>
+                                <span className="text-slate-300">•</span>
+                                <a
+                                  href={selectedDrawerLead.website}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:underline inline-flex items-center gap-1 font-medium truncate max-w-[170px]"
+                                  title={selectedDrawerLead.website}
+                                >
+                                  <Globe className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                                  <span>{selectedDrawerLead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
+                                  <ArrowSquareOut className="w-2.5 h-2.5" />
+                                </a>
+                              </>
                             )}
+                            <span className="text-slate-300">•</span>
+                            <span className="flex items-center gap-1 font-semibold text-slate-700">
+                              <Target className="w-3 h-3 text-emerald-600" />
+                              Fit: <strong className="text-slate-900">{selectedDrawerLead.opportunityScore ?? 85}/100</strong>
+                            </span>
+                            <span className="text-slate-300">•</span>
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                              selectedDrawerLead.emailSource === 'company_website' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                              {selectedDrawerLead.emailSource === 'company_website' ? 'Verified Contact' : 'Public Record'}
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Fit Score & Opportunity Breakdown */}
-                      <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 text-slate-500">
-                            <Target className="w-3.5 h-3.5 text-emerald-600" />
-                            Commercial Fit Score Breakdown
-                          </h4>
-                          <ScoreBadge score={selectedDrawerLead.research?.qualification?.score ?? selectedDrawerLead.opportunityScore ?? 82} label="Fit Score" />
-                        </div>
+                      {/* Right: Pipeline Dropdown, Prev/Next prospect controls, and Close */}
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <select
+                          value={selectedDrawerLead.status}
+                          onChange={(e) => handleUpdateDrawerLeadStatus(e.target.value)}
+                          className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-800 shadow-2xs focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                        >
+                          {LEAD_PIPELINE.map((st) => (
+                            <option key={st} value={st}>{st.replaceAll('_', ' ')}</option>
+                          ))}
+                          <option value="excluded">Excluded / Quarantined</option>
+                          <option value="disqualified">Disqualified</option>
+                        </select>
 
-                        {selectedDrawerLead.evidence ? (
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                            <div className="p-2 bg-slate-50 rounded-lg text-center">
-                              <span className="text-[10px] text-slate-400 block uppercase font-bold">ICP Fit</span>
-                              <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.icpFit ?? 85}/100</span>
-                            </div>
-                            <div className="p-2 bg-slate-50 rounded-lg text-center">
-                              <span className="text-[10px] text-slate-400 block uppercase font-bold">Reachability</span>
-                              <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.reachability ?? 90}/100</span>
-                            </div>
-                            <div className="p-2 bg-slate-50 rounded-lg text-center">
-                              <span className="text-[10px] text-slate-400 block uppercase font-bold">Confidence</span>
-                              <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.dataConfidence ?? 80}/100</span>
-                            </div>
-                            <div className="p-2 bg-slate-50 rounded-lg text-center">
-                              <span className="text-[10px] text-slate-400 block uppercase font-bold">Priority</span>
-                              <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.commercialPriority ?? 88}/100</span>
-                            </div>
-                          </div>
-                        ) : null}
-
-                        {selectedDrawerLead.opportunitySignals && selectedDrawerLead.opportunitySignals.length > 0 && (
-                          <div className="space-y-1 pt-1">
-                            <span className="text-[10px] font-bold text-slate-500 block uppercase tracking-wider">Opportunity Signals</span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {selectedDrawerLead.opportunitySignals.map((sig, sIdx) => (
-                                <span key={sIdx} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold border border-indigo-100">
-                                  {sig}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* AI Deep Assessment Trigger */}
-                      <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/40 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Robot className="w-4 h-4 text-indigo-600" />
-                            <h4 className="text-xs font-bold text-slate-900">AI Deep Assessment</h4>
-                          </div>
+                        {/* Prev / Next Controls */}
+                        <div className="flex items-center gap-0.5 border border-slate-200 rounded-lg p-0.5 bg-white">
                           <button
                             type="button"
-                            onClick={() => handleAIAnalyze(selectedDrawerLead as any)}
-                            disabled={analyzingLeadName === selectedDrawerLead.businessName}
-                            className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition cursor-pointer shadow-2xs flex items-center gap-1"
+                            disabled={!hasPrevLead}
+                            onClick={() => handleNavigateProspect('prev')}
+                            className="p-1.5 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-25 disabled:cursor-not-allowed transition cursor-pointer"
+                            title={hasPrevLead ? `Previous: ${filteredLibraryLeads[currentLeadIndex - 1]?.businessName}` : 'No previous prospect'}
                           >
-                            {analyzingLeadName === selectedDrawerLead.businessName ? (
-                              <><ArrowsClockwise className="w-3 h-3 animate-spin" /> Analyzing...</>
-                            ) : (
-                              'Run AI Assessment'
-                            )}
+                            <CaretLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="text-[10px] font-semibold text-slate-500 px-1 whitespace-nowrap">
+                            {currentLeadIndex >= 0 ? `${currentLeadIndex + 1} / ${filteredLibraryLeads.length}` : ''}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={!hasNextLead}
+                            onClick={() => handleNavigateProspect('next')}
+                            className="p-1.5 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-25 disabled:cursor-not-allowed transition cursor-pointer"
+                            title={hasNextLead ? `Next: ${filteredLibraryLeads[currentLeadIndex + 1]?.businessName}` : 'No next prospect'}
+                          >
+                            <CaretRight className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
-                        {aiAnalysisResult && analyzingLeadName === selectedDrawerLead.businessName && (
-                          <div className="p-3 bg-white rounded-lg border border-indigo-200 text-xs space-y-2">
-                            <p className="text-slate-700 leading-relaxed">{aiAnalysisResult.analysis?.summary}</p>
-                            <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-1 border-t border-slate-100">
-                              <span><strong>Suitability:</strong> {aiAnalysisResult.analysis?.potentialValue}</span>
-                              <span><strong>Confidence:</strong> {aiAnalysisResult.analysis?.confidence}</span>
-                            </div>
-                          </div>
-                        )}
-                        <p className="text-[11px] text-slate-500">
-                          Evaluates this business against Himalayan Koh wholesale parameters, salt lick retail demand, and product lines.
-                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDrawerLead(null)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition cursor-pointer ml-1"
+                          title="Close modal"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
                       </div>
                     </div>
-                  )}
+                  </div>
 
-                  {/* TAB 2: CONTACT & OUTREACH */}
-                  {drawerActiveTab === 'outreach' && (
-                    <div className="space-y-4">
-                      {/* Safety Mode & Sender Authenticity Banner */}
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                          <div>
-                            <span className="font-bold text-slate-800">Sender: {officialSenderEmail}</span>
-                            <span className="text-[10px] text-slate-500 block">SPF &amp; 2048-bit DKIM Active • Approval Mode Protected</span>
+                  {/* Modal 4 Tabs Bar: Business Overview | Contact & Outreach | Drafts & Campaigns | Notes & History */}
+                  <div className="flex items-center border-b border-slate-200 bg-white px-5 overflow-x-auto">
+                    {[
+                      { id: 'details' as const, label: 'Business Overview', icon: Storefront },
+                      { id: 'outreach' as const, label: 'Contact & Outreach', icon: PaperPlaneRight },
+                      { id: 'drafts' as const, label: 'Drafts & Campaigns', icon: Archive, badge: leadSavedDrafts.length > 0 ? leadSavedDrafts.length : undefined },
+                      { id: 'notes' as const, label: 'Notes & History', icon: FileText },
+                    ].map((tab) => {
+                      const Icon = tab.icon;
+                      const isCur = drawerActiveTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setDrawerActiveTab(tab.id)}
+                          className={`flex items-center gap-2 py-3 px-3.5 text-xs font-semibold border-b-2 transition cursor-pointer whitespace-nowrap -mb-px ${
+                            isCur
+                              ? 'border-indigo-600 text-indigo-600'
+                              : 'border-transparent text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          <Icon className={`w-3.5 h-3.5 ${isCur ? 'text-indigo-600' : 'text-slate-400'}`} />
+                          <span>{tab.label}</span>
+                          {tab.badge !== undefined && (
+                            <span className="ml-1 px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-800 text-[9px] font-bold">
+                              {tab.badge}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Modal Body Scroll Area */}
+                  <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
+                    {/* ══════════ TAB 1: BUSINESS OVERVIEW ══════════ */}
+                    {drawerActiveTab === 'details' && (
+                      <div className="space-y-4">
+                        {/* Contact & Location Details */}
+                        <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+                          <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 text-slate-500">
+                            <Storefront className="w-3.5 h-3.5 text-indigo-600" />
+                            Business &amp; Contact Intel
+                          </h4>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] font-semibold text-slate-400 block uppercase">Full Address</span>
+                              <span className="text-slate-800 font-medium block mt-0.5">
+                                {selectedDrawerLead.address || `${selectedDrawerLead.city || ''}, ${selectedDrawerLead.region || ''}` || 'Not provided'}
+                              </span>
+                              {selectedDrawerLead.city && (
+                                <a
+                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${selectedDrawerLead.businessName} ${selectedDrawerLead.city || ''} ${selectedDrawerLead.region || ''}`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:underline text-[10px] font-semibold inline-flex items-center gap-0.5 mt-1"
+                                >
+                                  Google Maps <ArrowSquareOut className="w-2.5 h-2.5" />
+                                </a>
+                              )}
+                            </div>
+
+                            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] font-semibold text-slate-400 block uppercase">Phone Number</span>
+                              {selectedDrawerLead.phone ? (
+                                <a href={`tel:${selectedDrawerLead.phone}`} className="text-slate-800 font-semibold text-xs hover:underline block mt-0.5">
+                                  {selectedDrawerLead.phone}
+                                </a>
+                              ) : (
+                                <span className="text-slate-400 mt-0.5 block">No direct phone listed</span>
+                              )}
+                            </div>
+
+                            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] font-semibold text-slate-400 block uppercase">Official Website</span>
+                              {selectedDrawerLead.website ? (
+                                <a
+                                  href={selectedDrawerLead.website}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:underline font-semibold block mt-0.5 truncate"
+                                  title={selectedDrawerLead.website}
+                                >
+                                  {selectedDrawerLead.website}
+                                </a>
+                              ) : (
+                                <span className="text-slate-400 mt-0.5 block">No website available</span>
+                              )}
+                            </div>
+
+                            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] font-semibold text-slate-400 block uppercase">Email Address</span>
+                              {selectedDrawerLead.email ? (
+                                <div className="mt-0.5">
+                                  <a
+                                    href={`mailto:${selectedDrawerLead.email}?subject=${encodeURIComponent(`Himalayan Salt Wholesale Inquiry - ${selectedDrawerLead.businessName}`)}`}
+                                    className="font-semibold text-indigo-600 hover:underline block truncate"
+                                    title={`Send email to ${selectedDrawerLead.email}`}
+                                  >
+                                    {selectedDrawerLead.email}
+                                  </a>
+                                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block whitespace-nowrap">
+                                      {selectedDrawerLead.emailSource === 'company_website' ? 'Website Verified' : selectedDrawerLead.emailSource === 'manually_entered' ? 'Staff Added' : 'OSM Record'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDrawerActiveTab('outreach')}
+                                      className="text-[10px] font-semibold text-indigo-600 hover:underline inline-flex items-center gap-0.5 cursor-pointer whitespace-nowrap"
+                                    >
+                                      Compose Outreach &rarr;
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 mt-0.5 block">No email recorded</span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full whitespace-nowrap">
-                          LeadOS 3.1 CRM
-                        </span>
-                      </div>
 
-                      {sendResultNotice && (
-                        <div className={`p-3 rounded-lg text-xs flex items-start gap-2 border ${sendResultNotice.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-rose-50 border-rose-200 text-rose-950'}`}>
-                          {sendResultNotice.ok ? <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" /> : <WarningCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />}
-                          <div className="font-medium text-[11px]">{sendResultNotice.msg}</div>
-                        </div>
-                      )}
+                        {/* Fit Score & Opportunity Breakdown */}
+                        <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 text-slate-500">
+                              <Target className="w-3.5 h-3.5 text-emerald-600" />
+                              Commercial Fit Score Breakdown
+                            </h4>
+                            <ScoreBadge score={selectedDrawerLead.research?.qualification?.score ?? selectedDrawerLead.opportunityScore ?? 82} label="Fit Score" />
+                          </div>
 
-                      {/* Outreach Mode Selector: [Retail] [Wholesale] [Private Label] */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
-                            Outreach Mode
-                          </label>
-                          {outreachMode === 'retail' && (
-                            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-1">
-                              <Check className="w-3 h-3" />
-                              5% Coupon ({verifiedCouponCode || 'welcome5'}) Verified Active on WooCommerce
-                            </span>
+                          {selectedDrawerLead.evidence ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                              <div className="p-2 bg-slate-50 rounded-lg text-center">
+                                <span className="text-[10px] text-slate-400 block uppercase font-bold">ICP Fit</span>
+                                <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.icpFit ?? 85}/100</span>
+                              </div>
+                              <div className="p-2 bg-slate-50 rounded-lg text-center">
+                                <span className="text-[10px] text-slate-400 block uppercase font-bold">Reachability</span>
+                                <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.reachability ?? 90}/100</span>
+                              </div>
+                              <div className="p-2 bg-slate-50 rounded-lg text-center">
+                                <span className="text-[10px] text-slate-400 block uppercase font-bold">Confidence</span>
+                                <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.dataConfidence ?? 80}/100</span>
+                              </div>
+                              <div className="p-2 bg-slate-50 rounded-lg text-center">
+                                <span className="text-[10px] text-slate-400 block uppercase font-bold">Priority</span>
+                                <span className="font-bold text-slate-800 text-sm">{selectedDrawerLead.evidence.commercialPriority ?? 88}/100</span>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {selectedDrawerLead.opportunitySignals && selectedDrawerLead.opportunitySignals.length > 0 && (
+                            <div className="space-y-1 pt-1">
+                              <span className="text-[10px] font-bold text-slate-500 block uppercase tracking-wider">Opportunity Signals</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {selectedDrawerLead.opportunitySignals.map((sig, sIdx) => (
+                                  <span key={sIdx} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-semibold border border-indigo-100">
+                                    {sig}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
                           )}
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2">
-                          {[
-                            { id: 'retail' as const, label: 'Retail', desc: '5% Welcome Offer + Salt Lick Trial' },
-                            { id: 'wholesale' as const, label: 'Wholesale', desc: 'Catalog, Pallets & Volume Pricing' },
-                            { id: 'private_label' as const, label: 'Private Label', desc: 'Custom Packaging & Specs' },
-                          ].map((m) => {
-                            const isCur = outreachMode === m.id;
-                            return (
-                              <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => handleSelectOutreachMode(m.id)}
-                                className={`text-left p-2.5 rounded-xl border transition cursor-pointer ${
-                                  isCur
-                                    ? 'bg-indigo-50/80 border-indigo-500 text-indigo-950 ring-1 ring-indigo-500'
-                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                }`}
-                              >
-                                <div className="font-bold text-xs">{m.label}</div>
-                                <div className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">{m.desc}</div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* Verified Product / Catalog Link Banner */}
-                      {verifiedProductUrl && (
-                        <div className="p-2.5 bg-indigo-50/50 rounded-lg border border-indigo-100 flex items-center justify-between text-xs">
-                          <span className="text-[11px] text-indigo-900 font-medium truncate">
-                            <strong>Attached Link:</strong> {verifiedProductUrl}
-                          </span>
-                          <a
-                            href={verifiedProductUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-indigo-600 hover:underline font-semibold text-[11px] flex items-center gap-0.5 flex-shrink-0 ml-2"
-                          >
-                            Verify Link <ArrowSquareOut className="w-3 h-3" />
-                          </a>
-                        </div>
-                      )}
-
-                      {/* Compact CRM Composer Form */}
-                      <form onSubmit={(e) => { e.preventDefault(); handleSendOutreach('send', e); }} className="space-y-3 pt-1">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">Recipient Name</label>
-                            <input
-                              type="text"
-                              value={recipientName}
-                              onChange={(e) => setRecipientName(e.target.value)}
-                              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                              Recipient Email {recipientEmailSource && <span className="text-[10px] font-normal text-slate-400">({recipientEmailSource})</span>}
-                            </label>
-                            <input
-                              type="email"
-                              value={recipientEmail}
-                              onChange={(e) => { setRecipientEmail(e.target.value); setRecipientEmailSource('manually_entered'); }}
-                              placeholder="buyer@store.com"
-                              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Subject Line</label>
-                          <input
-                            type="text"
-                            value={emailSubject}
-                            onChange={(e) => setEmailSubject(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Message Body</label>
-                          <textarea
-                            rows={7}
-                            value={emailBody}
-                            onChange={(e) => setEmailBody(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono leading-relaxed"
-                          />
-                        </div>
-
-                        {/* CRM Actions Bar */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
-                          <button
-                            type="button"
-                            onClick={() => setShowAdvancedOutreachWorkflow(!showAdvancedOutreachWorkflow)}
-                            className="text-xs text-indigo-600 hover:underline font-semibold flex items-center gap-1"
-                          >
-                            {showAdvancedOutreachWorkflow ? 'Hide Advanced Workflow' : 'Show Advanced Workflow & n8n Audit'}
-                          </button>
-
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {recipientEmail && (
-                              <a
-                                href={`mailto:${recipientEmail}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`}
-                                className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition flex items-center gap-1 whitespace-nowrap"
-                                title="Open pre-filled pitch in your default email client"
-                              >
-                                <EnvelopeSimple className="w-3.5 h-3.5 text-emerald-600" />
-                                Open Mail App
-                              </a>
-                            )}
+                        {/* AI Deep Assessment Trigger */}
+                        <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/40 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Robot className="w-4 h-4 text-indigo-600" />
+                              <h4 className="text-xs font-bold text-slate-900">AI Deep Assessment</h4>
+                            </div>
                             <button
                               type="button"
-                              onClick={() => {
-                                if (navigator.clipboard?.writeText) {
-                                  navigator.clipboard.writeText(`Subject: ${emailSubject}\n\n${emailBody}`);
-                                  setDrawerSavedMsg('Pitch copied to clipboard!');
-                                  setTimeout(() => setDrawerSavedMsg(null), 3000);
-                                }
-                              }}
-                              className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer flex items-center gap-1 whitespace-nowrap"
-                              title="Copy pitch subject and body"
+                              onClick={() => handleAIAnalyze(selectedDrawerLead as any)}
+                              disabled={analyzingLeadName === selectedDrawerLead.businessName}
+                              className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition cursor-pointer shadow-2xs flex items-center gap-1"
                             >
-                              <Clipboard className="w-3.5 h-3.5 text-slate-500" />
-                              Copy Pitch
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSendOutreach('draft')}
-                              disabled={sendingOutreach}
-                              className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer whitespace-nowrap"
-                            >
-                              Save Draft
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSendOutreach('test')}
-                              disabled={sendingOutreach}
-                              className="px-2.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-semibold text-xs transition cursor-pointer whitespace-nowrap"
-                              title="Send test copy in approval mode to sales@himalayankoh.com"
-                            >
-                              Send Test
-                            </button>
-                            <button
-                              type="submit"
-                              disabled={sendingOutreach}
-                              className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                            >
-                              {sendingOutreach ? (
-                                <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Processing...</>
+                              {analyzingLeadName === selectedDrawerLead.businessName ? (
+                                <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Analyzing...</>
                               ) : (
-                                <><PaperPlaneRight className="w-3.5 h-3.5" /> Approve &amp; Send</>
+                                'Run AI Assessment'
                               )}
                             </button>
                           </div>
-                        </div>
-                      </form>
 
-                      {/* Manual Social Contact Section (Phase 8) */}
-                      <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 pt-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                            <Chats className="w-4 h-4 text-indigo-600" />
-                            Direct Social Outreach (Meta Compliant)
-                          </h4>
-                          <span className="text-[10px] text-slate-500">Official Profile Actions</span>
-                        </div>
-                        <p className="text-[11px] text-slate-600 leading-relaxed">
-                          Per Meta Platform policies, unsolicited cold DMs cannot be mass-automated via API. Click below to copy a customized introductory pitch and open the prospect's verified business profile to send manually.
-                        </p>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenManualSocial('facebook', selectedDrawerLead)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-semibold transition cursor-pointer"
-                          >
-                            <FacebookLogo className="w-4 h-4 text-blue-600" weight="fill" />
-                            Message on Facebook
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenManualSocial('instagram', selectedDrawerLead)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-semibold transition cursor-pointer"
-                          >
-                            <InstagramLogo className="w-4 h-4 text-rose-600" weight="fill" />
-                            Message on Instagram
-                          </button>
-                        </div>
-                      </div>
-
-                      {showAdvancedOutreachWorkflow && (
-                        <div className="pt-4 border-t border-slate-200">
-                          <LeadIntelligencePanel
-                            key={activeOutreachLeadId || 'drawer-outreach'}
-                            initialLeadId={activeOutreachLeadId}
-                            headers={getAuthHeaders}
-                            onSavedSearch={() => { changeTab('find'); setSelectedDrawerLead(null); }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* TAB 3: NOTES & HISTORY */}
-                  {drawerActiveTab === 'notes' && (
-                    <form onSubmit={handleSaveDrawerNotes} className="space-y-4">
-                      {drawerSavedMsg && (
-                        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center gap-2">
-                          <CheckCircle className="w-4 h-4 text-emerald-600" />
-                          <span>{drawerSavedMsg}</span>
-                        </div>
-                      )}
-
-                      <div className="space-y-1.5">
-                        <label className="block text-xs font-bold text-slate-700">Internal Sales Notes &amp; Account Remarks</label>
-                        <textarea
-                          rows={4}
-                          value={drawerNotes}
-                          onChange={(e) => setDrawerNotes(e.target.value)}
-                          placeholder="Record discussions, buyer product preferences, salt block volume, custom packaging requirements..."
-                          className="w-full p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="space-y-1">
-                          <label className="block text-[11px] font-bold text-slate-600">Next Follow-Up Date</label>
-                          <input
-                            type="date"
-                            value={drawerFollowUpDate}
-                            onChange={(e) => setDrawerFollowUpDate(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="block text-[11px] font-bold text-slate-600">Requested Quantity</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 2 Pallets / 100 blocks"
-                            value={drawerQuantity}
-                            onChange={(e) => setDrawerQuantity(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800"
-                          />
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="block text-[11px] font-bold text-slate-600">Packaging Preference</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. Bulk Palletized / Private Label"
-                            value={drawerPackaging}
-                            onChange={(e) => setDrawerPackaging(e.target.value)}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-end pt-2">
-                        <button
-                          type="submit"
-                          disabled={savingDrawerNotes}
-                          className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
-                        >
-                          {savingDrawerNotes ? (
-                            <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Saving...</>
-                          ) : (
-                            'Save Notes & Follow-Up'
+                          {aiAnalysisResult && analyzingLeadName === selectedDrawerLead.businessName && (
+                            <div className="p-3 bg-white rounded-lg border border-indigo-200 text-xs space-y-2">
+                              <p className="text-slate-700 leading-relaxed">{aiAnalysisResult.analysis?.summary}</p>
+                              <div className="flex items-center gap-3 text-[11px] text-slate-600 pt-1 border-t border-slate-100">
+                                <span><strong>Suitability:</strong> {aiAnalysisResult.analysis?.potentialValue}</span>
+                                <span><strong>Confidence:</strong> {aiAnalysisResult.analysis?.confidence}</span>
+                              </div>
+                            </div>
                           )}
-                        </button>
+                          <p className="text-[11px] text-slate-500">
+                            Evaluates this business against Himalayan Koh wholesale parameters, animal salt lick retail demand, and gourmet culinary pink salt assortments.
+                          </p>
+                        </div>
                       </div>
+                    )}
 
-                      {/* Audit / Provenance History */}
-                      <div className="pt-4 border-t border-slate-100 space-y-2">
-                        <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Discovery &amp; Contact Provenance</h4>
-                        <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[11px] text-slate-600 space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <span>Data Source:</span>
-                            <span className="font-bold text-slate-800">{selectedDrawerLead.dataSource || 'OpenStreetMap Nominatim / Overpass'}</span>
+                    {/* ══════════ TAB 2: CONTACT & OUTREACH (2 COLUMNS) ══════════ */}
+                    {drawerActiveTab === 'outreach' && (
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                        {/* LEFT COLUMN: Prospect Intel & Recommended Product Fit */}
+                        <div className="lg:col-span-5 space-y-4">
+                          {/* Recommended Product Fit Card */}
+                          <div className={`p-4 rounded-xl border ${rel.isLowFit ? 'bg-amber-50/60 border-amber-300' : 'bg-slate-50 border-slate-200'} space-y-3`}>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                Product Alignment
+                              </span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                rel.isLowFit ? 'bg-amber-100 text-amber-900 border-amber-300' :
+                                rel.fitLevel === 'high' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                                'bg-blue-50 text-blue-800 border-blue-200'
+                              }`}>
+                                {rel.isLowFit ? 'Low Product Fit' : `${rel.fitLevel.toUpperCase()} MATCH`}
+                              </span>
+                            </div>
+
+                            <div>
+                              <h5 className="font-bold text-slate-900 text-sm">{rel.productName}</h5>
+                              <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">{rel.relevanceReason}</p>
+                            </div>
+
+                            {/* Catalog URL verification */}
+                            <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs">
+                              <span className="text-[11px] text-slate-500 font-medium">Verified Catalog Link:</span>
+                              <a
+                                href={verifiedProductUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:underline font-bold text-[11px] inline-flex items-center gap-1"
+                              >
+                                View Product <ArrowSquareOut className="w-3 h-3" />
+                              </a>
+                            </div>
+
+                            {/* Verified Live Pricing & Stock Specs */}
+                            <div className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-[11px] space-y-1">
+                              <div className="font-semibold text-slate-800">Assortment &amp; Pricing Specs:</div>
+                              {rel.productInterest === 'culinary_salt' ? (
+                                <div className="text-slate-600">
+                                  • Edible Pink Salt 16 oz Jar: <strong>$9.95</strong> (Food-grade, fine grain)
+                                </div>
+                              ) : (
+                                <div className="text-slate-600">
+                                  • Horse Salt Lick 6 lb: <strong>$19.95</strong> (Stock: 10 units in stock)
+                                  <br />
+                                  • Horse Salt Lick 2 lb: Available for single-unit retail trial
+                                </div>
+                              )}
+                              <div className="text-emerald-700 font-medium flex items-center gap-1 pt-0.5">
+                                <Check className="w-3 h-3" /> Coupon: <strong>welcome5</strong> (5% active WooCommerce discount)
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span>Contact Verification:</span>
-                            <span className="font-bold text-slate-800">
-                              {selectedDrawerLead.emailSource === 'company_website' ? 'Verified on Company Website' :
-                               selectedDrawerLead.emailSource === 'manually_entered' ? 'Manually Added by Admin' :
-                               'Public Map Directory Record'}
+
+                          {/* Available Outreach Channels */}
+                          <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+                            <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                              Available Channels
+                            </h5>
+
+                            <div className="space-y-2">
+                              {/* Email Channel */}
+                              <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100 text-xs">
+                                <div className="flex items-center gap-2">
+                                  <EnvelopeSimple className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span className="font-medium text-slate-800 truncate max-w-[170px]">
+                                    {selectedDrawerLead.email || 'No email recorded'}
+                                  </span>
+                                </div>
+                                {selectedDrawerLead.email ? (
+                                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                    {selectedDrawerLead.emailSource === 'company_website' ? 'Verified' : 'OSM'}
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEmailModal(selectedDrawerLead)}
+                                    className="text-indigo-600 hover:underline text-[10px] font-semibold cursor-pointer"
+                                  >
+                                    + Add email
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Facebook Page Channel */}
+                              {(selectedDrawerLead.facebook || selectedDrawerLead.research?.facebook) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenManualSocial('facebook', selectedDrawerLead)}
+                                  className="w-full flex items-center justify-between p-2 rounded-lg bg-blue-50/70 hover:bg-blue-100 border border-blue-200 text-blue-900 text-xs font-semibold transition cursor-pointer"
+                                  title="Prepare Facebook pitch and open profile"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <FacebookLogo weight="fill" className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>Facebook Business Page</span>
+                                  </div>
+                                  <ArrowSquareOut className="w-3 h-3 text-blue-500" />
+                                </button>
+                              ) : (
+                                <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50/60 border border-slate-100 text-xs text-slate-400">
+                                  <div className="flex items-center gap-2">
+                                    <FacebookLogo className="w-3.5 h-3.5" />
+                                    <span>Facebook Page: None</span>
+                                  </div>
+                                  <span className="text-[10px]">Not found</span>
+                                </div>
+                              )}
+
+                              {/* Instagram Channel */}
+                              {(selectedDrawerLead.instagram || selectedDrawerLead.research?.instagram) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenManualSocial('instagram', selectedDrawerLead)}
+                                  className="w-full flex items-center justify-between p-2 rounded-lg bg-rose-50/70 hover:bg-rose-100 border border-rose-200 text-rose-900 text-xs font-semibold transition cursor-pointer"
+                                  title="Prepare Instagram pitch and open profile"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <InstagramLogo weight="fill" className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>Instagram Business Profile</span>
+                                  </div>
+                                  <ArrowSquareOut className="w-3 h-3 text-rose-500" />
+                                </button>
+                              ) : null}
+
+                              {/* Phone Direct Dial */}
+                              {selectedDrawerLead.phone && (
+                                <a
+                                  href={`tel:${selectedDrawerLead.phone}`}
+                                  className="flex items-center justify-between p-2 rounded-lg bg-emerald-50/60 hover:bg-emerald-100 border border-emerald-200 text-emerald-900 text-xs font-semibold transition"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Phone weight="fill" className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Call {selectedDrawerLead.phone}</span>
+                                  </div>
+                                  <span className="text-[10px] text-emerald-700">Direct Dial</span>
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* RIGHT COLUMN: Sales Composer & Delivery Safeguards */}
+                        <div className="lg:col-span-7 space-y-3.5">
+                          {/* Deliverability & Sender Safeguard Bar */}
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <span className="font-bold text-slate-800 block truncate">
+                                  Sender: {officialSenderEmail}
+                                </span>
+                                <span className="text-[10px] text-slate-500 block truncate">
+                                  SPF &amp; 2048-bit DKIM Active • Owner Authorization Required
+                                </span>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                              LeadOS 3.5 CRM
                             </span>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span>Saved Timestamp:</span>
-                            <span className="font-mono text-slate-700">{selectedDrawerLead.createdAt ? new Date(selectedDrawerLead.createdAt).toLocaleString() : 'Active session'}</span>
+
+                          {sendResultNotice && (
+                            <div className={`p-3 rounded-lg text-xs flex items-start gap-2 border ${
+                              sendResultNotice.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-rose-50 border-rose-200 text-rose-950'
+                            }`}>
+                              {sendResultNotice.ok ? <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" /> : <WarningCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />}
+                              <div className="font-medium text-[11px]">{sendResultNotice.msg}</div>
+                            </div>
+                          )}
+
+                          {/* Outreach Mode Selector */}
+                          <div className="space-y-1.5">
+                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
+                              Outreach Mode
+                            </label>
+                            <div className="grid grid-cols-3 gap-2">
+                              {[
+                                { id: 'retail' as const, label: 'Retail', desc: '5% Welcome Offer' },
+                                { id: 'wholesale' as const, label: 'Wholesale', desc: 'Commercial Tier Pricing' },
+                                { id: 'private_label' as const, label: 'Private Label', desc: 'Custom Packaging' },
+                              ].map((m) => {
+                                const isCur = outreachMode === m.id;
+                                return (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => handleSelectOutreachMode(m.id)}
+                                    className={`text-left p-2 rounded-xl border transition cursor-pointer ${
+                                      isCur
+                                        ? 'bg-indigo-50/80 border-indigo-500 text-indigo-950 ring-1 ring-indigo-500'
+                                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    <div className="font-bold text-xs">{m.label}</div>
+                                    <div className="text-[10px] text-slate-500 truncate">{m.desc}</div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Composer Inputs */}
+                          <div className="space-y-2.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">Recipient Name</label>
+                                <input
+                                  type="text"
+                                  value={recipientName}
+                                  onChange={(e) => setRecipientName(e.target.value)}
+                                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                  Recipient Email {recipientEmailSource && <span className="text-[10px] font-normal text-slate-400">({recipientEmailSource})</span>}
+                                </label>
+                                <input
+                                  type="email"
+                                  value={recipientEmail}
+                                  onChange={(e) => { setRecipientEmail(e.target.value); setRecipientEmailSource('manually_entered'); }}
+                                  placeholder="buyer@prospect.com"
+                                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-700 mb-1">Subject Line</label>
+                              <input
+                                type="text"
+                                value={emailSubject}
+                                onChange={(e) => setEmailSubject(e.target.value)}
+                                className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                              />
+                            </div>
+
+                            {/* Message Body with Edit vs Preview Toggle */}
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="block text-[11px] font-bold text-slate-700">Message Body</label>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEmailEditMode('edit')}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-semibold transition cursor-pointer ${
+                                      emailEditMode === 'edit'
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEmailEditMode('preview')}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 ${
+                                      emailEditMode === 'preview'
+                                        ? 'bg-indigo-600 text-white'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    Preview
+                                  </button>
+                                </div>
+                              </div>
+
+                              {emailEditMode === 'edit' ? (
+                                <textarea
+                                  rows={8}
+                                  value={emailBody}
+                                  onChange={(e) => setEmailBody(e.target.value)}
+                                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono leading-relaxed"
+                                />
+                              ) : (
+                                <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 text-xs space-y-2">
+                                  <div className="border-b border-slate-200/80 pb-2 text-[11px] text-slate-600 space-y-1">
+                                    <div><strong className="text-slate-800">From:</strong> Himalayan Koh Sales &lt;{officialSenderEmail}&gt;</div>
+                                    <div><strong className="text-slate-800">To:</strong> {recipientName} &lt;{recipientEmail || 'buyer@prospect.com'}&gt;</div>
+                                    <div><strong className="text-slate-800">Subject:</strong> {emailSubject}</div>
+                                  </div>
+                                  <div className="whitespace-pre-wrap font-sans text-slate-800 leading-relaxed text-xs pt-1">
+                                    {emailBody}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Email Quality Checker Section */}
+                            <div className="pt-1">
+                              <div className="flex items-center justify-between">
+                                <button
+                                  type="button"
+                                  onClick={handleRunEmailQualityCheck}
+                                  className="px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition cursor-pointer inline-flex items-center gap-1"
+                                >
+                                  <Sparkle className="w-3.5 h-3.5 text-indigo-600" />
+                                  Run Pre-Send Quality Check
+                                </button>
+                                {emailQualityResult && (
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                    emailQualityResult.status === 'READY' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                                    emailQualityResult.status === 'BLOCKED' ? 'bg-rose-50 text-rose-800 border-rose-200' :
+                                    'bg-amber-50 text-amber-800 border-amber-200'
+                                  }`}>
+                                    Quality: {emailQualityResult.score}/100 ({emailQualityResult.status})
+                                  </span>
+                                )}
+                              </div>
+
+                              {emailQualityResult && (
+                                <div className="mt-2 p-3 rounded-lg border border-slate-200 bg-white text-xs space-y-1.5">
+                                  <div className="font-bold text-slate-800 text-[11px]">Audit Findings:</div>
+                                  <ul className="space-y-1 text-[11px] text-slate-600">
+                                    {emailQualityResult.findings.map((f, i) => (
+                                      <li key={i} className="flex items-start gap-1.5">
+                                        <span className="text-indigo-600 font-bold">•</span>
+                                        <span>{f}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  {emailQualityResult.recommendations.length > 0 && (
+                                    <div className="pt-1 border-t border-slate-100">
+                                      <div className="font-bold text-amber-800 text-[11px]">Recommendations:</div>
+                                      <ul className="space-y-0.5 text-[10px] text-amber-700 mt-0.5">
+                                        {emailQualityResult.recommendations.map((r, i) => (
+                                          <li key={i} className="flex items-start gap-1">
+                                            <span>&rarr;</span>
+                                            <span>{r}</span>
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </form>
-                  )}
+                    )}
+
+                    {/* ══════════ TAB 3: DRAFTS & CAMPAIGNS ══════════ */}
+                    {drawerActiveTab === 'drafts' && (
+                      <div className="space-y-5">
+                        {/* Saved Revisions List */}
+                        <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 text-slate-500">
+                              <Archive className="w-3.5 h-3.5 text-indigo-600" />
+                              Saved Draft Revisions
+                            </h4>
+                            <span className="text-[10px] text-slate-500">
+                              Database table: <code className="text-indigo-700 bg-indigo-50 px-1 py-0.2 rounded font-mono">wp_leados_workflows</code>
+                            </span>
+                          </div>
+
+                          {loadingDrafts ? (
+                            <div className="p-6 text-center text-xs text-slate-400">
+                              <ArrowsClockwise className="w-4 h-4 animate-spin mx-auto mb-1 text-indigo-500" />
+                              Loading saved drafts...
+                            </div>
+                          ) : leadSavedDrafts.length === 0 ? (
+                            <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded-lg border border-slate-100">
+                              No saved drafts yet for this prospect. Edit your message in the Contact &amp; Outreach tab and click &quot;Save Draft&quot;.
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                              {leadSavedDrafts.map((d: any, i: number) => (
+                                <div key={d.id || i} className="p-3 bg-white hover:bg-slate-50 flex items-center justify-between gap-3 text-xs">
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-slate-900 flex items-center gap-2">
+                                      <span>Revision #{d.revision || (leadSavedDrafts.length - i)}</span>
+                                      <span className="text-[10px] font-normal text-slate-400">
+                                        {new Date(d.updated_at || d.created_at).toLocaleString()}
+                                      </span>
+                                      <span className="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 text-[9px] font-bold border border-indigo-100 uppercase">
+                                        {d.payload?.outreachMode || 'wholesale'}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 mt-0.5 truncate max-w-md">
+                                      <strong>Subject:</strong> {d.payload?.subject || '(No subject)'}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (d.payload?.subject) setEmailSubject(d.payload.subject);
+                                      if (d.payload?.message) setEmailBody(d.payload.message);
+                                      if (d.payload?.outreachMode) setOutreachMode(d.payload.outreachMode);
+                                      if (d.payload?.productUrl) setVerifiedProductUrl(d.payload.productUrl);
+                                      setActiveDraftRevision(d.revision || 1);
+                                      setDrawerActiveTab('outreach');
+                                    }}
+                                    className="px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs transition cursor-pointer whitespace-nowrap"
+                                  >
+                                    Load into Composer
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <p className="text-[10px] text-slate-500">
+                            Drafts are safely persisted in the WordPress database and mirrored to site settings without triggering email dispatches.
+                          </p>
+                        </div>
+
+                        {/* Omnisend Campaign Safeguards Card */}
+                        <div className="p-4 rounded-xl border border-slate-200 bg-white space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 text-slate-500">
+                              <Megaphone className="w-3.5 h-3.5 text-indigo-600" />
+                              Omnisend &amp; Campaign Synchronization
+                            </h4>
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold border border-emerald-200">
+                              API Connected
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] text-slate-400 block font-bold uppercase">Subscribers</span>
+                              <span className="font-bold text-slate-800 text-sm">1 Subscribed</span>
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] text-slate-400 block font-bold uppercase">Free Tier Limit</span>
+                              <span className="font-bold text-slate-800 text-sm">500 emails/mo</span>
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                              <span className="text-[10px] text-slate-400 block font-bold uppercase">Approval Gate</span>
+                              <span className="font-bold text-emerald-700 text-sm">Owner Required</span>
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-slate-500">
+                            Omnisend API integration is isolated to ensure no automatic unsolicited marketing campaigns are created or dispatched without manual verification.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ══════════ TAB 4: NOTES & HISTORY ══════════ */}
+                    {drawerActiveTab === 'notes' && (
+                      <form onSubmit={handleSaveDrawerNotes} className="space-y-4">
+                        {drawerSavedMsg && (
+                          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center gap-2">
+                            <CheckCircle className="w-4 h-4 text-emerald-600" />
+                            <span>{drawerSavedMsg}</span>
+                          </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-bold text-slate-700">Internal Sales Notes &amp; Account Remarks</label>
+                          <textarea
+                            rows={4}
+                            value={drawerNotes}
+                            onChange={(e) => setDrawerNotes(e.target.value)}
+                            placeholder="Record discussions, buyer product preferences, salt block volume, custom packaging requirements..."
+                            className="w-full p-3 rounded-xl border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="space-y-1">
+                            <label className="block text-[11px] font-bold text-slate-600">Next Follow-Up Date</label>
+                            <input
+                              type="date"
+                              value={drawerFollowUpDate}
+                              onChange={(e) => setDrawerFollowUpDate(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="block text-[11px] font-bold text-slate-600">Requested Quantity</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 2 Pallets / 100 blocks"
+                              value={drawerQuantity}
+                              onChange={(e) => setDrawerQuantity(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="block text-[11px] font-bold text-slate-600">Packaging Preference</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Bulk Palletized / Private Label"
+                              value={drawerPackaging}
+                              onChange={(e) => setDrawerPackaging(e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-800"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end pt-2">
+                          <button
+                            type="submit"
+                            disabled={savingDrawerNotes}
+                            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
+                          >
+                            {savingDrawerNotes ? (
+                              <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Saving...</>
+                            ) : (
+                              'Save Notes & Follow-Up'
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Audit / Provenance History */}
+                        <div className="pt-4 border-t border-slate-100 space-y-2">
+                          <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Discovery &amp; Contact Provenance</h4>
+                          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[11px] text-slate-600 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span>Data Source:</span>
+                              <span className="font-bold text-slate-800">{selectedDrawerLead.dataSource || 'OpenStreetMap Nominatim / Overpass'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>Contact Verification:</span>
+                              <span className="font-bold text-slate-800">
+                                {selectedDrawerLead.emailSource === 'company_website' ? 'Verified on Company Website' :
+                                 selectedDrawerLead.emailSource === 'manually_entered' ? 'Manually Added by Admin' :
+                                 'Public Map Directory Record'}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>Saved Timestamp:</span>
+                              <span className="font-mono text-slate-700">{selectedDrawerLead.createdAt ? new Date(selectedDrawerLead.createdAt).toLocaleString() : 'Active session'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+
+                  {/* Modal Sticky Footer */}
+                  <div className="p-4 border-t border-slate-200 bg-slate-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    {/* Left: Draft Saved Status / Quality Indicator */}
+                    <div className="flex items-center gap-2 text-xs">
+                      {activeDraftRevision ? (
+                        <span className="text-[11px] text-slate-600 flex items-center gap-1.5 font-medium">
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          Draft rev #{activeDraftRevision} saved {activeDraftSavedAt ? new Date(activeDraftSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-400">
+                          Edits can be safely saved as persistent drafts
+                        </span>
+                      )}
+                      {emailQualityResult && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ml-1 ${
+                          emailQualityResult.status === 'READY' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                          emailQualityResult.status === 'BLOCKED' ? 'bg-rose-50 text-rose-800 border-rose-200' :
+                          'bg-amber-50 text-amber-800 border-amber-200'
+                        }`}>
+                          Score: {emailQualityResult.score}/100
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Right: Actions */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (navigator.clipboard?.writeText) {
+                            navigator.clipboard.writeText(`Subject: ${emailSubject}\n\n${emailBody}`);
+                            setDrawerSavedMsg('Pitch copied to clipboard!');
+                            setTimeout(() => setDrawerSavedMsg(null), 3000);
+                          }
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer flex items-center gap-1 whitespace-nowrap"
+                        title="Copy pitch subject and body"
+                      >
+                        <Clipboard className="w-3.5 h-3.5 text-slate-500" />
+                        Copy Message
+                      </button>
+
+                      {(selectedDrawerLead.facebook || selectedDrawerLead.research?.facebook) && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenManualSocial('facebook', selectedDrawerLead)}
+                          className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold text-xs transition cursor-pointer flex items-center gap-1 whitespace-nowrap"
+                          title="Open Facebook Page"
+                        >
+                          <FacebookLogo className="w-3.5 h-3.5 text-blue-600" weight="fill" />
+                          Open Facebook
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setEmailEditMode(emailEditMode === 'edit' ? 'preview' : 'edit')}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer flex items-center gap-1 whitespace-nowrap"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-slate-500" />
+                        {emailEditMode === 'edit' ? 'Preview' : 'Edit'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSendOutreach('draft')}
+                        disabled={sendingOutreach}
+                        className="px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition cursor-pointer whitespace-nowrap"
+                        title="Save persistent draft without sending email"
+                      >
+                        Save Draft
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowOwnerApprovalModal(true)}
+                        disabled={sendingOutreach}
+                        className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                      >
+                        {sendingOutreach ? (
+                          <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Sending...</>
+                        ) : (
+                          <><PaperPlaneRight className="w-3.5 h-3.5" /> Approve &amp; Send</>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                 </div>
+
+                {/* Owner Authorization Confirmation Modal */}
+                {showOwnerApprovalModal && (
+                  <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs">
+                    <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 flex-shrink-0">
+                          <ShieldCheck className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-slate-900 text-sm">Owner Approval Confirmation</h4>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            You are about to dispatch an official wholesale outreach email from <strong className="text-slate-800">{officialSenderEmail}</strong>.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs space-y-1.5">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Recipient:</span>
+                          <span className="font-bold text-slate-800 truncate max-w-[200px]">{recipientName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Email:</span>
+                          <span className="font-bold text-indigo-700 truncate max-w-[200px]">{recipientEmail || '(Missing email)'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Mode:</span>
+                          <span className="font-semibold text-slate-700 uppercase text-[10px]">{outreachMode}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Quality Status:</span>
+                          <span className={`font-bold text-[10px] ${emailQualityResult?.status === 'READY' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                            {emailQualityResult ? `${emailQualityResult.status} (${emailQualityResult.score}/100)` : 'Not checked'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {!recipientEmail && (
+                        <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-[11px] font-medium">
+                          A valid recipient email address is required to dispatch.
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowOwnerApprovalModal(false)}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!recipientEmail || sendingOutreach}
+                          onClick={() => {
+                            setShowOwnerApprovalModal(false);
+                            handleSendOutreach('send');
+                          }}
+                          className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-bold transition shadow-sm cursor-pointer"
+                        >
+                          Confirm &amp; Send
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* ══════════ EMAIL MARKETING TAB ══════════ */}

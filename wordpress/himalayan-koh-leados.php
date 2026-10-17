@@ -702,6 +702,23 @@ add_action( 'rest_api_init', function () {
 			),
 		)
 	);
+
+	register_rest_route(
+		'leados/v1',
+		'/workflow',
+		array(
+			array(
+				'methods'             => 'GET',
+				'permission_callback' => 'hk_leados_can_manage',
+				'callback'            => 'hk_leados_get_workflows',
+			),
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => 'hk_leados_can_manage',
+				'callback'            => 'hk_leados_save_workflow',
+			),
+		)
+	);
 } );
 
 /** Reads one project row, or null. */
@@ -1595,6 +1612,126 @@ function hk_leados_run_scheduled_market_discovery() {
 	);
 
 	return $data;
+}
+
+/**
+ * Retrieve workflows / saved drafts from wp_leados_workflows
+ */
+function hk_leados_get_workflows( WP_REST_Request $request ) {
+	global $wpdb;
+	$p       = $wpdb->prefix;
+	$kind    = sanitize_text_field( $request->get_param( 'kind' ) ?: 'draft' );
+	$lead_id = sanitize_text_field( $request->get_param( 'lead_id' ) ?: '' );
+
+	$where  = array( 'workspace_id = %s', 'kind = %s' );
+	$params = array( HK_LEADOS_WORKSPACE_ID, $kind );
+
+	if ( ! empty( $lead_id ) ) {
+		$where[]  = 'lead_id = %s';
+		$params[] = $lead_id;
+	}
+
+	$sql  = "SELECT * FROM {$p}leados_workflows WHERE " . implode( ' AND ', $where ) . ' ORDER BY updated_at DESC';
+	$rows = $wpdb->get_results( $wpdb->prepare( $sql, $params ), ARRAY_A ) ?: array();
+
+	$items = array();
+	foreach ( $rows as $row ) {
+		$row['payload'] = json_decode( $row['payload'] ?? '{}', true ) ?: array();
+		$items[]        = $row;
+	}
+
+	return rest_ensure_response( array( 'items' => $items ) );
+}
+
+/**
+ * Save, reserve or update workflow draft in wp_leados_workflows
+ */
+function hk_leados_save_workflow( WP_REST_Request $request ) {
+	global $wpdb;
+	$p    = $wpdb->prefix;
+	$body = $request->get_json_params() ?: array();
+
+	$action   = sanitize_text_field( $body['action'] ?? 'save_draft' );
+	$id       = sanitize_text_field( $body['id'] ?? '' );
+	$lead_id  = sanitize_text_field( $body['leadId'] ?? ( $body['lead_id'] ?? '' ) );
+	$kind     = sanitize_text_field( $body['kind'] ?? 'draft' );
+	$state    = sanitize_text_field( $body['state'] ?? 'draft' );
+
+	if ( 'reserve' === $action ) {
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$p}leados_workflows WHERE id = %s", $id ), ARRAY_A );
+		if ( ! $row ) {
+			return new WP_Error( 'not_found', 'Draft not found', array( 'status' => 404 ) );
+		}
+		$wpdb->update( "{$p}leados_workflows", array( 'state' => 'queued', 'updated_at' => current_time( 'mysql', true ) ), array( 'id' => $id ) );
+		$row['payload'] = json_decode( $row['payload'] ?? '{}', true ) ?: array();
+		return rest_ensure_response( array( 'item' => $row ) );
+	}
+
+	if ( 'dispatch_result' === $action ) {
+		$res_state = sanitize_text_field( $body['state'] ?? 'sent' );
+		$wpdb->update( "{$p}leados_workflows", array( 'state' => $res_state, 'updated_at' => current_time( 'mysql', true ) ), array( 'id' => $id ) );
+		return rest_ensure_response( array( 'ok' => true ) );
+	}
+
+	$existing = null;
+	if ( ! empty( $id ) ) {
+		$existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$p}leados_workflows WHERE id = %s", $id ), ARRAY_A );
+	} elseif ( ! empty( $lead_id ) ) {
+		$existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$p}leados_workflows WHERE lead_id = %s AND kind = %s ORDER BY updated_at DESC LIMIT 1", $lead_id, $kind ), ARRAY_A );
+	}
+
+	$payload = $body;
+	unset( $payload['action'], $payload['id'] );
+
+	if ( $existing ) {
+		$new_rev = (int) $existing['revision'] + 1;
+		$wpdb->update(
+			"{$p}leados_workflows",
+			array(
+				'state'      => $state ?: $existing['state'],
+				'revision'   => $new_rev,
+				'payload'    => wp_json_encode( $payload ),
+				'updated_at' => current_time( 'mysql', true ),
+			),
+			array( 'id' => $existing['id'] )
+		);
+		$out_id = $existing['id'];
+		$rev    = $new_rev;
+	} else {
+		$out_id  = $id ?: hk_leados_uuid();
+		$rev     = 1;
+		$wpdb->insert(
+			"{$p}leados_workflows",
+			array(
+				'id'           => $out_id,
+				'workspace_id' => HK_LEADOS_WORKSPACE_ID,
+				'kind'         => $kind,
+				'lead_id'      => $lead_id ?: null,
+				'state'        => $state ?: 'draft',
+				'revision'     => $rev,
+				'payload'      => wp_json_encode( $payload ),
+				'created_at'   => current_time( 'mysql', true ),
+				'updated_at'   => current_time( 'mysql', true ),
+			)
+		);
+	}
+
+	hk_leados_audit( 'workflow_save', array( 'id' => $out_id, 'lead_id' => $lead_id, 'state' => $state ) );
+
+	return rest_ensure_response( array(
+		'ok'       => true,
+		'id'       => $out_id,
+		'revision' => $rev,
+		'state'    => $state,
+		'item'     => array(
+			'id'         => $out_id,
+			'lead_id'    => $lead_id,
+			'kind'       => $kind,
+			'state'      => $state,
+			'revision'   => $rev,
+			'payload'    => $payload,
+		),
+	) );
 }
 add_action( 'hk_leados_market_discovery_cron', 'hk_leados_run_scheduled_market_discovery' );
 
