@@ -1143,11 +1143,6 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const params = new URLSearchParams();
       if (librarySearch) params.set('search', librarySearch);
       if (statusFilter !== 'all') params.set('status', statusFilter);
-      // The plugin caps a page at 500, so one read covers the whole library. It used to
-      // ask for the default 50 and then label that page "Total Saved".
-      params.set('limit', '500');
-      params.set('page', '1');
-
       const res = await fetch(`/api/admin/leados/leads?${params.toString()}`, { headers });
       if (reqSeq !== libraryRequestSeq.current) return; // Stale request discarded
 
@@ -4403,7 +4398,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </p>
                 {!libraryUnavailable && libraryTotal !== null && libraryTotal > libraryLeads.length && (
                   <p className="text-xs text-amber-700 mt-1">
-                    Showing {libraryLeads.length} of {libraryTotal} saved prospects. Narrow the search or filter to see the rest.
+                    Showing the first {libraryLeads.length} of {libraryTotal} saved prospects. Search or filter to reach the rest — the count above is the store's total, not this page's.
                   </p>
                 )}
               </div>
