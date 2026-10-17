@@ -1095,8 +1095,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         fetch('/api/admin/leados/stats', { headers }),
         fetch('/api/admin/leados/projects', { headers }),
       ]);
-      if (!resStats.ok) throw new Error(`Stats request failed (${resStats.status})`);
-      if (!resProj.ok) throw new Error(`Projects request failed (${resProj.status})`);
+      if (!resStats.ok) throw new Error(`Statistics request failed (${resStats.status}). Retrying is safe.`);
+      if (!resProj.ok) throw new Error(`Projects request failed (${resProj.status}). Retrying is safe.`);
 
       const [s, p] = await Promise.all([resStats.json(), resProj.json()]);
       setStats(s.stats && typeof s.stats === 'object' ? s.stats : null);
@@ -1134,7 +1134,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const res = await fetch(`/api/admin/leados/leads?${params.toString()}`, { headers });
       if (reqSeq !== libraryRequestSeq.current) return; // Stale request discarded
 
-      if (!res.ok) throw new Error(`Lead Library request failed (${res.status})`);
+      if (!res.ok) {
+        // The route answers with what actually went wrong (an origin outage, an
+        // admin session that expired) — a bare status code turned all of those into
+        // the same "failed (500)".
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error || `Lead Library request failed (${res.status})`);
+      }
       const d = await res.json();
       if (reqSeq !== libraryRequestSeq.current) return; // Stale response discarded
 
