@@ -4778,9 +4778,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="max-h-[calc(100vh-300px)] overflow-auto">
                 <table className="w-full text-left border-collapse text-xs">
-                  <thead>
+                  <thead className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-slate-50">
                     <tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold text-slate-500 uppercase tracking-wider select-none">
                       {/* Drag Reorder Handle Header */}
                       <th
