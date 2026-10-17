@@ -521,6 +521,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   });
   const libraryRequestSeq = useRef(0);
   const [libraryError, setLibraryError] = useState<string | null>(null);
+  /**
+   * A read that failed is not an empty library. Without this distinction the page
+   * printed "0 Total Saved" over an error message, so an owner whose WordPress
+   * origin stalled read it as "my prospects are gone". A stale page stays visible
+   * above the error, so only an empty screen counts as unavailable.
+   */
+  const libraryUnavailable = Boolean(libraryError) && libraryLeads.length === 0;
   const [librarySearch, setLibrarySearch] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).search : '');
   const [statusFilter, setStatusFilter] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).status : 'all');
   const [libraryCategoryFilter, setLibraryCategoryFilter] = useState('all');
@@ -4377,7 +4384,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   </div>
                   <h2 className="text-xl font-bold text-slate-900 tracking-tight">Lead Library</h2>
                   <span className="bg-slate-100 text-slate-700 text-xs font-bold px-2.5 py-0.5 rounded-full">
-                    {libraryLeads.length} Total Saved
+                    {libraryUnavailable ? 'Unavailable' : `${libraryLeads.length} Total Saved`}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
@@ -4418,30 +4425,30 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-3 border-t border-slate-100">
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
                 <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Total Saved</span>
-                <span className="text-xl font-bold text-slate-900 mt-0.5 block">{libraryLeads.length}</span>
+                <span className="text-xl font-bold text-slate-900 mt-0.5 block">{libraryUnavailable ? '—' : libraryLeads.length}</span>
               </div>
               <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
                 <span className="text-[10px] font-bold text-emerald-700 block uppercase tracking-wider">Verified Contacts</span>
                 <span className="text-xl font-bold text-emerald-800 mt-0.5 block">
-                  {libraryLeads.filter((l) => l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website)).length}
+                  {libraryUnavailable ? '—' : libraryLeads.filter((l) => l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website)).length}
                 </span>
               </div>
               <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-100">
                 <span className="text-[10px] font-bold text-blue-700 block uppercase tracking-wider">Direct Phone</span>
                 <span className="text-xl font-bold text-blue-800 mt-0.5 block">
-                  {libraryLeads.filter((l) => Boolean(l.phone)).length}
+                  {libraryUnavailable ? '—' : libraryLeads.filter((l) => Boolean(l.phone)).length}
                 </span>
               </div>
               <div className="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100">
                 <span className="text-[10px] font-bold text-indigo-700 block uppercase tracking-wider">Email Verified</span>
                 <span className="text-xl font-bold text-indigo-800 mt-0.5 block">
-                  {libraryLeads.filter((l) => Boolean(l.email)).length}
+                  {libraryUnavailable ? '—' : libraryLeads.filter((l) => Boolean(l.email)).length}
                 </span>
               </div>
               <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-100">
                 <span className="text-[10px] font-bold text-purple-700 block uppercase tracking-wider">In Sales Pipeline</span>
                 <span className="text-xl font-bold text-purple-800 mt-0.5 block">
-                  {libraryLeads.filter((l) => l.status === 'qualified' || l.status === 'contacted' || l.status === 'shortlisted').length}
+                  {libraryUnavailable ? '—' : libraryLeads.filter((l) => l.status === 'qualified' || l.status === 'contacted' || l.status === 'shortlisted').length}
                 </span>
               </div>
             </div>
@@ -4769,19 +4776,34 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
                   <BookBookmark className="w-6 h-6" />
                 </div>
-                <h4 className="font-bold text-slate-800 text-sm">No Saved Leads Found</h4>
+                <h4 className="font-bold text-slate-800 text-sm">
+                  {libraryUnavailable ? 'Saved prospects could not be read' : 'No Saved Leads Found'}
+                </h4>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  {libraryLeads.length > 0
+                  {libraryUnavailable
+                    ? libraryError
+                    : libraryLeads.length > 0
                     ? 'No leads match your active filters or search keyword.'
                     : 'Discover verified B2B businesses in Find Leads and click "Save Selected" to populate your library.'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => { setLibrarySearch(''); setLibraryCategoryFilter('all'); setStatusFilter('all'); setLibraryQuickContactFilter('all'); changeTab('find'); }}
-                  className="px-4 py-2 rounded-lg bg-[#584de3] text-white font-semibold text-xs shadow-sm cursor-pointer"
-                >
-                  Discover Leads
-                </button>
+                {libraryUnavailable ? (
+                  <button
+                    type="button"
+                    onClick={() => void loadLibrary()}
+                    disabled={loadingLibrary}
+                    className="px-4 py-2 rounded-lg bg-[#584de3] text-white font-semibold text-xs shadow-sm cursor-pointer disabled:opacity-60"
+                  >
+                    {loadingLibrary ? 'Retrying…' : 'Retry'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setLibrarySearch(''); setLibraryCategoryFilter('all'); setStatusFilter('all'); setLibraryQuickContactFilter('all'); changeTab('find'); }}
+                    className="px-4 py-2 rounded-lg bg-[#584de3] text-white font-semibold text-xs shadow-sm cursor-pointer"
+                  >
+                    Discover Leads
+                  </button>
+                )}
               </div>
             ) : (
               <div className="max-h-[calc(100vh-300px)] overflow-auto">
