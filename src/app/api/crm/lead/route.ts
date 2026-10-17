@@ -8,6 +8,7 @@
 
 import { NextResponse } from 'next/server';
 import { createCrmLead } from '@/lib/leados/crm';
+import { createOrUpdateContact } from '@/lib/omnisend/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,23 @@ export async function POST(request: Request) {
       metadata: body.metadata || {},
       opted_in: body.opted_in !== false,
     });
+
+    if (body.opted_in !== false) {
+      createOrUpdateContact({
+        email,
+        firstName: body.name ? String(body.name).trim().split(/\s+/)[0] : undefined,
+        phone: body.phone ? String(body.phone).trim() : undefined,
+        status: 'subscribed',
+        tags: ['crm_lead', `source:${body.source || 'website'}`, 'himalayan-koh'],
+        customProperties: {
+          company: body.company || '',
+          page_url: body.page_url || '',
+          coupon_code: body.coupon_code || '',
+        },
+      }).catch((err) => {
+        console.warn('Omnisend CRM lead sync failed (ignored):', err?.message || err);
+      });
+    }
 
     return NextResponse.json({ ok: true, lead });
   } catch (err) {

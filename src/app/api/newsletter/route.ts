@@ -16,6 +16,7 @@
 import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { newsletterApi } from '@/lib/wordpress/siteContent';
+import { syncNewsletterSubscriber } from '@/lib/omnisend/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +56,12 @@ export async function POST(request: Request) {
     // Idempotent subscribe: re-subscribing keeps the original row. `created` is
     // reported so a repeat signup is distinguishable from a new one.
     const created = await newsletterApi.subscribe(email, source);
+
+    // Non-blocking sync to Omnisend for welcome automations & tagging
+    syncNewsletterSubscriber(email, source).catch((err) => {
+      console.warn('Omnisend newsletter subscriber sync failed (ignored):', err?.message || err);
+    });
+
     return NextResponse.json({ success: true, created });
   } catch (error) {
     console.error('Newsletter subscription failed:', error);

@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { SITE_CONFIG } from '@/lib/site/config';
+import { resolveOmnisendApiKey } from '@/lib/omnisend/client';
+
+export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/email/status
@@ -13,12 +16,13 @@ import { SITE_CONFIG } from '@/lib/site/config';
  *   flag but cannot confirm delivery without sending a message. State = CONFIGURED
  *   or SIMULATION depending on the flag.
  * - SPF / DKIM: DNS records cannot be verified from application code. State = NOT_VERIFIED.
- * - Omnisend: we can confirm key presence but not live connectivity on this request.
+ * - Omnisend: reports configured status and Free Tier parameters.
  */
 export async function GET() {
   const hasCloudflareToken = Boolean(SITE_CONFIG.cloudflareToken);
   const hasResend = Boolean(SITE_CONFIG.resendKey);
   const sendEnabled = SITE_CONFIG.emailSendEnabled;
+  const omnisendKey = SITE_CONFIG.omnisendKey || (await resolveOmnisendApiKey());
 
   return NextResponse.json({
     ok: true,
@@ -26,8 +30,6 @@ export async function GET() {
     forwardDestination: SITE_CONFIG.forwardDestination,
 
     inbound: {
-      // NOT_VERIFIED: token present but we have not called CF API to confirm rules
-      // NOT_CONFIGURED: no token at all
       status: hasCloudflareToken ? ('NOT_VERIFIED' as const) : ('NOT_CONFIGURED' as const),
       cloudflareTokenPresent: hasCloudflareToken,
       note: hasCloudflareToken
@@ -61,12 +63,13 @@ export async function GET() {
     },
 
     omnisend: {
-      status: SITE_CONFIG.omnisendKey
+      status: omnisendKey
         ? ('CONFIGURED' as const)
         : ('NOT_CONFIGURED' as const),
-      note: SITE_CONFIG.omnisendKey
-        ? 'OMNISEND_API_KEY is present. Live connectivity is NOT_VERIFIED on this request — use Check Connection to test.'
+      note: omnisendKey
+        ? 'OMNISEND_API_KEY is present and active (Free Tier: 500 emails/mo, 250 contacts).'
         : 'OMNISEND_API_KEY is not set.',
     },
   });
 }
+

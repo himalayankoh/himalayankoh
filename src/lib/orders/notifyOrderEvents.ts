@@ -39,6 +39,7 @@ import {
 import { orderFromWoo, getWooOrder } from '@/lib/woo/orders';
 import { resolveTrackingUrl } from '@/lib/orders/tracking';
 import { isStagingSimulatorPaymentMethod } from '@/lib/payments/stagingSimulator';
+import { syncOrderCustomer } from '@/lib/omnisend/client';
 
 interface OrderNotifyRow {
   order_number: string;
@@ -110,7 +111,17 @@ export function dispatchPaymentReceivedNotifications(orderId: string): void {
       const row = await loadOrderSummary(orderId);
       if (!row) return;
       const summary = toEmailSummary(row);
-      await Promise.all([sendBuyerOrderConfirmation(summary), sendAdminPaymentReceived(summary)]);
+      await Promise.all([
+        sendBuyerOrderConfirmation(summary),
+        sendAdminPaymentReceived(summary),
+        syncOrderCustomer({
+          email: row.email,
+          orderNumber: row.order_number,
+          total: row.total,
+        }).catch((err) => {
+          console.warn('Omnisend order customer sync failed (ignored):', err?.message || err);
+        }),
+      ]);
     } catch (error) {
       console.error('Payment received notifications failed:', error);
     }

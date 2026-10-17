@@ -14,6 +14,7 @@
 import { NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { contactApi } from '@/lib/wordpress/siteContent';
+import { syncContactSubmission } from '@/lib/omnisend/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,17 @@ export async function POST(request: Request) {
       phone: phone.slice(0, 50),
       subject: subject.slice(0, 200),
       message: message.slice(0, 5000),
+    });
+
+    // Non-blocking sync to Omnisend
+    syncContactSubmission({
+      name: name.slice(0, 200),
+      email: email.slice(0, 300),
+      phone: phone.slice(0, 50),
+      subject: subject.slice(0, 200),
+      message: message.slice(0, 5000),
+    }).catch((err) => {
+      console.warn('Omnisend contact submission sync failed (ignored):', err?.message || err);
     });
 
     return NextResponse.json({ success: true });
