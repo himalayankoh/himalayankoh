@@ -659,7 +659,12 @@ export default function ServiceKeysPanel() {
                 const compound = fieldKey(category.id, field.key);
                 const stored = values[field.key] ?? '';
                 const source = sources[field.key] ?? 'unset';
-                const badge = BADGE[source];
+                // A field inside a category that could not be read has no source. Saying
+                // "Not configured" there is the same false claim the card badge used to
+                // make, one line lower down.
+                const badge = unavailableMessage
+                  ? { label: 'Unavailable', className: 'bg-amber-100 text-amber-900' }
+                  : BADGE[source];
                 const edited = compound in edits;
                 const isSecret = field.type === 'password';
                 const configured = source !== 'unset';
