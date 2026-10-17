@@ -522,6 +522,12 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const libraryRequestSeq = useRef(0);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   /**
+   * The store's own count for the library, which is not the number of rows this page
+   * holds. The screen used to print the page length as "Total Saved", so an owner with
+   * 353 prospects read "50 Total Saved" and concluded 303 had been lost.
+   */
+  const [libraryTotal, setLibraryTotal] = useState<number | null>(null);
+  /**
    * A read that failed is not an empty library. Without this distinction the page
    * printed "0 Total Saved" over an error message, so an owner whose WordPress
    * origin stalled read it as "my prospects are gone". A stale page stays visible
@@ -1137,6 +1143,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const params = new URLSearchParams();
       if (librarySearch) params.set('search', librarySearch);
       if (statusFilter !== 'all') params.set('status', statusFilter);
+      // The plugin caps a page at 500, so one read covers the whole library. It used to
+      // ask for the default 50 and then label that page "Total Saved".
+      params.set('limit', '500');
+      params.set('page', '1');
 
       const res = await fetch(`/api/admin/leados/leads?${params.toString()}`, { headers });
       if (reqSeq !== libraryRequestSeq.current) return; // Stale request discarded
@@ -1153,6 +1163,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
       if (!Array.isArray(d.leads)) throw new Error('Lead Library returned an invalid response.');
       const leads = [...d.leads];
+      setLibraryTotal(typeof d.total === 'number' ? d.total : leads.length);
       const savedRowOrder = typeof window !== 'undefined' ? localStorage.getItem('hk_leados_manual_row_order_v1') : null;
       if (savedRowOrder) {
         try {
@@ -4384,12 +4395,17 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   </div>
                   <h2 className="text-xl font-bold text-slate-900 tracking-tight">Lead Library</h2>
                   <span className="bg-slate-100 text-slate-700 text-xs font-bold px-2.5 py-0.5 rounded-full">
-                    {libraryUnavailable ? 'Unavailable' : `${libraryLeads.length} Total Saved`}
+                    {libraryUnavailable ? 'Unavailable' : `${libraryTotal ?? libraryLeads.length} Total Saved`}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
                   Central repository for all saved B2B prospects, verified contacts, fit qualification scores, sales notes, and wholesale outreach.
                 </p>
+                {!libraryUnavailable && libraryTotal !== null && libraryTotal > libraryLeads.length && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Showing {libraryLeads.length} of {libraryTotal} saved prospects. Narrow the search or filter to see the rest.
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -4425,7 +4441,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-3 border-t border-slate-100">
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
                 <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Total Saved</span>
-                <span className="text-xl font-bold text-slate-900 mt-0.5 block">{libraryUnavailable ? '—' : libraryLeads.length}</span>
+                <span className="text-xl font-bold text-slate-900 mt-0.5 block">{libraryUnavailable ? '—' : libraryTotal ?? libraryLeads.length}</span>
               </div>
               <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
                 <span className="text-[10px] font-bold text-emerald-700 block uppercase tracking-wider">Verified Contacts</span>
