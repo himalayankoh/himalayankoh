@@ -6944,7 +6944,9 @@ export function AMarketingTraffic() {
                 : omnisendData?.connected
                 ? 'Connected'
                 : omnisendData?.state === 'wordpress_unavailable'
-                ? 'WordPress unavailable'
+                ? 'WordPress settings unavailable'
+                : omnisendData?.state === 'deployment_unconfigured'
+                ? 'Deployment not configured'
                 : omnisendData?.state === 'provider_unavailable'
                 ? 'Provider unavailable'
                 : omnisendData?.state === 'invalid_key'
@@ -6953,7 +6955,7 @@ export function AMarketingTraffic() {
                 ? 'Insufficient permissions'
                 : omnisendData?.configured
                 ? 'Configured — verification pending'
-                : 'Not configured'
+                : 'Configuration missing'
             }
           />
         }

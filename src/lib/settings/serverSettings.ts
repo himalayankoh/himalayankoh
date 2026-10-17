@@ -53,12 +53,17 @@ export interface SettingRead {
   failure: SettingReadFailure | null;
 }
 
-function toFailure(error: unknown): SettingReadFailure {
+export function toSettingReadFailure(error: unknown): SettingReadFailure {
   if (error instanceof WordPressApiError) {
-    const deploymentUnconfigured = error.status === 0;
+    // Status 0 means "no HTTP answer", and that covers two different situations: this
+    // deployment has no WordPress origin at all, or the origin timed out or refused the
+    // connection. Only the first is a configuration mistake. Reading a stall as
+    // `deployment_unconfigured` is how a WordPress outage told the owner that the
+    // Omnisend key they had just saved was never saved.
+    const missingOrigin = error.status === 0 && /is not configured/i.test(error.message);
     return {
-      kind: deploymentUnconfigured ? 'deployment_unconfigured' : 'wordpress_unavailable',
-      status: deploymentUnconfigured ? null : error.status,
+      kind: missingOrigin ? 'deployment_unconfigured' : 'wordpress_unavailable',
+      status: error.status === 0 ? null : error.status,
       message: error.message,
     };
   }
@@ -104,7 +109,7 @@ export async function getSettingWithStatus(
   } catch (error) {
     // Deliberately not cached: a failure is a moment, not an answer, and caching
     // it is what keeps a transient outage showing after the origin has recovered.
-    return { value: null, failure: toFailure(error) };
+    return { value: null, failure: toSettingReadFailure(error) };
   }
 }
 
@@ -139,7 +144,7 @@ export async function getSettingsForCategoryWithStatus(
     // A `WordPressApiError` carries the status the origin answered with; anything
     // else (a bad URL, an abort) has none, and `null` says exactly that rather
     // than inventing a 500.
-    const failure = toFailure(error);
+    const failure = toSettingReadFailure(error);
     return { values: {}, ok: false, status: failure.status, failure };
   }
 }
