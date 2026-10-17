@@ -37,9 +37,59 @@ type Source = 'db' | 'env' | 'unset';
 interface SettingsPayload {
   settings: Record<string, Record<string, string>>;
   sources: Record<string, Record<string, Source>>;
+  /**
+   * Categories the WordPress store could not answer for, with the reason.
+   *
+   * An empty `settings` object means two very different things, and the badge used to
+   * collapse them into "Not configured". This is what separates them: a category in
+   * here was *not read*, so its badge must say so rather than asking the owner to
+   * paste a key that is already saved.
+   */
+  unavailable?: Record<string, { message: string; status: number | null }>;
   /** The Stripe badge, answered by the same read. Null when the store could not say. */
   stripe?: StripeProviderStatus | null;
 }
+
+/** The Omnisend connection states, as `/api/omnisend/status` names them. */
+type OmnisendState =
+  | 'connected'
+  | 'configured_unverified'
+  | 'invalid_key'
+  | 'insufficient_permissions'
+  | 'provider_unavailable'
+  | 'wordpress_unavailable'
+  | 'deployment_unconfigured'
+  | 'missing';
+
+interface OmnisendStatusPayload {
+  state: OmnisendState;
+  connected: boolean;
+  configured: boolean;
+  source: 'wordpress' | 'env' | null;
+  message: string;
+  action: string | null;
+  retryable: boolean;
+  brandID: string | null;
+  accountName: string | null;
+  website: string | null;
+  domainVerified: boolean | null;
+  contactsCount: number | null;
+  subscribedCount: number | null;
+  unsubscribedCount: number | null;
+  campaignsDraftCount: number | null;
+  lastChecked: string;
+}
+
+const OMNISEND_TONE: Record<OmnisendState, { label: string; className: string }> = {
+  connected: { label: 'Connected', className: 'bg-emerald-100 text-emerald-800 border border-emerald-200' },
+  configured_unverified: { label: 'Configured — verification pending', className: 'bg-amber-100 text-amber-900 border border-amber-300' },
+  invalid_key: { label: 'Invalid key', className: 'bg-rose-100 text-rose-800 border border-rose-200' },
+  insufficient_permissions: { label: 'Insufficient permissions', className: 'bg-rose-100 text-rose-800 border border-rose-200' },
+  provider_unavailable: { label: 'Provider temporarily unavailable', className: 'bg-amber-100 text-amber-900 border border-amber-300' },
+  wordpress_unavailable: { label: 'WordPress settings unavailable', className: 'bg-amber-100 text-amber-900 border border-amber-300' },
+  deployment_unconfigured: { label: 'Deployment not configured', className: 'bg-rose-100 text-rose-800 border border-rose-200' },
+  missing: { label: 'Configuration missing', className: 'bg-gray-100 text-gray-600 border border-gray-200' },
+};
 
 /**
  * The Stripe facts this screen shows, as the settings read sends them.
@@ -76,8 +126,18 @@ function getCategoryStatus(
   categoryId: string,
   sources: Record<string, Source>,
   values: Record<string, string>,
-  stripe?: StripeProviderStatus | null
+  stripe?: StripeProviderStatus | null,
+  unavailableMessage?: string
 ): { label: string; className: string } {
+  // Checked before anything else: if the store did not answer, this category has no
+  // verdict at all — and "Not configured" is a verdict.
+  if (unavailableMessage) {
+    return {
+      label: 'WordPress settings unavailable',
+      className: 'bg-amber-100 text-amber-900 border border-amber-300',
+    };
+  }
+
   const sourceList = Object.values(sources);
   const anyConfigured = sourceList.some((s) => s !== 'unset');
   if (!anyConfigured) {
@@ -125,11 +185,49 @@ export default function ServiceKeysPanel() {
   const [googleTesting, setGoogleTesting] = useState(false);
   const [googleNote, setGoogleNote] = useState('');
   const [testNote, setTestNote] = useState<{ kind: 'ok' | 'err' | 'warn'; text: string } | null>(null);
+  const [omnisend, setOmnisend] = useState<OmnisendStatusPayload | null>(null);
+  const [omnisendBusy, setOmnisendBusy] = useState(false);
+  const [omnisendNote, setOmnisendNote] = useState<{ kind: 'ok' | 'err' | 'warn'; text: string } | null>(null);
 
   const authHeaders = useCallback((): Record<string, string> => {
     const token = getAccessToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   }, []);
+
+  /**
+   * The provider's own answer, asked separately from the settings read.
+   *
+   * Settings can say "a key is stored"; only Omnisend can say the key authenticates.
+   * Keeping the two apart is what lets this screen distinguish "saved, unverified"
+   * from "saved and working", and `fresh` is what makes a just-saved key judged on
+   * its own behalf rather than on a cached negative.
+   */
+  const loadOmnisend = useCallback(async (fresh = false) => {
+    setOmnisendBusy(true);
+    try {
+      const res = await fetch(`/api/omnisend/status${fresh ? '?fresh=1' : ''}`, {
+        headers: authHeaders(),
+        cache: 'no-store',
+      });
+      const body = (await res.json().catch(() => null)) as (OmnisendStatusPayload & { error?: string }) | null;
+      if (!res.ok || !body || !body.state) {
+        setOmnisendNote({ kind: 'err', text: body?.error || `Could not read the Omnisend connection (HTTP ${res.status}).` });
+        return;
+      }
+      setOmnisend(body);
+      if (fresh) {
+        setOmnisendNote(
+          body.connected
+            ? { kind: 'ok', text: 'Connection verified against Omnisend.' }
+            : { kind: body.state === 'missing' ? 'warn' : 'err', text: body.message },
+        );
+      }
+    } catch (err) {
+      setOmnisendNote({ kind: 'err', text: (err as Error).message || 'Could not read the Omnisend connection.' });
+    } finally {
+      setOmnisendBusy(false);
+    }
+  }, [authHeaders]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,12 +243,15 @@ export default function ServiceKeysPanel() {
       setData(payload);
       setStripe(payload.stripe ?? null);
       setEdits({});
+      // One extra request, and only for the card whose state a settings read cannot
+      // answer on its own.
+      void loadOmnisend();
     } catch (err) {
       setLoadError((err as Error).message || 'Could not load settings.');
     } finally {
       setLoading(false);
     }
-  }, [authHeaders]);
+  }, [authHeaders, loadOmnisend]);
 
   useEffect(() => {
     void load();
@@ -222,14 +323,23 @@ export default function ServiceKeysPanel() {
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ category: categoryId, settings: payload }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; saved?: number };
+      const body = (await res.json().catch(() => ({}))) as { error?: string; saved?: number; verified?: boolean };
       if (!res.ok) {
         setNote({ kind: 'err', text: body.error || `Save failed (HTTP ${res.status}).` });
         return;
       }
-      setNote({ kind: 'ok', text: `Saved ${body.saved ?? Object.keys(payload).length} field(s).` });
+      // The route reads the category back before answering, so `verified` is the
+      // difference between "the POST was accepted" and "WordPress holds this value".
+      setNote({
+        kind: body.verified === false ? 'err' : 'ok',
+        text:
+          body.verified === false
+            ? 'Saved, but the value could not be confirmed. Reload and check the badge before relying on it.'
+            : `Saved ${body.saved ?? Object.keys(payload).length} field(s) and confirmed by reading it back.`,
+      });
       // A full reload, because the badge beside these fields is part of the same read.
       await load();
+      if (categoryId === 'omnisend') await loadOmnisend(true);
     } catch (err) {
       setNote({ kind: 'err', text: (err as Error).message || 'Save failed.' });
     } finally {
@@ -307,7 +417,8 @@ export default function ServiceKeysPanel() {
         const sources = data?.sources[category.id] ?? {};
         const dirty = dirtyFor(category.id);
         const isStripe = category.id === 'stripe';
-        const status = getCategoryStatus(category.id, sources, values, stripe);
+        const unavailableMessage = data?.unavailable?.[category.id]?.message;
+        const status = getCategoryStatus(category.id, sources, values, stripe, unavailableMessage);
 
         return (
           <div key={category.id} className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
@@ -346,6 +457,94 @@ export default function ServiceKeysPanel() {
                   {googleTesting ? 'Checking Google…' : 'Test Search Console'}
                 </button>
                 {googleNote && <p role="status" className="w-full text-sm text-gray-700">{googleNote}</p>}
+              </div>
+            )}
+
+            {category.id === 'omnisend' && (
+              <div className="mt-3.5 p-3 rounded-lg border border-emerald-100 bg-emerald-50/50">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                        omnisend ? OMNISEND_TONE[omnisend.state].className : 'bg-gray-100 text-gray-600 border border-gray-200'
+                      }`}
+                    >
+                      {omnisend ? OMNISEND_TONE[omnisend.state].label : omnisendBusy ? 'Checking…' : 'Not checked'}
+                    </span>
+                    {omnisend?.source && (
+                      <span className="text-[11px] text-gray-500">
+                        key from {omnisend.source === 'wordpress' ? 'WordPress settings' : 'Worker secret'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadOmnisend(true)}
+                      disabled={omnisendBusy}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-emerald-300 text-emerald-800 bg-white hover:bg-emerald-50 disabled:opacity-50"
+                    >
+                      {omnisendBusy ? 'Testing…' : 'Test connection'}
+                    </button>
+                    <a
+                      href="https://app.omnisend.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-semibold text-emerald-700 underline"
+                    >
+                      Omnisend portal
+                    </a>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-700 mt-2">{omnisend?.message || 'Checking the saved key with Omnisend…'}</p>
+                {omnisend?.action && <p className="text-xs text-amber-800 mt-1">Next: {omnisend.action}</p>}
+                {omnisendNote && (
+                  <p
+                    role="status"
+                    className={`text-xs mt-1 ${omnisendNote.kind === 'ok' ? 'text-emerald-700' : omnisendNote.kind === 'warn' ? 'text-amber-800' : 'text-red-600'}`}
+                  >
+                    {omnisendNote.text}
+                  </p>
+                )}
+
+                {omnisend?.connected && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs mt-2.5">
+                    <div>
+                      <span className="text-gray-500 block text-[11px]">Account</span>
+                      <span className="font-semibold text-gray-800">{omnisend.accountName ?? 'Not available'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block text-[11px]">Brand ID</span>
+                      <span className="font-mono text-[11px] text-gray-700 break-all">{omnisend.brandID ?? 'Not available'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block text-[11px]">Contacts</span>
+                      <span className="font-semibold text-gray-800">
+                        {omnisend.contactsCount ?? 'Not available'}
+                        {omnisend.subscribedCount !== null && omnisend.unsubscribedCount !== null && (
+                          <span className="font-normal text-gray-500">
+                            {' '}({omnisend.subscribedCount} subscribed · {omnisend.unsubscribedCount} unsubscribed)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block text-[11px]">Sending domain</span>
+                      <span className={`font-semibold ${omnisend.domainVerified ? 'text-emerald-700' : 'text-amber-800'}`}>
+                        {omnisend.domainVerified === null ? 'Not available' : omnisend.domainVerified ? 'Verified' : 'Not verified'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block text-[11px]">Campaign drafts</span>
+                      <span className="font-semibold text-gray-800">{omnisend.campaignsDraftCount ?? 'Not available'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block text-[11px]">Last checked</span>
+                      <span className="text-gray-700">{relativeTime(omnisend.lastChecked) || 'just now'}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

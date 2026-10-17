@@ -24,7 +24,7 @@
 
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { getSettingsForCategory, getSettingsForCategoryWithStatus, upsertSettings } from '@/lib/settings/serverSettings';
+import { getSettingsForCategoryWithStatus, upsertSettings } from '@/lib/settings/serverSettings';
 import { SETTINGS_REGISTRY } from '@/lib/settings/registry';
 import { stripeBadge, stripeFacts, type StripeBadge } from '@/lib/stripe/server/stripe';
 
@@ -41,6 +41,10 @@ export async function GET(request: Request) {
 
   const result: Record<string, Record<string, string>> = {};
   const sources: Record<string, Record<string, 'db' | 'env' | 'unset'>> = {};
+  // Categories the store could not answer for. Without this the panel drew "Not
+  // configured" from an empty object, which is how a WordPress timeout told the owner
+  // to re-paste a key that was already saved.
+  const unavailable: Record<string, { message: string; status: number | null }> = {};
 
   // One round trip per category, all at once. This used to `await` inside the
   // loop, so the screen paid one store read after another in series — measured
@@ -54,17 +58,25 @@ export async function GET(request: Request) {
   // The status-carrying read is deliberate. `getSettingsForCategory` answers `{}` for
   // both "nothing is stored" and "the store refused", and built from an empty object the
   // badge would say "configured and ready" about a provider nothing was read about.
-  const [categoryValues, paymentsRead] = await Promise.all([
-    Promise.all(SETTINGS_REGISTRY.map((category) => getSettingsForCategory(category.id))),
+  const [categoryReads, paymentsRead] = await Promise.all([
+    Promise.all(SETTINGS_REGISTRY.map((category) => getSettingsForCategoryWithStatus(category.id))),
     getSettingsForCategoryWithStatus('payments'),
   ]);
+  const categoryValues = categoryReads.map((read) => read.values);
   const paymentValues = paymentsRead.ok ? paymentsRead.values : null;
 
   for (let index = 0; index < SETTINGS_REGISTRY.length; index += 1) {
     const category = SETTINGS_REGISTRY[index];
-    const dbValues = categoryValues[index];
+    const read = categoryReads[index];
+    const dbValues = read.values;
     result[category.id] = {};
     sources[category.id] = {};
+    if (!read.ok) {
+      unavailable[category.id] = {
+        message: read.failure?.message ?? 'The WordPress settings store did not answer.',
+        status: read.status,
+      };
+    }
 
     for (const field of category.fields) {
       const dbVal = dbValues[field.key];
@@ -94,7 +106,7 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json({ settings: result, sources, stripe });
+  return NextResponse.json({ settings: result, sources, unavailable, stripe });
 }
 
 export async function POST(request: Request) {
@@ -124,6 +136,58 @@ export async function POST(request: Request) {
     toSave[field.key] = raw.trim() || null;
   }
 
-  await upsertSettings(category, toSave);
-  return NextResponse.json({ ok: true, saved: Object.keys(toSave).length });
+  if (Object.keys(toSave).length === 0) {
+    return NextResponse.json({ ok: true, saved: 0, verified: false, message: 'Nothing changed.' });
+  }
+
+  try {
+    await upsertSettings(category, toSave);
+  } catch (error) {
+    // A refused write is the owner's problem to see, not a 200 with a silent loss.
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? `WordPress did not save this change: ${error.message}`
+            : 'WordPress did not save this change.',
+      },
+      { status: 502 },
+    );
+  }
+
+  // Read the category back before claiming success. `upsertSettings` resolving only
+  // means the POST was accepted; it is not evidence that the value is stored, and
+  // "Saved successfully" over a value that did not land is the exact lie this screen
+  // is being fixed for. The read bypasses the cache, so it cannot be answered by the
+  // value we just wrote to it.
+  const readBack = await getSettingsForCategoryWithStatus(category);
+  if (!readBack.ok) {
+    return NextResponse.json(
+      {
+        error:
+          'WordPress accepted the write but could not be read back, so the change is unconfirmed. Reload before editing again.',
+        saved: 0,
+        verified: false,
+      },
+      { status: 502 },
+    );
+  }
+
+  const mismatched = Object.entries(toSave)
+    .filter(([key, value]) => (readBack.values[key] ?? null) !== value)
+    .map(([key]) => key);
+
+  if (mismatched.length > 0) {
+    return NextResponse.json(
+      {
+        error: `WordPress stored a different value for: ${mismatched.join(', ')}. Nothing is being reported as saved until this matches.`,
+        saved: Object.keys(toSave).length - mismatched.length,
+        verified: false,
+        mismatched,
+      },
+      { status: 502 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, saved: Object.keys(toSave).length, verified: true });
 }

@@ -6554,16 +6554,40 @@ export function AMarketingTraffic() {
   const [emailHealthData, setEmailHealthData] = useState<any>(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
 
+  /**
+   * The status route is admin-only now, so this carries the console's bearer token.
+   * Without it the card would read a 401 as "not configured", which is the same
+   * conflation the route itself was fixed for.
+   */
   const fetchOmnisendStatus = useCallback(async () => {
     setLoadingOmnisend(true);
     try {
-      const res = await fetch('/api/omnisend/status');
-      if (res.ok) {
-        const d = await res.json();
-        setOmnisendData(d);
-      }
-    } catch {}
-    finally {
+      const token = getAccessToken();
+      const res = await fetch('/api/omnisend/status?fresh=1', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      });
+      const d = await res.json().catch(() => null);
+      setOmnisendData(
+        res.ok
+          ? d
+          : {
+              state: 'provider_unavailable',
+              connected: false,
+              configured: false,
+              message: d?.error || `The Omnisend status request failed (HTTP ${res.status}).`,
+              action: null,
+            },
+      );
+    } catch {
+      setOmnisendData({
+        state: 'provider_unavailable',
+        connected: false,
+        configured: false,
+        message: 'The Omnisend status request could not be completed.',
+        action: null,
+      });
+    } finally {
       setLoadingOmnisend(false);
     }
   }, []);
@@ -6902,11 +6926,21 @@ export function AMarketingTraffic() {
           <StatusPill
             ok={!!omnisendData?.connected}
             text={
-              omnisendData?.connected
-                ? 'Connected (Free Tier Active)'
-                : loadingOmnisend
-                ? 'Connecting to Omnisend…'
-                : 'Not Connected'
+              loadingOmnisend
+                ? 'Checking Omnisend…'
+                : omnisendData?.connected
+                ? 'Connected'
+                : omnisendData?.state === 'wordpress_unavailable'
+                ? 'WordPress unavailable'
+                : omnisendData?.state === 'provider_unavailable'
+                ? 'Provider unavailable'
+                : omnisendData?.state === 'invalid_key'
+                ? 'Invalid key'
+                : omnisendData?.state === 'insufficient_permissions'
+                ? 'Insufficient permissions'
+                : omnisendData?.configured
+                ? 'Configured — verification pending'
+                : 'Not configured'
             }
           />
         }
@@ -6939,14 +6973,28 @@ export function AMarketingTraffic() {
           </div>
         </div>
 
+        {/*
+          The reason, in the provider's terms. A badge alone was what made this card
+          unhelpful: the owner could see "not connected" and not whether that meant a
+          missing key, a rejected key or a WordPress read that never happened.
+        */}
+        {(omnisendData?.message || omnisendData?.action) && (
+          <p className={`text-xs ${omnisendData?.connected ? 'text-gray-600' : 'text-amber-900'}`}>
+            {omnisendData?.message}
+            {omnisendData?.action ? ` ${omnisendData.action}` : ''}
+          </p>
+        )}
+
         {/* Omnisend Metrics Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
             <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Account Identity</p>
-            <p className="font-semibold text-gray-800 truncate" title={omnisendData?.accountName || 'Himalayan Koh'}>
-              {omnisendData?.accountName || 'Himalayan Koh'}
+            <p className="font-semibold text-gray-800 truncate" title={omnisendData?.accountName || 'Not available'}>
+              {omnisendData?.accountName || 'Not available'}
             </p>
-            <p className="text-[10px] text-gray-400 font-mono mt-0.5 truncate">{omnisendData?.brandID || 'Brand ID active'}</p>
+            <p className="text-[10px] text-gray-400 font-mono mt-0.5 truncate">
+              {omnisendData?.brandID || 'Not available'}
+            </p>
           </div>
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
             <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Marketing Contacts</p>

@@ -18,6 +18,7 @@
  * blank value is already what "not configured" means to every caller.
  */
 
+import { WordPressApiError } from '@/lib/backend/wordpress';
 import { siteSettingsApi } from '@/lib/wordpress/siteContent';
 
 interface CacheEntry {
@@ -32,10 +33,63 @@ function cacheKey(category: string, key: string) {
   return `${category}::${key}`;
 }
 
+/**
+ * "I could not ask" is not "you have not set it".
+ *
+ * Every caller used to receive `null` for both, which is how a WordPress timeout
+ * turned into a confident "Not Configured" on the Omnisend card while the owner's
+ * key sat safely in the database. A status screen has to be able to tell those two
+ * apart, so this carries the failure alongside the value instead of replacing it.
+ */
+export interface SettingReadFailure {
+  kind: 'wordpress_unavailable' | 'deployment_unconfigured';
+  /** The origin's HTTP status when it answered at all; null for a transport failure. */
+  status: number | null;
+  message: string;
+}
+
+export interface SettingRead {
+  value: string | null;
+  failure: SettingReadFailure | null;
+}
+
+function toFailure(error: unknown): SettingReadFailure {
+  if (error instanceof WordPressApiError) {
+    const deploymentUnconfigured = error.status === 0;
+    return {
+      kind: deploymentUnconfigured ? 'deployment_unconfigured' : 'wordpress_unavailable',
+      status: deploymentUnconfigured ? null : error.status,
+      message: error.message,
+    };
+  }
+  return {
+    kind: 'wordpress_unavailable',
+    status: null,
+    message: error instanceof Error ? error.message : 'The WordPress settings store could not be reached.',
+  };
+}
+
 export async function getSetting(category: string, key: string): Promise<string | null> {
+  return (await getSettingWithStatus(category, key)).value;
+}
+
+/**
+ * The same read as `getSetting`, keeping the failure.
+ *
+ * `fresh` skips the in-process cache. A status screen must not repeat a negative
+ * answer this process cached sixty seconds ago — that is precisely the state that
+ * made a saved key look missing until the TTL expired.
+ */
+export async function getSettingWithStatus(
+  category: string,
+  key: string,
+  options: { fresh?: boolean } = {},
+): Promise<SettingRead> {
   const k = cacheKey(category, key);
-  const hit = cache.get(k);
-  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  if (!options.fresh) {
+    const hit = cache.get(k);
+    if (hit && hit.expiresAt > Date.now()) return { value: hit.value, failure: null };
+  }
 
   try {
     const values = await siteSettingsApi.read(category);
@@ -46,9 +100,11 @@ export async function getSetting(category: string, key: string): Promise<string 
     // A key the store does not hold is cached too: "not set" is an answer, and
     // re-asking on every render is how a missing setting becomes a slow page.
     if (!(key in values)) cache.set(k, { value: null, expiresAt: now + TTL_MS });
-    return key in values ? values[key] ?? null : null;
-  } catch {
-    return null;
+    return { value: key in values ? values[key] ?? null : null, failure: null };
+  } catch (error) {
+    // Deliberately not cached: a failure is a moment, not an answer, and caching
+    // it is what keeps a transient outage showing after the origin has recovered.
+    return { value: null, failure: toFailure(error) };
   }
 }
 
@@ -65,23 +121,26 @@ export async function getSetting(category: string, key: string): Promise<string 
  */
 export async function getSettingsForCategoryWithStatus(
   category: string,
-): Promise<{ values: Record<string, string | null>; ok: boolean; status: number | null }> {
+): Promise<{
+  values: Record<string, string | null>;
+  ok: boolean;
+  status: number | null;
+  /** Present only on failure, and named so a screen can say why. */
+  failure: SettingReadFailure | null;
+}> {
   try {
     const values = await siteSettingsApi.read(category);
     const now = Date.now();
     for (const [key, value] of Object.entries(values)) {
       cache.set(cacheKey(category, key), { value: value ?? null, expiresAt: now + TTL_MS });
     }
-    return { values, ok: true, status: 200 };
+    return { values, ok: true, status: 200, failure: null };
   } catch (error) {
     // A `WordPressApiError` carries the status the origin answered with; anything
     // else (a bad URL, an abort) has none, and `null` says exactly that rather
     // than inventing a 500.
-    const status =
-      typeof (error as { status?: unknown } | null)?.status === 'number'
-        ? (error as { status: number }).status
-        : null;
-    return { values: {}, ok: false, status };
+    const failure = toFailure(error);
+    return { values: {}, ok: false, status: failure.status, failure };
   }
 }
 

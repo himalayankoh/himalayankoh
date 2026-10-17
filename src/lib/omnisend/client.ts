@@ -8,7 +8,7 @@
  * operates non-blockingly so external service hiccups never compromise the user experience.
  */
 
-import { getSetting } from '@/lib/settings/serverSettings';
+import { getSettingWithStatus, type SettingReadFailure } from '@/lib/settings/serverSettings';
 
 const OMNISEND_API_BASE = 'https://api.omnisend.com/v3';
 const TIMEOUT_MS = 8000;
@@ -31,24 +31,37 @@ export interface OmnisendResult {
 }
 
 /**
+ * The credential, and why it is missing when it is.
+ *
+ * A caller that only needs the key uses `resolveOmnisendApiKey`. A caller that has to
+ * explain the connection uses this, because "no key" has three different causes and
+ * only one of them is the owner's to fix.
+ */
+export interface OmnisendCredential {
+  key: string | null;
+  source: 'wordpress' | 'env' | null;
+  /** Set when the WordPress read failed; null when the store answered. */
+  storeFailure: SettingReadFailure | null;
+}
+
+export async function resolveOmnisendCredential(options: { fresh?: boolean } = {}): Promise<OmnisendCredential> {
+  const fromSettings = await getSettingWithStatus('omnisend', 'api_key', { fresh: options.fresh });
+  const stored = fromSettings.value?.trim() ?? '';
+  if (stored) return { key: stored, source: 'wordpress', storeFailure: null };
+
+  // The Worker secret is a deliberate fallback: a deployment can hold the key in
+  // its environment and still show the same state on the same screen.
+  const fromEnv = process.env.OMNISEND_API_KEY?.trim();
+  if (fromEnv) return { key: fromEnv, source: 'env', storeFailure: fromSettings.failure };
+
+  return { key: null, source: null, storeFailure: fromSettings.failure };
+}
+
+/**
  * Resolves the active Omnisend API key from WordPress options or process environment.
  */
 export async function resolveOmnisendApiKey(): Promise<string | null> {
-  try {
-    const fromSettings = await getSetting('omnisend', 'api_key');
-    if (fromSettings && fromSettings.trim().length > 0) {
-      return fromSettings.trim();
-    }
-  } catch {
-    // Fall back to environment if settings read fails
-  }
-
-  const fromEnv = process.env.OMNISEND_API_KEY?.trim();
-  if (fromEnv && fromEnv.length > 0) {
-    return fromEnv;
-  }
-
-  return null;
+  return (await resolveOmnisendCredential()).key;
 }
 
 /**
