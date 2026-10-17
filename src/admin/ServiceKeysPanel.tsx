@@ -127,8 +127,16 @@ function getCategoryStatus(
   sources: Record<string, Source>,
   values: Record<string, string>,
   stripe?: StripeProviderStatus | null,
-  unavailableMessage?: string
+  unavailableMessage?: string,
+  omnisend?: OmnisendStatusPayload | null
 ): { label: string; className: string } {
+  // The provider's answer outranks "a key is stored", and it is the one verdict the
+  // Marketing child panel shows too — so both screens name the connection the same
+  // way. Falls through to the credential sources while the check is still running.
+  if (categoryId === 'omnisend' && omnisend) {
+    return OMNISEND_TONE[omnisend.state];
+  }
+
   // Checked before anything else: if the store did not answer, this category has no
   // verdict at all — and "Not configured" is a verdict.
   if (unavailableMessage) {
@@ -418,7 +426,7 @@ export default function ServiceKeysPanel() {
         const dirty = dirtyFor(category.id);
         const isStripe = category.id === 'stripe';
         const unavailableMessage = data?.unavailable?.[category.id]?.message;
-        const status = getCategoryStatus(category.id, sources, values, stripe, unavailableMessage);
+        const status = getCategoryStatus(category.id, sources, values, stripe, unavailableMessage, omnisend);
 
         return (
           <div key={category.id} className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
