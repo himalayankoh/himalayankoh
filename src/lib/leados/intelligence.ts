@@ -206,6 +206,121 @@ export function classifyLeadEntity(lead: {
   };
 }
 
+export type LivestockEligibility = 'ELIGIBLE_LIVESTOCK' | 'IRRELEVANT' | 'NEEDS_REVIEW';
+
+export const IRRELEVANT_PATTERNS = [
+  /\bspa\b/i,
+  /\bwellness\b/i,
+  /\bsalon\b/i,
+  /\bmassage\b/i,
+  /\bfloat\b/i,
+  /\byoga\b/i,
+  /\bskincare\b/i,
+  /\bcosmetic\b/i,
+  /\brestaurant\b/i,
+  /\bbakery\b/i,
+  /\bbistro\b/i,
+  /\bcafe\b/i,
+  /\bcoffee\b/i,
+  /\bdeli\b/i,
+  /\bkitchen\b/i,
+  /\bbar & grill\b/i,
+  /\bpet grooming\b/i,
+  /\bpet salon\b/i,
+  /\bdog\b/i,
+  /\bcat\b/i,
+  /\bpuppy\b/i,
+  /\baquarium\b/i,
+  /\bbath salt\b/i,
+  /\bhimalayan salt cave\b/i,
+];
+
+export const LIVESTOCK_PATTERNS = [
+  /\bcattle\b/i,
+  /\bdairy\b/i,
+  /\bbovine\b/i,
+  /\bbeef\b/i,
+  /\bcow\b/i,
+  /\bcalves\b/i,
+  /\bcalf\b/i,
+  /\bheifer\b/i,
+  /\bsteer\b/i,
+  /\bbull\b/i,
+  /\bhorse\b/i,
+  /\bequine\b/i,
+  /\bequestrian\b/i,
+  /\bstable\b/i,
+  /\bstallion\b/i,
+  /\bmare\b/i,
+  /\branch\b/i,
+  /\btack\b/i,
+  /\bgoat\b/i,
+  /\bsheep\b/i,
+  /\blamb\b/i,
+  /\bram\b/i,
+  /\bwool\b/i,
+  /\blivestock\b/i,
+  /\bpasture\b/i,
+  /\bherd\b/i,
+  /\bfeed & seed\b/i,
+  /\bfeed store\b/i,
+  /\bfeed mill\b/i,
+  /\bgrain elevator\b/i,
+  /\bfarm supply\b/i,
+  /\banimal nutrition\b/i,
+  /\bsalt lick\b/i,
+  /\bmineral lick\b/i,
+];
+
+export const APPROVED_LIVESTOCK_CATEGORIES = new Set([
+  'Agriculture & Livestock',
+  'Feed Store',
+  'Ranch & Horse Facility',
+  'Equestrian Store',
+  'Farm Supply',
+  'Livestock Distributor',
+]);
+
+export function classifyLivestockEligibility(lead: {
+  businessName: string;
+  category?: string | null;
+  notes?: string | null;
+  website?: string | null;
+  address?: string | null;
+  city?: string | null;
+  region?: string | null;
+}): {
+  classification: LivestockEligibility;
+  reason: string;
+} {
+  const cat = (lead.category || '').trim();
+  const text = [lead.businessName, lead.category, lead.notes, lead.website, lead.address, lead.city, lead.region]
+    .filter(Boolean)
+    .join(' ');
+
+  const isSpaOrCulinary = IRRELEVANT_PATTERNS.some((p) => p.test(text)) || cat === 'Wellness & Lifestyle';
+  const hasLivestockSignal = LIVESTOCK_PATTERNS.some((p) => p.test(text));
+
+  if (isSpaOrCulinary && !hasLivestockSignal) {
+    return {
+      classification: 'IRRELEVANT',
+      reason: 'Non-livestock entity (wellness/spa/salon/restaurant/pet store) archived per Himalayan Koh Livestock-Only policy.',
+    };
+  }
+
+  if (hasLivestockSignal || APPROVED_LIVESTOCK_CATEGORIES.has(cat)) {
+    return {
+      classification: 'ELIGIBLE_LIVESTOCK',
+      reason: 'Verified USA livestock operation, horse facility, cattle ranch, or feed & mineral supplier.',
+    };
+  }
+
+  return {
+    classification: 'NEEDS_REVIEW',
+    reason: 'Commercial salt or trade contact requiring operator confirmation of animal care/feed relevance.',
+  };
+}
+
 export function publicCompanyUrl(raw: string): string | null {
   const check = checkFetchableUrl(raw);
   if (!check.ok) return null;

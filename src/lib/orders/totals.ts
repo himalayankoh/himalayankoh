@@ -134,7 +134,7 @@ export interface CreateOrderData {
    * otherwise real order. It is deliberately its own provider rather than a flavour
    * of `stripe`, because nothing in that path touches Stripe.
    */
-  paymentProvider?: 'invoice' | 'stripe' | 'staging_simulator';
+  paymentProvider?: 'invoice' | 'stripe' | 'staging_simulator' | 'free';
   paymentIntentId?: string;
   paymentStatus?: Order['payment_status'];
   couponCode?: string;

@@ -6,7 +6,7 @@ import {
   orderWithItemsFromWoo,
   type WooOrderLike,
 } from '@/lib/woo/orders';
-import { clearStoreCart, mapStoreCart, readStoreCart, type StoreCartLine } from '@/lib/woo/storeCart';
+import { clearStoreCart, mapStoreCart, readStoreCart, sanitizeCartLineName, type StoreCartLine } from '@/lib/woo/storeCart';
 import { findCouponByCode } from '@/lib/woo/coupons';
 import type { CreateOrderData, ShippingMethod } from '@/lib/orders/totals';
 import type { OrderWithItems } from '@/lib/commerce/types';
@@ -205,7 +205,7 @@ function toCheckoutItem(line: StoreCartLine): CheckoutCartItem {
     unit_price: line.unitPrice ?? 0,
     product: {
       id: line.productId,
-      name: line.name,
+      name: sanitizeCartLineName(line.name, line.variationLabel),
       price: line.unitPrice ?? 0,
       thumbnail: line.image || null,
       // The store is holding this line in its own cart, so it considers the

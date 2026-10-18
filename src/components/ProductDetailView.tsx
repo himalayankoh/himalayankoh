@@ -98,6 +98,8 @@ export default function ProductDetailView({
   const selectedOption = findVariationOption(product.variations, selectedGrain);
   const isSaltLick = product.slug === 'salt-licks-for-horses' ||
     product.slug === 'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh' ||
+    product.id === 2543 ||
+    product.id === '2543' ||
     /salt-licks?-for-horses/i.test(product.slug);
   const activeTitle = (isSaltLick && selectedOption)
     ? `Himalayan Pink Salt Lick — ${selectedOption.label}`
@@ -172,6 +174,9 @@ export default function ProductDetailView({
           price: (option?.price ?? product.priceMin) as number,
           image: option?.image || product.image,
           grainSize: selectedGrain || undefined,
+          variation: (option && (product.variations?.attributeLabel || (isSaltLick ? 'Weight' : undefined)))
+            ? { attribute: product.variations?.attributeLabel || (isSaltLick ? 'Weight' : 'Option'), value: option.label }
+            : undefined,
           // Woo derives its own taxonomy values from this genuine child ID.
         },
         qty
@@ -346,7 +351,7 @@ export default function ProductDetailView({
 
           {grainChoices.length > 0 && (
             <div className="mb-5">
-              <label className="block text-sm font-semibold text-charcoal mb-2">{product.variations?.attributeLabel ?? 'Grain Size'}</label>
+              <label className="block text-sm font-semibold text-charcoal mb-2">{isSaltLick ? 'Select Weight' : (product.variations?.attributeLabel ?? 'Grain Size')}</label>
               <div className="flex flex-wrap gap-2" role="group" aria-label={product.variations?.attributeLabel ?? 'Grain Size'}>
                 {grainChoices.map((g) => {
                   // An option the store cannot sell is still shown — hiding it would
@@ -367,7 +372,7 @@ export default function ProductDetailView({
                           : 'border-gray-200 text-charcoal hover:border-himalayan/50'
                       } ${unavailable ? 'opacity-60 line-through decoration-charcoal/40' : ''}`}
                     >
-                      {g}
+                      {g}{isSaltLick && choice?.price ? ` — $${Number(choice.price).toFixed(2)}` : ''}
                       {unavailable && <span className="sr-only"> (out of stock)</span>}
                     </button>
                   );

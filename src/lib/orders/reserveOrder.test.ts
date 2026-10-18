@@ -21,6 +21,7 @@ vi.mock('@/lib/woo/storeCart', () => ({
       { key: 'line-1', productId: '3001', quantity: 2, unitPrice: 25, name: 'Salt Block', image: null },
     ],
   }),
+  sanitizeCartLineName: (name: string) => name,
   clearStoreCart: async () => undefined,
 }));
 

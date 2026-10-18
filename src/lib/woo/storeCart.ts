@@ -236,11 +236,34 @@ export function cartLineVariationLabel(raw: StoreCartItemRaw): string | null {
   return values.length ? values.join(' / ') : null;
 }
 
+/**
+ * Strips conflicting weight annotations from the parent product title when a specific
+ * weight variation is selected (e.g. "Himalayan Pink Salt Licks for Horses - 2 lbs."
+ * when variation is "6 Lb" becomes "Himalayan Pink Salt Licks for Horses").
+ */
+export function sanitizeCartLineName(rawName: string | undefined, variationLabel: string | null): string {
+  const decoded = htmlToText(rawName);
+  if (!variationLabel) return decoded;
+
+  const hasWeightInVariation = /\b\d+(\.\d+)?\s*(lb|lbs)\b/i.test(variationLabel);
+  if (hasWeightInVariation) {
+    const cleaned = decoded
+      .replace(/\s*[-–—]?\s*\b\d+(\.\d+)?\s*(lbs?|pounds?)\b\.?/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    if (cleaned) {
+      return cleaned;
+    }
+  }
+  return decoded;
+}
+
 /** Store API cart line -> the application's line view. */
 export function mapStoreCartLine(raw: StoreCartItemRaw): StoreCartLine {
   const quantity = Number(raw.quantity ?? 0);
   const maxQuantity = raw.quantity_limits?.maximum;
   const image = raw.images?.find((entry) => entry?.src || entry?.thumbnail);
+  const variationLabel = cartLineVariationLabel(raw);
 
   return {
     key: String(raw.key ?? ''),
@@ -252,8 +275,8 @@ export function mapStoreCartLine(raw: StoreCartItemRaw): StoreCartLine {
     // The store sends a product name with its entities intact (`Fine &amp; Coarse`),
     // exactly as the catalog read receives it — so it is decoded the same way, by
     // the one helper that does that, rather than reaching a cart line as `&amp;`.
-    name: htmlToText(raw.name),
-    variationLabel: cartLineVariationLabel(raw),
+    name: sanitizeCartLineName(raw.name, variationLabel),
+    variationLabel,
     unitPrice: lineUnitPrice(raw),
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 0,
     image: image?.src || image?.thumbnail || '',

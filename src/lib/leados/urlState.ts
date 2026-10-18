@@ -28,11 +28,11 @@ const supportedTabs = new Set<LeadOSTab>([
 export function parseLeadOSUrlState(input: string | URL): { tab: LeadOSTab; search: string; status: string } {
   const url = typeof input === 'string' ? new URL(input, 'https://preview.himalayankoh.com') : input;
   const rawTab = url.searchParams.get('tab');
-  let tab: LeadOSTab = 'overview';
+  let tab: LeadOSTab = 'prospects';
 
-  if (rawTab && supportedTabs.has(rawTab as LeadOSTab)) {
+  if (rawTab && rawTab !== 'overview' && supportedTabs.has(rawTab as LeadOSTab)) {
     tab = rawTab as LeadOSTab;
-  } else if (rawTab === 'crm' || rawTab === 'leads') {
+  } else if (rawTab === 'overview' || rawTab === 'crm' || rawTab === 'leads') {
     tab = 'prospects';
   } else if (rawTab === 'campaigns' || rawTab === 'email-marketing' || rawTab === 'mail') {
     tab = 'outreach';

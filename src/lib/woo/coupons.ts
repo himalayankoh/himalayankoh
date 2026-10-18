@@ -150,6 +150,27 @@ export function validateCoupon(input: CouponInput): void {
   }
 }
 
+/** In-memory 60s cache for fast admin loading */
+let couponsMemoryCache: { coupons: WooCouponLike[]; expiresAt: number } | null = null;
+
+export function invalidateCouponsCache(): void {
+  couponsMemoryCache = null;
+}
+
+/** Every coupon the store holds (cached in-memory for 60s). */
+export async function listCachedWooCoupons(): Promise<WooCouponLike[]> {
+  const now = Date.now();
+  if (couponsMemoryCache && couponsMemoryCache.expiresAt > now) {
+    return couponsMemoryCache.coupons;
+  }
+  const coupons = await listWooCoupons();
+  couponsMemoryCache = {
+    coupons,
+    expiresAt: now + 60_000,
+  };
+  return coupons;
+}
+
 /** Every coupon the store holds. */
 export async function listWooCoupons(): Promise<WooCouponLike[]> {
   requireWooCredentials();
@@ -210,12 +231,14 @@ export async function createWooCoupon(input: CouponInput): Promise<WooCouponLike
   if (await findCouponByCode(code)) throw new CouponCodeTakenError(code);
 
   try {
-    return await wordpressRequest<WooCouponLike>(`${REST_V3}/coupons`, {
+    const coupon = await wordpressRequest<WooCouponLike>(`${REST_V3}/coupons`, {
       useCredentials: true,
       method: 'POST',
       body: bodyFrom({ ...input, published: input.published ?? false }),
       timeoutMs: 20_000,
     });
+    invalidateCouponsCache();
+    return coupon;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new CouponWriteError(`The coupon could not be created: ${message}`);
@@ -269,12 +292,14 @@ export async function updateWooCoupon(
   }
 
   try {
-    return await wordpressRequest<WooCouponLike>(`${REST_V3}/coupons/${id}`, {
+    const coupon = await wordpressRequest<WooCouponLike>(`${REST_V3}/coupons/${id}`, {
       useCredentials: true,
       method: 'PUT',
       body: bodyFrom({ ...merged, code }),
       timeoutMs: 20_000,
     });
+    invalidateCouponsCache();
+    return coupon;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new CouponWriteError(`Coupon ${id} could not be updated: ${message}`);
@@ -293,12 +318,14 @@ export async function deleteWooCoupon(id: number): Promise<WooCouponLike> {
   requireWooCredentials();
   if (!Number.isFinite(id) || id <= 0) throw new CouponWriteError('A coupon id is required.', 400);
   try {
-    return await wordpressRequest<WooCouponLike>(`${REST_V3}/coupons/${id}`, {
+    const coupon = await wordpressRequest<WooCouponLike>(`${REST_V3}/coupons/${id}`, {
       useCredentials: true,
       method: 'DELETE',
       params: { force: 'true' },
       timeoutMs: 20_000,
     });
+    invalidateCouponsCache();
+    return coupon;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new CouponWriteError(`Coupon ${id} could not be deleted: ${message}`);

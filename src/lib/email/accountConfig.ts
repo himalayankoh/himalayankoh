@@ -14,6 +14,7 @@
  */
 
 import { siteSettingsApi } from '@/lib/wordpress/siteContent';
+import { base64UrlDecode, base64UrlEncode } from '@/lib/auth/sessionToken';
 
 export type MailboxEmail =
   | 'sales@himalayankoh.com'
@@ -88,10 +89,12 @@ export interface ClientMailboxView {
   smtpPort: number;
   smtpUser: string;
   hasSmtpPass: boolean;
+  smtpPassMasked: string;
   imapHost: string;
   imapPort: number;
   imapUser: string;
   hasImapPass: boolean;
+  imapPassMasked: string;
   smtpStatus: 'unconfigured' | 'configured' | 'authenticated' | 'auth_failed';
   imapStatus: 'unconfigured' | 'configured' | 'authenticated' | 'auth_failed';
   lastTestedAt?: string;
@@ -104,6 +107,55 @@ const DEFAULT_HOST = 'premium164.web-hosting.com';
 const DEFAULT_SMTP_PORT = 465;
 const DEFAULT_IMAP_PORT = 993;
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+async function getMailboxEncryptionKey(): Promise<CryptoKey> {
+  const rawSecret = (process.env.ADMIN_SESSION_SECRET || '').trim();
+  const secret = rawSecret.length >= 16 ? rawSecret : 'hk-fallback-mailbox-key-salt-32ch';
+  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(`hk-mailbox-auth:v1:${secret}`));
+  return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+/**
+ * Seals a mailbox password with AES-256-GCM.
+ * Format: `v1.<iv_b64url>.<ciphertext_b64url>`
+ */
+export async function sealMailboxPassword(password: string): Promise<string> {
+  if (!password) return '';
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv, additionalData: encoder.encode('hk-mailbox-password:v1') },
+    await getMailboxEncryptionKey(),
+    encoder.encode(password)
+  );
+  return `v1.${base64UrlEncode(iv)}.${base64UrlEncode(new Uint8Array(encrypted))}`;
+}
+
+/**
+ * Opens a sealed password. Plaintext legacy values are passed through unchanged.
+ */
+export async function openMailboxPassword(sealed: string): Promise<string> {
+  if (!sealed) return '';
+  if (!sealed.startsWith('v1.')) {
+    return sealed;
+  }
+  try {
+    const parts = sealed.split('.');
+    if (parts.length !== 3 || parts[0] !== 'v1') return sealed;
+    const iv = new Uint8Array(base64UrlDecode(parts[1]));
+    const ciphertext = new Uint8Array(base64UrlDecode(parts[2]));
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv, additionalData: encoder.encode('hk-mailbox-password:v1') },
+      await getMailboxEncryptionKey(),
+      ciphertext
+    );
+    return decoder.decode(decrypted);
+  } catch {
+    return '';
+  }
+}
+
 let memoryCache: Record<string, string> | null = null;
 let lastCacheTime = 0;
 const CACHE_TTL_MS = 60_000;
@@ -114,7 +166,7 @@ function cleanKey(email: string): string {
 }
 
 /**
- * Read raw settings from WordPress or environment
+ * Read raw settings from WordPress or environment, decrypting sealed passwords.
  */
 async function loadSettingsRaw(): Promise<Record<string, string>> {
   if (memoryCache && Date.now() - lastCacheTime < CACHE_TTL_MS) {
@@ -125,10 +177,25 @@ async function loadSettingsRaw(): Promise<Record<string, string>> {
     const values = await siteSettingsApi.read(SETTINGS_CATEGORY);
     if (values) {
       const stringValues: Record<string, string> = {};
+      const needsUpgrade: Record<string, string> = {};
       for (const [k, v] of Object.entries(values)) {
         if (typeof v === 'string') {
-          stringValues[k] = v;
+          if (k.endsWith('_smtp_pass') || k.endsWith('_imap_pass')) {
+            if (v.startsWith('v1.')) {
+              stringValues[k] = await openMailboxPassword(v);
+            } else if (v.length > 0) {
+              stringValues[k] = v;
+              needsUpgrade[k] = await sealMailboxPassword(v);
+            } else {
+              stringValues[k] = '';
+            }
+          } else {
+            stringValues[k] = v;
+          }
         }
+      }
+      if (Object.keys(needsUpgrade).length > 0) {
+        siteSettingsApi.write(SETTINGS_CATEGORY, needsUpgrade).catch(() => {});
       }
       memoryCache = stringValues;
       lastCacheTime = Date.now();
@@ -287,12 +354,14 @@ export function toClientMailboxView(
     smtpPort: account.smtpPort,
     smtpUser: account.smtpUser,
     hasSmtpPass: Boolean(account.smtpPass),
+    smtpPassMasked: account.smtpPass ? '••••••••' : '',
     imapHost: account.imapHost,
     imapPort: account.imapPort,
     imapUser: account.imapUser,
     hasImapPass: Boolean(account.imapPass),
-    smtpStatus: account.smtpStatus,
-    imapStatus: account.imapStatus,
+    imapPassMasked: account.imapPass ? '••••••••' : '',
+    smtpStatus: !account.smtpPass ? 'unconfigured' : account.smtpStatus,
+    imapStatus: !account.imapPass ? 'unconfigured' : account.imapStatus,
     lastTestedAt: account.lastTestedAt,
     lastError: account.lastError,
     source: account.source,
@@ -329,12 +398,12 @@ export async function saveEmailAccountCredentials(input: {
   if (input.smtpUser) updates[`${key}_smtp_user`] = input.smtpUser.trim();
   if (input.imapUser) updates[`${key}_imap_user`] = input.imapUser.trim();
 
-  // If password is not a mask '••', update it
+  // If password is not a mask '••', seal and update it
   if (input.smtpPass && !input.smtpPass.startsWith('••')) {
-    updates[`${key}_smtp_pass`] = input.smtpPass.trim();
+    updates[`${key}_smtp_pass`] = await sealMailboxPassword(input.smtpPass.trim());
   }
   if (input.imapPass && !input.imapPass.startsWith('••')) {
-    updates[`${key}_imap_pass`] = input.imapPass.trim();
+    updates[`${key}_imap_pass`] = await sealMailboxPassword(input.imapPass.trim());
   }
 
   if (input.smtpStatus) updates[`${key}_smtp_status`] = input.smtpStatus;

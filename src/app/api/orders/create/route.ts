@@ -78,9 +78,10 @@ export async function POST(request: Request) {
 
   const orderData = parsed.data;
 
-  // Only the invoice path writes an order here. A Stripe order is reserved by the
-  // card checkout, against the PaymentIntent that pays it.
-  if (orderData.paymentProvider !== 'invoice') {
+  // Only invoice orders and 100% discounted free orders write an order here. A Stripe order
+  // is reserved by the card checkout, against the PaymentIntent that pays it.
+  const isFreeOrder = orderData.paymentProvider === 'free';
+  if (orderData.paymentProvider !== 'invoice' && !isFreeOrder) {
     return NextResponse.json(
       {
         error:
@@ -102,8 +103,8 @@ export async function POST(request: Request) {
       {
         customerId: customer?.id ?? null,
         cartToken,
-        paymentMethod: 'invoice',
-        paymentMethodTitle: 'Invoice',
+        paymentMethod: isFreeOrder ? 'free' : 'invoice',
+        paymentMethodTitle: isFreeOrder ? 'Free Order (100% Discount)' : 'Invoice',
       }
     );
 

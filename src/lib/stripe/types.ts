@@ -41,6 +41,6 @@ export interface OrderPaymentRecord {
   orderId: string;
   paymentIntentId: string;
   paymentStatus: OrderPaymentStatus;
-  paymentMethod: 'stripe_card' | 'invoice';
-  paymentProvider: 'stripe' | 'invoice';
+  paymentMethod: 'stripe_card' | 'invoice' | 'free';
+  paymentProvider: 'stripe' | 'invoice' | 'free';
 }

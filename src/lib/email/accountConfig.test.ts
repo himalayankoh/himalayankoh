@@ -3,9 +3,11 @@ import {
   SUPPORTED_MAILBOXES,
   MAILBOX_METADATA,
   getEmailAccount,
-  listEmailAccounts,
+  getAllEmailAccounts,
   saveEmailAccountCredentials,
   toClientMailboxView,
+  openMailboxPassword,
+  sealMailboxPassword,
   type MailboxEmail,
 } from './accountConfig';
 import { parseRawRfc822Email } from './imapClient';
@@ -77,11 +79,14 @@ describe('Mailbox Account Configuration & IMAP/SMTP Security', () => {
     expect(clientView.hasSmtpPass).toBe(true);
     expect(clientView.hasImapPass).toBe(true);
     // Ensure raw passwords are never present on client view
-    expect((clientView as Record<string, unknown>).smtpPass).toBeUndefined();
-    expect((clientView as Record<string, unknown>).imapPass).toBeUndefined();
+    expect(clientView.smtpPassMasked).toBe('••••••••');
+    expect(clientView.imapPassMasked).toBe('••••••••');
+    // Ensure raw passwords are never present on client view
+    expect((clientView as unknown as Record<string, unknown>).smtpPass).toBeUndefined();
+    expect((clientView as unknown as Record<string, unknown>).imapPass).toBeUndefined();
   });
 
-  it('correctly saves credentials through siteSettingsApi.write and refreshes', async () => {
+  it('correctly encrypts credentials with AES-256-GCM before saving to siteSettingsApi', async () => {
     await saveEmailAccountCredentials({
       mailbox: 'support@himalayankoh.com',
       smtpPass: 'new-support-password',
@@ -93,10 +98,15 @@ describe('Mailbox Account Configuration & IMAP/SMTP Security', () => {
     expect(mockWrite).toHaveBeenCalledTimes(1);
     const [category, updates] = mockWrite.mock.calls[0];
     expect(category).toBe('email_accounts');
-    expect(updates['support_smtp_pass']).toBe('new-support-password');
-    expect(updates['support_imap_pass']).toBe('new-support-password');
+    // Passwords must be sealed with v1.<iv>.<ciphertext> format, NEVER raw plaintext
+    expect(updates['support_smtp_pass']).toMatch(/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    expect(updates['support_imap_pass']).toMatch(/^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
     expect(updates['support_smtp_status']).toBe('authenticated');
     expect(updates['support_imap_status']).toBe('authenticated');
+
+    // Round-trip decrypt proves integrity
+    const decrypted = await openMailboxPassword(updates['support_smtp_pass']);
+    expect(decrypted).toBe('new-support-password');
   });
 
   it('parses raw RFC 822 email headers and body correctly', () => {

@@ -161,7 +161,7 @@ export async function POST(request: Request) {
           : ['TX', 'MT', 'WY', 'KS', 'NE', 'OK', 'CO', 'IA', 'KY'],
         targetCategories: Array.isArray(body.targetCategories)
           ? body.targetCategories
-          : ['Agriculture & Livestock', 'Retail & Wholesale Salt', 'Wellness & Lifestyle'],
+          : ['Agriculture & Livestock', 'Feed Store', 'Ranch & Horse Facility', 'Equestrian Store', 'Farm Supply', 'Livestock Distributor'],
         updatedAt: new Date().toISOString(),
       };
       await siteSettingsApi.write('leados_config', {

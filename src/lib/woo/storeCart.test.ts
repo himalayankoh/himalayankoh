@@ -152,6 +152,17 @@ describe('mapStoreCartLine', () => {
     expect(mapStoreCartLine(cartLine({ quantity_limits: { maximum: 0 } })).maxQuantity).toBeNull();
     expect(mapStoreCartLine(cartLine()).maxQuantity).toBe(9999);
   });
+
+  it('sanitizes conflicting parent weight when a weight variation is chosen', () => {
+    const line = mapStoreCartLine(
+      cartLine({
+        name: 'Himalayan Pink Salt Licks for Horses - 2 lbs.',
+        variation: [{ attribute: 'pa_weight', value: '6-lb' }],
+      })
+    );
+    expect(line.name).toBe('Himalayan Pink Salt Licks for Horses');
+    expect(line.variationLabel).toBe('6 Lb');
+  });
 });
 
 describe('mapStoreCart', () => {

@@ -94,7 +94,8 @@ export const NAV_ITEMS: NavItem[] = [
     dot: '#E25726',
     subItems: [
       { to: '/admin/categories', label: 'Categories' },
-      { to: '/admin/category-hubs', label: 'Category Hubs' },
+      { to: '/admin/inventory', label: 'Inventory' },
+      { to: '/admin/promotions', label: 'Promotions' },
       { to: '/admin/reviews', label: 'Reviews' },
     ],
   },

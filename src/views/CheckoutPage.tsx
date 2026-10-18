@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
+  AlertCircle,
   ArrowLeft,
   CheckCircle,
   ChevronDown,
@@ -692,6 +693,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const prepareStripePayment = useCallback(async () => {
     if (activeStripeSession || preparingPaymentRef.current || couponApplying) return;
 
+    if (totals.total > 0 && totals.total < 0.50) {
+      setError('Stripe requires a minimum card payment of $0.50. Please add an item or adjust your coupon.');
+      return;
+    }
+
     preparingPaymentRef.current = true;
     setSubmitting(true);
     setError(null);
@@ -731,6 +737,44 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     activeStripeSession, checkoutPayload, checkoutInputKey, couponApplying, totals,
   ]);
 
+  const handleCompleteFreeOrder = useCallback(async () => {
+    if (submitting || paymentCompleting) return;
+    if (!validateForm()) {
+      document.querySelector<HTMLInputElement>('input:invalid')?.focus();
+      return;
+    }
+    if (!shippingSelected || !shippingReadyForPayment) {
+      setError('Choose a shipping option to continue.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const order = await ordersApi.createOrder({
+        ...checkoutPayload,
+        paymentProvider: 'free',
+        paymentMethod: 'free',
+        paymentStatus: 'paid',
+      });
+      await clearCart();
+      navigate(orderConfirmationUrl(order.id), { state: { order } });
+    } catch (err) {
+      setError(getErrorMessage(err, 'Unable to place free order.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [
+    submitting,
+    paymentCompleting,
+    validateForm,
+    shippingSelected,
+    shippingReadyForPayment,
+    checkoutPayload,
+    clearCart,
+    navigate,
+  ]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
@@ -749,6 +793,14 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     // button, or the simulator's Test pay button. Reaching here means there is no
     // payment path at all, which is the one case that must say so.
     if (retailOnly) {
+      if (totals.total === 0) {
+        await handleCompleteFreeOrder();
+        return;
+      }
+      if (totals.total < 0.50) {
+        setError('Stripe requires a minimum card payment of $0.50. Please add an item to meet the minimum.');
+        return;
+      }
       if (stripeEnabled) {
         if (!shippingSelected || !shippingReadyForPayment) { setError('Choose a shipping option to continue.'); return; }
         await prepareStripePayment();
@@ -1279,7 +1331,62 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       </div>
                     </div>
 
-                    {activeStripeSession ? (
+                    {totals.total === 0 ? (
+                      <div className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50/80 p-5 text-sm text-charcoal">
+                        <div className="flex items-start gap-3">
+                          <CheckCircle size={20} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <h4 className="font-bold text-emerald-950">100% Discount Applied — Order Total $0.00</h4>
+                            <p className="text-xs text-emerald-800">
+                              No payment card required. Click below to place your order immediately.
+                            </p>
+                          </div>
+                        </div>
+                        {error && (
+                          <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900">
+                            {error}
+                          </div>
+                        )}
+                        <div className="mt-4">
+                          <button
+                            type="button"
+                            disabled={submitting || couponApplying || shippoRatesLoading}
+                            onClick={() => void handleCompleteFreeOrder()}
+                            className="min-h-11 w-full rounded-lg bg-emerald-600 px-4 py-3 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition shadow-sm cursor-pointer flex items-center justify-center gap-2"
+                          >
+                            {submitting ? (
+                              <>
+                                <Loader2 size={16} className="animate-spin" />
+                                Placing your order…
+                              </>
+                            ) : (
+                              'Complete Free Order ($0.00)'
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ) : totals.total > 0 && totals.total < 0.50 ? (
+                      <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-charcoal">
+                        <div className="flex items-start gap-2.5">
+                          <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <h4 className="font-bold text-amber-950">Minimum Card Payment is $0.50</h4>
+                            <p className="text-xs text-amber-800">
+                              Your discounted total is <strong>${totals.total.toFixed(2)}</strong>. Stripe requires a minimum charge of $0.50 for credit/debit card processing. Please add an item to your cart or adjust your discount code to proceed.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            disabled
+                            className="min-h-11 w-full rounded-lg bg-gray-200 px-4 py-3 font-semibold text-gray-500 cursor-not-allowed opacity-60"
+                          >
+                            Minimum $0.50 required for card payment
+                          </button>
+                        </div>
+                      </div>
+                    ) : activeStripeSession ? (
                       <div
                         ref={stripePaymentRef}
                         className="mt-3 bg-white"

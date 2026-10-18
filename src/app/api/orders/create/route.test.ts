@@ -115,4 +115,16 @@ describe('POST /api/orders/create with ordering enabled', () => {
     expect(response.status).toBe(402);
     expect(reserveOrderForCheckout).not.toHaveBeenCalled();
   });
+
+  it('accepts a 100% discounted free order with paymentProvider: free', async () => {
+    process.env[ORDERS_PAUSED_ENV_KEY] = 'false';
+
+    const response = await POST(post({ ...INVOICE_BODY, paymentProvider: 'free' }) as never);
+
+    expect(response.status).toBe(200);
+    expect(reserveOrderForCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentProvider: 'free' }),
+      expect.objectContaining({ paymentMethod: 'free', paymentMethodTitle: 'Free Order (100% Discount)' })
+    );
+  });
 });

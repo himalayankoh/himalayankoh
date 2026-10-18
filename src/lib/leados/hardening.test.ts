@@ -42,7 +42,7 @@ describe('LeadOS hardening boundaries', () => {
     expect(parsed).toEqual({ tab: 'library', search: 'farm supply', status: 'qualified' });
     expect(parseLeadOSUrlState('https://preview.himalayankoh.com/admin/leados?tab=market-map').tab).toBe('market-map');
     expect(parseLeadOSUrlState('https://preview.himalayankoh.com/admin/leados?tab=map').tab).toBe('market-map');
-    expect(parseLeadOSUrlState('https://preview.himalayankoh.com/admin/leados?tab=private-note').tab).toBe('overview');
+    expect(parseLeadOSUrlState('https://preview.himalayankoh.com/admin/leados?tab=private-note').tab).toBe('prospects');
   });
 
   it('does not treat missing contact information as increased reachability', async () => {

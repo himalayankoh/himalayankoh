@@ -16,7 +16,8 @@ import {
   CouponWriteError,
   createWooCoupon,
   couponState,
-  listWooCoupons,
+  listCachedWooCoupons,
+  invalidateCouponsCache,
   type CouponDiscountType,
 } from '@/lib/woo/coupons';
 
@@ -37,11 +38,18 @@ export async function GET(request: Request) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   try {
-    const coupons = (await listWooCoupons()).map((coupon) => ({
+    const coupons = (await listCachedWooCoupons()).map((coupon) => ({
       ...coupon,
       state: couponState(coupon),
     }));
-    return NextResponse.json({ coupons });
+    return NextResponse.json(
+      { coupons },
+      {
+        headers: {
+          'Cache-Control': 'private, max-age=30, stale-while-revalidate=120',
+        },
+      }
+    );
   } catch (error) {
     return failure(error);
   }
