@@ -188,56 +188,56 @@ export function SourceBadge({ source }: { source?: string }) {
   const norm = (source || '').toLowerCase();
   if (norm.includes('google')) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
-        <span className="w-4 h-4 rounded-full bg-blue-50 border border-blue-200 text-blue-600 font-bold flex items-center justify-center text-[10px] flex-shrink-0">G</span>
-        Google Maps
+      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-900 truncate max-w-full" title="Google Maps">
+        <span className="w-4 h-4 rounded-full bg-blue-100 border border-blue-300 text-blue-800 font-black flex items-center justify-center text-[10px] flex-shrink-0">G</span>
+        <span className="truncate">Google Maps</span>
       </span>
     );
   }
   if (norm.includes('facebook') || norm.includes('fb')) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-800 whitespace-nowrap flex-shrink-0">
-        <span className="w-4 h-4 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0">f</span>
-        Facebook
+      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-blue-900 truncate max-w-full" title="Facebook">
+        <span className="w-4 h-4 rounded-full bg-blue-600 text-white font-black flex items-center justify-center text-[10px] flex-shrink-0">f</span>
+        <span className="truncate">Facebook</span>
       </span>
     );
   }
   if (norm.includes('instagram') || norm.includes('insta')) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-800 whitespace-nowrap flex-shrink-0">
-        <span className="w-4 h-4 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 text-white font-bold flex items-center justify-center text-[9px] flex-shrink-0">ig</span>
-        Instagram
+      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-rose-900 truncate max-w-full" title="Instagram">
+        <span className="w-4 h-4 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 text-white font-black flex items-center justify-center text-[9px] flex-shrink-0">ig</span>
+        <span className="truncate">Instagram</span>
       </span>
     );
   }
   if (norm.includes('yelp')) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
-        <span className="w-4 h-4 rounded-full bg-red-50 border border-red-200 text-red-600 font-bold flex items-center justify-center text-[10px] flex-shrink-0">Y</span>
-        Yelp
+      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-900 truncate max-w-full" title="Yelp">
+        <span className="w-4 h-4 rounded-full bg-red-100 border border-red-300 text-red-700 font-black flex items-center justify-center text-[10px] flex-shrink-0">Y</span>
+        <span className="truncate">Yelp</span>
       </span>
     );
   }
   if (norm.includes('website') || norm.includes('company')) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
-        <Buildings className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-        Company Website
+      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-900 truncate max-w-full" title="Company Website">
+        <Buildings weight="bold" className="w-3.5 h-3.5 text-slate-700 flex-shrink-0" />
+        <span className="truncate">Website</span>
       </span>
     );
   }
   if (norm.includes('searx') || norm.includes('web')) {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
-        <Globe className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
-        Website Search
+      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-900 truncate max-w-full" title="Website Search">
+        <Globe weight="bold" className="w-3.5 h-3.5 text-indigo-700 flex-shrink-0" />
+        <span className="truncate">Web Search</span>
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 whitespace-nowrap flex-shrink-0">
-      <MapPin className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-      OpenStreetMap
+    <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-900 truncate max-w-full" title="OpenStreetMap">
+      <MapPin weight="fill" className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+      <span className="truncate">OSM</span>
     </span>
   );
 }
@@ -442,10 +442,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       if (raw) {
         const parsed = JSON.parse(raw);
         const uid = parsed?.user?.id || parsed?.user?.email;
-        if (uid) return `hk_leados_library_leads_${uid}`;
+        if (uid) return `hk_leados_library_leads_v2_${uid}`;
       }
     } catch {}
-    return 'hk_leados_library_leads_guest';
+    return 'hk_leados_library_leads_v2_guest';
   }, []);
 
   const syncSessionLibraryCache = useCallback((cachedLeads: SavedLeadRecord[]): void => {
@@ -487,11 +487,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     if (typeof window === 'undefined') return [];
     try {
       const raw = localStorage.getItem('luxedge_sb_session');
-      let key = 'hk_leados_library_leads_guest';
+      let key = 'hk_leados_library_leads_v2_guest';
       if (raw) {
         const parsed = JSON.parse(raw);
         const uid = parsed?.user?.id || parsed?.user?.email;
-        if (uid) key = `hk_leados_library_leads_${uid}`;
+        if (uid) key = `hk_leados_library_leads_v2_${uid}`;
       }
       const stored = sessionStorage.getItem(key);
       if (stored) {
@@ -505,11 +505,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     if (typeof window === 'undefined') return false;
     try {
       const raw = localStorage.getItem('luxedge_sb_session');
-      let key = 'hk_leados_library_leads_guest';
+      let key = 'hk_leados_library_leads_v2_guest';
       if (raw) {
         const parsed = JSON.parse(raw);
         const uid = parsed?.user?.id || parsed?.user?.email;
-        if (uid) key = `hk_leados_library_leads_${uid}`;
+        if (uid) key = `hk_leados_library_leads_v2_${uid}`;
       }
       const stored = sessionStorage.getItem(key);
       if (stored) {
@@ -537,7 +537,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [librarySearch, setLibrarySearch] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).search : '');
   const [statusFilter, setStatusFilter] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).status : 'all');
   const [libraryPage, setLibraryPage] = useState(1);
-  const [libraryPageSize, setLibraryPageSize] = useState(50);
+  const [libraryPageSize, setLibraryPageSize] = useState(500);
+  const [fitScreenMode, setFitScreenMode] = useState(true);
+  const [enrichingLibrary, setEnrichingLibrary] = useState(false);
+  const [syncingOmnisend, setSyncingOmnisend] = useState(false);
+  const [libraryActionNotice, setLibraryActionNotice] = useState<string | null>(null);
   const [libraryCategoryFilter, setLibraryCategoryFilter] = useState('all');
   const [libraryVerificationFilter, setLibraryVerificationFilter] = useState<'all' | 'verified' | 'unverified'>('all');
   const [librarySelectedIds, setLibrarySelectedIds] = useState<Set<string>>(new Set());
@@ -668,6 +672,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const handleStartLibColResize = (colKey: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setFitScreenMode(false);
     resizingLibColRef.current = {
       colKey,
       startX: e.clientX,
@@ -709,6 +714,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   };
 
   const handleResetAllLibColWidths = () => {
+    setFitScreenMode(true);
     setLibraryColWidths(DEFAULT_LIBRARY_COL_WIDTHS);
     try {
       localStorage.setItem('hk_leados_lib_col_widths_v4', JSON.stringify(DEFAULT_LIBRARY_COL_WIDTHS));
@@ -875,8 +881,22 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     }
   };
 
-  // Quick contact filter chips
-  const [libraryQuickContactFilter, setLibraryQuickContactFilter] = useState<'all' | 'verified' | 'phone' | 'email' | 'high_score'>('all');
+  // Quick contact filter chips (Email, Phone, Facebook, Instagram, Social, Website, Verified, High Score)
+  const [libraryQuickContactFilter, setLibraryQuickContactFilter] = useState<
+    'all' | 'verified' | 'phone' | 'email' | 'facebook' | 'instagram' | 'social' | 'website' | 'high_score'
+  >('all');
+
+  const getLeadFacebook = (l: SavedLeadRecord): string | null =>
+    l.facebook ||
+    l.research?.facebook ||
+    l.research?.sources?.find((s) => typeof s?.url === 'string' && s.url.toLowerCase().includes('facebook.com/'))?.url ||
+    null;
+
+  const getLeadInstagram = (l: SavedLeadRecord): string | null =>
+    l.instagram ||
+    l.research?.instagram ||
+    l.research?.sources?.find((s) => typeof s?.url === 'string' && s.url.toLowerCase().includes('instagram.com/'))?.url ||
+    null;
 
   // Row Drag & Drop Reordering state
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
@@ -955,7 +975,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   // Fully integrated filtered & sorted leads calculation
   const filteredLibraryLeads = React.useMemo(() => {
     let result = libraryLeads.filter((l) => {
-      // 1. Text Search across name, location, address, phone, email, notes, category
+      const fb = getLeadFacebook(l);
+      const ig = getLeadInstagram(l);
+      // 1. Text Search across name, location, address, phone, email, social, notes, category
       if (librarySearch.trim()) {
         const q = librarySearch.toLowerCase().trim();
         const matchesName = l.businessName?.toLowerCase().includes(q);
@@ -965,8 +987,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         const matchesCategory = l.category?.toLowerCase().includes(q);
         const matchesPhone = l.phone?.toLowerCase().includes(q);
         const matchesEmail = l.email?.toLowerCase().includes(q);
+        const matchesSocial = fb?.toLowerCase().includes(q) || ig?.toLowerCase().includes(q);
         const matchesNotes = (l as any).notes?.toLowerCase().includes(q);
-        if (!matchesName && !matchesCity && !matchesRegion && !matchesAddress && !matchesCategory && !matchesPhone && !matchesEmail && !matchesNotes) {
+        if (!matchesName && !matchesCity && !matchesRegion && !matchesAddress && !matchesCategory && !matchesPhone && !matchesEmail && !matchesSocial && !matchesNotes) {
           return false;
         }
       }
@@ -986,6 +1009,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       if (libraryQuickContactFilter === 'verified' && !isV) return false;
       if (libraryQuickContactFilter === 'phone' && !l.phone) return false;
       if (libraryQuickContactFilter === 'email' && !l.email) return false;
+      if (libraryQuickContactFilter === 'website' && !l.website) return false;
+      if (libraryQuickContactFilter === 'facebook' && !fb) return false;
+      if (libraryQuickContactFilter === 'instagram' && !ig) return false;
+      if (libraryQuickContactFilter === 'social' && !fb && !ig) return false;
       if (libraryQuickContactFilter === 'high_score') {
         const score = l.research?.qualification?.score ?? l.opportunityScore ?? 80;
         if (score < 80) return false;
@@ -1122,8 +1149,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
       setProjects(loadedProjects);
       if (loadedProjects.length > 0) {
-        setSelectedProjectId((current) => current || loadedProjects[0].id);
-        setActiveProject((current) => current || loadedProjects[0]);
+        const defaultProj =
+          loadedProjects.find((p: LeadOSProject) => p.id === '00000000-0000-0000-0000-000000000002' || /himalayan\s*koh/i.test(p.name)) ||
+          loadedProjects[0];
+        setSelectedProjectId((current) => current || defaultProj.id);
+        setActiveProject((current) => current || defaultProj);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'LeadOS initialization failed.';
@@ -1195,6 +1225,51 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       }
     }
   }, [getAuthHeaders, librarySearch, statusFilter, libraryPage, libraryPageSize, syncSessionLibraryCache]);
+
+  const handleBatchEnrichContacts = async () => {
+    setEnrichingLibrary(true);
+    setLibraryActionNotice(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/admin/leados/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ action: 'enrich_contacts' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to enrich contacts');
+      setLibraryActionNotice(
+        `Scanned ${data.scannedCount ?? 0} websites: updated ${data.enrichedCount ?? 0} leads (+${data.newEmails ?? 0} emails, +${data.newSocials ?? 0} social profiles).`
+      );
+      await loadLibrary();
+    } catch (err) {
+      setLibraryActionNotice(err instanceof Error ? err.message : 'Website enrichment failed.');
+    } finally {
+      setEnrichingLibrary(false);
+    }
+  };
+
+  const handleSyncOmnisend = async () => {
+    setSyncingOmnisend(true);
+    setLibraryActionNotice(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/admin/leados/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ action: 'sync_omnisend' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Omnisend sync failed');
+      setLibraryActionNotice(
+        `Omnisend Sync Complete: ${data.syncedCount ?? 0} verified email prospects synced to Omnisend CRM.`
+      );
+    } catch (err) {
+      setLibraryActionNotice(err instanceof Error ? err.message : 'Omnisend sync failed.');
+    } finally {
+      setSyncingOmnisend(false);
+    }
+  };
 
   // Load weights
   const loadWeights = useCallback(async () => {
@@ -2371,39 +2446,42 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     const isVerified = lead.emailSource === 'company_website' || lead.dataSource === 'openstreetmap' || Boolean(lead.phone && lead.website);
     const displayScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 82;
     const colWidth = libraryColWidths[colKey];
+    const cellStyle = fitScreenMode ? undefined : { width: colWidth, minWidth: colWidth };
+    const fbUrl = getLeadFacebook(lead);
+    const igUrl = getLeadInstagram(lead);
 
     switch (colKey) {
       case 'name':
         return (
           <td
             key={colKey}
-            style={{ width: colWidth, minWidth: colWidth }}
-            className="py-3 px-3"
+            style={cellStyle}
+            className="py-3 px-2.5 overflow-hidden"
           >
-            <div className="flex items-center gap-2.5">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[11px] flex-shrink-0 border ${getAvatarBg(lead.businessName)}`}>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-extrabold text-xs flex-shrink-0 border shadow-2xs ${getAvatarBg(lead.businessName)}`}>
                 {getCompanyInitials(lead.businessName)}
               </div>
-              <div className="min-w-0">
-                <div className="font-bold text-slate-900 flex items-center gap-1.5 hover:text-indigo-600 transition">
-                  <span className="truncate max-w-[220px]" title={lead.businessName}>{lead.businessName}</span>
+              <div className="min-w-0 flex-1">
+                <div className="font-extrabold text-[13px] text-slate-950 flex items-center gap-1 hover:text-indigo-700 transition">
+                  <span className="truncate" title={lead.businessName}>{lead.businessName}</span>
                   {lead.osmUrl && (
                     <a
                       href={lead.osmUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="text-slate-400 hover:text-indigo-600 inline-flex flex-shrink-0"
+                      className="text-slate-600 hover:text-indigo-700 inline-flex flex-shrink-0"
                       title="View on OpenStreetMap"
                     >
-                      <ArrowSquareOut className="w-3 h-3" />
+                      <ArrowSquareOut weight="bold" className="w-3.5 h-3.5" />
                     </a>
                   )}
                 </div>
-                <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-                  <span>{lead.dataSource || 'OpenStreetMap'}</span>
+                <div className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5 mt-0.5">
+                  <span className="truncate">{lead.dataSource || 'OpenStreetMap'}</span>
                   {lead.notes && (
-                    <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-semibold whitespace-nowrap">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold whitespace-nowrap">
                       Has Notes
                     </span>
                   )}
@@ -2421,24 +2499,23 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         return (
           <td
             key={colKey}
-            style={{ width: colWidth, minWidth: colWidth }}
-            className="py-3 px-3 text-slate-600 whitespace-nowrap"
+            style={cellStyle}
+            className="py-3 px-2.5 text-slate-900 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <a
               href={mapUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="group inline-flex flex-col text-left transition"
+              className="group flex flex-col text-left transition min-w-0"
               title={`Open "${mapQuery}" in Google Maps`}
             >
-              <div className="flex items-center gap-1 font-semibold text-slate-800 group-hover:text-indigo-600">
-                <MapPin className="w-3.5 h-3.5 text-indigo-500 group-hover:text-indigo-600 flex-shrink-0" />
-                <span className="truncate max-w-[160px] underline-offset-2 group-hover:underline">{locText}</span>
-                <ArrowSquareOut className="w-3 h-3 text-slate-400 group-hover:text-indigo-600 flex-shrink-0 opacity-60 group-hover:opacity-100" />
+              <div className="flex items-center gap-1 font-extrabold text-xs text-slate-900 group-hover:text-indigo-700 min-w-0">
+                <MapPin weight="fill" className="w-3.5 h-3.5 text-indigo-600 group-hover:text-indigo-700 flex-shrink-0" />
+                <span className="truncate underline-offset-2 group-hover:underline">{locText}</span>
               </div>
               {lead.address && (
-                <div className="text-[10px] text-slate-400 group-hover:text-slate-600 truncate max-w-[170px] pl-4.5" title={lead.address}>
+                <div className="text-[11px] font-semibold text-slate-700 group-hover:text-slate-900 truncate pl-4 mt-0.5" title={lead.address}>
                   {lead.address}
                 </div>
               )}
@@ -2451,10 +2528,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         return (
           <td
             key={colKey}
-            style={{ width: colWidth, minWidth: colWidth }}
-            className="py-3 px-3 whitespace-nowrap"
+            style={cellStyle}
+            className="py-3 px-2 overflow-hidden"
           >
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-semibold border border-blue-100 whitespace-nowrap">
+            <span
+              className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-100/80 text-blue-950 text-[11px] font-extrabold border border-blue-300 truncate max-w-full"
+              title={lead.category || 'Feed Store'}
+            >
               {lead.category || 'Feed Store'}
             </span>
           </td>
@@ -2464,72 +2544,101 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         return (
           <td
             key={colKey}
-            style={{ width: colWidth, minWidth: colWidth }}
-            className="py-3 px-3 text-[11px] whitespace-nowrap"
+            style={cellStyle}
+            className="py-2.5 px-2.5 text-xs overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="space-y-1.5">
+            <div className="space-y-1 min-w-0">
               {lead.website ? (
-                <div className="flex items-center gap-1 text-slate-700">
-                  <Globe className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                <div className="flex items-center gap-1 text-slate-900 min-w-0">
+                  <Globe weight="bold" className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
                   <a
                     href={lead.website}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-indigo-600 hover:underline font-medium truncate max-w-[170px] inline-flex items-center gap-1"
+                    className="text-indigo-700 hover:text-indigo-950 hover:underline font-bold truncate inline-flex items-center gap-1 min-w-0"
                     title={lead.website}
                   >
-                    <span>{lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
-                    <ArrowSquareOut className="w-2.5 h-2.5 flex-shrink-0" />
+                    <span className="truncate">{lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
+                    <ArrowSquareOut weight="bold" className="w-3 h-3 flex-shrink-0" />
                   </a>
                 </div>
               ) : (
-                <div className="flex items-center gap-1 text-slate-300 text-[10px]">
-                  <Globe className="w-3 h-3 flex-shrink-0" />
+                <div className="flex items-center gap-1 text-slate-500 font-semibold text-[11px]">
+                  <Globe className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" />
                   <span>No website</span>
                 </div>
               )}
 
               {lead.phone ? (
-                <div className="flex items-center gap-1 text-slate-700">
-                  <Phone className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                  <a href={`tel:${lead.phone}`} className="hover:underline font-semibold text-slate-800 text-[11px]" title={`Call ${lead.phone}`}>
+                <div className="flex items-center gap-1 text-slate-900">
+                  <Phone weight="fill" className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                  <a href={`tel:${lead.phone}`} className="hover:underline font-extrabold text-slate-950 text-xs truncate" title={`Call ${lead.phone}`}>
                     {lead.phone}
                   </a>
                 </div>
               ) : (
-                <div className="flex items-center gap-1 text-slate-300 text-[10px]">
-                  <Phone className="w-3 h-3 flex-shrink-0" />
+                <div className="flex items-center gap-1 text-slate-500 font-semibold text-[11px]">
+                  <Phone className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" />
                   <span>No phone listed</span>
                 </div>
               )}
 
               {lead.email ? (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1 min-w-0">
                   <a
                     href={`mailto:${lead.email}?subject=${encodeURIComponent(`Himalayan Salt Wholesale Inquiry - ${lead.businessName}`)}`}
-                    className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium inline-flex items-center gap-1 truncate max-w-[170px]"
+                    className="text-indigo-800 hover:text-indigo-950 hover:underline font-extrabold inline-flex items-center gap-1 truncate min-w-0 text-xs"
                     title={`Click to send email to ${lead.email}`}
                   >
-                    <EnvelopeSimple className="w-3 h-3 text-indigo-500 flex-shrink-0" />
+                    <EnvelopeSimple weight="fill" className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
                     <span className="truncate">{lead.email}</span>
                   </a>
-                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap flex-shrink-0 ${
-                    lead.emailSource === 'company_website' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                    lead.emailSource === 'manually_entered' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                    'bg-amber-50 text-amber-700 border border-amber-200'
+                  <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded whitespace-nowrap flex-shrink-0 ${
+                    lead.emailSource === 'company_website' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' :
+                    lead.emailSource === 'manually_entered' ? 'bg-blue-100 text-blue-900 border border-blue-300' :
+                    'bg-amber-100 text-amber-900 border border-amber-300'
                   }`}>
-                    {lead.emailSource === 'company_website' ? 'Website' : lead.emailSource === 'manually_entered' ? 'Staff' : 'OSM'}
+                    {lead.emailSource === 'company_website' ? 'Web' : lead.emailSource === 'manually_entered' ? 'Staff' : 'OSM'}
                   </span>
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => handleOpenEmailModal(lead)}
-                  className="text-indigo-600 hover:underline flex items-center gap-1 font-medium text-[10px] cursor-pointer"
+                  className="text-indigo-700 hover:text-indigo-950 hover:underline flex items-center gap-1 font-bold text-[11px] cursor-pointer"
                 >
-                  <Plus className="w-2.5 h-2.5" /> Add email
+                  <Plus weight="bold" className="w-3 h-3" /> Add email
                 </button>
+              )}
+
+              {(fbUrl || igUrl) && (
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  {fbUrl && (
+                    <a
+                      href={fbUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 hover:bg-blue-200 text-blue-950 border border-blue-300 text-[10px] font-extrabold transition"
+                      title={`Open Facebook: ${fbUrl}`}
+                    >
+                      <span>FB</span>
+                      <ArrowSquareOut weight="bold" className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                  {igUrl && (
+                    <a
+                      href={igUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-100 hover:bg-pink-200 text-pink-950 border border-pink-300 text-[10px] font-extrabold transition"
+                      title={`Open Instagram: ${igUrl}`}
+                    >
+                      <span>IG</span>
+                      <ArrowSquareOut weight="bold" className="w-2.5 h-2.5" />
+                    </a>
+                  )}
+                </div>
               )}
             </div>
           </td>
@@ -2539,8 +2648,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         return (
           <td
             key={colKey}
-            style={{ width: colWidth, minWidth: colWidth }}
-            className="py-3 px-3 whitespace-nowrap"
+            style={cellStyle}
+            className="py-3 px-2 overflow-hidden"
           >
             <SourceBadge source={lead.dataSource || 'Google Maps'} />
           </td>
@@ -2550,18 +2659,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         return (
           <td
             key={colKey}
-            style={{ width: colWidth, minWidth: colWidth }}
-            className="py-3 px-3 whitespace-nowrap"
+            style={cellStyle}
+            className="py-3 px-2 overflow-hidden"
           >
             {isVerified ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600" />
-                Verified
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-950 border border-emerald-300">
+                <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+                <span className="truncate">Verified</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                <WarningCircle weight="fill" className="w-3 h-3 text-amber-600" />
-                Unverified
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-950 border border-amber-300">
+                <WarningCircle weight="fill" className="w-3.5 h-3.5 text-amber-700 flex-shrink-0" />
+                <span className="truncate">Unverified</span>
               </span>
             )}
           </td>
@@ -2571,13 +2680,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         return (
           <td
             key={colKey}
-            style={{ width: colWidth, minWidth: colWidth }}
-            className="py-3 px-3 whitespace-nowrap"
+            style={cellStyle}
+            className="py-3 px-2 text-center"
           >
-            <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-bold border ${
-              displayScore >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-              displayScore >= 60 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-              'bg-slate-50 text-slate-600 border-slate-200'
+            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-extrabold border ${
+              displayScore >= 80 ? 'bg-emerald-100 text-emerald-950 border-emerald-300' :
+              displayScore >= 60 ? 'bg-amber-100 text-amber-950 border-amber-300' :
+              'bg-slate-200 text-slate-900 border-slate-300'
             }`}>
               {displayScore}
             </span>
@@ -2604,18 +2713,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-black text-slate-900 tracking-tight">
+                <h1 className="text-xl font-black text-slate-950 tracking-tight">
                   Himalayan Koh.
                 </h1>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs font-semibold text-slate-700 mt-0.5">
                 B2B Salt &amp; Minerals – Find and connect with farm stores, feed suppliers, livestock businesses, mineral buyers, distributors, and more.
               </p>
             </div>
 
             <div className="flex items-center gap-2.5 flex-shrink-0">
               <div className="relative flex items-center">
-                <Storefront className="w-4 h-4 text-slate-500 absolute left-3 pointer-events-none" />
+                <Storefront className="w-4 h-4 text-slate-700 absolute left-3 pointer-events-none" />
                 <select
                   value={selectedProjectId}
                   onChange={(e) => {
@@ -2623,7 +2732,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     const p = projects.find((proj) => proj.id === e.target.value);
                     if (p) setActiveProject(p);
                   }}
-                  className="appearance-none pl-9 pr-8 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-800 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  className="appearance-none pl-9 pr-8 py-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 shadow-2xs hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                 >
                   {projects.length > 0 ? (
                     projects.map((p) => (
@@ -2635,7 +2744,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     <option value="">Himalayan Koh — B2B Salt &amp; Minerals</option>
                   )}
                 </select>
-                <CaretDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 pointer-events-none" />
+                <CaretDown className="w-3.5 h-3.5 text-slate-600 absolute right-2.5 pointer-events-none" />
               </div>
 
               <button
@@ -2643,14 +2752,14 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 onClick={() => changeTab('settings')}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border transition cursor-pointer shadow-2xs ${
                   activeTab === 'settings'
-                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    ? 'bg-indigo-50 border-indigo-300 text-indigo-900'
+                    : 'bg-white border-slate-300 text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <GearSix className={`w-4 h-4 ${activeTab === 'settings' ? 'text-indigo-600' : 'text-slate-500'}`} />
+                <GearSix className={`w-4 h-4 ${activeTab === 'settings' ? 'text-indigo-700' : 'text-slate-700'}`} />
                 <div className="text-left">
-                  <div className="text-xs font-bold leading-tight">Settings</div>
-                  <div className="text-[10px] text-slate-400 leading-tight">AI Engine &amp; Preferences</div>
+                  <div className="text-xs font-extrabold leading-tight">Settings</div>
+                  <div className="text-[10px] font-semibold text-slate-600 leading-tight">AI Engine &amp; Preferences</div>
                 </div>
               </button>
             </div>
@@ -2679,20 +2788,20 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     aria-selected={isActive}
                     aria-controls={`leados-panel-${tab.id}`}
                     onClick={() => changeTab(tab.id as TabType)}
-                    className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition cursor-pointer flex-shrink-0 ${
+                    className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 sm:py-3 text-xs font-bold whitespace-nowrap border-b-2 transition cursor-pointer flex-shrink-0 ${
                       isActive
                         ? 'border-[#b86452] text-[#b86452]'
-                        : 'border-transparent text-slate-500 hover:text-slate-900 hover:border-slate-300'
+                        : 'border-transparent text-slate-700 hover:text-slate-950 hover:border-slate-300'
                     }`}
                   >
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-[#b86452]' : 'text-slate-400'}`} />
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-[#b86452]' : 'text-slate-600'}`} />
                     <span>{tab.label}</span>
                     {tab.id === 'find' && searching && (
                       <ArrowsClockwise className="w-3.5 h-3.5 text-[#b86452] animate-spin ml-0.5" />
                     )}
-                    {tab.id === 'library' && libraryLeads.length > 0 && (
-                      <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 font-bold">
-                        {libraryLeads.length}
+                    {tab.id === 'library' && (libraryTotal ?? libraryLeads.length) > 0 && (
+                      <span className="ml-1 px-2 py-0.5 rounded-full text-[11px] bg-slate-200 text-slate-900 font-extrabold">
+                        {libraryTotal ?? libraryLeads.length}
                       </span>
                     )}
                   </button>
@@ -4392,23 +4501,23 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         {/* ══════════ LEAD LIBRARY TAB ══════════ */}
         <div id="leados-panel-library" role="tabpanel" aria-labelledby="leados-tab-library" className={activeTab === 'library' ? "space-y-6" : "hidden"}>
           {/* ── 1. Top Header & KPI Summary ── */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
+          <div className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm space-y-5">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-                    <BookBookmark weight="fill" className="w-5 h-5 text-indigo-600" />
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700">
+                    <BookBookmark weight="fill" className="w-5 h-5 text-indigo-700" />
                   </div>
-                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">Lead Library</h2>
-                  <span className="bg-slate-100 text-slate-700 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                  <h2 className="text-xl font-black text-slate-950 tracking-tight">Lead Library</h2>
+                  <span className="bg-slate-900 text-white text-xs font-extrabold px-3 py-0.5 rounded-full">
                     {libraryUnavailable ? 'Unavailable' : `${libraryTotal ?? libraryLeads.length} Total Saved`}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  Central repository for all saved B2B prospects, verified contacts, fit qualification scores, sales notes, and wholesale outreach.
+                <p className="text-xs font-semibold text-slate-700 mt-1">
+                  Central repository for all saved B2B prospects, verified contacts, Facebook &amp; Instagram profiles, fit qualification scores, and wholesale outreach.
                 </p>
                 {!libraryUnavailable && libraryTotal !== null && libraryTotal > libraryLeads.length && (
-                  <p className="text-xs text-amber-700 mt-1">
+                  <p className="text-xs font-bold text-amber-800 mt-1">
                     {libraryPage === 1
                       ? `Showing the first ${libraryLeads.length} of ${libraryTotal} saved prospects (Page 1 of ${Math.max(1, Math.ceil(libraryTotal / libraryPageSize))}). Use the page controls below or search/filter to browse.`
                       : `Showing ${(libraryPage - 1) * libraryPageSize + 1}–${(libraryPage - 1) * libraryPageSize + libraryLeads.length} of ${libraryTotal} saved prospects (Page ${libraryPage} of ${Math.max(1, Math.ceil(libraryTotal / libraryPageSize))}).`}
@@ -4419,374 +4528,507 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
+                  onClick={() => void handleBatchEnrichContacts()}
+                  disabled={enrichingLibrary || loadingLibrary}
+                  className="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs disabled:opacity-60"
+                  title="Crawl saved business websites to extract Email, Facebook, Instagram, and Phone"
+                >
+                  <Globe weight="bold" className={`w-3.5 h-3.5 ${enrichingLibrary ? 'animate-spin text-emerald-700' : 'text-emerald-700'}`} />
+                  {enrichingLibrary ? 'Scanning Websites…' : 'Enrich Contacts (Email / FB / IG)'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSyncOmnisend()}
+                  disabled={syncingOmnisend || loadingLibrary}
+                  className="px-3 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-950 font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs disabled:opacity-60"
+                  title="Sync verified email leads into Omnisend CRM"
+                >
+                  <PaperPlaneRight weight="bold" className={`w-3.5 h-3.5 ${syncingOmnisend ? 'animate-pulse text-indigo-700' : 'text-indigo-700'}`} />
+                  {syncingOmnisend ? 'Syncing Omnisend…' : 'Sync Emails to Omnisend'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => loadLibrary()}
                   disabled={loadingLibrary}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
-                  <ArrowsClockwise className={`w-3.5 h-3.5 ${loadingLibrary ? 'animate-spin text-indigo-600' : 'text-slate-500'}`} />
+                  <ArrowsClockwise weight="bold" className={`w-3.5 h-3.5 ${loadingLibrary ? 'animate-spin text-indigo-600' : 'text-slate-700'}`} />
                   Refresh
                 </button>
                 <button
                   type="button"
                   onClick={handleExportCSV}
-                  className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                  className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-900 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                 >
-                  <DownloadSimple className="w-3.5 h-3.5 text-slate-600" />
+                  <DownloadSimple weight="bold" className="w-3.5 h-3.5 text-slate-800" />
                   Export CSV
                 </button>
                 <button
                   type="button"
                   onClick={() => changeTab('find')}
-                  className="px-4 py-1.5 rounded-lg bg-[#584de3] hover:bg-[#493ecb] text-white font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                  className="px-4 py-1.5 rounded-lg bg-[#584de3] hover:bg-[#493ecb] text-white font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm"
                 >
-                  <MagnifyingGlass className="w-3.5 h-3.5" />
+                  <MagnifyingGlass weight="bold" className="w-3.5 h-3.5" />
                   Find More Leads
                 </button>
               </div>
             </div>
 
-            {/* Verification & Pipeline KPI statistics */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-3 border-t border-slate-100">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Total Saved</span>
-                <span className="text-xl font-bold text-slate-900 mt-0.5 block">{libraryUnavailable ? '—' : libraryTotal ?? libraryLeads.length}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-100">
-                <span className="text-[10px] font-bold text-emerald-700 block uppercase tracking-wider">Verified Contacts</span>
-                <span className="text-xl font-bold text-emerald-800 mt-0.5 block">
-                  {libraryUnavailable ? '—' : libraryLeads.filter((l) => l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website)).length}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-100">
-                <span className="text-[10px] font-bold text-blue-700 block uppercase tracking-wider">Direct Phone</span>
-                <span className="text-xl font-bold text-blue-800 mt-0.5 block">
-                  {libraryUnavailable ? '—' : libraryLeads.filter((l) => Boolean(l.phone)).length}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100">
-                <span className="text-[10px] font-bold text-indigo-700 block uppercase tracking-wider">Email Verified</span>
-                <span className="text-xl font-bold text-indigo-800 mt-0.5 block">
-                  {libraryUnavailable ? '—' : libraryLeads.filter((l) => Boolean(l.email)).length}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-100">
-                <span className="text-[10px] font-bold text-purple-700 block uppercase tracking-wider">In Sales Pipeline</span>
-                <span className="text-xl font-bold text-purple-800 mt-0.5 block">
-                  {libraryUnavailable
-                    ? '—'
-                    : !librarySearch && statusFilter === 'all' && typeof stats?.inPipelineCount === 'number'
-                    ? (stats.inPipelineCount || 0) + (stats.contactedCount || 0)
-                    : libraryLeads.filter((l) => l.status === 'qualified' || l.status === 'contacted' || l.status === 'shortlisted').length}
-                </span>
-              </div>
-            </div>
-
-            {/* Search and Multi-Filtering Controls */}
-            <div className="flex flex-col lg:flex-row gap-2.5 pt-2 border-t border-slate-100">
-              <div className="relative flex-1">
-                <MagnifyingGlass className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search by business name, city, phone, email, notes, or category..."
-                  value={librarySearch}
-                  onChange={(e) => {
-                    setLibrarySearch(e.target.value);
-                    setLibraryPage(1);
-                  }}
-                  className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
-                {librarySearch && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLibrarySearch('');
-                      setLibraryPage(1);
-                    }}
-                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs font-bold"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <select
-                  value={libraryCategoryFilter}
-                  onChange={(e) => setLibraryCategoryFilter(e.target.value)}
-                  className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                >
-                  <option value="all">All Categories ({libraryCategories.length})</option>
-                  {libraryCategories.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value);
-                    setLibraryPage(1);
-                  }}
-                  className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                >
-                  <option value="all">All Pipeline Stages</option>
-                  {LEAD_PIPELINE.map((state) => (
-                    <option key={state} value={state}>{state.replaceAll('_', ' ')}</option>
-                  ))}
-                  <option value="disqualified">Disqualified</option>
-                </select>
-
-                <select
-                  value={libraryVerificationFilter}
-                  onChange={(e) => setLibraryVerificationFilter(e.target.value as any)}
-                  className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="verified">Verified Only</option>
-                  <option value="unverified">Unverified Only</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Quick Filter Chips & Table Helpers */}
-            <div className="flex items-center justify-between gap-2 flex-wrap pt-1 text-xs">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[11px] font-bold text-slate-500 mr-1 flex items-center gap-1">
-                  <Funnel className="w-3 h-3 text-slate-400" />
-                  Quick Filters:
-                </span>
+            {libraryActionNotice && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs font-bold flex items-center justify-between gap-2">
+                <span>{libraryActionNotice}</span>
                 <button
                   type="button"
-                  onClick={() => setLibraryQuickContactFilter('all')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border cursor-pointer ${
-                    libraryQuickContactFilter === 'all'
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
+                  onClick={() => setLibraryActionNotice(null)}
+                  className="text-emerald-800 hover:text-emerald-950 font-black px-1.5 cursor-pointer"
                 >
-                  All ({libraryLeads.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLibraryQuickContactFilter('verified')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border cursor-pointer ${
-                    libraryQuickContactFilter === 'verified'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                      : 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50'
-                  }`}
-                >
-                  Verified Only
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLibraryQuickContactFilter('phone')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border cursor-pointer ${
-                    libraryQuickContactFilter === 'phone'
-                      ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
-                      : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'
-                  }`}
-                >
-                  Direct Phone
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLibraryQuickContactFilter('email')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border cursor-pointer ${
-                    libraryQuickContactFilter === 'email'
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                      : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'
-                  }`}
-                >
-                  With Email
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLibraryQuickContactFilter('high_score')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition border cursor-pointer ${
-                    libraryQuickContactFilter === 'high_score'
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
-                      : 'bg-white text-amber-800 border-amber-200 hover:bg-amber-50'
-                  }`}
-                >
-                  High Score (80+)
+                  ✕
                 </button>
               </div>
+            )}
 
-              {/* Active Sort Indicator / Reset / Fit Screen */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleResetAllLibColWidths}
-                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-[11px] font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-                  title="Reset all column widths to fit cleanly within one screen frame"
-                >
-                  <ArrowsLeftRight className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Fit Screen</span>
-                </button>
+            {/* Verification & Pipeline KPI statistics (Clickable Filter Cards) */}
+            {(() => {
+              const verifiedCount = libraryLeads.filter((l) => l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website)).length;
+              const phoneCount = libraryLeads.filter((l) => Boolean(l.phone)).length;
+              const emailCount = libraryLeads.filter((l) => Boolean(l.email)).length;
+              const fbCount = libraryLeads.filter((l) => Boolean(getLeadFacebook(l))).length;
+              const igCount = libraryLeads.filter((l) => Boolean(getLeadInstagram(l))).length;
+              const socialCount = libraryLeads.filter((l) => Boolean(getLeadFacebook(l) || getLeadInstagram(l))).length;
+              const websiteCount = libraryLeads.filter((l) => Boolean(l.website)).length;
 
-                {/* Customize Columns Button & Popover */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomizeCols(!showCustomizeCols)}
-                    className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-[11px] font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
-                    title="Customize visible columns and rearrange column order"
-                  >
-                    <Sliders className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>Customize Columns</span>
-                    <CaretDown className="w-3 h-3 text-slate-400" />
-                  </button>
+              return (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 pt-3 border-t border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setLibraryQuickContactFilter('all')}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                        libraryQuickContactFilter === 'all' ? 'bg-slate-200/80 border-slate-400 ring-2 ring-slate-900/10' : 'bg-slate-100/80 border-slate-200 hover:bg-slate-200/50'
+                      }`}
+                    >
+                      <span className="text-[11px] font-extrabold text-slate-700 block uppercase tracking-wider">Total Saved</span>
+                      <span className="text-xl font-black text-slate-950 mt-0.5 block">{libraryUnavailable ? '—' : libraryTotal ?? libraryLeads.length}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLibraryQuickContactFilter('verified')}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                        libraryQuickContactFilter === 'verified' ? 'bg-emerald-100 border-emerald-400 ring-2 ring-emerald-600/20' : 'bg-emerald-50/90 border-emerald-200 hover:bg-emerald-100/70'
+                      }`}
+                    >
+                      <span className="text-[11px] font-extrabold text-emerald-900 block uppercase tracking-wider">Verified Contacts</span>
+                      <span className="text-xl font-black text-emerald-950 mt-0.5 block">
+                        {libraryUnavailable ? '—' : verifiedCount}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLibraryQuickContactFilter('phone')}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                        libraryQuickContactFilter === 'phone' ? 'bg-blue-100 border-blue-400 ring-2 ring-blue-600/20' : 'bg-blue-50/90 border-blue-200 hover:bg-blue-100/70'
+                      }`}
+                    >
+                      <span className="text-[11px] font-extrabold text-blue-900 block uppercase tracking-wider">Direct Phone</span>
+                      <span className="text-xl font-black text-blue-950 mt-0.5 block">
+                        {libraryUnavailable ? '—' : phoneCount}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLibraryQuickContactFilter('email')}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                        libraryQuickContactFilter === 'email' ? 'bg-indigo-100 border-indigo-400 ring-2 ring-indigo-600/20' : 'bg-indigo-50/90 border-indigo-200 hover:bg-indigo-100/70'
+                      }`}
+                    >
+                      <span className="text-[11px] font-extrabold text-indigo-900 block uppercase tracking-wider">Email Verified</span>
+                      <span className="text-xl font-black text-indigo-950 mt-0.5 block">
+                        {libraryUnavailable ? '—' : emailCount}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLibraryQuickContactFilter('social')}
+                      className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                        libraryQuickContactFilter === 'social' || libraryQuickContactFilter === 'facebook' || libraryQuickContactFilter === 'instagram'
+                          ? 'bg-pink-100 border-pink-400 ring-2 ring-pink-600/20'
+                          : 'bg-pink-50/90 border-pink-200 hover:bg-pink-100/70'
+                      }`}
+                    >
+                      <span className="text-[11px] font-extrabold text-pink-900 block uppercase tracking-wider">Facebook / IG</span>
+                      <span className="text-xl font-black text-pink-950 mt-0.5 block">
+                        {libraryUnavailable ? '—' : `${socialCount} (${fbCount} FB / ${igCount} IG)`}
+                      </span>
+                    </button>
+                    <div className="p-3 rounded-xl bg-purple-50/90 border border-purple-200">
+                      <span className="text-[11px] font-extrabold text-purple-900 block uppercase tracking-wider">In Sales Pipeline</span>
+                      <span className="text-xl font-black text-purple-950 mt-0.5 block">
+                        {libraryUnavailable
+                          ? '—'
+                          : !librarySearch && statusFilter === 'all' && typeof stats?.inPipelineCount === 'number'
+                          ? (stats.inPipelineCount || 0) + (stats.contactedCount || 0)
+                          : libraryLeads.filter((l) => l.status === 'qualified' || l.status === 'contacted' || l.status === 'shortlisted').length}
+                      </span>
+                    </div>
+                  </div>
 
-                  {showCustomizeCols && (
-                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 p-3.5 z-40 space-y-3 animate-in fade-in zoom-in-95 duration-150">
-                      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                        <span className="font-bold text-xs text-slate-900">Customize Columns</span>
+                  {/* Search and Multi-Filtering Controls */}
+                  <div className="flex flex-col lg:flex-row gap-2.5 pt-2 border-t border-slate-200">
+                    <div className="relative flex-1">
+                      <MagnifyingGlass weight="bold" className="w-4 h-4 text-slate-600 absolute left-3 top-2.5 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search by business name, city, phone, email, Facebook/Instagram, notes, or category..."
+                        value={librarySearch}
+                        onChange={(e) => {
+                          setLibrarySearch(e.target.value);
+                          setLibraryPage(1);
+                        }}
+                        className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                      {librarySearch && (
                         <button
                           type="button"
-                          onClick={() => setShowCustomizeCols(false)}
-                          className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                          onClick={() => {
+                            setLibrarySearch('');
+                            setLibraryPage(1);
+                          }}
+                          className="absolute right-2.5 top-2.5 text-slate-600 hover:text-slate-900 text-xs font-black"
                         >
                           ✕
                         </button>
-                      </div>
-
-                      <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                        {libraryColOrder.map((colKey, i) => {
-                          const isHidden = hiddenCols.has(colKey);
-                          const canHide = colKey !== 'name';
-                          return (
-                            <div
-                              key={colKey}
-                              className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 text-xs"
-                            >
-                              <label className="flex items-center gap-2 cursor-pointer select-none">
-                                <input
-                                  type="checkbox"
-                                  checked={!isHidden}
-                                  disabled={!canHide}
-                                  onChange={() => handleToggleColVisibility(colKey)}
-                                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer disabled:opacity-40"
-                                />
-                                <span className={isHidden ? 'text-slate-400 line-through' : 'font-medium text-slate-800'}>
-                                  {LIBRARY_COL_LABELS[colKey]}
-                                </span>
-                              </label>
-
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  disabled={i === 0}
-                                  onClick={() => handleMoveColStep(colKey, 'left')}
-                                  className="p-1 rounded hover:bg-slate-200/60 disabled:opacity-30 text-slate-500 cursor-pointer"
-                                  title="Move Left (Earlier in table)"
-                                >
-                                  ←
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={i === libraryColOrder.length - 1}
-                                  onClick={() => handleMoveColStep(colKey, 'right')}
-                                  className="p-1 rounded hover:bg-slate-200/60 disabled:opacity-30 text-slate-500 cursor-pointer"
-                                  title="Move Right (Later in table)"
-                                >
-                                  →
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                        <button
-                          type="button"
-                          onClick={handleResetColLayout}
-                          className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 cursor-pointer"
-                        >
-                          Reset to Default
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowCustomizeCols(false)}
-                          className="px-2.5 py-1 rounded bg-indigo-600 text-white font-semibold text-[11px] hover:bg-indigo-700 cursor-pointer"
-                        >
-                          Done
-                        </button>
-                      </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                {librarySortField !== 'manual' && (
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-semibold">
-                    <span>
-                      Sorted by {librarySortField.toUpperCase()} ({librarySortDirection === 'asc' ? 'A-Z' : 'Z-A'})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setLibrarySortField('manual')}
-                      className="text-indigo-600 hover:text-indigo-900 font-bold ml-1 cursor-pointer"
-                      title="Reset to custom manual row positions"
-                    >
-                      ✕ Reset
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={libraryCategoryFilter}
+                        onChange={(e) => setLibraryCategoryFilter(e.target.value)}
+                        className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        <option value="all">All Categories ({libraryCategories.length})</option>
+                        {libraryCategories.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => {
+                          setStatusFilter(e.target.value);
+                          setLibraryPage(1);
+                        }}
+                        className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        <option value="all">All Pipeline Stages</option>
+                        {LEAD_PIPELINE.map((state) => (
+                          <option key={state} value={state}>{state.replaceAll('_', ' ')}</option>
+                        ))}
+                        <option value="disqualified">Disqualified</option>
+                      </select>
+
+                      <select
+                        value={libraryVerificationFilter}
+                        onChange={(e) => setLibraryVerificationFilter(e.target.value as any)}
+                        className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        <option value="all">All Statuses</option>
+                        <option value="verified">Verified Only</option>
+                        <option value="unverified">Unverified Only</option>
+                      </select>
+                    </div>
                   </div>
-                )}
-                <span className="text-[10px] text-slate-400 hidden md:inline" title="Drag right edge of header left/right to resize column width. Drag row handle (⋮⋮) to reorder rows.">
-                  ↔ Drag borders to resize • ⋮⋮ Drag rows to reposition
-                </span>
-              </div>
-            </div>
+
+                  {/* Quick Filter Chips (Email, Facebook, Instagram, Phone, Website, Verified, High Score) & Table Helpers */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap pt-1 text-xs">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-extrabold text-slate-800 mr-1 flex items-center gap-1">
+                        <Funnel weight="fill" className="w-3.5 h-3.5 text-slate-700" />
+                        Quick Filters:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setLibraryQuickContactFilter('all')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                          libraryQuickContactFilter === 'all'
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                            : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
+                        }`}
+                      >
+                        All ({libraryLeads.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLibraryQuickContactFilter('email')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                          libraryQuickContactFilter === 'email'
+                            ? 'bg-indigo-700 text-white border-indigo-700 shadow-2xs'
+                            : 'bg-indigo-50 text-indigo-950 border-indigo-300 hover:bg-indigo-100'
+                        }`}
+                      >
+                        With Email ({emailCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLibraryQuickContactFilter('facebook')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                          libraryQuickContactFilter === 'facebook'
+                            ? 'bg-blue-700 text-white border-blue-700 shadow-2xs'
+                            : 'bg-blue-50 text-blue-950 border-blue-300 hover:bg-blue-100'
+                        }`}
+                      >
+                        Facebook ({fbCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLibraryQuickContactFilter('instagram')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                          libraryQuickContactFilter === 'instagram'
+                            ? 'bg-pink-700 text-white border-pink-700 shadow-2xs'
+                            : 'bg-pink-50 text-pink-950 border-pink-300 hover:bg-pink-100'
+                        }`}
+                      >
+                        Instagram ({igCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLibraryQuickContactFilter('social')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                          libraryQuickContactFilter === 'social'
+                            ? 'bg-purple-700 text-white border-purple-700 shadow-2xs'
+                            : 'bg-purple-50 text-purple-950 border-purple-300 hover:bg-purple-100'
+                        }`}
+                      >
+                        Any Social ({socialCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLibraryQuickContactFilter('phone')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                          libraryQuickContactFilter === 'phone'
+                            ? 'bg-sky-700 text-white border-sky-700 shadow-2xs'
+                            : 'bg-sky-50 text-sky-950 border-sky-300 hover:bg-sky-100'
+                        }`}
+                      >
+                        Direct Phone ({phoneCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLibraryQuickContactFilter('website')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                          libraryQuickContactFilter === 'website'
+                            ? 'bg-teal-700 text-white border-teal-700 shadow-2xs'
+                            : 'bg-teal-50 text-teal-950 border-teal-300 hover:bg-teal-100'
+                        }`}
+                      >
+                        Website ({websiteCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLibraryQuickContactFilter('verified')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                          libraryQuickContactFilter === 'verified'
+                            ? 'bg-emerald-700 text-white border-emerald-700 shadow-2xs'
+                            : 'bg-emerald-50 text-emerald-950 border-emerald-300 hover:bg-emerald-100'
+                        }`}
+                      >
+                        Verified ({verifiedCount})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLibraryQuickContactFilter('high_score')}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                          libraryQuickContactFilter === 'high_score'
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                            : 'bg-amber-50 text-amber-950 border-amber-300 hover:bg-amber-100'
+                        }`}
+                      >
+                        High Score (80+)
+                      </button>
+                    </div>
+
+                    {/* Active Sort Indicator / Reset / Fit Screen */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={handleResetAllLibColWidths}
+                        className={`px-2.5 py-1 rounded-lg border text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer shadow-2xs ${
+                          fitScreenMode
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white hover:bg-slate-100 text-slate-900 border-slate-300'
+                        }`}
+                        title="Fit all columns inside one single screen frame without horizontal scrolling"
+                      >
+                        <ArrowsLeftRight weight="bold" className={`w-3.5 h-3.5 ${fitScreenMode ? 'text-white' : 'text-indigo-600'}`} />
+                        <span>{fitScreenMode ? 'Single Frame Fit (Active)' : 'Fit Screen'}</span>
+                      </button>
+
+                      {/* Customize Columns Button & Popover */}
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomizeCols(!showCustomizeCols)}
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-900 border border-slate-300 text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                          title="Customize visible columns and rearrange column order left/right"
+                        >
+                          <Sliders weight="bold" className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Customize Columns</span>
+                          <CaretDown weight="bold" className="w-3 h-3 text-slate-700" />
+                        </button>
+
+                        {showCustomizeCols && (
+                          <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-300 p-3.5 z-40 space-y-3 animate-in fade-in zoom-in-95 duration-150">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                              <span className="font-extrabold text-xs text-slate-950">Customize &amp; Move Columns</span>
+                              <button
+                                type="button"
+                                onClick={() => setShowCustomizeCols(false)}
+                                className="text-slate-600 hover:text-slate-950 text-xs font-black cursor-pointer"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                              {libraryColOrder.map((colKey, i) => {
+                                const isHidden = hiddenCols.has(colKey);
+                                const canHide = colKey !== 'name';
+                                return (
+                                  <div
+                                    key={colKey}
+                                    className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-100 text-xs"
+                                  >
+                                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={!isHidden}
+                                        disabled={!canHide}
+                                        onChange={() => handleToggleColVisibility(colKey)}
+                                        className="rounded border-slate-400 text-indigo-600 focus:ring-indigo-500 cursor-pointer disabled:opacity-40"
+                                      />
+                                      <span className={isHidden ? 'text-slate-500 line-through font-semibold' : 'font-extrabold text-slate-900'}>
+                                        {LIBRARY_COL_LABELS[colKey]}
+                                      </span>
+                                    </label>
+
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        disabled={i === 0}
+                                        onClick={() => handleMoveColStep(colKey, 'left')}
+                                        className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-900 font-black cursor-pointer"
+                                        title="Move Column Left"
+                                      >
+                                        ←
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={i === libraryColOrder.length - 1}
+                                        onClick={() => handleMoveColStep(colKey, 'right')}
+                                        className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-900 font-black cursor-pointer"
+                                        title="Move Column Right"
+                                      >
+                                        →
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                              <button
+                                type="button"
+                                onClick={handleResetColLayout}
+                                className="text-xs font-extrabold text-rose-700 hover:text-rose-900 cursor-pointer"
+                              >
+                                Reset to Default
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowCustomizeCols(false)}
+                                className="px-3 py-1 rounded bg-indigo-600 text-white font-extrabold text-xs hover:bg-indigo-700 cursor-pointer"
+                              >
+                                Done
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {librarySortField !== 'manual' && (
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-100 border border-indigo-300 text-indigo-950 text-xs font-extrabold">
+                          <span>
+                            Sorted by {librarySortField.toUpperCase()} ({librarySortDirection === 'asc' ? 'A-Z' : 'Z-A'})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setLibrarySortField('manual')}
+                            className="text-indigo-800 hover:text-indigo-950 font-black ml-1 cursor-pointer"
+                            title="Reset to custom manual row positions"
+                          >
+                            ✕ Reset
+                          </button>
+                        </div>
+                      )}
+                      <span className="text-[11px] font-bold text-slate-700 hidden md:inline" title="Drag column headers left/right or click ←/→ arrows to move columns. Drag rows to reorder.">
+                        ↔ Drag columns left/right • ⋮⋮ Drag rows up/down
+                      </span>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
 
             {/* Bulk Action Bar (when leads are selected) */}
             {librarySelectedIds.size > 0 && (
-              <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in">
-                <div className="flex items-center gap-2 font-bold text-indigo-950">
+              <div className="p-3 bg-indigo-50 border border-indigo-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in">
+                <div className="flex items-center gap-2 font-extrabold text-indigo-950">
                   <CheckCircle weight="fill" className="w-4 h-4 text-indigo-600" />
                   <span>{librarySelectedIds.size} {librarySelectedIds.size === 1 ? 'lead' : 'leads'} selected</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-slate-600 font-medium text-[11px]">Set Stage:</span>
+                  <span className="text-slate-800 font-bold text-xs">Set Stage:</span>
                   <button
                     type="button"
                     onClick={() => handleBulkUpdateLibraryStatus('qualified')}
-                    className="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-semibold hover:bg-indigo-100 transition cursor-pointer text-[11px]"
+                    className="px-2.5 py-1 rounded bg-white border border-indigo-300 text-indigo-900 font-extrabold hover:bg-indigo-100 transition cursor-pointer text-xs"
                   >
                     Qualified
                   </button>
                   <button
                     type="button"
                     onClick={() => handleBulkUpdateLibraryStatus('contacted')}
-                    className="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-semibold hover:bg-indigo-100 transition cursor-pointer text-[11px]"
+                    className="px-2.5 py-1 rounded bg-white border border-indigo-300 text-indigo-900 font-extrabold hover:bg-indigo-100 transition cursor-pointer text-xs"
                   >
                     Contacted
                   </button>
                   <button
                     type="button"
                     onClick={() => handleBulkUpdateLibraryStatus('shortlisted')}
-                    className="px-2.5 py-1 rounded bg-white border border-indigo-200 text-indigo-800 font-semibold hover:bg-indigo-100 transition cursor-pointer text-[11px]"
+                    className="px-2.5 py-1 rounded bg-white border border-indigo-300 text-indigo-900 font-extrabold hover:bg-indigo-100 transition cursor-pointer text-xs"
                   >
                     Shortlisted
                   </button>
                   <button
                     type="button"
                     onClick={() => handleBulkUpdateLibraryStatus('disqualified')}
-                    className="px-2.5 py-1 rounded bg-white border border-rose-200 text-rose-800 font-semibold hover:bg-rose-100 transition cursor-pointer text-[11px]"
+                    className="px-2.5 py-1 rounded bg-white border border-rose-300 text-rose-900 font-extrabold hover:bg-rose-100 transition cursor-pointer text-xs"
                   >
                     Disqualify
                   </button>
                   <button
                     type="button"
                     onClick={handleBulkDeleteLibraryLeads}
-                    className="px-2.5 py-1 rounded bg-rose-50 text-rose-700 font-semibold border border-rose-200 hover:bg-rose-100 transition cursor-pointer text-[11px] flex items-center gap-1"
+                    className="px-2.5 py-1 rounded bg-rose-100 text-rose-900 font-extrabold border border-rose-300 hover:bg-rose-200 transition cursor-pointer text-xs flex items-center gap-1"
                   >
-                    <Trash className="w-3 h-3" />
+                    <Trash weight="bold" className="w-3.5 h-3.5" />
                     Delete
                   </button>
                   <button
                     type="button"
                     onClick={() => setLibrarySelectedIds(new Set())}
-                    className="px-2 py-1 text-slate-500 hover:text-slate-800 text-[11px] font-medium"
+                    className="px-2 py-1 text-slate-700 hover:text-slate-950 text-xs font-extrabold"
                   >
                     Clear Selection
                   </button>
@@ -4796,27 +5038,27 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           </div>
 
           {libraryError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800" role="alert">
+            <div className="p-3 bg-red-50 border border-red-300 rounded-lg text-xs font-bold text-red-900" role="alert">
               Lead Library error: {libraryError}
             </div>
           )}
 
-          {/* ── 2. Leads Found Table (Matches Reference Screenshot Style) ── */}
-          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+          {/* ── 2. Leads Found Table (Single-Frame Unified View Without Side-Scroll) ── */}
+          <div className="rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm">
             {loadingLibrary ? (
-              <div className="p-16 text-center text-slate-400 text-xs">
-                <ArrowsClockwise className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
+              <div className="p-16 text-center text-slate-700 font-bold text-xs">
+                <ArrowsClockwise className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-600" />
                 Loading saved prospects...
               </div>
             ) : filteredLibraryLeads.length === 0 ? (
               <div className="p-16 text-center space-y-3">
-                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-600">
                   <BookBookmark className="w-6 h-6" />
                 </div>
-                <h4 className="font-bold text-slate-800 text-sm">
+                <h4 className="font-extrabold text-slate-900 text-sm">
                   {libraryUnavailable ? 'Saved prospects could not be read' : 'No Saved Leads Found'}
                 </h4>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                <p className="text-xs font-semibold text-slate-700 max-w-sm mx-auto">
                   {libraryUnavailable
                     ? libraryError
                     : libraryLeads.length > 0
@@ -4828,7 +5070,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     type="button"
                     onClick={() => void loadLibrary()}
                     disabled={loadingLibrary}
-                    className="px-4 py-2 rounded-lg bg-[#584de3] text-white font-semibold text-xs shadow-sm cursor-pointer disabled:opacity-60"
+                    className="px-4 py-2 rounded-lg bg-[#584de3] text-white font-extrabold text-xs shadow-sm cursor-pointer disabled:opacity-60"
                   >
                     {loadingLibrary ? 'Retrying…' : 'Retry'}
                   </button>
@@ -4836,59 +5078,68 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   <button
                     type="button"
                     onClick={() => { setLibrarySearch(''); setLibraryCategoryFilter('all'); setStatusFilter('all'); setLibraryQuickContactFilter('all'); changeTab('find'); }}
-                    className="px-4 py-2 rounded-lg bg-[#584de3] text-white font-semibold text-xs shadow-sm cursor-pointer"
+                    className="px-4 py-2 rounded-lg bg-[#584de3] text-white font-extrabold text-xs shadow-sm cursor-pointer"
                   >
-                    Discover Leads
+                    Reset Filters
                   </button>
                 )}
               </div>
             ) : (
-              <div className="max-h-[calc(100vh-300px)] overflow-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-slate-50">
-                    <tr className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold text-slate-500 uppercase tracking-wider select-none">
+              <div className={fitScreenMode ? 'w-full overflow-x-hidden' : 'w-full overflow-x-auto'}>
+                <table className={`w-full text-left border-collapse text-xs ${fitScreenMode ? 'table-fixed' : ''}`}>
+                  <thead className="bg-slate-100 border-b-2 border-slate-300">
+                    <tr className="text-[11px] font-extrabold text-slate-900 uppercase tracking-wide select-none">
                       {/* Drag Reorder Handle Header */}
                       <th
-                        style={{ width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder, maxWidth: libraryColWidths.reorder }}
-                        className="py-3 px-1 text-center whitespace-nowrap text-slate-400"
+                        style={fitScreenMode ? { width: '32px' } : { width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder, maxWidth: libraryColWidths.reorder }}
+                        className="py-3 px-1 text-center whitespace-nowrap text-slate-700"
                         title="Drag rows using handle (⋮⋮) to reorder"
                       >
-                        <DotsSixVertical className="w-4 h-4 mx-auto text-slate-400" />
+                        <DotsSixVertical weight="bold" className="w-4 h-4 mx-auto text-slate-700" />
                       </th>
 
                       {/* Checkbox */}
                       <th
-                        style={{ width: libraryColWidths.check, minWidth: libraryColWidths.check, maxWidth: libraryColWidths.check }}
-                        className="py-3 px-2 text-center whitespace-nowrap"
+                        style={fitScreenMode ? { width: '32px' } : { width: libraryColWidths.check, minWidth: libraryColWidths.check, maxWidth: libraryColWidths.check }}
+                        className="py-3 px-1.5 text-center whitespace-nowrap"
                       >
                         <input
                           type="checkbox"
                           checked={librarySelectedIds.size === filteredLibraryLeads.length && filteredLibraryLeads.length > 0}
                           onChange={handleToggleSelectAllLibrary}
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          className="rounded border-slate-400 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                         />
                       </th>
 
                       {/* Index */}
                       <th
-                        style={{ width: libraryColWidths.index, minWidth: libraryColWidths.index, maxWidth: libraryColWidths.index }}
-                        className="py-3 px-2 text-slate-400 font-bold whitespace-nowrap text-center"
+                        style={fitScreenMode ? { width: '38px' } : { width: libraryColWidths.index, minWidth: libraryColWidths.index, maxWidth: libraryColWidths.index }}
+                        className="py-3 px-1.5 text-slate-800 font-extrabold whitespace-nowrap text-center"
                       >
                         #
                       </th>
 
                       {/* Dynamic Draggable & Resizable Column Headers */}
-                      {visibleColOrder.map((colKey) => {
+                      {visibleColOrder.map((colKey, colIdx) => {
                         const isSorted = librarySortField === colKey;
                         const isBeingDragged = draggedColKey === colKey;
                         const isDropTarget = dragOverColKey === colKey && draggedColKey !== colKey;
                         const colWidth = libraryColWidths[colKey];
                         const colLabel = LIBRARY_COL_LABELS[colKey] || colKey;
+                        const fitPercentMap: Record<LibraryColKey, string> = {
+                          name: '21%',
+                          location: '15%',
+                          category: '12%',
+                          contact: '24%',
+                          source: '8%',
+                          status: '8%',
+                          score: '5%',
+                        };
 
                         return (
                           <th
                             key={colKey}
-                            style={{ width: colWidth, minWidth: colWidth }}
+                            style={fitScreenMode ? { width: fitPercentMap[colKey] } : { width: colWidth, minWidth: colWidth }}
                             draggable={true}
                             onDragStart={(e) => {
                               e.dataTransfer.setData('text/plain', colKey);
@@ -4909,33 +5160,59 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                               e.preventDefault();
                               handleDropCol(colKey);
                             }}
-                            className={`relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap group transition cursor-grab active:cursor-grabbing select-none ${
+                            className={`relative py-3 px-2.5 font-extrabold text-slate-900 whitespace-nowrap group transition cursor-grab active:cursor-grabbing select-none ${
                               isBeingDragged ? 'opacity-30 bg-slate-200' : ''
                             } ${
                               isDropTarget && colDropPosition === 'before'
                                 ? 'border-l-4 border-l-indigo-600 bg-indigo-50/70'
                                 : isDropTarget && colDropPosition === 'after'
                                 ? 'border-r-4 border-r-indigo-600 bg-indigo-50/70'
-                                : 'hover:bg-slate-100/70'
+                                : 'hover:bg-slate-200/70'
                             }`}
-                            title="Drag column header to reorder, click to sort"
+                            title="Drag column header left/right to reorder, or click to sort"
                           >
-                            <div className="flex items-center justify-between gap-1.5 pr-2">
+                            <div className="flex items-center justify-between gap-1 pr-2">
                               <div
                                 onClick={() => handleToggleLibrarySort(colKey as any)}
-                                className="flex items-center gap-1.5 cursor-pointer flex-1 min-w-0"
+                                className="flex items-center gap-1 cursor-pointer flex-1 min-w-0"
                               >
-                                <DotsSixVertical className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 flex-shrink-0 cursor-grab" />
+                                <DotsSixVertical weight="bold" className="w-3.5 h-3.5 text-slate-600 group-hover:text-indigo-700 flex-shrink-0 cursor-grab" />
                                 <span className="truncate">{colLabel}</span>
                                 {isSorted ? (
                                   librarySortDirection === 'asc' ? (
-                                    <CaretUp className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                                    <CaretUp weight="bold" className="w-3.5 h-3.5 text-indigo-700 flex-shrink-0" />
                                   ) : (
-                                    <CaretDown className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                                    <CaretDown weight="bold" className="w-3.5 h-3.5 text-indigo-700 flex-shrink-0" />
                                   )
                                 ) : (
-                                  <CaretDown className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition flex-shrink-0" />
+                                  <CaretDown className="w-3.5 h-3.5 text-slate-500 opacity-0 group-hover:opacity-100 transition flex-shrink-0" />
                                 )}
+                              </div>
+                              <div className="hidden group-hover:flex items-center gap-0.5 flex-shrink-0">
+                                <button
+                                  type="button"
+                                  disabled={colIdx === 0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMoveColStep(colKey, 'left');
+                                  }}
+                                  className="px-1 py-0.5 rounded bg-white/90 hover:bg-indigo-100 text-slate-900 text-[10px] font-black disabled:opacity-25 cursor-pointer border border-slate-300"
+                                  title="Move column left"
+                                >
+                                  ←
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={colIdx === visibleColOrder.length - 1}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMoveColStep(colKey, 'right');
+                                  }}
+                                  className="px-1 py-0.5 rounded bg-white/90 hover:bg-indigo-100 text-slate-900 text-[10px] font-black disabled:opacity-25 cursor-pointer border border-slate-300"
+                                  title="Move column right"
+                                >
+                                  →
+                                </button>
                               </div>
                             </div>
 
@@ -4954,7 +5231,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                               className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
                               title="Drag left/right to resize (Double-click to reset width)"
                             >
-                              <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                              <div className="w-[1.5px] h-3.5 bg-slate-400 group-hover/resize:bg-indigo-600 transition" />
                             </div>
                           </th>
                         );
@@ -4962,8 +5239,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
                       {/* Actions */}
                       <th
-                        style={{ width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
-                        className="relative py-3 px-3 font-bold text-slate-600 whitespace-nowrap text-right"
+                        style={fitScreenMode ? { width: '98px' } : { width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
+                        className="relative py-3 px-2.5 font-extrabold text-slate-900 whitespace-nowrap text-right"
                       >
                         Actions
                         <div
@@ -4973,22 +5250,22 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize flex items-center justify-center hover:bg-indigo-400/40 active:bg-indigo-600 transition z-20 group/resize"
                           title="Drag left/right to resize (Double-click to reset width)"
                         >
-                          <div className="w-[1.5px] h-3.5 bg-slate-300 group-hover/resize:bg-indigo-600 transition" />
+                          <div className="w-[1.5px] h-3.5 bg-slate-400 group-hover/resize:bg-indigo-600 transition" />
                         </div>
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-200">
                     {filteredLibraryLeads.map((lead, idx) => {
                       const isSelected = librarySelectedIds.has(lead.id);
-                      const isVerified = lead.emailSource === 'company_website' || lead.dataSource === 'openstreetmap' || Boolean(lead.phone && lead.website);
-                      const displayScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 82;
                       const isBeingDragged = draggedLeadId === lead.id;
                       const isDragOver = dragOverLeadId === lead.id;
 
                       return (
                         <tr
                           key={lead.id}
+                          draggable={true}
+                          onDragStart={(e) => handleDragStartRow(e, lead.id)}
                           onClick={() => openLeadDrawer(lead, 'details')}
                           onDragOver={(e) => handleDragOverRow(e, lead.id)}
                           onDrop={(e) => handleDropRow(e, lead.id)}
@@ -5000,27 +5277,25 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                               : isDragOver && dragDropSide === 'bottom'
                               ? 'border-b-4 border-indigo-600 bg-indigo-50/40'
                               : isSelected
-                              ? 'bg-indigo-50/30 hover:bg-indigo-50/50'
-                              : 'hover:bg-slate-50/80'
+                              ? 'bg-indigo-50/40 hover:bg-indigo-50/70'
+                              : 'hover:bg-slate-100/70'
                           }`}
                         >
                           {/* Drag Reorder Handle */}
                           <td
-                            style={{ width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder, maxWidth: libraryColWidths.reorder }}
+                            style={fitScreenMode ? undefined : { width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder, maxWidth: libraryColWidths.reorder }}
                             className="py-3 px-1 text-center whitespace-nowrap cursor-grab active:cursor-grabbing group/drag"
-                            draggable={true}
-                            onDragStart={(e) => handleDragStartRow(e, lead.id)}
                             onClick={(e) => e.stopPropagation()}
-                            title="Drag to reposition row (or click arrows to move up/down)"
+                            title="Drag row to reposition (or click arrows to move up/down)"
                           >
-                            <div className="flex flex-col items-center justify-center text-slate-300 group-hover/drag:text-indigo-600 transition">
-                              <DotsSixVertical className="w-4 h-4" />
+                            <div className="flex flex-col items-center justify-center text-slate-600 group-hover/drag:text-indigo-700 transition">
+                              <DotsSixVertical weight="bold" className="w-4 h-4" />
                               <div className="flex items-center gap-0.5 opacity-0 group-hover/drag:opacity-100 transition mt-0.5">
                                 <button
                                   type="button"
                                   onClick={() => handleMoveRowOneStep(lead.id, 'up')}
                                   disabled={idx === 0}
-                                  className="text-[9px] text-slate-500 hover:text-indigo-700 disabled:opacity-20 px-0.5 font-bold cursor-pointer"
+                                  className="text-[10px] text-slate-800 hover:text-indigo-700 disabled:opacity-20 px-0.5 font-black cursor-pointer"
                                   title="Move row up"
                                 >
                                   ▲
@@ -5029,7 +5304,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                   type="button"
                                   onClick={() => handleMoveRowOneStep(lead.id, 'down')}
                                   disabled={idx === filteredLibraryLeads.length - 1}
-                                  className="text-[9px] text-slate-500 hover:text-indigo-700 disabled:opacity-20 px-0.5 font-bold cursor-pointer"
+                                  className="text-[10px] text-slate-800 hover:text-indigo-700 disabled:opacity-20 px-0.5 font-black cursor-pointer"
                                   title="Move row down"
                                 >
                                   ▼
@@ -5040,22 +5315,22 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
                           {/* Checkbox */}
                           <td
-                            style={{ width: libraryColWidths.check, minWidth: libraryColWidths.check, maxWidth: libraryColWidths.check }}
-                            className="py-3 px-2 text-center whitespace-nowrap"
+                            style={fitScreenMode ? undefined : { width: libraryColWidths.check, minWidth: libraryColWidths.check, maxWidth: libraryColWidths.check }}
+                            className="py-3 px-1.5 text-center whitespace-nowrap"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleToggleSelectLibraryLead(lead.id)}
-                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                              className="rounded border-slate-400 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                             />
                           </td>
 
                           {/* Index */}
                           <td
-                            style={{ width: libraryColWidths.index, minWidth: libraryColWidths.index, maxWidth: libraryColWidths.index }}
-                            className="py-3 px-2 text-[11px] text-slate-400 font-medium whitespace-nowrap text-center"
+                            style={fitScreenMode ? undefined : { width: libraryColWidths.index, minWidth: libraryColWidths.index, maxWidth: libraryColWidths.index }}
+                            className="py-3 px-1.5 text-xs text-slate-800 font-extrabold whitespace-nowrap text-center"
                           >
                             {(libraryPage - 1) * libraryPageSize + idx + 1}
                           </td>
@@ -5065,7 +5340,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
                           {/* Actions */}
                           <td
-                            style={{ width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
+                            style={fitScreenMode ? undefined : { width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
                             className="py-2.5 px-2 text-right whitespace-nowrap"
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -5074,7 +5349,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 <button
                                   type="button"
                                   onClick={() => openLeadDrawer(lead, 'outreach')}
-                                  className="px-2 py-0.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-[10px] flex items-center gap-1 transition cursor-pointer shadow-2xs whitespace-nowrap flex-shrink-0"
+                                  className="px-2 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[11px] flex items-center gap-1 transition cursor-pointer shadow-2xs whitespace-nowrap flex-shrink-0"
                                   title={`Send Wholesale Outreach Email to ${lead.email}`}
                                 >
                                   <PaperPlaneRight weight="fill" className="w-3 h-3 text-white" />
@@ -5084,28 +5359,28 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 <button
                                   type="button"
                                   onClick={() => openLeadDrawer(lead, 'outreach')}
-                                  className="px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[10px] flex items-center gap-1 transition cursor-pointer border border-indigo-200 whitespace-nowrap flex-shrink-0"
+                                  className="px-2 py-1 rounded-md bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-extrabold text-[11px] flex items-center gap-1 transition cursor-pointer border border-indigo-300 whitespace-nowrap flex-shrink-0"
                                   title="Compose Wholesale Outreach"
                                 >
-                                  <PaperPlaneRight className="w-3 h-3 text-indigo-600" />
+                                  <PaperPlaneRight weight="bold" className="w-3 h-3 text-indigo-700" />
                                   <span>Outreach</span>
                                 </button>
                               )}
                               <button
                                 type="button"
                                 onClick={() => openLeadDrawer(lead, 'notes')}
-                                className="p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition cursor-pointer flex-shrink-0"
+                                className="p-1 rounded-md hover:bg-slate-200 text-slate-700 hover:text-slate-950 transition cursor-pointer flex-shrink-0"
                                 title="Notes & Follow-up Schedule"
                               >
-                                <FileText className="w-3.5 h-3.5" />
+                                <FileText weight="bold" className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteSavedLead(lead.id)}
-                                className="p-1 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer flex-shrink-0"
+                                className="p-1 rounded-md hover:bg-rose-100 text-slate-700 hover:text-rose-700 transition cursor-pointer flex-shrink-0"
                                 title="Delete Lead"
                               >
-                                <Trash className="w-3.5 h-3.5" />
+                                <Trash weight="bold" className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </td>
@@ -5125,13 +5400,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               const endRow = (libraryPage - 1) * libraryPageSize + libraryLeads.length;
 
               return (
-                <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                  <div className="text-slate-600">
-                    Showing <span className="font-semibold text-slate-900">{startRow}–{endRow}</span> of{' '}
-                    <span className="font-semibold text-slate-900">{totalCount}</span> saved prospects
+                <div className="px-4 py-3 border-t border-slate-300 bg-slate-100/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="text-slate-800 font-semibold">
+                    Showing <span className="font-extrabold text-slate-950">{filteredLibraryLeads.length}</span> matching leads (loaded <span className="font-extrabold text-slate-950">{startRow}–{endRow}</span> of{' '}
+                    <span className="font-extrabold text-slate-950">{totalCount}</span> total saved)
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <label className="flex items-center gap-1.5 text-slate-600">
+                    <label className="flex items-center gap-1.5 text-slate-800 font-bold">
                       <span>Rows:</span>
                       <select
                         value={libraryPageSize}
@@ -5139,11 +5414,12 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           setLibraryPageSize(Number(e.target.value));
                           setLibraryPage(1);
                         }}
-                        className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 font-semibold text-xs cursor-pointer"
+                        className="px-2 py-1 rounded-lg border border-slate-300 bg-white text-slate-900 font-extrabold text-xs cursor-pointer"
                       >
                         <option value={50}>50 / page</option>
                         <option value={100}>100 / page</option>
                         <option value={200}>200 / page</option>
+                        <option value={500}>All (500 / page)</option>
                       </select>
                     </label>
                     <div className="flex items-center gap-1">
@@ -5151,18 +5427,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                         type="button"
                         disabled={libraryPage <= 1 || loadingLibrary}
                         onClick={() => setLibraryPage((p) => Math.max(1, p - 1))}
-                        className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
+                        className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-200 text-slate-900 font-extrabold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
                       >
                         ← Prev
                       </button>
-                      <span className="px-2.5 py-1 font-semibold text-slate-700">
+                      <span className="px-2.5 py-1 font-extrabold text-slate-900">
                         Page {libraryPage} of {totalPages}
                       </span>
                       <button
                         type="button"
                         disabled={libraryPage >= totalPages || loadingLibrary}
                         onClick={() => setLibraryPage((p) => Math.min(totalPages, p + 1))}
-                        className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
+                        className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-200 text-slate-900 font-extrabold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
                       >
                         Next →
                       </button>

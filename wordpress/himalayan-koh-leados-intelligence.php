@@ -26,7 +26,7 @@ function hk_leados2_merge_sources( $old, $new ) {
 function hk_leados2_clean_research( $research ) {
  if ( ! is_array( $research ) ) { return array(); }
  $result = array( 'sources' => hk_leados2_merge_sources( array(), $research['sources'] ?? array() ) );
- foreach ( array( 'publicCompanyName', 'lastVerifiedAt', 'productInterest', 'assignedOwner', 'nextFollowUp', 'requestedQuantity', 'packagingPreference', 'buyerQuestions' ) as $key ) {
+ foreach ( array( 'publicCompanyName', 'lastVerifiedAt', 'productInterest', 'assignedOwner', 'nextFollowUp', 'requestedQuantity', 'packagingPreference', 'buyerQuestions', 'facebook', 'instagram' ) as $key ) {
   if ( isset( $research[$key] ) ) { $result[$key] = substr( sanitize_text_field( $research[$key] ), 0, 2000 ); }
  }
  if ( isset( $research['contactPage'] ) ) { $result['contactPage'] = esc_url_raw( $research['contactPage'] ); }

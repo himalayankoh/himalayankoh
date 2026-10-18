@@ -16,6 +16,7 @@ import { getSavedLeadById, recordAuditEntry, leadosRequest } from '@/lib/leados/
 import { validateOutboundCopy } from '@/lib/leados/claims';
 import { sendLeadOSMail } from '@/lib/leados/emailProvider';
 import { outreachReadiness, dispatchApprovedDraft } from '@/lib/leados/n8n';
+import { syncLeadOSProspect } from '@/lib/omnisend/client';
 
 export async function POST(request: Request) {
   const auth = await verifyAdminRequest(request);
@@ -59,7 +60,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Lead not found in the active workspace.' }, { status: 404 });
     }
 
-    const result = await sendLeadOSMail({ to: recipientEmail, subject, text: message }, { simulationRequested });
+    const [result, omnisendSync] = await Promise.all([
+      sendLeadOSMail({ to: recipientEmail, subject, text: message }, { simulationRequested }),
+      syncLeadOSProspect({
+        email: recipientEmail,
+        businessName: lead.businessName,
+        contactName: recipientName || undefined,
+        phone: lead.phone || undefined,
+        city: lead.city || undefined,
+        state: lead.region || undefined,
+      }).catch(() => ({ ok: false })),
+    ]);
     const auditDetails = {
       recipient: recipientEmail,
       recipientName: recipientName || null,
@@ -68,6 +79,7 @@ export async function POST(request: Request) {
       provider: result.provider,
       state: result.state,
       providerMessageId: result.providerMessageId,
+      omnisendSynced: omnisendSync.ok,
       sender: 'sales@himalayankoh.com',
       createdAt: new Date().toISOString(),
     };

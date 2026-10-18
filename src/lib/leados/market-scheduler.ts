@@ -959,7 +959,7 @@ export async function runAutonomousMarketScan(options: {
     const enrichedCommercialLeads: NormalizedLead[] = [];
     for (let i = 0; i < commercialLeads.length; i++) {
       const candidate = commercialLeads[i];
-      if (candidate.website && i < 5) {
+      if (candidate.website && i < 12) {
         try {
           const enriched = await enrichLeadWithCrawler(candidate);
           enrichedCommercialLeads.push(enriched);

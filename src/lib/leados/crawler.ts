@@ -669,6 +669,25 @@ export async function crawlBusinessWebsite(
   const socials = extractSocialProfiles(allHtml);
   const wholesale = detectWholesaleOpportunity(allHtml);
 
+  if (socials.facebook) {
+    evidence.push({
+      url: socials.facebook,
+      retrievedAt: timestamp,
+      kind: 'website',
+      status: 'verified',
+      excerpt: 'Facebook Profile',
+    });
+  }
+  if (socials.instagram) {
+    evidence.push({
+      url: socials.instagram,
+      retrievedAt: timestamp,
+      kind: 'website',
+      status: 'verified',
+      excerpt: 'Instagram Profile',
+    });
+  }
+
   if (!phone && extractedPhones.length > 0) phone = extractedPhones[0];
   if (!email && extractedEmails.length > 0) email = extractedEmails[0];
 

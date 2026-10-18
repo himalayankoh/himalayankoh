@@ -187,6 +187,48 @@ function toProject(row: RawRow): LeadOSProject {
   };
 }
 
+function extractSocialFromResearch(research: any, domainPart: string): string | null {
+  if (!research || !Array.isArray(research.sources)) return null;
+  const match = research.sources.find(
+    (s: any) => typeof s?.url === 'string' && s.url.toLowerCase().includes(domainPart)
+  );
+  return match?.url || null;
+}
+
+function withSocialSources(
+  research: Record<string, any> | undefined,
+  facebook?: string | null,
+  instagram?: string | null
+): Record<string, any> {
+  const base = { ...(research || {}) };
+  const sources: any[] = Array.isArray(base.sources) ? [...base.sources] : [];
+  const now = new Date().toISOString();
+  if (facebook && !sources.some((s) => typeof s?.url === 'string' && s.url.toLowerCase() === facebook.toLowerCase())) {
+    sources.push({
+      url: facebook,
+      kind: 'website',
+      status: 'verified',
+      retrievedAt: now,
+      excerpt: 'Facebook Profile',
+    });
+  }
+  if (instagram && !sources.some((s) => typeof s?.url === 'string' && s.url.toLowerCase() === instagram.toLowerCase())) {
+    sources.push({
+      url: instagram,
+      kind: 'website',
+      status: 'verified',
+      retrievedAt: now,
+      excerpt: 'Instagram Profile',
+    });
+  }
+  return {
+    ...base,
+    ...(facebook ? { facebook } : {}),
+    ...(instagram ? { instagram } : {}),
+    ...(sources.length > 0 ? { sources } : {}),
+  };
+}
+
 function toSavedLead(row: RawRow): SavedLeadRecord {
   return {
     id: row.id,
@@ -219,8 +261,18 @@ function toSavedLead(row: RawRow): SavedLeadRecord {
     updatedAt: row.updated_at || row.created_at,
     latitude: row.latitude !== null && row.latitude !== undefined ? Number(row.latitude) : null,
     longitude: row.longitude !== null && row.longitude !== undefined ? Number(row.longitude) : null,
-    facebook: row.facebook || null,
-    instagram: row.instagram || null,
+    facebook:
+      row.facebook ||
+      row.research?.facebook ||
+      row.research?.facebookUrl ||
+      extractSocialFromResearch(row.research, 'facebook.com/') ||
+      null,
+    instagram:
+      row.instagram ||
+      row.research?.instagram ||
+      row.research?.instagramUrl ||
+      extractSocialFromResearch(row.research, 'instagram.com/') ||
+      null,
     projects: (row.leados_project_leads || []).map((link: RawRow) => ({
       leadId: row.id,
       projectId: link.project_id,
@@ -333,7 +385,7 @@ export async function saveLeadToLibrary(
     osm_id: lead.osmId,
     osm_url: lead.osmUrl,
     data_source: lead.dataSource || 'openstreetmap',
-    research: lead.research || {},
+    research: withSocialSources(lead.research, lead.facebook, lead.instagram),
     opportunity_score: lead.opportunityScore ?? null,
     opportunity_signals: lead.opportunitySignals || [],
     tags: lead.category ? [lead.category] : [],
@@ -409,7 +461,7 @@ export async function saveLeadsBatchToLibrary(
       osm_id: lead.osmId,
       osm_url: lead.osmUrl,
       data_source: lead.dataSource || 'openstreetmap',
-      research: lead.research || {},
+      research: withSocialSources(lead.research, lead.facebook, lead.instagram),
       opportunity_score: lead.opportunityScore ?? null,
       opportunity_signals: lead.opportunitySignals || [],
       tags: lead.category ? [lead.category] : [],
@@ -674,7 +726,13 @@ export async function updateSavedLead(
     if (patch.phone !== undefined) body.phone = patch.phone;
     if (patch.website !== undefined) body.website = patch.website;
     for (const field of ['address','city','region','country'] as const) if (patch[field] !== undefined) body[field] = patch[field];
-    if (patch.research !== undefined) body.research = patch.research;
+    if (patch.research !== undefined || patch.facebook !== undefined || patch.instagram !== undefined) {
+      body.research = withSocialSources(
+        patch.research,
+        patch.facebook ?? patch.research?.facebook,
+        patch.instagram ?? patch.research?.instagram
+      );
+    }
 
     const response = await leadosRequest<{ lead?: RawRow | null }>(
       `/leads/${encodeURIComponent(id)}`,
