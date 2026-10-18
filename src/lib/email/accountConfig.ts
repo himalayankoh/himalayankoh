@@ -109,7 +109,8 @@ let lastCacheTime = 0;
 const CACHE_TTL_MS = 60_000;
 
 function cleanKey(email: string): string {
-  return email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+  const local = email.split('@')[0].trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+  return local || email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
 }
 
 /**
