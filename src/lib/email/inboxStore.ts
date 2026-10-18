@@ -9,7 +9,7 @@ import {
 import { listCrmLeads } from '@/lib/leados/crm';
 import { siteSettingsApi } from '@/lib/wordpress/siteContent';
 import type { SavedLeadRecord } from '@/lib/leados/types';
-import { sendCPanelEmail } from '@/lib/email/cpanelMail';
+import { sendCPanelEmail, isCPanelConfigured } from '@/lib/email/cpanelMail';
 
 export type MailboxAddress =
   | 'salman@himalayankoh.com'
@@ -37,6 +37,7 @@ export type InboxFilterFolder =
 export type DeliveryStatus =
   | 'draft'
   | 'queued'
+  | 'accepted'
   | 'sent'
   | 'delivered'
   | 'simulated'
@@ -162,7 +163,7 @@ export interface InboxInfrastructureStatus {
   };
   outbound: {
     status: 'provider_ready' | 'simulation_or_unconfigured';
-    provider: 'resend' | 'simulation';
+    provider: 'cpanel-exim' | 'simulation' | 'resend';
     liveSendEnabled: boolean;
     note: string;
   };
@@ -327,9 +328,13 @@ export async function getMailboxAndInfrastructureStatus(): Promise<{
   mailboxes: MailboxIdentity[];
   infrastructure: InboxInfrastructureStatus;
 }> {
-  const outboundStatus: 'provider_ready' | 'simulation_or_unconfigured' = 'provider_ready';
-  const outboundNote =
-    'Active Namecheap cPanel Exim infrastructure (premium164.web-hosting.com @ 162.0.209.25). SPF + DKIM + DMARC authenticated for @himalayankoh.com.';
+  const isConfigured = isCPanelConfigured();
+  const outboundStatus: 'provider_ready' | 'simulation_or_unconfigured' = isConfigured
+    ? 'provider_ready'
+    : 'simulation_or_unconfigured';
+  const outboundNote = isConfigured
+    ? 'Active Namecheap cPanel Exim infrastructure (premium164.web-hosting.com @ 162.0.209.25). Authenticated transport configured.'
+    : 'Active Namecheap cPanel Exim infrastructure (premium164.web-hosting.com @ 162.0.209.25). Authenticated SMTP credentials not yet configured; transport fails closed.';
 
   const mailboxes: MailboxIdentity[] = ALLOWED_MAILBOXES.map((addr) => ({
     ...MAILBOX_DEFINITIONS[addr],
@@ -367,9 +372,9 @@ export async function getMailboxAndInfrastructureStatus(): Promise<{
       note: 'Cloudflare Email Routing is currently unconfigured/disabled so existing Namecheap Private Email MX records (mx1..3-hosting.jellyfish.systems) continue operating without disruption.',
     },
     outbound: {
-      status: 'provider_ready',
-      provider: 'resend',
-      liveSendEnabled: true,
+      status: outboundStatus,
+      provider: 'cpanel-exim',
+      liveSendEnabled: isConfigured,
       note: outboundNote,
     },
     inbound: {
@@ -991,9 +996,14 @@ export async function sendInboxMessage(input: SendMessageInput): Promise<InboxMe
         attachments,
       });
 
-      deliveryStatus = cpanelRes.deliveryStatus;
-      providerMessageId = cpanelRes.messageId || null;
-      deliveryNote = cpanelRes.deliveryNote;
+      if (!cpanelRes.ok) {
+        deliveryStatus = 'failed';
+        deliveryNote = cpanelRes.error || cpanelRes.deliveryNote;
+      } else {
+        deliveryStatus = cpanelRes.deliveryStatus; // 'accepted' or 'delivered'
+        providerMessageId = cpanelRes.messageId || null;
+        deliveryNote = cpanelRes.deliveryNote;
+      }
     } catch (err) {
       deliveryStatus = 'failed';
       deliveryNote = err instanceof Error ? err.message : 'Namecheap cPanel delivery failed.';
@@ -1004,6 +1014,7 @@ export async function sendInboxMessage(input: SendMessageInput): Promise<InboxMe
   const labels = new Set<string>(parentMessage?.labels || []);
   if (matchedLead || candidateLeadId) labels.add('LeadOS Prospect');
   if (mailbox === 'sales@himalayankoh.com') labels.add('Wholesale');
+  if (deliveryStatus === 'failed') labels.add('Needs Retry');
 
   const sentMessage: InboxMessage = {
     id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1033,7 +1044,7 @@ export async function sendInboxMessage(input: SendMessageInput): Promise<InboxMe
     leadId: matchedLead?.id || candidateLeadId,
     leadBusinessName: matchedLead?.businessName || parentMessage?.leadBusinessName || null,
     leadStage:
-      deliveryStatus === 'delivered' && matchedLead?.status === 'new'
+      (deliveryStatus === 'accepted' || deliveryStatus === 'delivered') && matchedLead?.status === 'new'
         ? 'contacted'
         : matchedLead?.status || parentMessage?.leadStage || null,
     deliveryStatus,
@@ -1044,8 +1055,8 @@ export async function sendInboxMessage(input: SendMessageInput): Promise<InboxMe
     updatedAt: now,
   };
 
-  // Remove draft if sending from an existing draft
-  const filtered = input.draftId
+  // Remove previous draft ONLY IF sending did not fail! Keep draft available for retry.
+  const filtered = input.draftId && deliveryStatus !== 'failed'
     ? messages.filter((m) => m.id !== input.draftId)
     : messages;
 

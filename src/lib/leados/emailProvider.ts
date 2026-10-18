@@ -1,4 +1,4 @@
-import { sendCPanelEmail } from '@/lib/email/cpanelMail';
+import { sendCPanelEmail, isCPanelConfigured } from '@/lib/email/cpanelMail';
 
 export type OutreachDeliveryState =
   | 'simulated'
@@ -40,16 +40,18 @@ export async function sendLeadOSMail(
     return { state: 'simulated', provider: 'simulation', providerMessageId: null };
   }
 
-  if (process.env.OUTREACH_PROVIDER_UNAVAILABLE === 'true') {
+  const fromEmail = 'sales@himalayankoh.com';
+  const fromName = 'Himalayan Koh Commercial Sales';
+
+  // Disable actual prospect email sending until authenticated transport is configured and passes
+  if (!isCPanelConfigured(fromEmail) || process.env.OUTREACH_PROVIDER_UNAVAILABLE === 'true') {
     return {
       state: 'provider_unavailable',
       provider: 'cpanel-exim',
       providerMessageId: null,
+      error: 'LeadOS prospect outreach is paused until authenticated Namecheap mailbox credentials are configured.',
     };
   }
-
-  const fromEmail = 'sales@himalayankoh.com';
-  const fromName = 'Himalayan Koh Commercial Sales';
 
   try {
     const htmlBody = buildOutreachHtml(input.text, fromEmail);

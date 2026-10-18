@@ -3,14 +3,19 @@
  *
  * Outbound email delivery using Namecheap/cPanel Exim infrastructure:
  * Host: premium164.web-hosting.com (@ 162.0.209.25)
- * SMTPS: Port 465 (TLS) / SMTP: Port 587 (STARTTLS)
+ * SMTPS: Port 465 (TLS with verified certificates)
  * Senders:
  *   - sales@himalayankoh.com
  *   - support@himalayankoh.com
  *   - salman@himalayankoh.com
  *   - admin@himalayankoh.com
  *
- * Strictly NO RESEND.
+ * FAILS CLOSED:
+ * - Requires explicit, authenticated SMTP credentials (no guessing or fallback to hosting passwords).
+ * - Enforces TLS certificate verification (rejectUnauthorized: true).
+ * - Treats SMTP 250 as accepted/queued by Exim, never as confirmed recipient inbox delivery.
+ * - Never fabricates delivery success on failure or exception.
+ * - Strictly NO RESEND.
  */
 
 export interface EmailAttachment {
@@ -38,7 +43,7 @@ export interface CPanelEmailInput {
 export interface CPanelEmailResult {
   ok: boolean;
   messageId: string;
-  deliveryStatus: 'delivered' | 'simulated' | 'failed';
+  deliveryStatus: 'accepted' | 'delivered' | 'simulated' | 'failed';
   provider: 'cpanel-exim' | 'cpanel-relay' | 'simulation';
   deliveryNote: string;
   error?: string;
@@ -97,6 +102,44 @@ export function resolveAuthorizedSender(sender?: string): { email: AuthorizedSen
     return SENDER_PROFILES[emailCandidate];
   }
   return SENDER_PROFILES['sales@himalayankoh.com'];
+}
+
+export interface CPanelCredentials {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+}
+
+/**
+ * Resolve dedicated authenticated SMTP credentials.
+ * NEVER guesses passwords or reuses general hosting/WordPress passwords.
+ */
+export function resolveCPanelCredentials(senderEmail?: string): CPanelCredentials | null {
+  const host = process.env.NAMECHEAP_SMTP_HOST || 'premium164.web-hosting.com';
+  const port = Number(process.env.NAMECHEAP_SMTP_PORT || 465);
+
+  if (senderEmail) {
+    const cleanKey = senderEmail.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').toUpperCase();
+    const senderPass = process.env[`SMTP_PASS_${cleanKey}`] || process.env[`NAMECHEAP_SMTP_PASS_${cleanKey}`];
+    const senderUser = process.env[`SMTP_USER_${cleanKey}`] || process.env[`NAMECHEAP_SMTP_USER_${cleanKey}`] || senderEmail.trim().toLowerCase();
+    if (senderPass && senderUser) {
+      return { host, port, user: senderUser, pass: senderPass };
+    }
+  }
+
+  const user = process.env.NAMECHEAP_SMTP_USER || process.env.SMTP_USER;
+  const pass = process.env.NAMECHEAP_SMTP_PASS || process.env.SMTP_PASS;
+
+  if (user && pass) {
+    return { host, port, user: user.trim(), pass: pass.trim() };
+  }
+
+  return null;
+}
+
+export function isCPanelConfigured(senderEmail?: string): boolean {
+  return Boolean(resolveCPanelCredentials(senderEmail));
 }
 
 /**
@@ -202,7 +245,8 @@ export function buildMimeMessage(input: {
 }
 
 /**
- * Deliver outbound email via Namecheap cPanel email infrastructure
+ * Deliver outbound email via Namecheap cPanel email infrastructure.
+ * FAILS CLOSED if unconfigured, unauthenticated, or rejected.
  */
 export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEmailResult> {
   const timestamp = new Date().toISOString();
@@ -235,7 +279,7 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
   const bodyText = input.bodyText || input.subject;
   const bodyHtml = input.bodyHtml;
 
-  // Simulation mode check
+  // Simulation mode check: explicitly declared simulation only
   if (input.simulate || process.env.EMAIL_SIMULATE === 'true') {
     return {
       ok: true,
@@ -247,12 +291,22 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
     };
   }
 
-  const host = process.env.NAMECHEAP_SMTP_HOST || 'premium164.web-hosting.com';
-  const port = Number(process.env.NAMECHEAP_SMTP_PORT || 465);
-  const user = process.env.NAMECHEAP_SMTP_USER || process.env.NAMECHEAP_USER || sender.email;
-  const pass = process.env.NAMECHEAP_SMTP_PASS || process.env.NAMECHEAP_PASS || '';
+  // Resolve dedicated authenticated SMTP credentials
+  const creds = resolveCPanelCredentials(sender.email);
+  if (!creds) {
+    return {
+      ok: false,
+      messageId,
+      deliveryStatus: 'failed',
+      provider: 'cpanel-exim',
+      deliveryNote: `No authenticated SMTP credentials configured for ${sender.email}. Transport failed closed.`,
+      error: `Missing authenticated SMTP credentials for ${sender.email}. Set NAMECHEAP_SMTP_USER and NAMECHEAP_SMTP_PASS.`,
+      timestamp,
+    };
+  }
 
-  // If running in Node.js / Server environment with socket capability
+  const { host, port, user, pass } = creds;
+
   try {
     const rawMime = buildMimeMessage({
       from: sender.email,
@@ -266,12 +320,13 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
       attachments: input.attachments,
     });
 
-    // Check if tls / net socket available (Node.js runtime)
     if (typeof process !== 'undefined' && process.versions && process.versions.node) {
       const tls = await import('node:tls');
 
       const sendPromise = new Promise<CPanelEmailResult>((resolve) => {
+        let timedOut = false;
         const timeout = setTimeout(() => {
+          timedOut = true;
           socket.destroy();
           resolve({
             ok: false,
@@ -284,12 +339,13 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
           });
         }, 12000);
 
+        // STABLE TLS CERTIFICATE VERIFICATION ENFORCED
         const socket = tls.connect(
           port,
           host,
-          { rejectUnauthorized: false, servername: host },
+          { rejectUnauthorized: true, servername: host },
           () => {
-            // Connected
+            // Connected with valid, verified TLS certificate
           }
         );
 
@@ -298,6 +354,7 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
         let authSent = false;
 
         socket.on('data', (data: string) => {
+          if (timedOut) return;
           const lines = data.split('\r\n').filter(Boolean);
           const lastLine = lines[lines.length - 1] || '';
 
@@ -305,14 +362,8 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
             step = 1;
             socket.write(`EHLO himalayankoh.com\r\n`);
           } else if (step === 1 && (lastLine.startsWith('250') || lastLine.includes('250 '))) {
-            if (pass && user) {
-              step = 2;
-              socket.write(`AUTH LOGIN\r\n`);
-            } else {
-              // Direct relay attempt
-              step = 4;
-              socket.write(`MAIL FROM:<${sender.email}>\r\n`);
-            }
+            step = 2;
+            socket.write(`AUTH LOGIN\r\n`);
           } else if (step === 2 && lastLine.startsWith('334')) {
             step = 3;
             socket.write(`${Buffer.from(user).toString('base64')}\r\n`);
@@ -322,7 +373,7 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
             socket.write(`${Buffer.from(pass).toString('base64')}\r\n`);
           } else if (step === 4) {
             if (authSent && lastLine.startsWith('235')) {
-              // Authenticated
+              // Successfully authenticated
               step = 5;
               socket.write(`MAIL FROM:<${sender.email}>\r\n`);
             } else if (authSent && (lastLine.startsWith('535') || lastLine.startsWith('5'))) {
@@ -334,15 +385,9 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
                 deliveryStatus: 'failed',
                 provider: 'cpanel-exim',
                 deliveryNote: `Namecheap cPanel SMTP Auth failed (${lastLine.trim()})`,
-                error: lastLine.trim(),
+                error: `Authentication rejected: ${lastLine.trim()}`,
                 timestamp,
               });
-            } else if (!authSent && lastLine.startsWith('250')) {
-              step = 6;
-              const allRcpts = [...toList, ...ccList, ...bccList];
-              for (const r of allRcpts) {
-                socket.write(`RCPT TO:<${r}>\r\n`);
-              }
             }
           } else if (step === 5 && lastLine.startsWith('250')) {
             step = 6;
@@ -362,7 +407,7 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
                 messageId,
                 deliveryStatus: 'failed',
                 provider: 'cpanel-exim',
-                deliveryNote: `Namecheap cPanel relay rejected: ${lastLine.trim()}`,
+                deliveryNote: `Namecheap cPanel recipient rejected: ${lastLine.trim()}`,
                 error: lastLine.trim(),
                 timestamp,
               });
@@ -374,12 +419,13 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
             clearTimeout(timeout);
             socket.end();
             if (lastLine.startsWith('250')) {
+              // SMTP 250 indicates acceptance by local Exim queue (queued for delivery)
               resolve({
                 ok: true,
                 messageId,
-                deliveryStatus: 'delivered',
+                deliveryStatus: 'accepted',
                 provider: 'cpanel-exim',
-                deliveryNote: `Delivered via Namecheap Exim (${host}: ${lastLine.trim()})`,
+                deliveryNote: `SMTP 250 accepted by Namecheap Exim (${host}: ${lastLine.trim()}). Queued for relay.`,
                 timestamp,
               });
             } else {
@@ -403,30 +449,35 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
             messageId,
             deliveryStatus: 'failed',
             provider: 'cpanel-exim',
-            deliveryNote: `Namecheap cPanel SMTP socket error: ${err.message}`,
+            deliveryNote: `Namecheap cPanel SMTP TLS socket error: ${err.message}`,
             error: err.message,
             timestamp,
           });
         });
       });
 
-      const socketResult = await sendPromise;
-      if (socketResult.ok) {
-        return socketResult;
-      }
-      // If socket failed, fall through to cPanel Exim delivery via registered WordPress bridge
+      return await sendPromise;
     }
   } catch (err) {
-    // Socket execution error, fall back to cPanel delivery recording
+    return {
+      ok: false,
+      messageId,
+      deliveryStatus: 'failed',
+      provider: 'cpanel-exim',
+      deliveryNote: `SMTP delivery execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      error: err instanceof Error ? err.message : String(err),
+      timestamp,
+    };
   }
 
-  // Authoritative cPanel Exim infrastructure recording
+  // Fail closed if runtime has no socket capabilities
   return {
-    ok: true,
+    ok: false,
     messageId,
-    deliveryStatus: 'delivered',
+    deliveryStatus: 'failed',
     provider: 'cpanel-exim',
-    deliveryNote: `Dispatched via Namecheap cPanel infrastructure (${host} @ 162.0.209.25)`,
+    deliveryNote: 'Direct TLS SMTP socket execution unsupported in this runtime environment.',
+    error: 'Runtime environment lacks TCP/TLS socket capability.',
     timestamp,
   };
 }

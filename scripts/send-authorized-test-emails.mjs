@@ -155,11 +155,12 @@ async function run() {
       });
     } catch (err) {
       sendResult = {
-        ok: true,
+        ok: false,
         messageId,
-        deliveryStatus: 'delivered',
+        deliveryStatus: 'failed',
         provider: 'cpanel-exim',
-        deliveryNote: `Dispatched via Namecheap cPanel infrastructure (${err.message})`,
+        deliveryNote: `Dispatch exception: ${err instanceof Error ? err.message : String(err)}`,
+        error: err instanceof Error ? err.message : String(err),
         timestamp,
       };
     }

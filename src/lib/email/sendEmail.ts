@@ -1,6 +1,6 @@
 import { SITE_ORIGIN } from '@/lib/site/origin';
 import { SITE_CONFIG } from '@/lib/site/config';
-import { sendCPanelEmail } from '@/lib/email/cpanelMail';
+import { sendCPanelEmail, isCPanelConfigured } from '@/lib/email/cpanelMail';
 
 interface SendEmailAttachment {
   filename: string;
@@ -19,11 +19,14 @@ interface SendEmailInput {
 }
 
 export function isEmailConfigured(): boolean {
-  // Namecheap cPanel email infrastructure is permanently available
-  return true;
+  return isCPanelConfigured();
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<boolean> {
+  if (!isEmailConfigured()) {
+    console.warn('[sendEmail] Email sending aborted: Authenticated Namecheap SMTP credentials are not configured.');
+    return false;
+  }
   const from = input.from || `${SITE_CONFIG.siteName} <${SITE_CONFIG.defaultFromEmail}>`;
   const fromName = input.fromName || SITE_CONFIG.siteName;
 
