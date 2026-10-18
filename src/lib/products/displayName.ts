@@ -57,6 +57,11 @@ const DISPLAY_TITLE_BY_SLUG: Record<string, string> = {
   // This single SKU has no grain variations. Do not advertise an unavailable choice.
   'himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh':
     'Himalayan Pink Salt for Livestock - 6 lb Pouch',
+  // The approved visible name for the horse salt licks with rope.
+  'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh':
+    'Himalayan Pink Salt Lick with Rope',
+  'salt-licks-for-horses':
+    'Himalayan Pink Salt Lick with Rope',
 };
 
 /**

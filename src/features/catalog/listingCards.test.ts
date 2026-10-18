@@ -33,4 +33,31 @@ describe('genuine salt lick listing variants', () => {
       [{id:1548,attributes:[{name:'Size/Weight',option:'6 lbs.'},{name:'Pack',option:'3'}]}]);
     expect(v).toBeUndefined();
   });
+  it('correctly maps production product 2543 with Weight attribute into 2 lb and 6 lb cards', () => {
+    const prod: Product = {
+      id: 2543,
+      slug: 'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh',
+      name: 'Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh',
+      price: '$12.95 - $19.95',
+      priceMin: 12.95,
+      priceMax: 19.95,
+      inStock: true,
+      category: 'Live Stock',
+      image: '/images/products/himalayan-salt-lick-rope-front.webp',
+      variations: productVariations([{ name: 'Weight', variation: true, options: ['2 lb', '6 lb'] }], [
+        { id: 2560, regular_price: '12.95', weight: '0.907', sku: 'HK-LFH-2lbs', stock_status: 'instock', attributes: [{ name: 'Weight', option: '2 lb' }] },
+        { id: 2561, regular_price: '19.95', weight: '2.721', sku: 'HK-LFH-6lbs', stock_status: 'instock', attributes: [{ name: 'Weight', option: '6 lb' }] },
+      ]),
+    };
+    const cards = listingCards([prod]);
+    expect(cards).toHaveLength(2);
+    expect(cards.map(c => c.name)).toEqual(['Himalayan Pink Salt Lick — 2 lb', 'Himalayan Pink Salt Lick — 6 lb']);
+    expect(cards.map(c => c.selectedVariationId)).toEqual([2560, 2561]);
+    expect(cards.map(c => c.priceMin)).toEqual([12.95, 19.95]);
+    expect(cards.map(c => c.sku)).toEqual(['HK-LFH-2lbs', 'HK-LFH-6lbs']);
+    expect(cards.map(productCardPath)).toEqual([
+      '/products/himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh?variation=2560',
+      '/products/himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh?variation=2561',
+    ]);
+  });
 });

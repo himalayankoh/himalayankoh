@@ -96,6 +96,12 @@ export default function ProductDetailView({
   const priceKnown = isPriceKnown(product);
 
   const selectedOption = findVariationOption(product.variations, selectedGrain);
+  const isSaltLick = product.slug === 'salt-licks-for-horses' ||
+    product.slug === 'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh' ||
+    /salt-licks?-for-horses/i.test(product.slug);
+  const activeTitle = (isSaltLick && selectedOption)
+    ? `Himalayan Pink Salt Lick — ${selectedOption.label}`
+    : displayName;
   const selectedOutOfStock = selectedOption !== undefined && selectedOption.inStock === false;
   /** A variable product cannot be added until the shopper names the option. */
   const needsOption = hasVariations && selectedOption === undefined;
@@ -159,7 +165,7 @@ export default function ProductDetailView({
       await addItem(
         {
           id: String(option?.id ?? product.id),
-          name: product.name,
+          name: (isSaltLick && option) ? `Himalayan Pink Salt Lick — ${option.label}` : product.name,
           // The option's own price when one is chosen, so the optimistic line
           // matches what the store is about to price. WooCommerce still prices
           // the cart line itself; this is only what is shown while it answers.
@@ -234,7 +240,7 @@ export default function ProductDetailView({
               </>
             )}
             <ChevronRight size={14} className="mx-0.5 shrink-0" />
-            <li className="text-charcoal font-medium line-clamp-1">{displayName}</li>
+            <li className="text-charcoal font-medium line-clamp-1">{activeTitle}</li>
           </ol>
         </nav>
       )}
@@ -286,7 +292,7 @@ export default function ProductDetailView({
           )}
 
           <h1 className="font-serif text-xl md:text-2xl font-bold text-charcoal mb-3 leading-snug pr-8">
-            {displayName}
+            {activeTitle}
           </h1>
 
           <p className={`text-himalayan font-bold text-2xl ${hasVariations ? 'mb-1' : 'mb-4'}`}>
@@ -474,6 +480,44 @@ export default function ProductDetailView({
           <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={displayName} tabIndex={-1} className="max-h-[90dvh] overflow-y-auto w-full max-w-5xl rounded-2xl">{details}</div>
         </motion.div>
       </AnimatePresence>
+    );
+  }
+
+  if (variant === 'page') {
+    return (
+      <>
+        {details}
+        {ORDERING_ENABLED && (
+          <div
+            className="hk-floating-action md:hidden fixed left-3 right-3 z-30 p-2.5 bg-white/95 backdrop-blur-md border border-himalayan-line/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 transition-all duration-200"
+            style={{ bottom: 'calc(0.5rem + env(safe-area-inset-bottom) + var(--consent-space, 0px))' }}
+          >
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <img
+                src={variationImage || galleryImages[0] || product.image || '/images/placeholder-product.svg'}
+                alt={activeTitle}
+                className="w-11 h-11 rounded-lg object-contain bg-warm-white border border-gray-100 shrink-0"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-charcoal truncate">{activeTitle}</p>
+                <p className="text-sm font-bold text-himalayan-dark tabular-nums">{displayPrice}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddToCart}
+              disabled={!product.inStock || !priceKnown || isAdding || needsOption || selectedOutOfStock || (selectedOption !== undefined && selectedOption.price === null)}
+              className={`shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                addedToCart
+                  ? 'bg-green-500 text-white'
+                  : 'bg-himalayan hover:bg-himalayan-dark text-white shadow-md shadow-himalayan/20'
+              }`}
+            >
+              {isAdding ? 'Adding…' : addedToCart ? 'Added!' : needsOption ? 'Choose option' : selectedOutOfStock ? 'Out of stock' : 'Add to Cart'}
+            </button>
+          </div>
+        )}
+      </>
     );
   }
 

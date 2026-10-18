@@ -300,6 +300,28 @@ const SLUG_OVERRIDES: Record<string, Partial<ProductContent>> = {
     metaDescription:
       'Resealable pouches of unrefined Himalayan pink salt in fine and coarse grain. Keeps salt dry between refills. Shop from Himalayan Koh.',
   },
+  'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh': {
+    displayName: 'Himalayan Pink Salt Lick with Rope',
+    metaTitle: 'Himalayan Pink Salt Lick with Rope | Himalayan Koh',
+    metaDescription:
+      'Natural mineral salt lick with rope for horses and livestock. 84+ trace minerals from the Khewra Salt Range. Available in 2 lb and 6 lb.',
+    useCases: [
+      'Daily mineral supplementation for horses and cattle',
+      'Hangs in stalls, barns, or pastures with durable rope',
+      'Encourages proper hydration and normal feed intake',
+    ],
+  },
+  'salt-licks-for-horses': {
+    displayName: 'Himalayan Pink Salt Lick with Rope',
+    metaTitle: 'Himalayan Pink Salt Lick with Rope | Himalayan Koh',
+    metaDescription:
+      'Natural mineral salt lick with rope for horses and livestock. 84+ trace minerals from the Khewra Salt Range. Available in 2 lb and 6 lb.',
+    useCases: [
+      'Daily mineral supplementation for horses and cattle',
+      'Hangs in stalls, barns, or pastures with durable rope',
+      'Encourages proper hydration and normal feed intake',
+    ],
+  },
 };
 
 const GENERIC_DEFAULTS: Omit<ProductContent, 'displayName'> = {

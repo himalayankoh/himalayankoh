@@ -61,6 +61,15 @@ describe('cleanProductName', () => {
     );
   });
 
+  it("applies the approved title for the salt licks with rope by slug", () => {
+    expect(
+      cleanProductName(
+        'Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh',
+        'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh',
+      ),
+    ).toBe('Himalayan Pink Salt Lick with Rope');
+  });
+
   it('handles empty input without inventing a name', () => {
     expect(cleanProductName('')).toBe('');
     expect(cleanProductName('   ')).toBe('');

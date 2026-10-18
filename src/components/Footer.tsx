@@ -55,9 +55,9 @@ function FooterSection({ title, children }: { title: string; children: ReactNode
   const [open, setOpen] = useState(false);
   const id = useId();
   return <section className="border-b border-white/15 sm:border-0">
-    <button type="button" className="sm:hidden min-h-11 w-full flex items-center justify-between gap-3 py-2 text-sm font-semibold text-white"
+    <button type="button" className="sm:hidden min-h-11 w-full flex items-center justify-between gap-3 py-2 text-sm font-semibold text-white cursor-pointer"
       aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>
-      {title}<ChevronDown size={18} className={open ? 'rotate-180' : ''} />
+      {title}<ChevronDown size={18} className={`transition-transform duration-200 ${open ? 'rotate-180 text-himalayan' : 'text-white/70'}`} />
     </button>
     <h4 className="hidden sm:block font-serif font-bold text-base mb-3 text-white">{title}</h4>
     <div id={id} className={`${open ? 'block' : 'hidden'} sm:block pb-3 sm:pb-0`}>{children}</div>

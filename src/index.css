@@ -221,3 +221,6 @@ img {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Hide floating actions when consent banner is open */
+html[data-consent-open="true"] .hk-floating-action { display: none !important; }
