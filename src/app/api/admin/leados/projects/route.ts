@@ -9,8 +9,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    await ensureDefaultProject();
-    const projects = await listProjects();
+    let projects = await listProjects();
+    if (projects.length === 0) {
+      const defaultProject = await ensureDefaultProject();
+      projects = [defaultProject];
+    }
     return NextResponse.json({ ok: true, projects });
   } catch (error) {
     console.error('LeadOS get projects error:', error);

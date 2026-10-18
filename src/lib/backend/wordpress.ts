@@ -153,6 +153,31 @@ export async function wordpressRequestWithMeta<T>(
   path: string,
   options: WordPressRequestOptions = {}
 ): Promise<WordPressResponse<T>> {
+  const method = options.method ?? 'GET';
+  const isWrite = method !== 'GET';
+  const isTest =
+    typeof process !== 'undefined' &&
+    (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST));
+
+  try {
+    return await executeWordPressRequestWithMeta<T>(path, options);
+  } catch (error) {
+    const isTransient =
+      error instanceof WordPressApiError &&
+      (error.status === 0 || error.status === 500 || error.status === 502 || error.status === 503 || error.status === 504) &&
+      !error.message.includes('WORDPRESS_BASE_URL is empty');
+    if (!isWrite && !isTest && !options.signal?.aborted && isTransient) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      return executeWordPressRequestWithMeta<T>(path, options);
+    }
+    throw error;
+  }
+}
+
+async function executeWordPressRequestWithMeta<T>(
+  path: string,
+  options: WordPressRequestOptions = {}
+): Promise<WordPressResponse<T>> {
   const { params, revalidate, signal, headers } = options;
   const method = options.method ?? 'GET';
   const isWrite = method !== 'GET';

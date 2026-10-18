@@ -752,6 +752,7 @@ export async function getLeadOSOverviewStats() {
       searchesCount: stats.searchesCount || 0,
       defaultProject:
         projects.find((project) => project.id === HK_DEFAULT_PROJECT_ID) || projects[0] || null,
+      projects,
       recentActivity: (stats.recentActivity || []).map((entry: RawRow) => ({
         description: String(entry.description || 'LeadOS activity'),
         time: entry.time,

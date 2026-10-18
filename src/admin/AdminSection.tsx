@@ -7173,9 +7173,15 @@ export function AMarketingTraffic() {
             <p className="text-gray-600 text-[11px] leading-relaxed">
               {emailHealthData?.dmarc?.note || 'No DMARC audit has been read yet.'}
             </p>
-            <p className="text-[10px] text-gray-500">
-              Recommended: publish <code className="bg-white px-1 py-0.5 rounded font-mono text-[10px]">p=none</code> to monitor delivery.
-            </p>
+            {emailHealthData?.dmarc?.record ? (
+              <code className="text-[10px] font-mono text-gray-600 block bg-white p-1.5 rounded border border-gray-200 break-all">
+                {emailHealthData.dmarc.record}
+              </code>
+            ) : (
+              <p className="text-[10px] text-gray-500">
+                Recommended: publish <code className="bg-white px-1 py-0.5 rounded font-mono text-[10px]">p=none</code> to monitor delivery.
+              </p>
+            )}
           </div>
         </div>
 

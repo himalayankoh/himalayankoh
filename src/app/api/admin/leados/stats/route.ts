@@ -35,6 +35,7 @@ export async function GET(request: Request) {
         ...stats,
         projectsCount: stats.activeProjectsCount,
       },
+      projects: stats.projects,
     });
   } catch (error) {
     console.error('LeadOS stats error:', error);

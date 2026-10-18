@@ -536,6 +536,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const libraryUnavailable = Boolean(libraryError) && libraryLeads.length === 0;
   const [librarySearch, setLibrarySearch] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).search : '');
   const [statusFilter, setStatusFilter] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).status : 'all');
+  const [libraryPage, setLibraryPage] = useState(1);
+  const [libraryPageSize, setLibraryPageSize] = useState(50);
   const [libraryCategoryFilter, setLibraryCategoryFilter] = useState('all');
   const [libraryVerificationFilter, setLibraryVerificationFilter] = useState<'all' | 'verified' | 'unverified'>('all');
   const [librarySelectedIds, setLibrarySelectedIds] = useState<Set<string>>(new Set());
@@ -1098,25 +1100,30 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     return headers;
   }, []);
 
-  // Load stats and projects
+  // Load stats and projects (uses projects returned by /stats to avoid a second WordPress round-trip)
   const loadStatsAndProjects = useCallback(async () => {
     setLoadingStats(true);
     setStatsError(null);
     try {
       const headers = await getAuthHeaders();
-      const [resStats, resProj] = await Promise.all([
-        fetch('/api/admin/leados/stats', { headers }),
-        fetch('/api/admin/leados/projects', { headers }),
-      ]);
+      const resStats = await fetch('/api/admin/leados/stats', { headers });
       if (!resStats.ok) throw new Error(`Statistics request failed (${resStats.status}). Retrying is safe.`);
-      if (!resProj.ok) throw new Error(`Projects request failed (${resProj.status}). Retrying is safe.`);
 
-      const [s, p] = await Promise.all([resStats.json(), resProj.json()]);
+      const s = await resStats.json();
       setStats(s.stats && typeof s.stats === 'object' ? s.stats : null);
-      setProjects(Array.isArray(p.projects) ? p.projects : []);
-      if (Array.isArray(p.projects) && p.projects.length > 0) {
-        setSelectedProjectId((current) => current || p.projects[0].id);
-        setActiveProject((current) => current || p.projects[0]);
+
+      let loadedProjects = Array.isArray(s.projects) ? s.projects : null;
+      if (!loadedProjects) {
+        const resProj = await fetch('/api/admin/leados/projects', { headers });
+        if (!resProj.ok) throw new Error(`Projects request failed (${resProj.status}). Retrying is safe.`);
+        const p = await resProj.json();
+        loadedProjects = Array.isArray(p.projects) ? p.projects : [];
+      }
+
+      setProjects(loadedProjects);
+      if (loadedProjects.length > 0) {
+        setSelectedProjectId((current) => current || loadedProjects[0].id);
+        setActiveProject((current) => current || loadedProjects[0]);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'LeadOS initialization failed.';
@@ -1143,6 +1150,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const params = new URLSearchParams();
       if (librarySearch) params.set('search', librarySearch);
       if (statusFilter !== 'all') params.set('status', statusFilter);
+      params.set('page', String(libraryPage));
+      params.set('limit', String(libraryPageSize));
       const res = await fetch(`/api/admin/leados/leads?${params.toString()}`, { headers });
       if (reqSeq !== libraryRequestSeq.current) return; // Stale request discarded
 
@@ -1172,16 +1181,8 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         } catch {}
       }
       setLibraryLeads(leads);
-      if (!librarySearch && statusFilter === 'all') {
+      if (!librarySearch && statusFilter === 'all' && libraryPage === 1) {
         syncSessionLibraryCache(leads);
-      }
-
-      // Priority 5: Background prefetch of subsequent page for instant pagination
-      if (typeof d.total === 'number' && d.total > 50) {
-        const nextParams = new URLSearchParams(params);
-        nextParams.set('page', '2');
-        nextParams.set('limit', '50');
-        void fetch(`/api/admin/leados/leads?${nextParams.toString()}`, { headers }).catch(() => {});
       }
     } catch (err) {
       if (reqSeq !== libraryRequestSeq.current) return;
@@ -1193,7 +1194,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         setLoadingLibrary(false);
       }
     }
-  }, [getAuthHeaders, librarySearch, statusFilter, syncSessionLibraryCache]);
+  }, [getAuthHeaders, librarySearch, statusFilter, libraryPage, libraryPageSize, syncSessionLibraryCache]);
 
   // Load weights
   const loadWeights = useCallback(async () => {
@@ -1307,24 +1308,34 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
   useEffect(() => {
     if (activeTab === 'library') {
-      loadLibrary();
-      const timer = setTimeout(() => {
-        loadStatsAndProjects();
-        loadWeights();
-        loadCouponStatus();
-        loadMetaState();
-      }, 400);
-      return () => clearTimeout(timer);
+      void loadLibrary();
+    }
+  }, [activeTab, loadLibrary]);
+
+  useEffect(() => {
+    if (activeTab === 'library') {
+      const t1 = setTimeout(() => {
+        void loadStatsAndProjects();
+        void loadWeights();
+      }, 600);
+      const t2 = setTimeout(() => {
+        void loadCouponStatus();
+        void loadMetaState();
+      }, 1400);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     } else {
-      loadStatsAndProjects();
-      loadWeights();
+      void loadStatsAndProjects();
+      void loadWeights();
       const timer = setTimeout(() => {
-        loadCouponStatus();
-        loadMetaState();
-      }, 800);
+        void loadCouponStatus();
+        void loadMetaState();
+      }, 900);
       return () => clearTimeout(timer);
     }
-  }, [activeTab, loadLibrary, loadStatsAndProjects, loadWeights, loadCouponStatus, loadMetaState]);
+  }, [activeTab, loadStatsAndProjects, loadWeights, loadCouponStatus, loadMetaState]);
 
   // Progressive Multi-Entity / Multi-Location Search runner
   const runProgressiveSearch = async (
@@ -4398,7 +4409,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </p>
                 {!libraryUnavailable && libraryTotal !== null && libraryTotal > libraryLeads.length && (
                   <p className="text-xs text-amber-700 mt-1">
-                    Showing the first {libraryLeads.length} of {libraryTotal} saved prospects. Search or filter to reach the rest — the count above is the store's total, not this page's.
+                    {libraryPage === 1
+                      ? `Showing the first ${libraryLeads.length} of ${libraryTotal} saved prospects (Page 1 of ${Math.max(1, Math.ceil(libraryTotal / libraryPageSize))}). Use the page controls below or search/filter to browse.`
+                      : `Showing ${(libraryPage - 1) * libraryPageSize + 1}–${(libraryPage - 1) * libraryPageSize + libraryLeads.length} of ${libraryTotal} saved prospects (Page ${libraryPage} of ${Math.max(1, Math.ceil(libraryTotal / libraryPageSize))}).`}
                   </p>
                 )}
               </div>
@@ -4459,7 +4472,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-100">
                 <span className="text-[10px] font-bold text-purple-700 block uppercase tracking-wider">In Sales Pipeline</span>
                 <span className="text-xl font-bold text-purple-800 mt-0.5 block">
-                  {libraryUnavailable ? '—' : libraryLeads.filter((l) => l.status === 'qualified' || l.status === 'contacted' || l.status === 'shortlisted').length}
+                  {libraryUnavailable
+                    ? '—'
+                    : !librarySearch && statusFilter === 'all' && typeof stats?.inPipelineCount === 'number'
+                    ? (stats.inPipelineCount || 0) + (stats.contactedCount || 0)
+                    : libraryLeads.filter((l) => l.status === 'qualified' || l.status === 'contacted' || l.status === 'shortlisted').length}
                 </span>
               </div>
             </div>
@@ -4472,13 +4489,19 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   type="text"
                   placeholder="Search by business name, city, phone, email, notes, or category..."
                   value={librarySearch}
-                  onChange={(e) => setLibrarySearch(e.target.value)}
+                  onChange={(e) => {
+                    setLibrarySearch(e.target.value);
+                    setLibraryPage(1);
+                  }}
                   className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
                 {librarySearch && (
                   <button
                     type="button"
-                    onClick={() => setLibrarySearch('')}
+                    onClick={() => {
+                      setLibrarySearch('');
+                      setLibraryPage(1);
+                    }}
                     className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs font-bold"
                   >
                     ✕
@@ -4500,7 +4523,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setLibraryPage(1);
+                  }}
                   className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                 >
                   <option value="all">All Pipeline Stages</option>
@@ -5031,7 +5057,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                             style={{ width: libraryColWidths.index, minWidth: libraryColWidths.index, maxWidth: libraryColWidths.index }}
                             className="py-3 px-2 text-[11px] text-slate-400 font-medium whitespace-nowrap text-center"
                           >
-                            {idx + 1}
+                            {(libraryPage - 1) * libraryPageSize + idx + 1}
                           </td>
 
                           {/* Dynamic Columns based on user order */}
@@ -5090,6 +5116,61 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                 </table>
               </div>
             )}
+
+            {/* Pagination Footer Bar */}
+            {!libraryUnavailable && (libraryLeads.length > 0 || libraryPage > 1) && (() => {
+              const totalCount = libraryTotal ?? libraryLeads.length;
+              const totalPages = Math.max(1, Math.ceil(totalCount / libraryPageSize));
+              const startRow = libraryLeads.length === 0 ? 0 : (libraryPage - 1) * libraryPageSize + 1;
+              const endRow = (libraryPage - 1) * libraryPageSize + libraryLeads.length;
+
+              return (
+                <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="text-slate-600">
+                    Showing <span className="font-semibold text-slate-900">{startRow}–{endRow}</span> of{' '}
+                    <span className="font-semibold text-slate-900">{totalCount}</span> saved prospects
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="flex items-center gap-1.5 text-slate-600">
+                      <span>Rows:</span>
+                      <select
+                        value={libraryPageSize}
+                        onChange={(e) => {
+                          setLibraryPageSize(Number(e.target.value));
+                          setLibraryPage(1);
+                        }}
+                        className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700 font-semibold text-xs cursor-pointer"
+                      >
+                        <option value={50}>50 / page</option>
+                        <option value={100}>100 / page</option>
+                        <option value={200}>200 / page</option>
+                      </select>
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={libraryPage <= 1 || loadingLibrary}
+                        onClick={() => setLibraryPage((p) => Math.max(1, p - 1))}
+                        className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
+                      >
+                        ← Prev
+                      </button>
+                      <span className="px-2.5 py-1 font-semibold text-slate-700">
+                        Page {libraryPage} of {totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={libraryPage >= totalPages || loadingLibrary}
+                        onClick={() => setLibraryPage((p) => Math.min(totalPages, p + 1))}
+                        className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* ── 3. Centered Floating Lead Intelligence & Outreach Modal (Replaces Slide-Over Drawer) ── */}
