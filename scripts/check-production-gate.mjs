@@ -56,28 +56,33 @@ const record = (property, outcome, evidence) => {
   results.push({ property, outcome, evidence });
 };
 
-async function request(url, { method = 'GET', bearer = false, body = null, redirect = 'manual' } = {}) {
+async function request(url, { method = 'GET', bearer = false, body = null, redirect = 'manual', retries = 2 } = {}) {
   const headers = { 'User-Agent': UA, Accept: 'application/json, text/html' };
   if (bearer && TOKEN) headers.Authorization = `Bearer ${TOKEN}`;
   if (body !== null) headers['Content-Type'] = 'application/json';
-  try {
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: body === null ? undefined : JSON.stringify(body),
-      redirect,
-      signal: AbortSignal.timeout(30_000),
-    });
-    const text = await response.text();
-    let json = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      json = JSON.parse(text);
-    } catch {
-      /* HTML, or an empty body */
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 1000));
+      const response = await fetch(url, {
+        method,
+        headers,
+        body: body === null ? undefined : JSON.stringify(body),
+        redirect,
+        signal: AbortSignal.timeout(30_000),
+      });
+      const text = await response.text();
+      let json = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        /* HTML, or an empty body */
+      }
+      return { status: response.status, headers: response.headers, text, json };
+    } catch (error) {
+      if (attempt === retries) {
+        return { status: 0, headers: new Headers(), text: '', json: null, transport: String(error?.cause?.code || error?.message || error) };
+      }
     }
-    return { status: response.status, headers: response.headers, text, json };
-  } catch (error) {
-    return { status: 0, headers: new Headers(), text: '', json: null, transport: String(error?.cause?.code || error?.message || error) };
   }
 }
 
