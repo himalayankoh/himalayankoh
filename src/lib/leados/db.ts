@@ -26,6 +26,7 @@
  */
 
 import { WordPressApiError, wordpressRequest } from '@/lib/backend/wordpress';
+export { WordPressApiError };
 import { requireWordPressCredentials, hasWordPressCredentials } from '@/lib/backend/wordpressCredentials';
 import { storefrontRequest } from '@/lib/wordpress/storefrontClient';
 import type {

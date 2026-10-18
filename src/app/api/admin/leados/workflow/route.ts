@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
-import { leadosRequest, getSavedLeadById } from '@/lib/leados/db';
+import { leadosRequest, getSavedLeadById, updateSavedLead, WordPressApiError } from '@/lib/leados/db';
 import { createIntroduction, PRODUCT_INTERESTS, type ProductInterest } from '@/lib/leados/intelligence';
 import { validateOutboundCopy } from '@/lib/leados/claims';
 import { outreachReadiness } from '@/lib/leados/n8n';
@@ -22,19 +22,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid workflow type.' }, { status: 400 });
     }
 
-    let items: Array<Record<string, unknown>> = [];
+    let items: Array<Record<string, any>> = [];
     try {
-      const wpResult = await leadosRequest<{ items?: Array<Record<string, unknown>> }>('/workflow', {
+      const wpResult = await leadosRequest<{ items?: Array<Record<string, any>> }>('/workflow', {
         params: { kind, lead_id: leadId || undefined },
       });
       if (Array.isArray(wpResult.items)) {
-        items = wpResult.items;
+        items = leadId
+          ? wpResult.items.filter(
+              (it) => String(it.lead_id || it.payload?.lead_id || it.payload?.leadId || '') === leadId
+            )
+          : wpResult.items;
       }
     } catch {
-      // Fall through to fallback settings store if WP plugin endpoint is pending update
+      // Fall through to fallback settings store if WP plugin endpoint is unavailable
     }
 
-    // Also read and merge from persistent settings store
+    // Also read and merge metadata from persistent settings store
     try {
       const fallbackSettings = await siteSettingsApi.read('leados_drafts');
       if (fallbackSettings && typeof fallbackSettings === 'object') {
@@ -42,20 +46,36 @@ export async function GET(request: Request) {
           if (!v) continue;
           try {
             const parsed = JSON.parse(v);
-            if (parsed && typeof parsed === 'object') {
-              if (leadId && parsed.lead_id !== leadId && parsed.leadId !== leadId) continue;
-              if (!items.some((it) => it.id === parsed.id || it.id === k)) {
-                items.push({
-                  id: parsed.id || k,
-                  lead_id: parsed.lead_id || parsed.leadId,
-                  kind: parsed.kind || 'draft',
-                  state: parsed.state || 'draft',
-                  revision: parsed.revision || 1,
-                  payload: parsed.payload || parsed,
-                  created_at: parsed.created_at || new Date().toISOString(),
-                  updated_at: parsed.updated_at || new Date().toISOString(),
-                });
-              }
+            if (!parsed || typeof parsed !== 'object') continue;
+            const parsedLeadId = String(parsed.lead_id || parsed.leadId || parsed.payload?.lead_id || parsed.payload?.leadId || '');
+            if (leadId && parsedLeadId !== leadId) continue;
+            const targetId = String(parsed.id || k);
+            const existingIdx = items.findIndex((it) => String(it.id) === targetId);
+            if (existingIdx >= 0) {
+              // Merge rich UI metadata (outreachMode, productUrl, couponCode, recipientName) into authoritative WP record
+              const wpItem = items[existingIdx];
+              items[existingIdx] = {
+                ...wpItem,
+                payload: {
+                  ...(parsed.payload || {}),
+                  ...(wpItem.payload || {}),
+                  outreachMode: wpItem.payload?.outreachMode || parsed.payload?.outreachMode || 'wholesale',
+                  productUrl: wpItem.payload?.productUrl || parsed.payload?.productUrl,
+                  couponCode: wpItem.payload?.couponCode || parsed.payload?.couponCode,
+                  recipientName: wpItem.payload?.recipientName || parsed.payload?.recipientName,
+                },
+              };
+            } else if (kind === 'draft' && (parsed.kind || 'draft') === 'draft') {
+              items.push({
+                id: targetId,
+                lead_id: parsedLeadId,
+                kind: parsed.kind || 'draft',
+                state: parsed.state || 'draft',
+                revision: typeof parsed.revision === 'number' ? parsed.revision : 1,
+                payload: parsed.payload || parsed,
+                created_at: parsed.created_at || new Date().toISOString(),
+                updated_at: parsed.updated_at || new Date().toISOString(),
+              });
             }
           } catch {}
         }
@@ -65,6 +85,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         ok: true,
+        items,
         data: { items },
         readiness: outreachReadiness(),
         providers: {
@@ -99,9 +120,22 @@ export async function POST(request: Request) {
     }
 
     if (action === 'save_draft') {
-      const leadId = String(body.leadId || body.lead_id || '');
-      const lead = await getSavedLeadById(leadId);
+      const leadId = String(body.leadId || body.lead_id || '').trim();
+      if (!leadId) return NextResponse.json({ error: 'Lead ID is required before drafting.' }, { status: 400 });
+      let lead = await getSavedLeadById(leadId);
       if (!lead) return NextResponse.json({ error: 'Save the lead before drafting.' }, { status: 404 });
+
+      const requestedRecipient = String(body.recipient || body.recipientEmail || '').trim().toLowerCase();
+      if (requestedRecipient && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requestedRecipient)) {
+        const currentLeadEmail = (lead.email || '').trim().toLowerCase();
+        if (requestedRecipient !== currentLeadEmail) {
+          const updated = await updateSavedLead(leadId, {
+            email: requestedRecipient,
+            emailSource: lead.emailSource === 'company_website' && !currentLeadEmail ? 'company_website' : 'manually_entered',
+          });
+          if (updated) lead = updated;
+        }
+      }
 
       const interest: ProductInterest = PRODUCT_INTERESTS.includes(body.productInterest) ? body.productInterest : 'horse_salt';
       const intro = body.assist === true ? await assistIntroduction(lead, interest) : createIntroduction(lead, interest);
@@ -114,11 +148,17 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Remove unsupported product claims before saving.', claims: checked.claims }, { status: 400 });
       }
 
-      const draftId = String(body.id || body.draftId || `draft-${leadId}-${Date.now()}`);
-      const draftState = String(body.state || 'draft');
+      const existingId =
+        typeof (body.id || body.draftId) === 'string' && String(body.id || body.draftId).trim()
+          ? String(body.id || body.draftId).trim()
+          : undefined;
+      const existingRevision = Number.isInteger(body.revision) ? Number(body.revision) : undefined;
+      const recipientFinal = requestedRecipient || (lead.email || '').trim().toLowerCase();
+
       const draftPayload = {
         leadId,
-        recipient: String(body.recipient || lead.email || '').trim(),
+        recipient: recipientFinal,
+        recipientName: typeof body.recipientName === 'string' ? body.recipientName.trim() : lead.businessName,
         subject,
         message,
         productInterest: interest,
@@ -127,50 +167,94 @@ export async function POST(request: Request) {
         outreachMode: typeof body.outreachMode === 'string' ? body.outreachMode : 'wholesale',
         notes: typeof body.notes === 'string' ? body.notes : '',
         senderEmail: 'sales@himalayankoh.com',
+        approvedBy: null,
         updatedAt: new Date().toISOString(),
       };
 
-      const workflowRecord = {
-        id: draftId,
-        lead_id: leadId,
-        kind: 'draft',
-        state: draftState,
-        revision: Number.isInteger(body.revision) ? body.revision + 1 : 1,
-        payload: draftPayload,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      // Try WordPress leados_workflows table first
       try {
-        const wpRes = await leadosRequest('/workflow', {
+        const wpRes = await leadosRequest<{ item?: Record<string, any> }>('/workflow', {
           method: 'POST',
           body: {
             action: 'save_draft',
-            id: draftId,
-            state: draftState,
-            revision: workflowRecord.revision,
-            ...draftPayload,
+            ...(existingId ? { id: existingId } : {}),
+            ...(existingRevision !== undefined ? { revision: existingRevision } : {}),
+            ...(recipientFinal ? { recipient: recipientFinal } : {}),
             leadId,
+            subject,
+            message,
+            productInterest: interest,
           },
         });
-        // Also mirror into site settings for instant durability
+
+        const wpItem = wpRes?.item;
+        const savedId = String(wpItem?.id || existingId || `draft-${leadId}-${Date.now()}`);
+        const savedRevision = typeof wpItem?.revision === 'number' ? wpItem.revision : (existingRevision ? existingRevision + 1 : 1);
+        const savedState = String(wpItem?.state || 'draft');
+
+        const workflowRecord = {
+          id: savedId,
+          lead_id: leadId,
+          kind: 'draft',
+          state: savedState,
+          revision: savedRevision,
+          payload: {
+            ...draftPayload,
+            ...(wpItem?.payload || {}),
+            recipient: wpItem?.payload?.recipient || recipientFinal,
+            subject,
+            message,
+            outreachMode: draftPayload.outreachMode,
+            productUrl: draftPayload.productUrl,
+            couponCode: draftPayload.couponCode,
+            recipientName: draftPayload.recipientName,
+          },
+          created_at: wpItem?.created_at || new Date().toISOString(),
+          updated_at: wpItem?.updated_at || new Date().toISOString(),
+        };
+
         await siteSettingsApi.write('leados_drafts', {
-          [draftId]: JSON.stringify(workflowRecord),
+          [savedId]: JSON.stringify(workflowRecord),
         }).catch(() => {});
 
-        return NextResponse.json({ ok: true, data: wpRes, item: workflowRecord }, { headers: { 'Cache-Control': 'private, no-store' } });
-      } catch {
-        // Fallback to site settings store if WP table endpoint is unreachable
+        return NextResponse.json(
+          {
+            ok: true,
+            id: savedId,
+            revision: savedRevision,
+            state: savedState,
+            item: workflowRecord,
+            data: { ok: true, id: savedId, revision: savedRevision, state: savedState, item: workflowRecord },
+          },
+          { headers: { 'Cache-Control': 'private, no-store' } }
+        );
+      } catch (err) {
+        if (err instanceof WordPressApiError && err.status >= 400 && err.status < 500) {
+          return NextResponse.json({ error: err.message }, { status: err.status });
+        }
+        const fallbackId = existingId || `draft-${leadId}-${Date.now()}`;
+        const fallbackRevision = existingRevision ? existingRevision + 1 : 1;
+        const workflowRecord = {
+          id: fallbackId,
+          lead_id: leadId,
+          kind: 'draft',
+          state: 'draft',
+          revision: fallbackRevision,
+          payload: draftPayload,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
         await siteSettingsApi.write('leados_drafts', {
-          [draftId]: JSON.stringify(workflowRecord),
+          [fallbackId]: JSON.stringify(workflowRecord),
         });
 
         return NextResponse.json(
           {
             ok: true,
-            data: { ok: true, id: draftId, revision: workflowRecord.revision, state: draftState, item: workflowRecord },
+            id: fallbackId,
+            revision: fallbackRevision,
+            state: 'draft',
             item: workflowRecord,
+            data: { ok: true, id: fallbackId, revision: fallbackRevision, state: 'draft', item: workflowRecord },
           },
           { headers: { 'Cache-Control': 'private, no-store' } }
         );
@@ -178,30 +262,92 @@ export async function POST(request: Request) {
     }
 
     if (action === 'update_status' || action === 'approve' || action === 'reject') {
-      const targetId = String(body.id || body.draftId || '');
-      const newState = action === 'approve' ? 'owner_approved' : action === 'reject' ? 'draft' : String(body.state || 'draft');
+      const targetId = String(body.id || body.draftId || '').trim();
+      if (!targetId) {
+        return NextResponse.json({ error: 'Draft ID is required.' }, { status: 400 });
+      }
+      if (action === 'approve' && !Number.isInteger(body.revision)) {
+        return NextResponse.json({ error: 'Draft revision is required for approval.' }, { status: 400 });
+      }
+      const newState = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : String(body.state || 'draft');
 
       try {
-        const wpRes = await leadosRequest('/workflow', { method: 'POST', body: { ...body, state: newState } });
-        return NextResponse.json({ ok: true, data: wpRes });
-      } catch {
-        // Fallback to updating draft in settings store
+        const wpRes = await leadosRequest<{ item?: Record<string, any> }>('/workflow', {
+          method: 'POST',
+          body: {
+            ...body,
+            id: targetId,
+            action,
+            state: newState,
+          },
+        });
+        const wpItem = wpRes?.item;
+        const updatedRev = typeof wpItem?.revision === 'number' ? wpItem.revision : (Number.isInteger(body.revision) ? Number(body.revision) + 1 : 1);
+        const updatedState = String(wpItem?.state || newState);
+
+        // Mirror state and revision into settings fallback store if present
+        try {
+          const existingSettings = await siteSettingsApi.read('leados_drafts');
+          if (existingSettings && existingSettings[targetId]) {
+            const parsed = JSON.parse(existingSettings[targetId]!);
+            parsed.state = updatedState;
+            parsed.revision = updatedRev;
+            parsed.payload = {
+              ...(parsed.payload || {}),
+              ...(wpItem?.payload || {}),
+            };
+            parsed.updated_at = new Date().toISOString();
+            await siteSettingsApi.write('leados_drafts', { [targetId]: JSON.stringify(parsed) });
+          }
+        } catch {}
+
+        return NextResponse.json({
+          ok: true,
+          id: targetId,
+          revision: updatedRev,
+          state: updatedState,
+          item: wpItem,
+          data: wpRes,
+        });
+      } catch (err) {
+        if (err instanceof WordPressApiError && err.status >= 400 && err.status < 500) {
+          return NextResponse.json({ error: err.message }, { status: err.status });
+        }
+        // Fallback to updating draft in settings store only on upstream 5xx/network error
         const existingSettings = await siteSettingsApi.read('leados_drafts');
         if (existingSettings && targetId && existingSettings[targetId]) {
           try {
             const parsed = JSON.parse(existingSettings[targetId]!);
+            if (Number.isInteger(body.revision) && parsed.revision !== body.revision) {
+              return NextResponse.json({ error: 'Draft revision changed; refresh.' }, { status: 409 });
+            }
             parsed.state = newState;
+            parsed.revision = (parsed.revision || 1) + 1;
+            if (action === 'approve') {
+              parsed.payload = { ...(parsed.payload || {}), approvedBy: 1, approvedAt: new Date().toISOString() };
+            }
             parsed.updated_at = new Date().toISOString();
             await siteSettingsApi.write('leados_drafts', { [targetId]: JSON.stringify(parsed) });
-            return NextResponse.json({ ok: true, data: { ok: true, id: targetId, state: newState } });
+            return NextResponse.json({
+              ok: true,
+              id: targetId,
+              revision: parsed.revision,
+              state: newState,
+              item: parsed,
+              data: { ok: true, id: targetId, revision: parsed.revision, state: newState, item: parsed },
+            });
           } catch {}
         }
+        throw err;
       }
     }
 
     const data = await leadosRequest('/workflow', { method: 'POST', body });
     return NextResponse.json({ ok: true, data }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err: unknown) {
+    if (err instanceof WordPressApiError && err.status >= 400 && err.status < 500) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `Workflow action error: ${msg}` }, { status: 409 });
   }

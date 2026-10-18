@@ -537,10 +537,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [librarySearch, setLibrarySearch] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).search : '');
   const [statusFilter, setStatusFilter] = useState(() => typeof window !== 'undefined' ? parseLeadOSUrlState(window.location.href).status : 'all');
   const [libraryPage, setLibraryPage] = useState(1);
-  const [libraryPageSize, setLibraryPageSize] = useState(500);
+  const [libraryPageSize, setLibraryPageSize] = useState(100);
   const [fitScreenMode, setFitScreenMode] = useState(true);
   const [enrichingLibrary, setEnrichingLibrary] = useState(false);
   const [syncingOmnisend, setSyncingOmnisend] = useState(false);
+  const [omnisendSyncPreview, setOmnisendSyncPreview] = useState<{
+    totalLeads: number;
+    totalWithEmail: number;
+    duplicateEmailCount: number;
+    excludedOrSuppressedCount: number;
+    eligibleCount: number;
+    consentStatus: string;
+  } | null>(null);
   const [libraryActionNotice, setLibraryActionNotice] = useState<string | null>(null);
   const [libraryCategoryFilter, setLibraryCategoryFilter] = useState('all');
   const [libraryVerificationFilter, setLibraryVerificationFilter] = useState<'all' | 'verified' | 'unverified'>('all');
@@ -560,8 +568,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     recommendations: string[];
   } | null>(null);
   const [showOwnerApprovalModal, setShowOwnerApprovalModal] = useState(false);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
   const [activeDraftRevision, setActiveDraftRevision] = useState<number | null>(null);
+  const [activeDraftState, setActiveDraftState] = useState<string | null>(null);
   const [activeDraftSavedAt, setActiveDraftSavedAt] = useState<string | null>(null);
+  const [draftDirty, setDraftDirty] = useState(false);
   const [leadSavedDrafts, setLeadSavedDrafts] = useState<any[]>([]);
   const [loadingDrafts, setLoadingDrafts] = useState(false);
   const [productRelevanceInfo, setProductRelevanceInfo] = useState<any>(null);
@@ -1052,6 +1063,13 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     return result;
   }, [libraryLeads, librarySearch, libraryCategoryFilter, statusFilter, libraryVerificationFilter, libraryQuickContactFilter, librarySortField, librarySortDirection]);
 
+  const totalLibraryPages = Math.max(1, Math.ceil(filteredLibraryLeads.length / libraryPageSize));
+  const safeLibraryPage = Math.min(libraryPage, totalLibraryPages);
+  const paginatedLibraryLeads = React.useMemo(() => {
+    const start = (safeLibraryPage - 1) * libraryPageSize;
+    return filteredLibraryLeads.slice(start, start + libraryPageSize);
+  }, [filteredLibraryLeads, safeLibraryPage, libraryPageSize]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
@@ -1164,10 +1182,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     }
   }, [getAuthHeaders]);
 
-  // Load saved library
+  // Load saved library once into memory (up to 500 leads) so search, channel filters, and pagination are instant without hammering WordPress/MySQL
   const loadLibrary = useCallback(async () => {
     const reqSeq = ++libraryRequestSeq.current;
-    // Only show full blocking spinner if no leads are available to display
     setLibraryLeads((current) => {
       if (current.length === 0) {
         setLoadingLibrary(true);
@@ -1177,23 +1194,15 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     setLibraryError(null);
     try {
       const headers = await getAuthHeaders();
-      const params = new URLSearchParams();
-      if (librarySearch) params.set('search', librarySearch);
-      if (statusFilter !== 'all') params.set('status', statusFilter);
-      params.set('page', String(libraryPage));
-      params.set('limit', String(libraryPageSize));
-      const res = await fetch(`/api/admin/leados/leads?${params.toString()}`, { headers });
-      if (reqSeq !== libraryRequestSeq.current) return; // Stale request discarded
+      const res = await fetch('/api/admin/leados/leads?page=1&limit=500', { headers });
+      if (reqSeq !== libraryRequestSeq.current) return;
 
       if (!res.ok) {
-        // The route answers with what actually went wrong (an origin outage, an
-        // admin session that expired) — a bare status code turned all of those into
-        // the same "failed (500)".
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error || `Lead Library request failed (${res.status})`);
       }
       const d = await res.json();
-      if (reqSeq !== libraryRequestSeq.current) return; // Stale response discarded
+      if (reqSeq !== libraryRequestSeq.current) return;
 
       if (!Array.isArray(d.leads)) throw new Error('Lead Library returned an invalid response.');
       const leads = [...d.leads];
@@ -1211,9 +1220,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         } catch {}
       }
       setLibraryLeads(leads);
-      if (!librarySearch && statusFilter === 'all' && libraryPage === 1) {
-        syncSessionLibraryCache(leads);
-      }
+      syncSessionLibraryCache(leads);
     } catch (err) {
       if (reqSeq !== libraryRequestSeq.current) return;
       const message = err instanceof Error ? err.message : 'Lead Library failed to load.';
@@ -1224,7 +1231,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         setLoadingLibrary(false);
       }
     }
-  }, [getAuthHeaders, librarySearch, statusFilter, libraryPage, libraryPageSize, syncSessionLibraryCache]);
+  }, [getAuthHeaders, syncSessionLibraryCache]);
 
   const handleBatchEnrichContacts = async () => {
     setEnrichingLibrary(true);
@@ -1249,6 +1256,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     }
   };
 
+  // Step 1: Preview eligible B2B contacts before syncing to Omnisend (explicitly owner-controlled)
   const handleSyncOmnisend = async () => {
     setSyncingOmnisend(true);
     setLibraryActionNotice(null);
@@ -1257,12 +1265,41 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const res = await fetch('/api/admin/leados/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ action: 'sync_omnisend' }),
+        body: JSON.stringify({ action: 'sync_omnisend', dryRun: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Omnisend preview failed');
+      setOmnisendSyncPreview({
+        totalLeads: data.totalLeads ?? libraryLeads.length,
+        totalWithEmail: data.totalWithEmail ?? 0,
+        duplicateEmailCount: data.duplicateEmailCount ?? 0,
+        excludedOrSuppressedCount: data.excludedOrSuppressedCount ?? 0,
+        eligibleCount: data.eligibleCount ?? 0,
+        consentStatus: data.consentStatus || 'nonSubscribed',
+      });
+    } catch (err) {
+      setLibraryActionNotice(err instanceof Error ? err.message : 'Omnisend sync preview failed.');
+    } finally {
+      setSyncingOmnisend(false);
+    }
+  };
+
+  // Step 2: Execute confirmed bulk sync (preserving nonSubscribed B2B status)
+  const handleConfirmSyncOmnisend = async () => {
+    setSyncingOmnisend(true);
+    setLibraryActionNotice(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/admin/leados/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ action: 'sync_omnisend', confirm: true, dryRun: false }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Omnisend sync failed');
+      setOmnisendSyncPreview(null);
       setLibraryActionNotice(
-        `Omnisend Sync Complete: ${data.syncedCount ?? 0} verified email prospects synced to Omnisend CRM.`
+        `Omnisend Sync Complete: ${data.syncedCount ?? 0} of ${data.eligibleCount ?? 0} eligible unique B2B contacts synced as nonSubscribed (${data.duplicateEmailCount ?? 0} duplicate branch emails & ${data.excludedOrSuppressedCount ?? 0} suppressed/excluded skipped).`
       );
     } catch (err) {
       setLibraryActionNotice(err instanceof Error ? err.message : 'Omnisend sync failed.');
@@ -1924,19 +1961,29 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
       const res = await fetch(`/api/admin/leados/workflow?lead_id=${encodeURIComponent(leadId)}&kind=draft`, { headers });
       if (res.ok) {
         const d = await res.json();
-        if (Array.isArray(d.items) && d.items.length > 0) {
-          setLeadSavedDrafts(d.items);
-          const latest = d.items[0];
+        const items = Array.isArray(d.items) ? d.items : Array.isArray(d.data?.items) ? d.data.items : [];
+        if (items.length > 0) {
+          setLeadSavedDrafts(items);
+          const latest = items[0];
+          setActiveDraftId(latest.id || null);
+          setActiveDraftRevision(latest.revision || 1);
+          setActiveDraftState(latest.state || 'draft');
+          setActiveDraftSavedAt(latest.updated_at || latest.created_at || null);
+          if (latest.payload?.recipient) setRecipientEmail(latest.payload.recipient);
+          else if (latest.payload?.recipientEmail) setRecipientEmail(latest.payload.recipientEmail);
+          if (latest.payload?.recipientName) setRecipientName(latest.payload.recipientName);
           if (latest.payload?.subject) setEmailSubject(latest.payload.subject);
           if (latest.payload?.message) setEmailBody(latest.payload.message);
           if (latest.payload?.outreachMode) setOutreachMode(latest.payload.outreachMode);
           if (latest.payload?.productUrl) setVerifiedProductUrl(latest.payload.productUrl);
-          setActiveDraftRevision(latest.revision || 1);
-          setActiveDraftSavedAt(latest.updated_at || latest.created_at);
+          setDraftDirty(false);
         } else {
           setLeadSavedDrafts([]);
+          setActiveDraftId(null);
           setActiveDraftRevision(null);
+          setActiveDraftState(null);
           setActiveDraftSavedAt(null);
+          setDraftDirty(false);
         }
       }
     } catch {
@@ -2046,6 +2093,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     // Sync outreach state
     setOutreachActiveLead(lead);
     setActiveOutreachLeadId(lead.id || undefined);
+    setActiveDraftId(null);
+    setActiveDraftRevision(null);
+    setActiveDraftState(null);
+    setActiveDraftSavedAt(null);
+    setDraftDirty(false);
     setRecipientName(lead.businessName);
     setRecipientEmail(lead.email || '');
     setRecipientEmailSource(lead.emailSource || (lead.email ? 'discovered_osm' : 'unverified'));
@@ -2069,8 +2121,14 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     loadDraftForLead(lead.id);
   };
 
+  const markDraftEdited = () => {
+    setDraftDirty(true);
+    setActiveDraftState((prev) => (prev === 'approved' ? 'draft' : prev));
+  };
+
   const handleSelectOutreachMode = (mode: 'retail' | 'wholesale' | 'private_label') => {
     setOutreachMode(mode);
+    markDraftEdited();
     if (!selectedDrawerLead) return;
     const prepared = createOutreachMessage(selectedDrawerLead, {
       mode,
@@ -2243,10 +2301,117 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
   const handleTemplateSelect = (template: OutreachTemplate) => {
     setSelectedTemplate(template);
+    markDraftEdited();
     const name = recipientName || 'Partner';
     const city = 'your area';
     setEmailSubject(template.subject.replace(/\{business_name\}/g, name).replace(/\{city\}/g, city));
     setEmailBody(template.body.replace(/\{business_name\}/g, name).replace(/\{city\}/g, city));
+  };
+
+  const persistCurrentDraft = async (headers: Record<string, string>) => {
+    const trimmedEmail = recipientEmail.trim();
+    const res = await fetch('/api/admin/leados/workflow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({
+        action: 'save_draft',
+        id: activeDraftId || undefined,
+        revision: activeDraftRevision || undefined,
+        leadId: activeOutreachLeadId,
+        kind: 'draft',
+        state: 'draft',
+        subject: emailSubject.trim(),
+        message: emailBody.trim(),
+        recipient: trimmedEmail,
+        recipientEmail: trimmedEmail,
+        recipientName: recipientName.trim(),
+        senderEmail: officialSenderEmail,
+        outreachMode,
+        productUrl: verifiedProductUrl,
+        couponCode: outreachMode === 'retail' ? verifiedCouponCode : undefined,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to save persistent draft');
+
+    const savedId: string =
+      data.id ||
+      data.item?.id ||
+      data.data?.item?.id ||
+      activeDraftId ||
+      `draft-${activeOutreachLeadId || 'lead'}`;
+    const savedRev: number =
+      typeof data.revision === 'number'
+        ? data.revision
+        : typeof data.item?.revision === 'number'
+        ? data.item.revision
+        : typeof data.data?.item?.revision === 'number'
+        ? data.data.item.revision
+        : activeDraftRevision
+        ? activeDraftRevision + 1
+        : 1;
+    const savedAt = new Date().toISOString();
+
+    setActiveDraftId(savedId);
+    setActiveDraftRevision(savedRev);
+    setActiveDraftState('draft');
+    setActiveDraftSavedAt(savedAt);
+    setDraftDirty(false);
+
+    if (activeOutreachLeadId && trimmedEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setSelectedDrawerLead((prev) =>
+        prev && prev.id === activeOutreachLeadId
+          ? { ...prev, email: trimmedEmail, emailSource: prev.email === trimmedEmail ? prev.emailSource : 'manually_entered' }
+          : prev
+      );
+      setLibraryLeads((prev) => {
+        const next = prev.map((l) =>
+          l.id === activeOutreachLeadId
+            ? { ...l, email: trimmedEmail, emailSource: l.email === trimmedEmail ? l.emailSource : ('manually_entered' as const) }
+            : l
+        );
+        syncSessionLibraryCache(next);
+        return next;
+      });
+    }
+
+    return { id: savedId, revision: savedRev };
+  };
+
+  const handlePrepareApprovalModal = async () => {
+    if (!recipientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail.trim())) {
+      setSendResultNotice({ ok: false, msg: 'A verified recipient email address is required before approval.' });
+      return;
+    }
+    if (!emailSubject.trim()) {
+      setSendResultNotice({ ok: false, msg: 'Email subject line is required.' });
+      return;
+    }
+    if (!emailBody.trim()) {
+      setSendResultNotice({ ok: false, msg: 'Email message body is required.' });
+      return;
+    }
+
+    // Ensure the current draft and any edits are persisted before opening the Owner Approval Modal
+    if (!activeDraftId || !activeDraftRevision || draftDirty) {
+      setSendingOutreach(true);
+      setSendResultNotice(null);
+      try {
+        const headers = await getAuthHeaders();
+        await persistCurrentDraft(headers);
+        if (activeOutreachLeadId) {
+          void loadDraftForLead(activeOutreachLeadId);
+        }
+      } catch (err: any) {
+        setSendResultNotice({ ok: false, msg: err.message || 'Unable to persist draft before approval.' });
+        setSendingOutreach(false);
+        return;
+      }
+      setSendingOutreach(false);
+    }
+
+    setShowOwnerApprovalModal(true);
   };
 
   const handleSendOutreach = async (actionType: 'draft' | 'test' | 'send' = 'send', e?: React.FormEvent) => {
@@ -2272,75 +2437,122 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
       // True Draft Persistence: Save to WordPress DB wp_leados_workflows + Settings Mirror without sending email
       if (actionType === 'draft') {
-        const res = await fetch('/api/admin/leados/workflow', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({
-            action: 'save_draft',
-            leadId: activeOutreachLeadId,
-            kind: 'draft',
-            state: 'draft',
-            subject: emailSubject.trim(),
-            message: emailBody.trim(),
-            recipientEmail: recipientEmail.trim(),
-            recipientName: recipientName.trim(),
-            senderEmail: officialSenderEmail,
-            outreachMode,
-            productUrl: verifiedProductUrl,
-            couponCode: outreachMode === 'retail' ? verifiedCouponCode : undefined,
-          }),
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to save persistent draft');
-
-        const newRev = data.revision || (activeDraftRevision ? activeDraftRevision + 1 : 1);
-        setActiveDraftRevision(newRev);
-        setActiveDraftSavedAt(new Date().toISOString());
+        const saved = await persistCurrentDraft(headers);
 
         setSendResultNotice({
           ok: true,
-          msg: `Draft revision #${newRev} saved to WordPress database. Survives browser refresh & restarts.`,
+          msg: `Draft ${saved.id} (revision #${saved.revision}) saved to WordPress database. No email was sent.`,
           simulated: true,
         });
 
         if (activeOutreachLeadId) {
-          loadDraftForLead(activeOutreachLeadId);
+          await loadDraftForLead(activeOutreachLeadId);
         }
         return;
       }
 
-      const targetEmail = actionType === 'test' ? 'sales@himalayankoh.com' : recipientEmail.trim();
-      const isSimulated = actionType === 'test';
+      if (actionType === 'test') {
+        const targetEmail = 'sales@himalayankoh.com';
+        const res = await fetch('/api/admin/leados/outreach/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({
+            leadId: activeOutreachLeadId,
+            recipientEmail: targetEmail,
+            recipientName: recipientName.trim(),
+            subject: emailSubject.trim(),
+            message: emailBody.trim(),
+            senderEmail: officialSenderEmail,
+            outreachMode,
+            couponCode: outreachMode === 'retail' ? verifiedCouponCode : undefined,
+            simulation: true,
+            actionType: 'test',
+          }),
+        });
 
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Failed to simulate outreach');
+
+        setSendResultNotice({
+          ok: true,
+          msg: data.message || `[SIMULATION] Test message prepared for ${targetEmail}. No external email sent and no Omnisend contact created.`,
+          simulated: true,
+        });
+        return;
+      }
+
+      // Real Owner-Confirmed Dispatch ('send'):
+      // 1. Ensure draft is persisted and up-to-date
+      let draftId = activeDraftId;
+      let revision = activeDraftRevision;
+      if (!draftId || !revision || draftDirty) {
+        const saved = await persistCurrentDraft(headers);
+        draftId = saved.id;
+        revision = saved.revision;
+      }
+
+      // 2. Owner-approve the exact draft revision in WordPress workflow store
+      let approvedRevision = revision;
+      if (activeDraftState !== 'approved') {
+        const approveRes = await fetch('/api/admin/leados/workflow', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({
+            action: 'approve',
+            id: draftId,
+            revision,
+            leadId: activeOutreachLeadId,
+          }),
+        });
+        const approveData = await approveRes.json().catch(() => ({}));
+        if (!approveRes.ok) {
+          throw new Error(approveData.error || 'Failed to approve outreach draft.');
+        }
+        approvedRevision =
+          typeof approveData.revision === 'number'
+            ? approveData.revision
+            : typeof approveData.item?.revision === 'number'
+            ? approveData.item.revision
+            : typeof approveData.data?.item?.revision === 'number'
+            ? approveData.data.item.revision
+            : revision + 1;
+        setActiveDraftRevision(approvedRevision);
+        setActiveDraftState('approved');
+      }
+
+      // 3. Dispatch using persisted approved draftId and current approvedRevision
       const res = await fetch('/api/admin/leados/outreach/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({
+          draftId,
+          revision: approvedRevision,
           leadId: activeOutreachLeadId,
-          recipientEmail: targetEmail,
+          recipientEmail: recipientEmail.trim(),
           recipientName: recipientName.trim(),
           subject: emailSubject.trim(),
           message: emailBody.trim(),
           senderEmail: officialSenderEmail,
           outreachMode,
           couponCode: outreachMode === 'retail' ? verifiedCouponCode : undefined,
-          simulation: isSimulated,
-          actionType,
+          simulation: false,
+          actionType: 'send',
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Failed to dispatch email');
 
+      setActiveDraftState(data.state || 'queued');
       setSendResultNotice({
         ok: true,
-        msg: actionType === 'test'
-          ? `[SIMULATION] Test message prepared for ${targetEmail} in approval mode.`
-          : 'Outreach approved by owner and queued for dispatch via verified provider.',
-        simulated: isSimulated,
+        msg: `Outreach draft ${draftId} (rev #${approvedRevision}) approved by owner and queued for dispatch.`,
+        simulated: false,
       });
 
+      if (activeOutreachLeadId) {
+        void loadDraftForLead(activeOutreachLeadId);
+      }
       loadLibrary();
     } catch (err: any) {
       setSendResultNotice({ ok: false, msg: err.message || 'Error occurred during email dispatch.' });
@@ -5256,7 +5468,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
-                    {filteredLibraryLeads.map((lead, idx) => {
+                    {paginatedLibraryLeads.map((lead, idx) => {
                       const isSelected = librarySelectedIds.has(lead.id);
                       const isBeingDragged = draggedLeadId === lead.id;
                       const isDragOver = dragOverLeadId === lead.id;
@@ -5294,7 +5506,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 <button
                                   type="button"
                                   onClick={() => handleMoveRowOneStep(lead.id, 'up')}
-                                  disabled={idx === 0}
+                                  disabled={(safeLibraryPage - 1) * libraryPageSize + idx === 0}
                                   className="text-[10px] text-slate-800 hover:text-indigo-700 disabled:opacity-20 px-0.5 font-black cursor-pointer"
                                   title="Move row up"
                                 >
@@ -5303,7 +5515,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 <button
                                   type="button"
                                   onClick={() => handleMoveRowOneStep(lead.id, 'down')}
-                                  disabled={idx === filteredLibraryLeads.length - 1}
+                                  disabled={(safeLibraryPage - 1) * libraryPageSize + idx >= filteredLibraryLeads.length - 1}
                                   className="text-[10px] text-slate-800 hover:text-indigo-700 disabled:opacity-20 px-0.5 font-black cursor-pointer"
                                   title="Move row down"
                                 >
@@ -5332,11 +5544,11 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                             style={fitScreenMode ? undefined : { width: libraryColWidths.index, minWidth: libraryColWidths.index, maxWidth: libraryColWidths.index }}
                             className="py-3 px-1.5 text-xs text-slate-800 font-extrabold whitespace-nowrap text-center"
                           >
-                            {(libraryPage - 1) * libraryPageSize + idx + 1}
+                            {(safeLibraryPage - 1) * libraryPageSize + idx + 1}
                           </td>
 
                           {/* Dynamic Columns based on user order */}
-                          {visibleColOrder.map((colKey) => renderLeadCell(colKey, lead, idx))}
+                          {visibleColOrder.map((colKey) => renderLeadCell(colKey, lead, (safeLibraryPage - 1) * libraryPageSize + idx))}
 
                           {/* Actions */}
                           <td
@@ -5395,15 +5607,16 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             {/* Pagination Footer Bar */}
             {!libraryUnavailable && (libraryLeads.length > 0 || libraryPage > 1) && (() => {
               const totalCount = libraryTotal ?? libraryLeads.length;
-              const totalPages = Math.max(1, Math.ceil(totalCount / libraryPageSize));
-              const startRow = libraryLeads.length === 0 ? 0 : (libraryPage - 1) * libraryPageSize + 1;
-              const endRow = (libraryPage - 1) * libraryPageSize + libraryLeads.length;
+              const matchCount = filteredLibraryLeads.length;
+              const startRow = matchCount === 0 ? 0 : (safeLibraryPage - 1) * libraryPageSize + 1;
+              const endRow = Math.min(matchCount, safeLibraryPage * libraryPageSize);
 
               return (
                 <div className="px-4 py-3 border-t border-slate-300 bg-slate-100/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                   <div className="text-slate-800 font-semibold">
-                    Showing <span className="font-extrabold text-slate-950">{filteredLibraryLeads.length}</span> matching leads (loaded <span className="font-extrabold text-slate-950">{startRow}–{endRow}</span> of{' '}
-                    <span className="font-extrabold text-slate-950">{totalCount}</span> total saved)
+                    Showing <span className="font-extrabold text-slate-950">{startRow}–{endRow}</span> of{' '}
+                    <span className="font-extrabold text-slate-950">{matchCount}</span> matching leads (
+                    <span className="font-extrabold text-slate-950">{totalCount}</span> total saved in library)
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <label className="flex items-center gap-1.5 text-slate-800 font-bold">
@@ -5425,19 +5638,19 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        disabled={libraryPage <= 1 || loadingLibrary}
+                        disabled={safeLibraryPage <= 1 || loadingLibrary}
                         onClick={() => setLibraryPage((p) => Math.max(1, p - 1))}
                         className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-200 text-slate-900 font-extrabold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
                       >
                         ← Prev
                       </button>
                       <span className="px-2.5 py-1 font-extrabold text-slate-900">
-                        Page {libraryPage} of {totalPages}
+                        Page {safeLibraryPage} of {totalLibraryPages}
                       </span>
                       <button
                         type="button"
-                        disabled={libraryPage >= totalPages || loadingLibrary}
-                        onClick={() => setLibraryPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={safeLibraryPage >= totalLibraryPages || loadingLibrary}
+                        onClick={() => setLibraryPage((p) => Math.min(totalLibraryPages, p + 1))}
                         className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-200 text-slate-900 font-extrabold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
                       >
                         Next →
@@ -5448,6 +5661,89 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               );
             })()}
           </div>
+
+          {/* ── Omnisend Bulk Sync Owner Confirmation Modal ── */}
+          {omnisendSyncPreview && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+              <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 flex-shrink-0">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-slate-950 text-sm">Confirm Omnisend B2B Contact Sync</h4>
+                      <p className="text-xs text-slate-600 mt-0.5">
+                        Review eligible B2B prospects before syncing to Omnisend CRM.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOmnisendSyncPreview(null)}
+                    className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600 font-medium">Total Saved Prospects:</span>
+                    <span className="font-bold text-slate-900">{omnisendSyncPreview.totalLeads}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600 font-medium">Prospects with Valid Email:</span>
+                    <span className="font-bold text-slate-900">{omnisendSyncPreview.totalWithEmail}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600 font-medium">Duplicate Multi-Branch Emails Skipped:</span>
+                    <span className="font-bold text-amber-700">−{omnisendSyncPreview.duplicateEmailCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-600 font-medium">Suppressed / Do-Not-Contact Excluded:</span>
+                    <span className="font-bold text-rose-700">−{omnisendSyncPreview.excludedOrSuppressedCount}</span>
+                  </div>
+                  <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
+                    <span className="font-extrabold text-slate-900">Eligible Unique Contacts to Sync:</span>
+                    <span className="text-sm font-black text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                      {omnisendSyncPreview.eligibleCount}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-950 space-y-1">
+                  <div className="font-bold">Consent &amp; Compliance Safeguard:</div>
+                  <p>
+                    Discovered B2B prospects are synced strictly with <code className="font-mono font-bold bg-amber-100 px-1 py-0.5 rounded">{omnisendSyncPreview.consentStatus}</code> status. No prospect is marked as a subscribed marketing contact and no promotional email is automatically sent.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setOmnisendSyncPreview(null)}
+                    disabled={syncingOmnisend}
+                    className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleConfirmSyncOmnisend()}
+                    disabled={syncingOmnisend || omnisendSyncPreview.eligibleCount === 0}
+                    className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold transition shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {syncingOmnisend ? (
+                      <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Syncing {omnisendSyncPreview.eligibleCount} Contacts…</>
+                    ) : (
+                      <>Confirm Sync ({omnisendSyncPreview.eligibleCount} Eligible)</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── 3. Centered Floating Lead Intelligence & Outreach Modal (Replaces Slide-Over Drawer) ── */}
           {selectedDrawerLead && (() => {
@@ -6012,7 +6308,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 <input
                                   type="text"
                                   value={recipientName}
-                                  onChange={(e) => setRecipientName(e.target.value)}
+                                  onChange={(e) => { setRecipientName(e.target.value); markDraftEdited(); }}
                                   className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                                 />
                               </div>
@@ -6023,7 +6319,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 <input
                                   type="email"
                                   value={recipientEmail}
-                                  onChange={(e) => { setRecipientEmail(e.target.value); setRecipientEmailSource('manually_entered'); }}
+                                  onChange={(e) => { setRecipientEmail(e.target.value); setRecipientEmailSource('manually_entered'); markDraftEdited(); }}
                                   placeholder="buyer@prospect.com"
                                   className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                                 />
@@ -6035,7 +6331,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                               <input
                                 type="text"
                                 value={emailSubject}
-                                onChange={(e) => setEmailSubject(e.target.value)}
+                                onChange={(e) => { setEmailSubject(e.target.value); markDraftEdited(); }}
                                 className="w-full px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                               />
                             </div>
@@ -6075,7 +6371,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                 <textarea
                                   rows={8}
                                   value={emailBody}
-                                  onChange={(e) => setEmailBody(e.target.value)}
+                                  onChange={(e) => { setEmailBody(e.target.value); markDraftEdited(); }}
                                   className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono leading-relaxed"
                                 />
                               ) : (
@@ -6191,11 +6487,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      setActiveDraftId(d.id || null);
+                                      setActiveDraftRevision(d.revision || 1);
+                                      setActiveDraftState(d.state || 'draft');
+                                      setActiveDraftSavedAt(d.updated_at || d.created_at || null);
+                                      if (d.payload?.recipient) setRecipientEmail(d.payload.recipient);
+                                      else if (d.payload?.recipientEmail) setRecipientEmail(d.payload.recipientEmail);
+                                      if (d.payload?.recipientName) setRecipientName(d.payload.recipientName);
                                       if (d.payload?.subject) setEmailSubject(d.payload.subject);
                                       if (d.payload?.message) setEmailBody(d.payload.message);
                                       if (d.payload?.outreachMode) setOutreachMode(d.payload.outreachMode);
                                       if (d.payload?.productUrl) setVerifiedProductUrl(d.payload.productUrl);
-                                      setActiveDraftRevision(d.revision || 1);
+                                      setDraftDirty(false);
                                       setDrawerActiveTab('outreach');
                                     }}
                                     className="px-2.5 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs transition cursor-pointer whitespace-nowrap"
@@ -6345,7 +6648,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                       {activeDraftRevision ? (
                         <span className="text-[11px] text-slate-600 flex items-center gap-1.5 font-medium">
                           <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                          Draft rev #{activeDraftRevision} saved {activeDraftSavedAt ? new Date(activeDraftSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          Draft {activeDraftId ? `(${activeDraftId.slice(0, 8)}) ` : ''}rev #{activeDraftRevision} {draftDirty ? '(unsaved edits)' : 'saved'} {activeDraftSavedAt ? new Date(activeDraftSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                       ) : (
                         <span className="text-[11px] text-slate-400">
@@ -6414,12 +6717,12 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
                       <button
                         type="button"
-                        onClick={() => setShowOwnerApprovalModal(true)}
+                        onClick={() => void handlePrepareApprovalModal()}
                         disabled={sendingOutreach}
                         className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                       >
                         {sendingOutreach ? (
-                          <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Sending...</>
+                          <><ArrowsClockwise className="w-3.5 h-3.5 animate-spin" /> Preparing...</>
                         ) : (
                           <><PaperPlaneRight className="w-3.5 h-3.5" /> Approve &amp; Send</>
                         )}
@@ -6439,12 +6742,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                         <div>
                           <h4 className="font-bold text-slate-900 text-sm">Owner Approval Confirmation</h4>
                           <p className="text-xs text-slate-500 mt-0.5">
-                            You are about to dispatch an official wholesale outreach email from <strong className="text-slate-800">{officialSenderEmail}</strong>.
+                            You are about to approve and dispatch an official wholesale outreach email from <strong className="text-slate-800">{officialSenderEmail}</strong>.
                           </p>
                         </div>
                       </div>
 
                       <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs space-y-1.5">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Draft ID &amp; Revision:</span>
+                          <span className="font-mono font-bold text-slate-800 truncate max-w-[200px]">
+                            {activeDraftId || 'Pending save'} (rev #{activeDraftRevision ?? 1})
+                          </span>
+                        </div>
                         <div className="flex justify-between">
                           <span className="text-slate-500">Recipient:</span>
                           <span className="font-bold text-slate-800 truncate max-w-[200px]">{recipientName}</span>
@@ -6484,7 +6793,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                           disabled={!recipientEmail || sendingOutreach}
                           onClick={() => {
                             setShowOwnerApprovalModal(false);
-                            handleSendOutreach('send');
+                            void handleSendOutreach('send');
                           }}
                           className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs font-bold transition shadow-sm cursor-pointer"
                         >

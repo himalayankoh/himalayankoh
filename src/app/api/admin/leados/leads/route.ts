@@ -4,6 +4,30 @@ import { listSavedLeads, updateSavedLead, deleteSavedLead } from '@/lib/leados/d
 import { crawlBusinessWebsite } from '@/lib/leados/crawler';
 import { syncLeadOSProspect } from '@/lib/omnisend/client';
 
+const SUPPRESSED_SYNC_STATUSES = new Set([
+  'do_not_contact',
+  'disqualified',
+  'not_relevant',
+  'unsubscribed',
+  'bounced',
+]);
+
+async function loadAllSavedLeadsPaginated() {
+  const pageSize = 500;
+  const firstPage = await listSavedLeads({ page: 1, limit: pageSize });
+  const allLeads = [...firstPage.leads];
+  const total = firstPage.total || allLeads.length;
+  let currentPage = 2;
+  const maxPages = Math.min(20, Math.ceil(total / pageSize));
+  while (allLeads.length < total && currentPage <= maxPages) {
+    const nextPage = await listSavedLeads({ page: currentPage, limit: pageSize });
+    if (!nextPage.leads.length) break;
+    allLeads.push(...nextPage.leads);
+    currentPage++;
+  }
+  return { leads: allLeads, total: Math.max(total, allLeads.length) };
+}
+
 export async function GET(request: Request) {
   const auth = await verifyAdminRequest(request);
   if (!auth.ok) {
@@ -13,8 +37,8 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search') || undefined;
   const status = searchParams.get('status') || undefined;
-  const page = parseInt(searchParams.get('page') || '1', 10);
-  const limit = parseInt(searchParams.get('limit') || '500', 10);
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+  const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '500', 10) || 500));
 
   try {
     const { leads, total } = await listSavedLeads({ search, status, page, limit });
@@ -39,14 +63,57 @@ export async function POST(request: Request) {
     const action = body.action || 'enrich_contacts';
 
     if (action === 'sync_omnisend') {
-      const { leads } = await listSavedLeads({ page: 1, limit: 500 });
-      const withEmail = leads.filter((l) => l.email && l.email.includes('@'));
+      const { leads } = await loadAllSavedLeadsPaginated();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const withEmail = leads.filter((l) => l.email && emailRegex.test(l.email.trim()));
+
+      let excludedOrSuppressedCount = 0;
+      let duplicateEmailCount = 0;
+      const seenEmails = new Set<string>();
+      const uniqueEligible: typeof withEmail = [];
+
+      for (const lead of withEmail) {
+        const normalizedStatus = (lead.status || '').toLowerCase().trim();
+        const researchSuppressed = Boolean(
+          lead.research &&
+            ((lead.research as Record<string, unknown>).unsubscribed === true ||
+              (lead.research as Record<string, unknown>).suppressed === true ||
+              (lead.research as Record<string, unknown>).doNotContact === true)
+        );
+        if (SUPPRESSED_SYNC_STATUSES.has(normalizedStatus) || researchSuppressed) {
+          excludedOrSuppressedCount++;
+          continue;
+        }
+        const normalizedEmail = lead.email!.trim().toLowerCase();
+        if (seenEmails.has(normalizedEmail)) {
+          duplicateEmailCount++;
+          continue;
+        }
+        seenEmails.add(normalizedEmail);
+        uniqueEligible.push(lead);
+      }
+
+      const dryRun = body.dryRun === true || body.confirm !== true;
+      if (dryRun) {
+        return NextResponse.json({
+          ok: true,
+          dryRun: true,
+          totalLeads: leads.length,
+          totalWithEmail: withEmail.length,
+          duplicateEmailCount,
+          excludedOrSuppressedCount,
+          eligibleCount: uniqueEligible.length,
+          consentStatus: 'nonSubscribed',
+        });
+      }
+
       let syncedCount = 0;
       let failedCount = 0;
 
-      for (const lead of withEmail.slice(0, 50)) {
+      // Process in bounded batches across all eligible unique B2B contacts while preserving nonSubscribed status
+      for (const lead of uniqueEligible) {
         const res = await syncLeadOSProspect({
-          email: lead.email!,
+          email: lead.email!.trim().toLowerCase(),
           businessName: lead.businessName,
           phone: lead.phone || undefined,
           city: lead.city || undefined,
@@ -58,14 +125,21 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         ok: true,
+        dryRun: false,
         syncedCount,
         failedCount,
+        totalLeads: leads.length,
         totalWithEmail: withEmail.length,
+        duplicateEmailCount,
+        excludedOrSuppressedCount,
+        eligibleCount: uniqueEligible.length,
+        consentStatus: 'nonSubscribed',
       });
     }
 
     if (action === 'enrich_contacts') {
-      const { leads } = await listSavedLeads({ page: 1, limit: 500, skipCache: true });
+      const startedAt = Date.now();
+      const { leads } = await listSavedLeads({ page: 1, limit: 500 });
       const requestedIds: string[] | null = Array.isArray(body.leadIds) ? body.leadIds : null;
       const candidates = leads
         .filter((l) => {
@@ -75,14 +149,17 @@ export async function POST(request: Request) {
           const hasIg = Boolean(l.instagram || l.research?.instagram);
           return !l.email || !hasFb || !hasIg;
         })
-        .slice(0, 12);
+        .slice(0, 5);
 
       let enrichedCount = 0;
       let newEmails = 0;
       let newSocials = 0;
+      let scannedCount = 0;
 
       for (const lead of candidates) {
+        if (Date.now() - startedAt > 18000) break;
         if (!lead.website) continue;
+        scannedCount++;
         const crawled = await crawlBusinessWebsite(lead.website, {
           knownBusinessName: lead.businessName,
           knownCategory: lead.category || undefined,
@@ -117,7 +194,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         ok: true,
-        scannedCount: candidates.length,
+        scannedCount,
         enrichedCount,
         newEmails,
         newSocials,
