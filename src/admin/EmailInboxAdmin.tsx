@@ -24,6 +24,8 @@ import {
   Tag,
   User,
   Buildings,
+  ArrowLeft,
+  Check,
 } from '@phosphor-icons/react';
 import type {
   InboxMessage,
@@ -45,6 +47,11 @@ export default function EmailInboxAdmin() {
   const [mailboxes, setMailboxes] = useState<MailboxStatusInfo[]>([]);
   const [infrastructure, setInfrastructure] = useState<InboxInfrastructureStatus | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+
+  // Progressive Mobile Navigation States
+  const [mobileView, setMobileView] = useState<'list' | 'thread'>('list');
+  const [mobileMailboxDrawerOpen, setMobileMailboxDrawerOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -75,7 +82,7 @@ export default function EmailInboxAdmin() {
       const stored = localStorage.getItem('luxedge_sb_session');
       if (!stored) return '';
       const parsed = JSON.parse(stored);
-      return parsed.token || '';
+      return parsed.accessToken || parsed.token || '';
     } catch {
       return '';
     }
@@ -96,7 +103,10 @@ export default function EmailInboxAdmin() {
           ...(forceSync ? { sync: 'true' } : {}),
         });
 
-        const res = await fetch(`/api/admin/inbox?${params.toString()}`, { headers });
+        const res = await fetch(`/api/admin/inbox?${params.toString()}`, {
+          headers,
+          credentials: 'include',
+        });
         const data = await res.json();
         if (!res.ok || !data.ok) {
           throw new Error(data.error || 'Failed to load inbox');
@@ -107,14 +117,12 @@ export default function EmailInboxAdmin() {
         setMailboxes(data.mailboxes || []);
         setInfrastructure(data.infrastructure || null);
 
-        // Select first thread by default if none selected or if active selection not in new list
+        // On desktop, auto-select first thread if none is selected
         if (data.threads && data.threads.length > 0) {
           setSelectedThreadId((prev) => {
             const exists = data.threads.some((t: InboxThread) => t.threadId === prev);
-            return exists ? prev : data.threads[0].threadId;
+            return exists ? prev : (typeof window !== 'undefined' && window.innerWidth >= 768 ? data.threads[0].threadId : prev);
           });
-        } else {
-          setSelectedThreadId(null);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to connect to email inbox');
@@ -148,19 +156,17 @@ export default function EmailInboxAdmin() {
     return threads;
   }, [threads, filterType]);
 
-  const handleMessageOperation = async (
-    operation: 'mark_read' | 'mark_unread' | 'star' | 'unstar' | 'move_folder' | 'delete_permanent',
-    targetFolder?: 'inbox' | 'archive' | 'spam' | 'trash'
-  ) => {
+  const handleMessageOperation = async (operation: string, targetFolder?: string) => {
     if (!selectedThread) return;
     try {
       const token = getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/api/admin/inbox', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers,
+        credentials: 'include',
         body: JSON.stringify({
           action: 'update_message',
           threadId: selectedThread.threadId,
@@ -170,43 +176,42 @@ export default function EmailInboxAdmin() {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        alert(data.error || 'Failed to update message');
-        return;
+        throw new Error(data.error || 'Operation failed');
+      }
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        setMobileView('list');
       }
       fetchInbox();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error executing message update');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Operation failed');
     }
   };
 
   const handleSendCompose = async (isDraft = false) => {
+    if (isDraft) {
+      setSavingDraft(true);
+    } else {
+      setSendingDraft(true);
+    }
     setComposeError(null);
     setComposeSuccess(null);
-    if (!composeTo.trim()) {
-      setComposeError('Recipient email is required.');
-      return;
-    }
-    if (!composeSubject.trim()) {
-      setComposeError('Subject line is required.');
-      return;
-    }
-    if (!composeBody.trim()) {
-      setComposeError('Message body is required.');
-      return;
-    }
 
-    if (isDraft) setSavingDraft(true);
-    else setSendingDraft(true);
+    if (!isDraft && !composeTo.trim()) {
+      setComposeError('Recipient email is required.');
+      setSendingDraft(false);
+      return;
+    }
 
     try {
       const token = getAuthToken();
       const action = isDraft ? 'save_draft' : 'send';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/api/admin/inbox', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers,
+        credentials: 'include',
         body: JSON.stringify({
           action,
           mailbox: composeMailbox,
@@ -223,7 +228,7 @@ export default function EmailInboxAdmin() {
         throw new Error(data.error || (isDraft ? 'Failed to save draft' : 'Failed to send email'));
       }
 
-      setComposeSuccess(isDraft ? 'Draft saved in Drafts folder.' : 'Email sent successfully.');
+      setComposeSuccess(isDraft ? 'Draft saved in Drafts folder.' : 'Email sent successfully via Namecheap cPanel infrastructure.');
       setTimeout(() => {
         setIsComposeOpen(false);
         setComposeTo('');
@@ -233,7 +238,7 @@ export default function EmailInboxAdmin() {
         setComposeAttachments([]);
         setComposeSuccess(null);
         fetchInbox();
-      }, 1200);
+      }, 1000);
     } catch (err) {
       setComposeError(err instanceof Error ? err.message : 'Failed to process email');
     } finally {
@@ -253,12 +258,13 @@ export default function EmailInboxAdmin() {
           : lastMsg.to[0]?.email || 'sales@himalayankoh.com';
 
       const token = getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch('/api/admin/inbox', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers,
+        credentials: 'include',
         body: JSON.stringify({
           action: 'reply',
           threadId: selectedThread.threadId,
@@ -312,237 +318,338 @@ export default function EmailInboxAdmin() {
     }
   };
 
-  return (
-    <div className="flex h-[calc(100vh-5rem)] w-full overflow-hidden bg-slate-950 text-slate-100">
-      {/* 1. LEFT PANE — FOLDERS & STATUS */}
-      <div className="w-64 flex-shrink-0 flex flex-col border-r border-slate-800 bg-slate-900/90 select-none">
-        {/* Compose Button */}
-        <div className="p-4 border-b border-slate-800">
-          <button
-            onClick={() => {
-              setIsComposeOpen(true);
-              setComposeError(null);
-              setComposeSuccess(null);
-            }}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold py-2.5 px-4 shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
-          >
-            <PencilSimple size={18} weight="bold" />
-            <span>Compose Email</span>
-          </button>
+  const selectFolder = (folder: InboxFilterFolder) => {
+    setActiveFolder(folder);
+    setMobileMailboxDrawerOpen(false);
+    setMobileView('list');
+  };
+
+  const getFolderLabel = (f: InboxFilterFolder): string => {
+    switch (f) {
+      case 'all': return 'All Inboxes';
+      case 'salman': return 'Salman';
+      case 'sales': return 'Sales & Wholesale';
+      case 'support': return 'Support';
+      case 'admin': return 'Admin';
+      case 'unread': return 'Unread';
+      case 'sent': return 'Sent';
+      case 'drafts': return 'Drafts';
+      case 'spam': return 'Spam';
+      case 'archive': return 'Archive';
+      case 'trash': return 'Trash';
+      default: return f;
+    }
+  };
+
+  const renderMailboxAndFoldersList = () => (
+    <div className="flex flex-col h-full select-none text-sm">
+      <div className="p-4 border-b border-slate-800 hidden md:block">
+        <button
+          onClick={() => {
+            setIsComposeOpen(true);
+            setComposeError(null);
+            setComposeSuccess(null);
+          }}
+          className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold py-2.5 px-4 shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+        >
+          <PencilSimple size={18} weight="bold" />
+          <span>Compose Email</span>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 space-y-1">
+        <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          Mailboxes
+        </div>
+        <button
+          onClick={() => selectFolder('all')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'all'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <EnvelopeSimple size={16} />
+            All Inboxes
+          </span>
+          {counts && counts.allUnread > 0 && (
+            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
+              {counts.allUnread}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => selectFolder('salman')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'salman'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <User size={16} />
+            Salman
+          </span>
+          {counts && counts.salmanUnread > 0 && (
+            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
+              {counts.salmanUnread}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => selectFolder('sales')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'sales'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <Buildings size={16} />
+            Sales & Wholesale
+          </span>
+          {counts && counts.salesUnread > 0 && (
+            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
+              {counts.salesUnread}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => selectFolder('support')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'support'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <ShieldCheck size={16} />
+            Support
+          </span>
+          {counts && counts.supportUnread > 0 && (
+            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
+              {counts.supportUnread}
+            </span>
+          )}
+        </button>
+
+        <div className="pt-3 pb-1 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+          Folders
         </div>
 
-        {/* Mailbox / Folder List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-1 text-sm">
-          <div className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Mailboxes
-          </div>
-          <button
-            onClick={() => setActiveFolder('all')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-              activeFolder === 'all'
-                ? 'bg-amber-500/15 text-amber-300 font-medium'
-                : 'text-slate-300 hover:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <EnvelopeSimple size={17} />
-              All Inboxes
+        <button
+          onClick={() => selectFolder('unread')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'unread'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            Unread
+          </span>
+          {counts && counts.unread > 0 && (
+            <span className="text-[11px] text-slate-400">{counts.unread}</span>
+          )}
+        </button>
+
+        <button
+          onClick={() => selectFolder('sent')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'sent'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <PaperPlaneRight size={16} />
+            Sent
+          </span>
+          {counts && counts.sent > 0 && <span className="text-[11px] text-slate-400">{counts.sent}</span>}
+        </button>
+
+        <button
+          onClick={() => selectFolder('drafts')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'drafts'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <PencilSimple size={16} />
+            Drafts
+          </span>
+          {counts && counts.drafts > 0 && (
+            <span className="text-[11px] text-slate-400">{counts.drafts}</span>
+          )}
+        </button>
+
+        <button
+          onClick={() => selectFolder('archive')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'archive'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <Archive size={16} />
+            Archive
+          </span>
+        </button>
+
+        <button
+          onClick={() => selectFolder('spam')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'spam'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <WarningCircle size={16} />
+            Spam
+          </span>
+        </button>
+
+        <button
+          onClick={() => selectFolder('trash')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'trash'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <Trash size={16} />
+            Trash
+          </span>
+        </button>
+      </div>
+
+      {/* Domain Email & cPanel Status Footer Card */}
+      {infrastructure && (
+        <div className="p-3 border-t border-slate-800 text-xs text-slate-400 space-y-2 bg-slate-950/60">
+          <div className="font-semibold text-slate-300 flex items-center justify-between">
+            <span>Domain Email Status</span>
+            <span className="flex items-center gap-1 text-emerald-400 font-mono text-[11px]">
+              <CheckCircle size={13} weight="fill" /> Active
             </span>
-            {counts && counts.allUnread > 0 && (
-              <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-500 text-slate-950">
+          </div>
+          <div className="space-y-1 font-mono text-[11px]">
+            <div className="flex justify-between">
+              <span>SPF</span>
+              <span className="text-emerald-400">{infrastructure.spf.status}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>DKIM</span>
+              <span className="text-emerald-400">{infrastructure.dkim.status}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>DMARC</span>
+              <span className="text-emerald-400">{infrastructure.dmarc.status}</span>
+            </div>
+          </div>
+          <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800/60 truncate" title={infrastructure.primaryMx}>
+            MX: {infrastructure.primaryMx}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex h-[calc(100vh-5rem)] w-full overflow-hidden bg-slate-950 text-slate-100 relative">
+      {/* 1. LEFT PANE — DESKTOP ONLY */}
+      <div className="hidden md:flex md:w-64 flex-shrink-0 flex-col border-r border-slate-800 bg-slate-900/90 select-none">
+        {renderMailboxAndFoldersList()}
+      </div>
+
+      {/* MOBILE MAILBOX DRAWER / BOTTOM SHEET */}
+      {mobileMailboxDrawerOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-xs">
+          <div className="absolute inset-0" onClick={() => setMobileMailboxDrawerOpen(false)} />
+          <div className="relative bg-slate-900 border-t border-slate-700 rounded-t-2xl max-h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-3 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                Select Mailbox / Folder
+              </span>
+              <button
+                onClick={() => setMobileMailboxDrawerOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {renderMailboxAndFoldersList()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. CENTER PANE — THREAD / MESSAGE LIST */}
+      <div
+        className={`w-full md:w-80 lg:w-96 flex-shrink-0 flex flex-col border-r border-slate-800 bg-slate-900/40 ${
+          mobileView === 'thread' ? 'hidden md:flex' : 'flex'
+        }`}
+      >
+        {/* Mobile Header Bar */}
+        <div className="md:hidden p-3 border-b border-slate-800 bg-slate-900 flex items-center justify-between gap-2 shrink-0">
+          <button
+            onClick={() => setMobileMailboxDrawerOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold hover:bg-slate-700 transition-colors"
+          >
+            <EnvelopeSimple size={16} className="text-amber-400" />
+            <span className="truncate max-w-[130px]">{getFolderLabel(activeFolder)}</span>
+            {counts && counts.allUnread > 0 && activeFolder === 'all' && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-slate-950 font-bold">
                 {counts.allUnread}
               </span>
             )}
+            <CaretDown size={12} className="text-slate-400" />
           </button>
 
-          <button
-            onClick={() => setActiveFolder('salman')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-              activeFolder === 'salman'
-                ? 'bg-amber-500/15 text-amber-300 font-medium'
-                : 'text-slate-300 hover:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <User size={17} />
-              Salman
-            </span>
-            {counts && counts.salmanUnread > 0 && (
-              <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-500 text-slate-950">
-                {counts.salmanUnread}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveFolder('sales')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-              activeFolder === 'sales'
-                ? 'bg-amber-500/15 text-amber-300 font-medium'
-                : 'text-slate-300 hover:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Buildings size={17} />
-              Sales & Wholesale
-            </span>
-            {counts && counts.salesUnread > 0 && (
-              <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-500 text-slate-950">
-                {counts.salesUnread}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveFolder('support')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-              activeFolder === 'support'
-                ? 'bg-amber-500/15 text-amber-300 font-medium'
-                : 'text-slate-300 hover:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <ShieldCheck size={17} />
-              Support
-            </span>
-            {counts && counts.supportUnread > 0 && (
-              <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-amber-500 text-slate-950">
-                {counts.supportUnread}
-              </span>
-            )}
-          </button>
-
-          <div className="pt-3 pb-1 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Folders
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
+              className={`p-2 rounded-lg text-slate-300 hover:text-white transition-colors ${
+                mobileSearchOpen ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800'
+              }`}
+              aria-label="Toggle search"
+            >
+              <MagnifyingGlass size={16} />
+            </button>
+            <button
+              onClick={() => fetchInbox(true)}
+              disabled={refreshing}
+              className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white disabled:opacity-50 transition-colors"
+              aria-label="Refresh"
+            >
+              <ArrowsClockwise size={16} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={() => {
+                setIsComposeOpen(true);
+                setComposeError(null);
+                setComposeSuccess(null);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-semibold text-xs shadow-md shadow-amber-500/20 active:scale-95 transition-transform"
+            >
+              <PencilSimple size={14} weight="bold" />
+              <span>Compose</span>
+            </button>
           </div>
-
-          <button
-            onClick={() => setActiveFolder('unread')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-              activeFolder === 'unread'
-                ? 'bg-amber-500/15 text-amber-300 font-medium'
-                : 'text-slate-300 hover:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              Unread
-            </span>
-            {counts && counts.unread > 0 && (
-              <span className="text-xs text-slate-400">{counts.unread}</span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveFolder('sent')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-              activeFolder === 'sent'
-                ? 'bg-amber-500/15 text-amber-300 font-medium'
-                : 'text-slate-300 hover:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <PaperPlaneRight size={17} />
-              Sent
-            </span>
-            {counts && counts.sent > 0 && <span className="text-xs text-slate-400">{counts.sent}</span>}
-          </button>
-
-          <button
-            onClick={() => setActiveFolder('drafts')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-              activeFolder === 'drafts'
-                ? 'bg-amber-500/15 text-amber-300 font-medium'
-                : 'text-slate-300 hover:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <PencilSimple size={17} />
-              Drafts
-            </span>
-            {counts && counts.drafts > 0 && (
-              <span className="text-xs text-slate-400">{counts.drafts}</span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveFolder('archive')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-              activeFolder === 'archive'
-                ? 'bg-amber-500/15 text-amber-300 font-medium'
-                : 'text-slate-300 hover:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Archive size={17} />
-              Archive
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveFolder('spam')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-              activeFolder === 'spam'
-                ? 'bg-amber-500/15 text-amber-300 font-medium'
-                : 'text-slate-300 hover:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <WarningCircle size={17} />
-              Spam
-            </span>
-            {counts && counts.spam > 0 && <span className="text-xs text-slate-400">{counts.spam}</span>}
-          </button>
-
-          <button
-            onClick={() => setActiveFolder('trash')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
-              activeFolder === 'trash'
-                ? 'bg-amber-500/15 text-amber-300 font-medium'
-                : 'text-slate-300 hover:bg-slate-800/60'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Trash size={17} />
-              Trash
-            </span>
-          </button>
         </div>
 
-        {/* Compact DNS & Mailbox Status Footer Card */}
-        {infrastructure && (
-          <div className="p-3 border-t border-slate-800 text-xs text-slate-400 space-y-2 bg-slate-950/60">
-            <div className="font-semibold text-slate-300 flex items-center justify-between">
-              <span>Domain Email Status</span>
-              <span className="flex items-center gap-1 text-emerald-400 font-mono text-[11px]">
-                <CheckCircle size={13} weight="fill" /> Active
-              </span>
-            </div>
-            <div className="space-y-1 font-mono text-[11px]">
-              <div className="flex justify-between">
-                <span>SPF</span>
-                <span className="text-emerald-400">{infrastructure.spf.status}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>DKIM</span>
-                <span className="text-emerald-400">{infrastructure.dkim.status}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>DMARC</span>
-                <span className="text-emerald-400">{infrastructure.dmarc.status}</span>
-              </div>
-            </div>
-            <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800/60 truncate" title={infrastructure.primaryMx}>
-              MX: {infrastructure.primaryMx}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 2. CENTER PANE — THREAD / MESSAGE LIST */}
-      <div className="w-80 md:w-96 flex-shrink-0 flex flex-col border-r border-slate-800 bg-slate-900/40">
-        {/* Search & Refresh Toolbar */}
-        <div className="p-3 border-b border-slate-800 space-y-2">
+        {/* Search & Refresh Toolbar (Desktop always, mobile conditionally) */}
+        <div className={`p-3 border-b border-slate-800 space-y-2 ${mobileSearchOpen ? 'block' : 'hidden md:block'}`}>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <MagnifyingGlass
@@ -561,49 +668,49 @@ export default function EmailInboxAdmin() {
               onClick={() => fetchInbox(true)}
               disabled={refreshing}
               title="Sync & Refresh Inbox"
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-50 transition-colors"
+              className="hidden md:flex p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-50 transition-colors"
             >
               <ArrowsClockwise size={16} className={refreshing ? 'animate-spin' : ''} />
             </button>
           </div>
+        </div>
 
-          {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 text-xs">
-            <button
-              onClick={() => setFilterType('all')}
-              className={`px-2.5 py-1 rounded-full text-[11px] transition-colors ${
-                filterType === 'all'
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              All ({threads.length})
-            </button>
-            <button
-              onClick={() => setFilterType('leados')}
-              className={`px-2.5 py-1 rounded-full text-[11px] transition-colors ${
-                filterType === 'leados'
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              LeadOS Prospects
-            </button>
-            <button
-              onClick={() => setFilterType('inquiries')}
-              className={`px-2.5 py-1 rounded-full text-[11px] transition-colors ${
-                filterType === 'inquiries'
-                  ? 'bg-amber-500 text-slate-950 font-bold'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              Inquiries
-            </button>
-          </div>
+        {/* Filter Pills */}
+        <div className="px-3 py-2 border-b border-slate-800/80 flex items-center gap-1.5 text-xs overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setFilterType('all')}
+            className={`px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap transition-colors ${
+              filterType === 'all'
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            All ({threads.length})
+          </button>
+          <button
+            onClick={() => setFilterType('leados')}
+            className={`px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap transition-colors ${
+              filterType === 'leados'
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            LeadOS Prospects
+          </button>
+          <button
+            onClick={() => setFilterType('inquiries')}
+            className={`px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap transition-colors ${
+              filterType === 'inquiries'
+                ? 'bg-amber-500 text-slate-950 font-bold'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            Inquiries
+          </button>
         </div>
 
         {/* Thread List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60">
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60 pb-20 md:pb-0">
           {loading ? (
             <div className="p-8 text-center text-sm text-slate-400">Loading messages...</div>
           ) : error ? (
@@ -630,10 +737,13 @@ export default function EmailInboxAdmin() {
               return (
                 <div
                   key={thread.threadId}
-                  onClick={() => setSelectedThreadId(thread.threadId)}
+                  onClick={() => {
+                    setSelectedThreadId(thread.threadId);
+                    setMobileView('thread');
+                  }}
                   className={`p-3.5 cursor-pointer transition-colors relative ${
                     isSelected
-                      ? 'bg-slate-800/80 border-l-4 border-amber-500'
+                      ? 'bg-slate-800/80 md:border-l-4 md:border-amber-500'
                       : 'hover:bg-slate-800/40'
                   }`}
                 >
@@ -704,24 +814,41 @@ export default function EmailInboxAdmin() {
       </div>
 
       {/* 3. RIGHT PANE — THREAD VIEW & COMPOSER */}
-      <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
+      <div
+        className={`flex-1 flex flex-col bg-slate-950 overflow-hidden w-full ${
+          mobileView === 'list' ? 'hidden md:flex' : 'flex'
+        }`}
+      >
         {selectedThread ? (
           <div className="flex-1 flex flex-col h-full overflow-hidden">
             {/* Thread Header Toolbar */}
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between gap-4 bg-slate-900/50">
-              <div className="truncate">
-                <h2 className="text-base font-semibold text-slate-100 truncate">
-                  {selectedThread.subject || '(No subject)'}
-                </h2>
-                <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
-                  <span>Mailbox: <strong className="text-slate-300">{selectedThread.mailbox}</strong></span>
-                  <span>•</span>
-                  <span>{selectedThread.messages.length} message(s)</span>
+            <div className="p-3 md:p-4 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-900/50 shrink-0">
+              <div className="flex items-center gap-2 truncate">
+                <button
+                  onClick={() => setMobileView('list')}
+                  className="md:hidden flex items-center gap-1 text-xs text-amber-400 font-semibold px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors shrink-0"
+                  aria-label="Back to inbox list"
+                >
+                  <ArrowLeft size={16} weight="bold" />
+                  <span>Inbox</span>
+                </button>
+
+                <div className="truncate">
+                  <h2 className="text-sm md:text-base font-semibold text-slate-100 truncate">
+                    {selectedThread.subject || '(No subject)'}
+                  </h2>
+                  <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
+                    <span>
+                      Mailbox: <strong className="text-slate-300">{selectedThread.mailbox}</strong>
+                    </span>
+                    <span>•</span>
+                    <span>{selectedThread.messages.length} msg</span>
+                  </div>
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-1 text-slate-400">
+              <div className="flex items-center gap-1 text-slate-400 shrink-0">
                 <button
                   onClick={() => handleMessageOperation('move_folder', 'archive')}
                   title="Archive thread"
@@ -748,16 +875,15 @@ export default function EmailInboxAdmin() {
 
             {/* Linked LeadOS Prospect Banner (if applicable) */}
             {selectedThread.messages.some((m) => m.leadId || m.leadBusinessName) && (
-              <div className="px-4 py-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 text-amber-200">
-                  <Buildings size={16} className="text-amber-400" />
-                  <span>
-                    Linked LeadOS Prospect:{' '}
+              <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between text-xs shrink-0">
+                <div className="flex items-center gap-2 text-amber-200 truncate">
+                  <Buildings size={16} className="text-amber-400 shrink-0" />
+                  <span className="truncate">
+                    LeadOS:{' '}
                     <strong>
                       {selectedThread.messages.find((m) => m.leadBusinessName)?.leadBusinessName ||
                         'Verified Prospect'}
-                    </strong>{' '}
-                    ({selectedThread.messages.find((m) => m.leadStage)?.leadStage || 'Prospect'})
+                    </strong>
                   </span>
                 </div>
                 <a
@@ -766,39 +892,39 @@ export default function EmailInboxAdmin() {
                   )}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-medium underline"
+                  className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-medium underline shrink-0 text-[11px]"
                 >
                   <span>View in LeadOS</span>
-                  <ArrowSquareOut size={13} />
+                  <ArrowSquareOut size={12} />
                 </a>
               </div>
             )}
 
             {/* Thread Messages Stream */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {selectedThread.messages.map((msg, idx) => {
+            <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
+              {selectedThread.messages.map((msg) => {
                 const isOutbound = msg.direction === 'outbound';
                 return (
                   <div
                     key={msg.id}
-                    className={`rounded-xl border p-4 transition-all ${
+                    className={`rounded-xl border p-3.5 md:p-4 transition-all ${
                       isOutbound
-                        ? 'bg-slate-900/80 border-slate-800 ml-6'
-                        : 'bg-slate-900/40 border-slate-800/80 mr-6'
+                        ? 'bg-slate-900/80 border-slate-800 ml-2 md:ml-6'
+                        : 'bg-slate-900/40 border-slate-800/80 mr-2 md:mr-6'
                     }`}
                   >
                     {/* Header */}
-                    <div className="flex items-start justify-between gap-4 pb-3 border-b border-slate-800/60">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-slate-100">
+                    <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-800/60">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-xs md:text-sm text-slate-100 truncate">
                             {msg.from.name || msg.from.email}
                           </span>
-                          <span className="text-xs text-slate-400 font-mono">
+                          <span className="text-[10px] md:text-xs text-slate-400 font-mono truncate">
                             &lt;{msg.from.email}&gt;
                           </span>
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                            className={`px-1.5 py-0.5 rounded text-[9px] md:text-[10px] font-semibold ${
                               isOutbound
                                 ? 'bg-amber-500/20 text-amber-300'
                                 : 'bg-emerald-500/20 text-emerald-300'
@@ -807,22 +933,20 @@ export default function EmailInboxAdmin() {
                             {isOutbound ? 'OUTBOUND' : 'INBOUND'}
                           </span>
                         </div>
-                        <div className="text-xs text-slate-400 mt-1">
+                        <div className="text-[11px] text-slate-400 mt-1 truncate">
                           To:{' '}
                           {msg.to.map((t) => `${t.name ? `${t.name} ` : ''}<${t.email}>`).join(', ')}
                         </div>
                       </div>
 
-                      <div className="text-right text-xs text-slate-400 flex-shrink-0">
+                      <div className="text-right text-[11px] text-slate-400 flex-shrink-0">
                         <div>
                           {new Date(msg.createdAt).toLocaleDateString(undefined, {
-                            weekday: 'short',
                             month: 'short',
                             day: 'numeric',
-                            year: 'numeric',
                           })}
                         </div>
-                        <div className="font-mono text-[11px] text-slate-400 mt-0.5">
+                        <div className="font-mono text-[10px] text-slate-400 mt-0.5">
                           {new Date(msg.createdAt).toLocaleTimeString([], {
                             hour: '2-digit',
                             minute: '2-digit',
@@ -832,14 +956,14 @@ export default function EmailInboxAdmin() {
                     </div>
 
                     {/* Body */}
-                    <div className="pt-3 text-sm text-slate-200 leading-relaxed whitespace-pre-wrap font-sans">
+                    <div className="pt-2.5 text-xs md:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap font-sans break-words">
                       {msg.bodyText}
                     </div>
 
                     {/* Attachments */}
                     {msg.attachments && msg.attachments.length > 0 && (
-                      <div className="mt-4 pt-3 border-t border-slate-800/60 space-y-1.5">
-                        <div className="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+                      <div className="mt-3 pt-2.5 border-t border-slate-800/60 space-y-1.5">
+                        <div className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
                           <Paperclip size={13} />
                           Attachments ({msg.attachments.length})
                         </div>
@@ -850,7 +974,7 @@ export default function EmailInboxAdmin() {
                               className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center gap-2 text-xs"
                             >
                               <span className="font-medium text-slate-300">{att.filename}</span>
-                              <span className="text-slate-400 font-mono text-[11px]">
+                              <span className="text-slate-400 font-mono text-[10px]">
                                 ({Math.round(att.sizeBytes / 1024)} KB)
                               </span>
                             </div>
@@ -864,26 +988,26 @@ export default function EmailInboxAdmin() {
             </div>
 
             {/* Quick Reply Box */}
-            <div className="p-4 border-t border-slate-800 bg-slate-900/60">
+            <div className="p-3 md:p-4 border-t border-slate-800 bg-slate-900/90 shrink-0 pb-16 md:pb-4">
               <div className="space-y-2">
                 <textarea
                   value={quickReplyBody}
                   onChange={(e) => setQuickReplyBody(e.target.value)}
                   placeholder="Type your reply here..."
-                  rows={3}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 resize-none"
+                  rows={2}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs md:text-sm text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 resize-none"
                 />
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-slate-400">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] text-slate-400 truncate">
                     Replying as: <strong className="text-slate-300">{selectedThread.mailbox}</strong>
                   </div>
                   <button
                     onClick={handleSendQuickReply}
                     disabled={sendingQuickReply || !quickReplyBody.trim()}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs disabled:opacity-50 transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs disabled:opacity-50 transition-all cursor-pointer shrink-0"
                   >
                     <PaperPlaneRight size={15} weight="bold" />
-                    <span>{sendingQuickReply ? 'Sending Reply...' : 'Send Reply'}</span>
+                    <span>{sendingQuickReply ? 'Sending...' : 'Send Reply'}</span>
                   </button>
                 </div>
               </div>
@@ -901,26 +1025,34 @@ export default function EmailInboxAdmin() {
         )}
       </div>
 
-      {/* 4. COMPOSE EMAIL MODAL */}
+      {/* 4. COMPOSE EMAIL MODAL (Responsive: Full-screen on mobile, centered modal on desktop) */}
       {isComposeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full h-full md:h-auto md:max-w-2xl bg-slate-900 border-0 md:border md:border-slate-800 md:rounded-2xl shadow-2xl flex flex-col md:max-h-[90vh] overflow-hidden">
             {/* Modal Header */}
-            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+            <div className="px-4 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0">
               <div className="flex items-center gap-2">
                 <PencilSimple size={18} className="text-amber-400" />
                 <h3 className="font-semibold text-slate-100 text-sm">New Message</h3>
               </div>
               <button
-                onClick={() => setIsComposeOpen(false)}
-                className="text-slate-400 hover:text-slate-200 p-1 rounded-lg"
+                onClick={() => {
+                  if (composeSubject || composeBody) {
+                    if (confirm('Discard unsaved email draft?')) {
+                      setIsComposeOpen(false);
+                    }
+                  } else {
+                    setIsComposeOpen(false);
+                  }
+                }}
+                className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg"
               >
                 <X size={18} />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-5 flex-1 overflow-y-auto space-y-3 text-xs">
+            <div className="p-4 flex-1 overflow-y-auto space-y-3 text-xs">
               {composeError && (
                 <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300">
                   {composeError}
@@ -933,39 +1065,42 @@ export default function EmailInboxAdmin() {
               )}
 
               {/* From Selector */}
-              <div className="flex items-center gap-3">
-                <label className="w-16 text-slate-400 font-medium">From:</label>
+              <div className="flex items-center gap-2">
+                <label className="w-14 text-slate-400 font-medium shrink-0">From:</label>
                 <select
                   value={composeMailbox}
                   onChange={(e) => setComposeMailbox(e.target.value as MailboxAddress)}
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 >
                   <option value="sales@himalayankoh.com">
-                    Himalayan Koh Commercial Sales &lt;sales@himalayankoh.com&gt;
+                    Commercial Sales &lt;sales@himalayankoh.com&gt;
                   </option>
                   <option value="salman@himalayankoh.com">
-                    Salman — Himalayan Koh &lt;salman@himalayankoh.com&gt;
+                    Salman &lt;salman@himalayankoh.com&gt;
                   </option>
                   <option value="support@himalayankoh.com">
-                    Himalayan Koh Customer Support &lt;support@himalayankoh.com&gt;
+                    Customer Support &lt;support@himalayankoh.com&gt;
+                  </option>
+                  <option value="admin@himalayankoh.com">
+                    Administration &lt;admin@himalayankoh.com&gt;
                   </option>
                 </select>
               </div>
 
               {/* To Input */}
-              <div className="flex items-center gap-3">
-                <label className="w-16 text-slate-400 font-medium">To:</label>
+              <div className="flex items-center gap-2">
+                <label className="w-14 text-slate-400 font-medium shrink-0">To:</label>
                 <input
                   type="email"
                   value={composeTo}
                   onChange={(e) => setComposeTo(e.target.value)}
-                  placeholder="prospect@business.com"
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  placeholder="recipient@example.com"
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 />
                 <button
                   type="button"
                   onClick={() => setShowCc(!showCc)}
-                  className="text-slate-400 hover:text-slate-200 text-xs px-2"
+                  className="text-slate-400 hover:text-slate-200 text-xs px-2 shrink-0"
                 >
                   Cc
                 </button>
@@ -973,34 +1108,34 @@ export default function EmailInboxAdmin() {
 
               {/* Collapsible CC */}
               {showCc && (
-                <div className="flex items-center gap-3">
-                  <label className="w-16 text-slate-400 font-medium">Cc:</label>
+                <div className="flex items-center gap-2">
+                  <label className="w-14 text-slate-400 font-medium shrink-0">Cc:</label>
                   <input
                     type="text"
                     value={composeCc}
                     onChange={(e) => setComposeCc(e.target.value)}
                     placeholder="colleague@example.com"
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               )}
 
               {/* Subject */}
-              <div className="flex items-center gap-3">
-                <label className="w-16 text-slate-400 font-medium">Subject:</label>
+              <div className="flex items-center gap-2">
+                <label className="w-14 text-slate-400 font-medium shrink-0">Subject:</label>
                 <input
                   type="text"
                   value={composeSubject}
                   onChange={(e) => setComposeSubject(e.target.value)}
-                  placeholder="Wholesale Himalayan Mineral Salt Inquiry"
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  placeholder="Himalayan Mineral Salt Inquiry"
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 />
               </div>
 
               {/* Body */}
-              <div className="pt-2">
+              <div className="pt-1">
                 <textarea
-                  rows={9}
+                  rows={8}
                   value={composeBody}
                   onChange={(e) => setComposeBody(e.target.value)}
                   placeholder="Write your email message..."
@@ -1049,20 +1184,28 @@ export default function EmailInboxAdmin() {
             </div>
 
             {/* Modal Footer */}
-            <div className="px-5 py-3 border-t border-slate-800 flex items-center justify-between bg-slate-950/60">
+            <div className="px-4 py-3 border-t border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0 pb-6 md:pb-3">
               <button
                 type="button"
                 onClick={() => handleSendCompose(true)}
                 disabled={savingDraft || sendingDraft}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium disabled:opacity-50 transition-all cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium disabled:opacity-50 transition-all cursor-pointer"
               >
-                {savingDraft ? 'Saving Draft...' : 'Save Draft (Never Sends)'}
+                {savingDraft ? 'Saving Draft...' : 'Save Draft'}
               </button>
 
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setIsComposeOpen(false)}
+                  onClick={() => {
+                    if (composeSubject || composeBody) {
+                      if (confirm('Discard unsaved draft?')) {
+                        setIsComposeOpen(false);
+                      }
+                    } else {
+                      setIsComposeOpen(false);
+                    }
+                  }}
                   className="px-3 py-2 text-xs text-slate-400 hover:text-slate-200"
                 >
                   Cancel
@@ -1071,7 +1214,7 @@ export default function EmailInboxAdmin() {
                   type="button"
                   onClick={() => handleSendCompose(false)}
                   disabled={sendingDraft || savingDraft}
-                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-all cursor-pointer"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-semibold shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-all cursor-pointer"
                 >
                   <PaperPlaneRight size={15} weight="bold" />
                   <span>{sendingDraft ? 'Sending...' : 'Send Email'}</span>

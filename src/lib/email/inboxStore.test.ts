@@ -55,13 +55,14 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     mockLeadosRequest.mockResolvedValue({ items: [] });
   });
 
-  it('accurately reports the three mailbox identities and DNS infrastructure', async () => {
+  it('accurately reports the authorized mailbox identities and DNS infrastructure', async () => {
     const { mailboxes, infrastructure } = await getMailboxAndInfrastructureStatus();
 
-    expect(mailboxes).toHaveLength(3);
+    expect(mailboxes).toHaveLength(4);
     const salman = mailboxes.find((m) => m.address === 'salman@himalayankoh.com');
     const sales = mailboxes.find((m) => m.address === 'sales@himalayankoh.com');
     const support = mailboxes.find((m) => m.address === 'support@himalayankoh.com');
+    const admin = mailboxes.find((m) => m.address === 'admin@himalayankoh.com');
 
     expect(salman).toBeDefined();
     expect(salman?.displayName).toBe('Salman — Himalayan Koh');
@@ -69,6 +70,8 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     expect(sales?.displayName).toBe('Himalayan Koh Commercial Sales');
     expect(support).toBeDefined();
     expect(support?.displayName).toBe('Himalayan Koh Customer Support');
+    expect(admin).toBeDefined();
+    expect(admin?.displayName).toBe('Himalayan Koh Administration');
 
     expect(infrastructure.spf.status).toBe('PASS');
     expect(infrastructure.dkim.status).toBe('2048-bit Active');

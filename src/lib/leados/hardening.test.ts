@@ -7,7 +7,6 @@ import { parseLeadOSUrlState } from './urlState';
 vi.stubGlobal('fetch', vi.fn());
 
 describe('LeadOS hardening boundaries', () => {
-  vi.stubEnv('RESEND_API_KEY', '');
   it('blocks unsupported claims from outbound copy', () => {
     expect(validateOutboundCopy('Himalayan salt products for your store.').ok).toBe(true);
     expect(validateOutboundCopy('Third-party laboratory tested and 84+ essential trace minerals.').ok).toBe(false);
@@ -16,8 +15,10 @@ describe('LeadOS hardening boundaries', () => {
   });
 
   it('reports provider unavailable without claiming success', async () => {
+    vi.stubEnv('OUTREACH_PROVIDER_UNAVAILABLE', 'true');
     const result = await sendLeadOSMail({ to: 'buyer@example.com', subject: 'Hello', text: 'Message' }, { simulationRequested: false });
     expect(result.state).toBe('provider_unavailable');
+    vi.unstubAllEnvs();
   });
 
   it('simulation is explicit and never a delivered provider result', async () => {

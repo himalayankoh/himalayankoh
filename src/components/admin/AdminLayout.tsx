@@ -165,9 +165,9 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 const MOBILE_NAV: { key: string; label: string; to?: string; icon: NavIcon }[] = [
-  { key: 'home', label: 'Home', to: '/admin', icon: SquaresFour },
-  { key: 'products', label: 'Listings', to: '/admin/products', icon: Package },
-  { key: 'add', label: 'Add', to: '/admin/products/new', icon: Plus },
+  { key: 'home', label: 'Dashboard', to: '/admin', icon: SquaresFour },
+  { key: 'leados', label: 'LeadOS', to: '/admin/leados', icon: Target },
+  { key: 'inbox', label: 'Inbox', to: '/admin/inbox', icon: EnvelopeSimple },
   { key: 'orders', label: 'Orders', to: '/admin/orders', icon: ShoppingCart },
   { key: 'more', label: 'More', icon: List },
 ];
@@ -793,10 +793,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               const on =
                 it.key === 'home'
                   ? location.pathname === '/admin'
-                  : it.key === 'products'
-                  ? location.pathname.startsWith('/admin/products') && !location.pathname.startsWith('/admin/products/new')
-                  : it.key === 'add'
-                  ? location.pathname.startsWith('/admin/products/new')
+                  : it.key === 'leados'
+                  ? location.pathname.startsWith('/admin/leados')
+                  : it.key === 'inbox'
+                  ? location.pathname.startsWith('/admin/inbox')
                   : it.key === 'orders'
                   ? location.pathname.startsWith('/admin/orders')
                   : false;

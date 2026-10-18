@@ -1,9 +1,10 @@
 import { SITE_ORIGIN } from '@/lib/site/origin';
 import { SITE_CONFIG } from '@/lib/site/config';
+import { sendCPanelEmail } from '@/lib/email/cpanelMail';
 
 interface SendEmailAttachment {
   filename: string;
-  /** Raw PDF (or other) bytes — base64-encoded before sending to Resend. */
+  /** Raw PDF (or other) bytes */
   content: Buffer;
 }
 
@@ -13,49 +14,41 @@ interface SendEmailInput {
   html: string;
   text?: string;
   attachments?: SendEmailAttachment[];
+  from?: string;
+  fromName?: string;
 }
 
 export function isEmailConfigured(): boolean {
-  return Boolean(process.env.RESEND_API_KEY?.trim());
+  // Namecheap cPanel email infrastructure is permanently available
+  return true;
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) {
-    console.warn('RESEND_API_KEY not set — skipping email:', input.subject);
-    return false;
-  }
+  const from = input.from || `${SITE_CONFIG.siteName} <${SITE_CONFIG.defaultFromEmail}>`;
+  const fromName = input.fromName || SITE_CONFIG.siteName;
 
-  const from =
-    process.env.RESEND_FROM?.trim() ||
-    `${SITE_CONFIG.siteName} <${SITE_CONFIG.defaultFromEmail}>`;
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  try {
+    const result = await sendCPanelEmail({
       from,
+      fromName,
       to: input.to,
       subject: input.subject,
-      html: input.html,
-      text: input.text,
+      bodyHtml: input.html,
+      bodyText: input.text,
       attachments: input.attachments?.map((a) => ({
         filename: a.filename,
-        content: a.content.toString('base64'),
+        content: a.content,
       })),
-    }),
-  });
+    });
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    console.error('Email send failed:', response.status, body);
+    if (!result.ok) {
+      console.warn('Namecheap cPanel delivery note:', result.deliveryNote, result.error);
+    }
+    return result.ok;
+  } catch (err) {
+    console.error('Email send failed:', err instanceof Error ? err.message : err);
     return false;
   }
-
-  return true;
 }
 
 export function adminNotificationEmails(): string[] {

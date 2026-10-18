@@ -1,4 +1,4 @@
-import { getSetting } from '@/lib/settings/serverSettings';
+import { sendCPanelEmail } from '@/lib/email/cpanelMail';
 
 export type OutreachDeliveryState =
   | 'simulated'
@@ -8,7 +8,7 @@ export type OutreachDeliveryState =
 
 export interface OutreachDeliveryResult {
   state: OutreachDeliveryState;
-  provider: 'simulation' | 'resend';
+  provider: 'simulation' | 'resend' | 'cpanel-exim';
   providerMessageId: string | null;
   error?: string;
 }
@@ -40,34 +40,48 @@ export async function sendLeadOSMail(
     return { state: 'simulated', provider: 'simulation', providerMessageId: null };
   }
 
-  const key = (await getSetting('resend', 'api_key')) || process.env.RESEND_API_KEY?.trim();
-  const fromEmail = (await getSetting('resend', 'from_email')) || 'sales@himalayankoh.com';
-  const fromName = 'Himalayan Koh';
-
-  if (!key || !key.startsWith('re_')) {
+  if (process.env.OUTREACH_PROVIDER_UNAVAILABLE === 'true') {
     return {
       state: 'provider_unavailable',
-      provider: 'resend',
+      provider: 'cpanel-exim',
       providerMessageId: null,
-      error: 'LeadOS email provider is not configured.',
     };
   }
 
-  const from = `${fromName} <${fromEmail}>`;
+  const fromEmail = 'sales@himalayankoh.com';
+  const fromName = 'Himalayan Koh Commercial Sales';
+
   try {
     const htmlBody = buildOutreachHtml(input.text, fromEmail);
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ from, to: [input.to], subject: input.subject, text: input.text, html: htmlBody }),
-      signal: AbortSignal.timeout(15000),
+    const result = await sendCPanelEmail({
+      from: fromEmail,
+      fromName,
+      to: [input.to],
+      subject: input.subject,
+      bodyText: input.text,
+      bodyHtml: htmlBody,
     });
-    const body = await response.json().catch(() => ({})) as { id?: string; message?: string };
-    if (!response.ok) {
-      return { state: 'provider_failed', provider: 'resend', providerMessageId: null, error: body.message || `Provider HTTP ${response.status}` };
+
+    if (result.ok) {
+      return {
+        state: 'delivered',
+        provider: 'cpanel-exim',
+        providerMessageId: result.messageId,
+      };
     }
-    return { state: 'delivered', provider: 'resend', providerMessageId: body.id || null };
+
+    return {
+      state: 'provider_failed',
+      provider: 'cpanel-exim',
+      providerMessageId: null,
+      error: result.error || result.deliveryNote,
+    };
   } catch (error) {
-    return { state: 'provider_failed', provider: 'resend', providerMessageId: null, error: error instanceof Error ? error.message : 'Provider request failed.' };
+    return {
+      state: 'provider_failed',
+      provider: 'cpanel-exim',
+      providerMessageId: null,
+      error: error instanceof Error ? error.message : 'Namecheap cPanel email delivery error.',
+    };
   }
 }

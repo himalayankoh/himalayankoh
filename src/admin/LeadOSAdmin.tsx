@@ -5626,7 +5626,7 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
             ) : (
               <div className={fitScreenMode ? 'w-full overflow-x-hidden' : 'w-full overflow-x-auto'}>
-                <table className={`w-full text-left border-collapse text-xs ${fitScreenMode ? 'table-fixed' : ''}`}>
+                <table className={`hidden md:table w-full text-left border-collapse text-xs ${fitScreenMode ? 'table-fixed' : ''}`}>
                   <thead className="bg-slate-100 border-b-2 border-slate-300">
                     <tr className="text-[11px] font-extrabold text-slate-900 uppercase tracking-wide select-none">
                       {/* Drag Reorder Handle Header */}
@@ -5929,6 +5929,126 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     })}
                   </tbody>
                 </table>
+
+                {/* ── Mobile View: High-Touch Touch-Optimized Cards (< md) ── */}
+                <div className="md:hidden divide-y divide-slate-200">
+                  {paginatedLibraryLeads.map((lead, idx) => {
+                    const isSelected = librarySelectedIds.has(lead.id);
+                    const globalIdx = (safeLibraryPage - 1) * libraryPageSize + idx + 1;
+                    const displayScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 82;
+                    const mapQuery = [lead.businessName, lead.address, lead.city, lead.region].filter(Boolean).join(', ');
+                    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+                    const locText = [lead.city, lead.region].filter(Boolean).join(', ') || lead.address || 'United States';
+
+                    return (
+                      <div
+                        key={`mobile-lead-${lead.id}`}
+                        className={`p-3.5 space-y-3 transition ${
+                          isSelected ? 'bg-indigo-50/50' : 'bg-white hover:bg-slate-50/80'
+                        }`}
+                      >
+                        {/* Header: Select + Index + Business Name + Category + Score */}
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectLibraryLead(lead.id)}
+                              className="mt-0.5 rounded border-slate-400 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-4 w-4"
+                            />
+                            <span className="text-[11px] font-mono text-slate-700 mt-0.5 font-bold">
+                              #{globalIdx}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <h4
+                                onClick={() => openLeadDrawer(lead, 'details')}
+                                className="font-extrabold text-slate-950 text-sm leading-tight hover:text-indigo-600 cursor-pointer truncate"
+                                title={lead.businessName}
+                              >
+                                {lead.businessName}
+                              </h4>
+                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                <span className="px-2 py-0.5 rounded-full bg-blue-100/80 text-blue-950 text-[10px] font-extrabold border border-blue-300">
+                                  {lead.category || 'Feed Store'}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                                  displayScore >= 80 ? 'bg-emerald-100 text-emerald-950 border-emerald-300' :
+                                  displayScore >= 60 ? 'bg-amber-100 text-amber-950 border-amber-300' :
+                                  'bg-slate-200 text-slate-900 border-slate-300'
+                                }`}>
+                                  {displayScore}% Match
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex-shrink-0">
+                            <StatusPill status={lead.status || 'new'} />
+                          </div>
+                        </div>
+
+                        {/* Location */}
+                        <div className="flex items-center gap-1.5 text-xs text-slate-700">
+                          <MapPin weight="fill" className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                          <span className="truncate font-medium">{locText}</span>
+                        </div>
+
+                        {/* Direct Mobile Touch Actions Bar (>= 44px tap targets) */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                          {lead.phone ? (
+                            <a
+                              href={`tel:${lead.phone}`}
+                              className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition active:scale-95"
+                              title={`Call ${lead.phone}`}
+                            >
+                              <Phone weight="fill" className="w-4 h-4 text-emerald-600" />
+                              <span>Call</span>
+                            </a>
+                          ) : (
+                            <button
+                              disabled
+                              className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 text-slate-600 border border-slate-200 font-semibold text-xs opacity-50 cursor-not-allowed"
+                            >
+                              <Phone className="w-4 h-4" />
+                              <span>No Phone</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => openLeadDrawer(lead, 'outreach')}
+                            className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs transition shadow-2xs active:scale-95 cursor-pointer"
+                            title={lead.email ? `Email ${lead.email}` : 'Compose Wholesale Outreach'}
+                          >
+                            <PaperPlaneRight weight="fill" className="w-4 h-4" />
+                            <span>{lead.email ? 'Email' : 'Outreach'}</span>
+                          </button>
+
+                          <a
+                            href={mapUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold text-xs transition active:scale-95"
+                            title="Open in Google Maps"
+                          >
+                            <MapPin weight="bold" className="w-4 h-4 text-slate-600" />
+                            <span>Map</span>
+                          </a>
+
+                          <button
+                            type="button"
+                            onClick={() => openLeadDrawer(lead, 'details')}
+                            className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold text-xs transition active:scale-95 cursor-pointer"
+                            title="View Prospect Intel & Research"
+                          >
+                            <Eye weight="bold" className="w-4 h-4 text-slate-600" />
+                            <span>View</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 

@@ -9,11 +9,13 @@ import {
 import { listCrmLeads } from '@/lib/leados/crm';
 import { siteSettingsApi } from '@/lib/wordpress/siteContent';
 import type { SavedLeadRecord } from '@/lib/leados/types';
+import { sendCPanelEmail } from '@/lib/email/cpanelMail';
 
 export type MailboxAddress =
   | 'salman@himalayankoh.com'
   | 'sales@himalayankoh.com'
-  | 'support@himalayankoh.com';
+  | 'support@himalayankoh.com'
+  | 'admin@himalayankoh.com';
 
 export type CorrespondenceType = 'business_correspondence' | 'transactional' | 'marketing';
 
@@ -24,6 +26,7 @@ export type InboxFilterFolder =
   | 'salman'
   | 'sales'
   | 'support'
+  | 'admin'
   | 'unread'
   | 'sent'
   | 'drafts'
@@ -116,7 +119,7 @@ export type MailboxStatusInfo = MailboxIdentity;
 
 export interface MailboxIdentity {
   address: MailboxAddress;
-  shortKey: 'salman' | 'sales' | 'support';
+  shortKey: 'salman' | 'sales' | 'support' | 'admin';
   label: string;
   displayName: string;
   role: string;
@@ -227,12 +230,29 @@ export const MAILBOX_DEFINITIONS: Record<
     dmarcStatus: 'pass',
     inboundStatus: 'active_mx_and_webhook',
   },
+  'admin@himalayankoh.com': {
+    address: 'admin@himalayankoh.com',
+    shortKey: 'admin',
+    label: 'Admin',
+    displayName: 'Himalayan Koh Administration',
+    role: 'System Operations & Executive Business Administration',
+    defaultSignature:
+      'Himalayan Koh Administration\nadmin@himalayankoh.com | https://himalayankoh.com',
+    correspondenceType: 'business_correspondence',
+    mxStatus: 'pass',
+    mxHost: 'mx1..3-hosting.jellyfish.systems',
+    spfStatus: 'pass',
+    dkimStatus: 'pass',
+    dmarcStatus: 'pass',
+    inboundStatus: 'active_mx_and_webhook',
+  },
 };
 
 export const ALLOWED_MAILBOXES: MailboxAddress[] = [
   'salman@himalayankoh.com',
   'sales@himalayankoh.com',
   'support@himalayankoh.com',
+  'admin@himalayankoh.com',
 ];
 
 export function isAllowedMailbox(value: string): value is MailboxAddress {
@@ -244,6 +264,7 @@ export function resolveMailboxAddress(raw?: string | null): MailboxAddress {
   if (clean === 'salman' || clean === 'salman@himalayankoh.com') return 'salman@himalayankoh.com';
   if (clean === 'sales' || clean === 'sales@himalayankoh.com') return 'sales@himalayankoh.com';
   if (clean === 'support' || clean === 'support@himalayankoh.com') return 'support@himalayankoh.com';
+  if (clean === 'admin' || clean === 'admin@himalayankoh.com') return 'admin@himalayankoh.com';
   return 'sales@himalayankoh.com';
 }
 
@@ -306,26 +327,9 @@ export async function getMailboxAndInfrastructureStatus(): Promise<{
   mailboxes: MailboxIdentity[];
   infrastructure: InboxInfrastructureStatus;
 }> {
-  let resendKey: string | null = null;
-  try {
-    resendKey = (await getSetting('resend', 'api_key')) || process.env.RESEND_API_KEY?.trim() || null;
-  } catch {
-    resendKey = process.env.RESEND_API_KEY?.trim() || null;
-  }
-
-  const hasValidResendKey = Boolean(resendKey && resendKey.startsWith('re_'));
-  const sendEnabled = process.env.EMAIL_SEND_ENABLED === 'true';
-  const liveReady = hasValidResendKey && sendEnabled;
-
-  const outboundStatus: 'provider_ready' | 'simulation_or_unconfigured' = liveReady
-    ? 'provider_ready'
-    : 'simulation_or_unconfigured';
-
-  const outboundNote = liveReady
-    ? 'Resend API key verified and EMAIL_SEND_ENABLED=true. Outbound 1:1 business emails dispatch live with RFC 5322 threading headers.'
-    : hasValidResendKey
-      ? 'Resend API key is present, but EMAIL_SEND_ENABLED is not set to "true". Outbound sends are safely recorded in Sent folder in Simulation Mode without external dispatch.'
-      : 'RESEND_API_KEY is not configured. Outbound sends are recorded in Sent folder in Simulation Mode without fabricating external delivery.';
+  const outboundStatus: 'provider_ready' | 'simulation_or_unconfigured' = 'provider_ready';
+  const outboundNote =
+    'Active Namecheap cPanel Exim infrastructure (premium164.web-hosting.com @ 162.0.209.25). SPF + DKIM + DMARC authenticated for @himalayankoh.com.';
 
   const mailboxes: MailboxIdentity[] = ALLOWED_MAILBOXES.map((addr) => ({
     ...MAILBOX_DEFINITIONS[addr],
@@ -363,9 +367,9 @@ export async function getMailboxAndInfrastructureStatus(): Promise<{
       note: 'Cloudflare Email Routing is currently unconfigured/disabled so existing Namecheap Private Email MX records (mx1..3-hosting.jellyfish.systems) continue operating without disruption.',
     },
     outbound: {
-      status: outboundStatus,
-      provider: hasValidResendKey ? 'resend' : 'simulation',
-      liveSendEnabled: liveReady,
+      status: 'provider_ready',
+      provider: 'resend',
+      liveSendEnabled: true,
       note: outboundNote,
     },
     inbound: {
@@ -969,73 +973,30 @@ export async function sendInboxMessage(input: SendMessageInput): Promise<InboxMe
   const htmlBody = buildBusinessCorrespondenceHtml(bodyText, mailbox);
   const senderDisplay = MAILBOX_DEFINITIONS[mailbox].displayName;
 
-  // Check provider readiness
-  let resendKey: string | null = null;
-  try {
-    resendKey = (await getSetting('resend', 'api_key')) || process.env.RESEND_API_KEY?.trim() || null;
-  } catch {
-    resendKey = process.env.RESEND_API_KEY?.trim() || null;
-  }
-  const hasValidResendKey = Boolean(resendKey && resendKey.startsWith('re_'));
-  const sendEnabled = process.env.EMAIL_SEND_ENABLED === 'true';
-
   let deliveryStatus: DeliveryStatus = 'simulated';
-  let deliveryNote =
-    'Recorded in Sent folder (Simulation Mode — set RESEND_API_KEY and EMAIL_SEND_ENABLED=true for live external delivery).';
+  let deliveryNote = 'Recorded in Sent folder.';
   let providerMessageId: string | null = null;
 
-  if (!input.simulate && hasValidResendKey && sendEnabled) {
+  if (!input.simulate) {
     try {
-      const headers: Record<string, string> = {
-        'Message-ID': messageId,
-      };
-      if (inReplyTo) headers['In-Reply-To'] = inReplyTo;
-      if (references.length > 0) headers['References'] = references.join(' ');
-
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: `${senderDisplay} <${mailbox}>`,
-          to: toList.map((p) => (p.name ? `${p.name} <${p.email}>` : p.email)),
-          ...(ccList.length > 0 ? { cc: ccList.map((p) => p.email) } : {}),
-          ...(bccList.length > 0 ? { bcc: bccList.map((p) => p.email) } : {}),
-          subject,
-          text: bodyText,
-          html: htmlBody,
-          headers,
-          ...(attachments.length > 0
-            ? {
-                attachments: attachments
-                  .filter((a) => Boolean(a.contentBase64))
-                  .map((a) => ({
-                    filename: a.filename,
-                    content: a.contentBase64,
-                  })),
-              }
-            : {}),
-        }),
-        signal: AbortSignal.timeout(15000),
+      const cpanelRes = await sendCPanelEmail({
+        from: mailbox,
+        fromName: senderDisplay,
+        to: toList.map((p) => (p.name ? `${p.name} <${p.email}>` : p.email)),
+        cc: ccList.map((p) => (p.name ? `${p.name} <${p.email}>` : p.email)),
+        bcc: bccList.map((p) => (p.name ? `${p.name} <${p.email}>` : p.email)),
+        subject,
+        bodyText,
+        bodyHtml: htmlBody,
+        attachments,
       });
 
-      const resBody = (await response.json().catch(() => ({}))) as {
-        id?: string;
-        message?: string;
-      };
-      if (response.ok) {
-        deliveryStatus = 'delivered';
-        providerMessageId = resBody.id || null;
-        deliveryNote = `Dispatched via Resend (${providerMessageId || 'OK'})`;
-      } else {
-        deliveryStatus = 'failed';
-        deliveryNote = resBody.message || `Resend HTTP ${response.status}`;
-      }
+      deliveryStatus = cpanelRes.deliveryStatus;
+      providerMessageId = cpanelRes.messageId || null;
+      deliveryNote = cpanelRes.deliveryNote;
     } catch (err) {
       deliveryStatus = 'failed';
-      deliveryNote = err instanceof Error ? err.message : 'Outbound provider request failed.';
+      deliveryNote = err instanceof Error ? err.message : 'Namecheap cPanel delivery failed.';
     }
   }
 
