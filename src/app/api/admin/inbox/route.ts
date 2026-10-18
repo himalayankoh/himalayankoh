@@ -188,8 +188,18 @@ export async function POST(request: Request) {
       });
     }
 
+    if (action === 'sync_imap') {
+      const { syncImapMailboxes } = await import('@/lib/email/inboxStore');
+      const syncResult = await syncImapMailboxes(body.mailbox);
+      return NextResponse.json({
+        ok: true,
+        syncedCount: syncResult.syncedCount,
+        error: syncResult.error,
+      });
+    }
+
     return NextResponse.json(
-      { error: `Unsupported inbox action "${action}". Allowed: save_draft, send, reply, forward, update_message, inbound_webhook, status.` },
+      { error: `Unsupported inbox action "${action}". Allowed: save_draft, send, reply, forward, update_message, inbound_webhook, status, sync_imap.` },
       { status: 400 }
     );
   } catch (error) {

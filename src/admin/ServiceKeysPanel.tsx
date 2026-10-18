@@ -27,9 +27,11 @@
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { EnvelopeSimple, Key } from '@phosphor-icons/react';
 import { SETTINGS_REGISTRY, type SettingsCategory } from '../lib/settings/registry';
 import { getAccessToken } from '../services/wordpressAdminAuth';
 import { loadProviderSettings, saveProviderSettings, type AIProviderSettings } from '../features/ai/providers';
+import EmailAccountsPanel from './EmailAccountsPanel';
 
 const MASKED_MARK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
 
@@ -205,6 +207,7 @@ export default function ServiceKeysPanel() {
   const [geminiNote, setGeminiNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [openrouterTesting, setOpenrouterTesting] = useState(false);
   const [openrouterNote, setOpenrouterNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<'keys' | 'email'>('keys');
 
   const authHeaders = useCallback((): Record<string, string> => {
     const token = getAccessToken();
@@ -468,14 +471,46 @@ export default function ServiceKeysPanel() {
 
   return (
     <div className="pt-5 space-y-4">
-      <p className="text-sm text-gray-500">
-        These are the credentials the server uses. A secret is stored server-side and is never shown again once
-        saved — the field starts empty with the saved state beside it, so leaving it alone changes nothing.
-      </p>
+      {/* ── Tab Switcher: Service Keys & Email Accounts ── */}
+      <div className="flex items-center gap-2 border-b border-gray-200 pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab('keys')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            activeTab === 'keys'
+              ? 'bg-[#3F6550] text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <Key size={14} />
+          <span>Service &amp; API Keys</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('email')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+            activeTab === 'email'
+              ? 'bg-sky-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+          }`}
+        >
+          <EnvelopeSimple size={14} />
+          <span>Email Accounts &amp; Mailboxes</span>
+        </button>
+      </div>
 
-      {note && (
-        <p className={`text-sm ${note.kind === 'ok' ? 'text-emerald-700' : 'text-red-600'}`}>{note.text}</p>
-      )}
+      {activeTab === 'email' ? (
+        <EmailAccountsPanel />
+      ) : (
+        <>
+          <p className="text-sm text-gray-500">
+            These are the credentials the server uses. A secret is stored server-side and is never shown again once
+            saved — the field starts empty with the saved state beside it, so leaving it alone changes nothing.
+          </p>
+
+          {note && (
+            <p className={`text-sm ${note.kind === 'ok' ? 'text-emerald-700' : 'text-red-600'}`}>{note.text}</p>
+          )}
 
       {/* ── AI Providers (Google Gemini & OpenRouter) ── */}
       <div className="rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50/40 via-white to-indigo-50/30 p-5 shadow-sm space-y-4">
@@ -1081,6 +1116,8 @@ export default function ServiceKeysPanel() {
           </div>
         );
       })}
+        </>
+      )}
     </div>
   );
 }

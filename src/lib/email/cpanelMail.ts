@@ -111,8 +111,11 @@ export interface CPanelCredentials {
   pass: string;
 }
 
+import { getEmailAccountSync, type MailboxEmail, SUPPORTED_MAILBOXES } from './accountConfig';
+
 /**
  * Resolve dedicated authenticated SMTP credentials.
+ * Checks stored account settings in WordPress first, then dedicated environment variables.
  * NEVER guesses passwords or reuses general hosting/WordPress passwords.
  */
 export function resolveCPanelCredentials(senderEmail?: string): CPanelCredentials | null {
@@ -120,9 +123,26 @@ export function resolveCPanelCredentials(senderEmail?: string): CPanelCredential
   const port = Number(process.env.NAMECHEAP_SMTP_PORT || 465);
 
   if (senderEmail) {
-    const cleanKey = senderEmail.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').toUpperCase();
+    const norm = senderEmail.trim().toLowerCase();
+    if (SUPPORTED_MAILBOXES.includes(norm as MailboxEmail)) {
+      try {
+        const stored = getEmailAccountSync(norm as MailboxEmail);
+        if (stored && stored.smtpPass && stored.smtpUser) {
+          return {
+            host: stored.smtpHost || host,
+            port: stored.smtpPort || port,
+            user: stored.smtpUser,
+            pass: stored.smtpPass,
+          };
+        }
+      } catch {
+        // Fall back to env
+      }
+    }
+
+    const cleanKey = norm.replace(/[^a-z0-9]/g, '_').toUpperCase();
     const senderPass = process.env[`SMTP_PASS_${cleanKey}`] || process.env[`NAMECHEAP_SMTP_PASS_${cleanKey}`];
-    const senderUser = process.env[`SMTP_USER_${cleanKey}`] || process.env[`NAMECHEAP_SMTP_USER_${cleanKey}`] || senderEmail.trim().toLowerCase();
+    const senderUser = process.env[`SMTP_USER_${cleanKey}`] || process.env[`NAMECHEAP_SMTP_USER_${cleanKey}`] || norm;
     if (senderPass && senderUser) {
       return { host, port, user: senderUser, pass: senderPass };
     }

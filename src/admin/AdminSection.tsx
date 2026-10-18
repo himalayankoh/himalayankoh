@@ -65,6 +65,7 @@ const AdSenseEarnings = lazy(() => import('./AdSenseEarnings'));
 const ListingPlaybookAdmin = lazy(() => import('./ListingPlaybookAdmin').then((m) => ({ default: m.ListingPlaybookAdmin })));
 const ListingTaskAdmin = lazy(() => import('./ListingTaskAdmin').then((m) => ({ default: m.ListingTaskAdmin })));
 const ServiceKeysPanel = lazy(() => import('./ServiceKeysPanel'));
+const EmailAccountsPanel = lazy(() => import('./EmailAccountsPanel'));
 import {
   Warning, ArrowLeft, Robot, CheckCircle, CaretDown, CaretRight, CaretUp,
   Clipboard, Code, Cpu, CurrencyDollar, Download, Info, Key, PencilSimple, Eye, FileText, TreeStructure, Globe,
@@ -2414,6 +2415,7 @@ const [open, setOpen] = useState<Record<string, boolean>>({
   password: false,
   adsense: true,
   integrations: false,
+  emailAccounts: true,
   serviceKeys: true,
 });
   const toggle = (k: string) => setOpen(s => ({ ...s, [k]: !s[k] }));
@@ -2773,6 +2775,11 @@ const [open, setOpen] = useState<Record<string, boolean>>({
 
           <p className="text-xs text-gray-400">AdSense on/off, client ID, auto ads, placements and the ads.txt record are managed in <button type="button" onClick={() => navigate('/admin/marketing-traffic')} className="text-blue-600 hover:text-blue-800 font-medium underline">Marketing &amp; Traffic</button>.</p>
         </div>
+      </Accordion>
+
+      {/* ── Email Accounts & Mailboxes ── */}
+      <Accordion id="emailAccounts" title="Email Accounts &amp; Mailboxes" icon={<EnvelopeSimple size={18} className="text-sky-600" />} open={open} toggle={toggle}>
+        <Suspense fallback={null}><EmailAccountsPanel /></Suspense>
       </Accordion>
 
       {/* Service & API keys — the credentials the server reads (Stripe, freight, email…) */}
