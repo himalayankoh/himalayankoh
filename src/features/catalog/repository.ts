@@ -542,6 +542,8 @@ export interface ProductInput {
   saleEnabled?: boolean;
   discountType?: string;
   discountValue?: number;
+  saleStartDate?: string | null;
+  saleEndDate?: string | null;
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string[];

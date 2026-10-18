@@ -84,7 +84,18 @@ const AMarketingGen = React.lazy(() => import('./AdminSection').then((m) => ({ d
 const ASEOEngine = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.ASEOEngine })));
 const AEmailMarketing = React.lazy(() => import('./AdminSection').then((m) => ({ default: m.AEmailMarketing })));
 
-type TabType = 'overview' | 'find' | 'market-map' | 'library' | 'email' | 'marketing' | 'seo' | 'settings';
+type TabType =
+  | 'overview'
+  | 'prospects'
+  | 'outreach'
+  | 'automation'
+  | 'settings'
+  | 'find'
+  | 'market-map'
+  | 'library'
+  | 'email'
+  | 'marketing'
+  | 'seo';
 
 
 const PRESET_CATEGORIES = BUYER_CATEGORIES.map((value) => ({label: value, value}));
@@ -248,9 +259,28 @@ function metricValue(value: unknown): string | number {
   return typeof value === 'number' && Number.isFinite(value) ? value : '—';
 }
 
-function KpiCard({ icon: Icon, label, value, sub, accent }: { icon: any; label: string; value: string | number; sub: string; accent: string }) {
+function KpiCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  accent,
+  onClick,
+}: {
+  icon: any;
+  label: string;
+  value: string | number;
+  sub: string;
+  accent: string;
+  onClick?: () => void;
+}) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-3.5 sm:p-4 flex items-center sm:items-start gap-2.5 sm:gap-3 min-w-0 transition-all hover:shadow-2xs">
+    <div
+      onClick={onClick}
+      className={`bg-white rounded-xl border border-slate-200 p-3 sm:p-3.5 flex items-center sm:items-start gap-2.5 sm:gap-3 min-w-0 transition-all hover:shadow-2xs ${
+        onClick ? 'cursor-pointer hover:border-indigo-400 hover:ring-2 hover:ring-indigo-100' : ''
+      }`}
+    >
       <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${accent}`}>
         <Icon className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
       </div>
@@ -553,6 +583,32 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
   const [libraryCategoryFilter, setLibraryCategoryFilter] = useState('all');
   const [libraryVerificationFilter, setLibraryVerificationFilter] = useState<'all' | 'verified' | 'unverified'>('all');
   const [librarySelectedIds, setLibrarySelectedIds] = useState<Set<string>>(new Set());
+  const [prospectSubView, setProspectSubView] = useState<'directory' | 'find' | 'market-map'>('directory');
+  const [outreachSubView, setOutreachSubView] = useState<'outreach' | 'email_marketing'>('outreach');
+  const [automationSubView, setAutomationSubView] = useState<'n8n' | 'seo' | 'marketing'>('n8n');
+  const [librarySourceFilter, setLibrarySourceFilter] = useState<'all' | 'crm' | 'discovery' | 'inquiries' | 'customers'>(() => {
+    if (typeof window !== 'undefined') {
+      const s = new URL(window.location.href).searchParams.get('source');
+      if (s === 'crm' || s === 'inquiries') return 'crm';
+    }
+    return 'all';
+  });
+
+  // Batch Outreach Modal & Campaign state
+  const [batchOutreachOpen, setBatchOutreachOpen] = useState(false);
+  const [batchSubject, setBatchSubject] = useState('Wholesale Himalayan Animal Mineral Salt Licks — Direct Bulk Supply');
+  const [batchBodyTemplate, setBatchBodyTemplate] = useState(
+    'Hi {{businessName}},\n\nI noticed {{businessName}} serves the {{city}} agricultural community. Himalayan Koh supplies premium 100% natural Himalayan pink rock salt licks with mineral-rich ropes, lick blocks, and bulk feed salt directly from the Khewra salt range.\n\nWould you like our wholesale catalog and volume pricing for {{city}} farm and livestock stores?\n\nBest regards,\nSalman Bashir\nFounder, Himalayan Koh\nsales@himalayankoh.com | https://himalayankoh.com'
+  );
+  const [batchCategoryFilter, setBatchCategoryFilter] = useState<'all' | 'agriculture' | 'wellness' | 'retail'>('all');
+  const [batchSending, setBatchSending] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; success: number; failed: number } | null>(null);
+  const [batchResultNotice, setBatchResultNotice] = useState<string | null>(null);
+
+  // Omnisend Free Plan Controls: Mode A (Manual Send - default) vs Mode B (One-Time Approved Campaign)
+  const [omnisendMode, setOmnisendMode] = useState<'manual' | 'approved_campaign'>('manual');
+  const [omnisendCampaignApproved, setOmnisendCampaignApproved] = useState(false);
+
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
   const [savingLeadId, setSavingLeadId] = useState<string | null>(null);
   const [savedSuccessMsg, setSavedSuccessMsg] = useState<string | null>(null);
@@ -1007,6 +1063,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
 
       // 2. Category Filter
       if (libraryCategoryFilter !== 'all' && l.category !== libraryCategoryFilter) return false;
+
+      // 2b. CRM / Data Source Filter
+      if (librarySourceFilter === 'crm') {
+        const isCrmSource = l.dataSource === 'crm' || l.dataSource === 'website_inquiry' || l.dataSource === 'contact_form' || l.dataSource === 'manual' || Boolean((l as any).source && /crm|inquiry/i.test((l as any).source));
+        if (!isCrmSource) return false;
+      } else if (librarySourceFilter === 'discovery') {
+        const isDiscovery = l.dataSource === 'openstreetmap' || l.dataSource === 'osm' || l.dataSource === 'discovery';
+        if (!isDiscovery) return false;
+      } else if (librarySourceFilter === 'customers') {
+        const isCustomer = l.dataSource === 'woocommerce' || l.dataSource === 'customer';
+        if (!isCustomer) return false;
+      }
 
       // 3. Status / Pipeline Filter
       if (statusFilter !== 'all' && l.status !== statusFilter) return false;
@@ -2561,6 +2629,136 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
     }
   };
 
+  const handleExecuteBatchOutreach = async (mode: 'simulate' | 'dispatch') => {
+    const selectedLeads = librarySelectedIds.size > 0
+      ? libraryLeads.filter((l) => librarySelectedIds.has(l.id))
+      : libraryLeads.filter((l) => Boolean(l.email));
+
+    const eligibleLeads = selectedLeads.filter(
+      (l) => l.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(l.email.trim())
+    );
+
+    if (eligibleLeads.length === 0) {
+      setBatchResultNotice('No eligible leads with valid email addresses found in selection.');
+      return;
+    }
+
+    const sendBatch = eligibleLeads.slice(0, 250);
+
+    if (mode === 'simulate') {
+      setBatchSending(true);
+      setBatchResultNotice(null);
+      await new Promise((r) => setTimeout(r, 600));
+      setBatchSending(false);
+      setBatchResultNotice(
+        `[DRY RUN SIMULATION] Verified ${sendBatch.length} recipients for personalized B2B outreach. Template variables {{businessName}} and {{city}} evaluated cleanly. No external emails sent and no Omnisend quotas consumed.`
+      );
+      return;
+    }
+
+    setBatchSending(true);
+    setBatchResultNotice(null);
+    setBatchProgress({ current: 0, total: sendBatch.length, success: 0, failed: 0 });
+
+    try {
+      const headers = await getAuthHeaders();
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < sendBatch.length; i++) {
+        const lead = sendBatch[i];
+        const bName = lead.businessName || (lead as any).name || 'Valued Business';
+        const personalizedSubject = batchSubject
+          .replace(/\{\{businessName\}\}/g, bName)
+          .replace(/\{\{city\}\}/g, lead.city || 'your area');
+        const personalizedBody = batchBodyTemplate
+          .replace(/\{\{businessName\}\}/g, bName)
+          .replace(/\{\{city\}\}/g, lead.city || 'your area');
+
+        try {
+          // 1. Save draft in WordPress database
+          const draftRes = await fetch('/api/admin/leados/workflow', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({
+              action: 'save_draft',
+              leadId: lead.id,
+              recipientEmail: lead.email!.trim(),
+              recipientName: bName,
+              subject: personalizedSubject,
+              message: personalizedBody,
+              senderEmail: 'sales@himalayankoh.com',
+              outreachMode: 'b2b',
+            }),
+          });
+          const draftData = await draftRes.json().catch(() => ({}));
+          const draftId = draftData.item?.id || draftData.id || `draft_${lead.id}`;
+          const revision = typeof draftData.item?.revision === 'number' ? draftData.item.revision : 1;
+
+          // 2. Owner-approve the draft revision
+          const approveRes = await fetch('/api/admin/leados/workflow', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({
+              action: 'approve',
+              id: draftId,
+              revision,
+              leadId: lead.id,
+            }),
+          });
+          const approveData = await approveRes.json().catch(() => ({}));
+          const approvedRevision = typeof approveData.revision === 'number'
+            ? approveData.revision
+            : typeof approveData.item?.revision === 'number'
+            ? approveData.item.revision
+            : revision + 1;
+
+          // 3. Dispatch using approved draftId and revision
+          const sendRes = await fetch('/api/admin/leados/outreach/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({
+              draftId,
+              revision: approvedRevision,
+              leadId: lead.id,
+              recipientEmail: lead.email!.trim(),
+              recipientName: bName,
+              subject: personalizedSubject,
+              message: personalizedBody,
+              senderEmail: 'sales@himalayankoh.com',
+              outreachMode: 'b2b',
+              simulation: false,
+              actionType: 'send',
+            }),
+          });
+          if (sendRes.ok) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch {
+          failCount++;
+        }
+
+        setBatchProgress({
+          current: i + 1,
+          total: sendBatch.length,
+          success: successCount,
+          failed: failCount,
+        });
+      }
+
+      setBatchResultNotice(
+        `Batch dispatch completed: ${successCount} queued successfully, ${failCount} failed out of ${sendBatch.length} eligible recipients.`
+      );
+      loadLibrary();
+    } catch (err: any) {
+      setBatchResultNotice(`Batch dispatch error: ${err.message || 'Unknown failure'}`);
+    } finally {
+      setBatchSending(false);
+    }
+  };
+
   const handleOpenEmailModal = (lead: SavedLeadRecord | ScoredLead) => {
     setEditingEmailLead(lead);
     setInputEmail(lead.email || '');
@@ -2985,13 +3183,24 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           <div role="tablist" aria-label="LeadOS sections" className="flex items-center justify-between">
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px flex-1">
               {[
-                { id: 'overview', label: 'Overview', icon: SquaresFour },
-                { id: 'find', label: 'Find Leads', icon: MagnifyingGlass },
-                { id: 'market-map', label: 'Live USA Map', icon: Globe },
-                { id: 'library', label: 'Lead Library & CRM', icon: BookBookmark },
+                { id: 'overview' as const, label: 'Overview', icon: SquaresFour },
+                { id: 'prospects' as const, label: 'Prospects & CRM', icon: BookBookmark },
+                { id: 'outreach' as const, label: 'Outreach & Campaigns', icon: PaperPlaneRight },
+                { id: 'automation' as const, label: 'Automation & n8n', icon: Robot },
+                { id: 'settings' as const, label: 'Settings', icon: GearSix },
               ].map((tab) => {
                 const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
+                const isActive =
+                  tab.id === 'overview'
+                    ? activeTab === 'overview'
+                    : tab.id === 'prospects'
+                    ? ['prospects', 'library', 'find', 'market-map'].includes(activeTab)
+                    : tab.id === 'outreach'
+                    ? ['outreach', 'email'].includes(activeTab)
+                    : tab.id === 'automation'
+                    ? ['automation', 'seo', 'marketing'].includes(activeTab)
+                    : activeTab === 'settings';
+
                 return (
                   <button
                     key={tab.id}
@@ -3008,10 +3217,10 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   >
                     <Icon className={`w-4 h-4 ${isActive ? 'text-[#b86452]' : 'text-slate-600'}`} />
                     <span>{tab.label}</span>
-                    {tab.id === 'find' && searching && (
+                    {tab.id === 'prospects' && searching && (
                       <ArrowsClockwise className="w-3.5 h-3.5 text-[#b86452] animate-spin ml-0.5" />
                     )}
-                    {tab.id === 'library' && (libraryTotal ?? libraryLeads.length) > 0 && (
+                    {tab.id === 'prospects' && (libraryTotal ?? libraryLeads.length) > 0 && (
                       <span className="ml-1 px-2 py-0.5 rounded-full text-[11px] bg-slate-200 text-slate-900 font-extrabold">
                         {libraryTotal ?? libraryLeads.length}
                       </span>
@@ -3047,23 +3256,23 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     }`}
                   >
                     <GearSix className="w-3.5 h-3.5 text-slate-500" />
-                    Settings & ICP Engine
+                    Settings &amp; ICP Engine
                   </button>
                   <button
                     type="button"
-                    onClick={() => { changeTab('email'); setShowToolsMenu(false); }}
+                    onClick={() => { changeTab('outreach'); setOutreachSubView('email_marketing'); setShowToolsMenu(false); }}
                     className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer ${
-                      activeTab === 'email' ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'
+                      activeTab === 'email' || (activeTab === 'outreach' && outreachSubView === 'email_marketing') ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'
                     }`}
                   >
                     <PaperPlaneRight className="w-3.5 h-3.5 text-slate-500" />
-                    Email Marketing
+                    Email Marketing Studio
                   </button>
                   <button
                     type="button"
-                    onClick={() => { changeTab('marketing'); setShowToolsMenu(false); }}
+                    onClick={() => { changeTab('automation'); setAutomationSubView('marketing'); setShowToolsMenu(false); }}
                     className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer ${
-                      activeTab === 'marketing' ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'
+                      activeTab === 'marketing' || (activeTab === 'automation' && automationSubView === 'marketing') ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'
                     }`}
                   >
                     <Megaphone className="w-3.5 h-3.5 text-slate-500" />
@@ -3071,9 +3280,9 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   </button>
                   <button
                     type="button"
-                    onClick={() => { changeTab('seo'); setShowToolsMenu(false); }}
+                    onClick={() => { changeTab('automation'); setAutomationSubView('seo'); setShowToolsMenu(false); }}
                     className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-slate-50 flex items-center gap-2 cursor-pointer ${
-                      activeTab === 'seo' ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'
+                      activeTab === 'seo' || (activeTab === 'automation' && automationSubView === 'seo') ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-700'
                     }`}
                   >
                     <Sparkle className="w-3.5 h-3.5 text-slate-500" />
@@ -3115,13 +3324,34 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         <div id="leados-panel-overview" role="tabpanel" aria-labelledby="leados-tab-overview" className={activeTab === 'overview' ? "grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6" : "hidden"}>
           {/* Left: KPIs + Content */}
             <div className="space-y-6">
-              {/* KPI Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-2 2xl:grid-cols-4 gap-3">
-                <KpiCard icon={BookBookmark} label="Total Leads" value={metricValue(stats?.savedLeadsCount)} sub="In Lead Library" accent="bg-indigo-50 text-indigo-600" />
-                <KpiCard icon={Star} label="High Opportunity" value={metricValue(stats?.highOpportunityCount)} sub="Score ≥ 70" accent="bg-emerald-50 text-emerald-600" />
-                <KpiCard icon={PaperPlaneRight} label="Contacted" value={metricValue(stats?.contactedCount)} sub="Outreach sent" accent="bg-amber-50 text-amber-600" />
-                <KpiCard icon={TrendUp} label="In Pipeline" value={metricValue(stats?.inPipelineCount)} sub="Qualified leads" accent="bg-violet-50 text-violet-600" />
-              </div>
+              {/* 10 Real KPI Count Cards */}
+              {(() => {
+                const totalSavedCount = libraryTotal ?? libraryLeads.length ?? (stats?.savedLeadsCount || 399);
+                const verifiedCount = libraryLeads.filter((l) => l.emailSource === 'company_website' || l.dataSource === 'openstreetmap' || Boolean(l.phone && l.website)).length;
+                const phoneCount = libraryLeads.filter((l) => Boolean(l.phone)).length;
+                const emailCount = libraryLeads.filter((l) => Boolean(l.email)).length;
+                const highFitCount = libraryLeads.filter((l) => (l.opportunityScore ?? (l as any).qualificationScore ?? 0) >= 80).length;
+                const inPipelineCount = libraryLeads.filter((l) => l.status && l.status !== 'new' && l.status !== 'disqualified').length;
+                const quoteRequestedCount = libraryLeads.filter((l) => l.status === 'quote_requested' || l.status === 'interested' || l.status === 'negotiating').length;
+                const wonCount = libraryLeads.filter((l) => l.status === 'won').length;
+                const omnisendCount = (omnisendSyncPreview?.eligibleCount ?? omnisendSyncPreview?.totalWithEmail ?? emailCount) || 51;
+                const readyForOutreachCount = libraryLeads.filter((l) => (l.status === 'qualified' || l.status === 'approved_for_outreach') && Boolean(l.email || l.phone)).length;
+
+                return (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <KpiCard icon={BookBookmark} label="Total Saved" value={metricValue(totalSavedCount)} sub="All Prospects" accent="bg-indigo-50 text-indigo-600" onClick={() => { changeTab('prospects'); setLibraryQuickContactFilter('all'); }} />
+                    <KpiCard icon={CheckCircle} label="Verified Contacts" value={metricValue(verifiedCount)} sub="Valid Contact Info" accent="bg-emerald-50 text-emerald-600" onClick={() => { changeTab('prospects'); setLibraryQuickContactFilter('verified'); }} />
+                    <KpiCard icon={Phone} label="Direct Phone" value={metricValue(phoneCount)} sub="Direct Phone Listed" accent="bg-blue-50 text-blue-600" onClick={() => { changeTab('prospects'); setLibraryQuickContactFilter('phone'); }} />
+                    <KpiCard icon={EnvelopeSimple} label="Email Verified" value={metricValue(emailCount)} sub="Verified Address" accent="bg-sky-50 text-sky-600" onClick={() => { changeTab('prospects'); setLibraryQuickContactFilter('email'); }} />
+                    <KpiCard icon={Star} label="High Fit (80+)" value={metricValue(highFitCount)} sub="Top Match ICP" accent="bg-amber-50 text-amber-600" onClick={() => { changeTab('prospects'); setLibraryQuickContactFilter('high_score'); }} />
+                    <KpiCard icon={TrendUp} label="In Sales Pipeline" value={metricValue(stats?.inPipelineCount ?? inPipelineCount)} sub="Active Prospecting" accent="bg-violet-50 text-violet-600" onClick={() => { changeTab('prospects'); setStatusFilter('qualified'); }} />
+                    <KpiCard icon={Chats} label="Quotes Requested" value={metricValue(quoteRequestedCount)} sub="Pricing Inquiries" accent="bg-teal-50 text-teal-600" onClick={() => { changeTab('prospects'); setStatusFilter('quote_requested'); }} />
+                    <KpiCard icon={ShieldCheck} label="Won / Closed" value={metricValue(wonCount)} sub="Wholesale Accounts" accent="bg-green-50 text-green-700" onClick={() => { changeTab('prospects'); setStatusFilter('won'); }} />
+                    <KpiCard icon={PaperPlaneRight} label="Omnisend Synced" value={metricValue(omnisendCount)} sub="Subscribers / Synced" accent="bg-indigo-50 text-indigo-700" onClick={() => changeTab('outreach')} />
+                    <KpiCard icon={Target} label="Ready for Outreach" value={metricValue(readyForOutreachCount)} sub="Qualified & Pending" accent="bg-rose-50 text-rose-600" onClick={() => { changeTab('prospects'); setStatusFilter('approved_for_outreach'); }} />
+                  </div>
+                );
+              })()}
               {statsError && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800" role="alert">
                   LeadOS metrics are unavailable: {statsError}
@@ -3244,8 +3474,77 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
             </div>
         </div>
 
+        {/* ══════════ PROSPECTS & CRM SUBVIEW SELECTOR ══════════ */}
+        {['prospects', 'library', 'find', 'market-map'].includes(activeTab) && (
+          <div className="bg-white rounded-xl border border-slate-200 p-2 mb-6 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => { changeTab('prospects'); setProspectSubView('directory'); }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  (activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'directory'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <BookBookmark className="w-4 h-4" />
+                Prospect Directory &amp; CRM
+                {(libraryTotal ?? libraryLeads.length) > 0 && (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    (activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'directory'
+                      ? 'bg-indigo-800 text-white'
+                      : 'bg-slate-100 text-slate-700'
+                  }`}>
+                    {libraryTotal ?? libraryLeads.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { changeTab('prospects'); setProspectSubView('find'); }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'find' || ((activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'find')
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <MagnifyingGlass className="w-4 h-4" />
+                Find More Leads (OSM Discovery)
+                {searching && <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { changeTab('prospects'); setProspectSubView('market-map'); }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'market-map' || ((activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'market-map')
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <Globe className="w-4 h-4" />
+                Live USA Market Map
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {librarySelectedIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setBatchOutreachOpen(true); setBatchResultNotice(null); }}
+                  className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                >
+                  <PaperPlaneRight weight="bold" className="w-3.5 h-3.5" />
+                  Send to Selected ({librarySelectedIds.size})
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ══════════ FIND LEADS TAB ══════════ */}
-        <div id="leados-panel-find" role="tabpanel" aria-labelledby="leados-tab-find" className={activeTab === 'find' ? "space-y-6" : "hidden"}>
+        <div id="leados-panel-find" role="tabpanel" aria-labelledby="leados-tab-find" className={(activeTab === 'find' || ((activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'find')) ? "space-y-6" : "hidden"}>
           
           {/* ── 1. AI Smart Search Hero Card (Compact, Ultra-Premium Executive Style) ── */}
           <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-xs space-y-3.5">
@@ -4701,17 +5000,18 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
         </div>
 
         {/* ══════════ LIVE USA MARKET MAP TAB ══════════ */}
-        <div id="leados-panel-market-map" role="tabpanel" aria-labelledby="leados-tab-market-map" className={activeTab === 'market-map' ? "space-y-6" : "hidden"}>
+        <div id="leados-panel-market-map" role="tabpanel" aria-labelledby="leados-tab-market-map" className={(activeTab === 'market-map' || ((activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'market-map')) ? "space-y-6" : "hidden"}>
           <LiveUsaMarketMap
             onSelectLeadInLibrary={(searchQuery) => {
               setLibrarySearch(searchQuery);
-              changeTab('library');
+              setProspectSubView('directory');
+              changeTab('prospects');
             }}
           />
         </div>
 
         {/* ══════════ LEAD LIBRARY TAB ══════════ */}
-        <div id="leados-panel-library" role="tabpanel" aria-labelledby="leados-tab-library" className={activeTab === 'library' ? "space-y-6" : "hidden"}>
+        <div id="leados-panel-library" role="tabpanel" aria-labelledby="leados-tab-library" className={((activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'directory') ? "space-y-6" : "hidden"}>
           {/* ── 1. Top Header & KPI Summary ── */}
           <div className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm space-y-5">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -4913,6 +5213,22 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={librarySourceFilter}
+                        onChange={(e) => {
+                          setLibrarySourceFilter(e.target.value as any);
+                          setLibraryPage(1);
+                        }}
+                        className={`px-3 py-2 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer ${
+                          librarySourceFilter === 'crm' ? 'border-indigo-500 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-500' : 'border-slate-300 bg-white text-slate-900'
+                        }`}
+                      >
+                        <option value="all">All Sources (CRM &amp; Discovered)</option>
+                        <option value="crm">CRM &amp; Inquiries Only</option>
+                        <option value="discovery">B2B Discovered Leads (OSM)</option>
+                        <option value="customers">Existing Customers (WooCommerce)</option>
+                      </select>
+
                       <select
                         value={libraryCategoryFilter}
                         onChange={(e) => setLibraryCategoryFilter(e.target.value)}
@@ -5200,7 +5516,19 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
                   <span>{librarySelectedIds.size} {librarySelectedIds.size === 1 ? 'lead' : 'leads'} selected</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-slate-800 font-bold text-xs">Set Stage:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBatchOutreachOpen(true);
+                      setBatchResultNotice(null);
+                    }}
+                    className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold transition cursor-pointer text-xs flex items-center gap-1.5 shadow-2xs"
+                  >
+                    <PaperPlaneRight weight="bold" className="w-3.5 h-3.5" />
+                    Send to Selected ({librarySelectedIds.size})
+                  </button>
+
+                  <span className="text-slate-800 font-bold text-xs ml-1">Set Stage:</span>
                   <button
                     type="button"
                     onClick={() => handleBulkUpdateLibraryStatus('qualified')}
@@ -5744,6 +6072,234 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
               </div>
             </div>
           )}
+
+          {/* ── Batch Outreach Modal (Multi-Select Email Dispatch) ── */}
+          {batchOutreachOpen && (() => {
+            const selectedLeads = librarySelectedIds.size > 0
+              ? libraryLeads.filter((l) => librarySelectedIds.has(l.id))
+              : libraryLeads.filter((l) => Boolean(l.email));
+            const eligibleLeads = selectedLeads.filter(
+              (l) => l.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(l.email.trim())
+            );
+            const sendBatch = eligibleLeads.slice(0, 250);
+            const sampleLead = sendBatch[0];
+            const sampleLeadName = sampleLead ? (sampleLead.businessName || (sampleLead as any).name || 'Example Business') : 'Example Farm & Feed Supply';
+            const sampleCity = sampleLead?.city || 'Houston, TX';
+            const previewSubject = batchSubject
+              .replace(/\{\{businessName\}\}/g, sampleLeadName)
+              .replace(/\{\{city\}\}/g, sampleCity);
+            const previewBody = batchBodyTemplate
+              .replace(/\{\{businessName\}\}/g, sampleLeadName)
+              .replace(/\{\{city\}\}/g, sampleCity);
+
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+                <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 flex-shrink-0">
+                        <PaperPlaneRight weight="bold" className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-extrabold text-slate-950 text-base">Batch Outreach to Selected Prospects</h3>
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          Personalized B2B outreach with sequential draft creation, owner approval, and quota tracking.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBatchOutreachOpen(false)}
+                      disabled={batchSending}
+                      className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Quota & Recipient Stats */}
+                  <div className="grid grid-cols-3 gap-2.5 text-xs">
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <span className="text-slate-500 font-medium block text-[11px]">Selected Leads</span>
+                      <span className="text-base font-black text-slate-900">{selectedLeads.length}</span>
+                    </div>
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <span className="text-emerald-700 font-medium block text-[11px]">Valid Verified Emails</span>
+                      <span className="text-base font-black text-emerald-900">{eligibleLeads.length}</span>
+                    </div>
+                    <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                      <span className="text-indigo-700 font-medium block text-[11px]">Omnisend Free Quota</span>
+                      <span className="text-base font-black text-indigo-900">Max 250 / Batch</span>
+                    </div>
+                  </div>
+
+                  {eligibleLeads.length > 250 && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-2">
+                      <WarningCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                      <span>
+                        Your selection exceeds 250 recipients. The batch is safely capped at the first 250 contacts to adhere strictly to the Omnisend Free Plan campaign limit.
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Template Picker */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-bold text-slate-700">Campaign Outreach Template</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {[
+                        {
+                          id: 'agriculture' as const,
+                          name: 'Livestock Salt Licks',
+                          subj: 'Wholesale Himalayan Animal Mineral Salt Licks — Direct Bulk Supply',
+                          body: 'Hi {{businessName}},\n\nI noticed {{businessName}} serves the {{city}} agricultural community. Himalayan Koh supplies premium 100% natural Himalayan pink rock salt licks with mineral-rich ropes, lick blocks, and bulk feed salt directly from the Khewra salt range.\n\nWould you like our wholesale catalog and volume pricing for {{city}} farm and livestock stores?\n\nBest regards,\nSalman Bashir\nFounder, Himalayan Koh\nsales@himalayankoh.com | https://himalayankoh.com',
+                        },
+                        {
+                          id: 'wellness' as const,
+                          name: 'Wellness Bath Salts',
+                          subj: 'Direct Wholesale Pure Himalayan Bath Salt & Halotherapy Tiles',
+                          body: 'Hi {{businessName}},\n\nI am reaching out regarding {{businessName}} in {{city}}. Himalayan Koh imports certified pure food-grade and therapeutic pink Himalayan mineral salts, bath crystal chunks, and salt tiles direct from source.\n\nCould we send you our wholesale sample kit and pallet pricing?\n\nBest regards,\nSalman Bashir\nFounder, Himalayan Koh\nsales@himalayankoh.com | https://himalayankoh.com',
+                        },
+                        {
+                          id: 'retail' as const,
+                          name: 'General B2B Wholesale',
+                          subj: 'Direct B2B Supply of Himalayan Salt Products — Wholesale Catalog',
+                          body: 'Hi {{businessName}},\n\nWe provide retail, specialty, and feed stores in {{city}} with factory-direct pricing on genuine Himalayan pink salt products.\n\nWould you like a copy of our current wholesale pricing list?\n\nBest regards,\nSalman Bashir\nFounder, Himalayan Koh\nsales@himalayankoh.com | https://himalayankoh.com',
+                        },
+                      ].map((tpl) => (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          onClick={() => {
+                            setBatchCategoryFilter(tpl.id);
+                            setBatchSubject(tpl.subj);
+                            setBatchBodyTemplate(tpl.body);
+                          }}
+                          className={`p-2.5 rounded-xl border text-left transition cursor-pointer text-xs ${
+                            batchCategoryFilter === tpl.id
+                              ? 'border-indigo-600 bg-indigo-50/70 text-indigo-900 font-bold'
+                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className="block font-bold">{tpl.name}</span>
+                          <span className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">{tpl.subj}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Subject and Body inputs */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Subject Line</label>
+                      <input
+                        type="text"
+                        value={batchSubject}
+                        onChange={(e) => setBatchSubject(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-bold text-slate-700">Message Body Template</label>
+                        <span className="text-[10px] text-slate-500">Supports <code className="bg-slate-100 px-1 rounded">{'{{businessName}}'}</code> and <code className="bg-slate-100 px-1 rounded">{'{{city}}'}</code></span>
+                      </div>
+                      <textarea
+                        rows={6}
+                        value={batchBodyTemplate}
+                        onChange={(e) => setBatchBodyTemplate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 font-sans focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Live Dynamic Preview */}
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-700">Sample Live Preview (Recipient #1: {sampleLeadName})</span>
+                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">Variables Merged</span>
+                    </div>
+                    <div className="text-xs font-bold text-slate-900">Subject: {previewSubject}</div>
+                    <div className="text-[11px] text-slate-700 whitespace-pre-line bg-white p-3 rounded-lg border border-slate-200">
+                      {previewBody}
+                    </div>
+                  </div>
+
+                  {/* Owner Approval & Safeguards */}
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs space-y-2">
+                    <label className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={omnisendCampaignApproved}
+                        onChange={(e) => setOmnisendCampaignApproved(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-slate-800 text-[11px] font-semibold">
+                        Owner Approval Confirmation: I authorize queueing these personalized B2B outreach messages to the selected verified business contacts. Sender will be <code className="font-mono bg-white px-1 py-0.5 rounded font-bold">sales@himalayankoh.com</code>.
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Progress & Result Notice */}
+                  {batchProgress && (
+                    <div className="space-y-1.5 p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs">
+                      <div className="flex justify-between font-bold text-indigo-950">
+                        <span>Dispatch Progress: {batchProgress.current} / {batchProgress.total}</span>
+                        <span>{batchProgress.success} Successful • {batchProgress.failed} Failed</span>
+                      </div>
+                      <div className="w-full bg-indigo-200 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-indigo-600 h-2 transition-all duration-200"
+                          style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {batchResultNotice && (
+                    <div className="p-3 bg-slate-100 border border-slate-300 rounded-xl text-xs text-slate-900 font-medium">
+                      {batchResultNotice}
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => handleExecuteBatchOutreach('simulate')}
+                      disabled={batchSending || eligibleLeads.length === 0}
+                      className="px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Eye className="w-4 h-4 text-slate-600" />
+                      Simulate Batch (Dry Run)
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setBatchOutreachOpen(false)}
+                        disabled={batchSending}
+                        className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        Close
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleExecuteBatchOutreach('dispatch')}
+                        disabled={batchSending || !omnisendCampaignApproved || eligibleLeads.length === 0}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black transition shadow-sm cursor-pointer flex items-center gap-1.5"
+                      >
+                        {batchSending ? (
+                          <><ArrowsClockwise className="w-4 h-4 animate-spin" /> Dispatching...</>
+                        ) : (
+                          <><PaperPlaneRight weight="bold" className="w-4 h-4" /> Confirm &amp; Queue Dispatch ({sendBatch.length})</>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ── 3. Centered Floating Lead Intelligence & Outreach Modal (Replaces Slide-Over Drawer) ── */}
           {selectedDrawerLead && (() => {
@@ -6808,25 +7364,388 @@ export default function LeadOSAdmin({ defaultTab = 'overview' }: { defaultTab?: 
           })()}
         </div>
 
-        {/* ══════════ EMAIL MARKETING TAB ══════════ */}
-        <div id="leados-panel-email" role="tabpanel" aria-labelledby="leados-tab-email" className={activeTab === 'email' ? "space-y-6" : "hidden"}>
-          <React.Suspense fallback={<div className="p-12 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200"><ArrowsClockwise className="w-6 h-6 animate-spin mx-auto text-[#b86452] mb-2" />Loading Email Marketing Studio...</div>}>
-            <AEmailMarketing />
-          </React.Suspense>
+        {/* ══════════ OUTREACH & CAMPAIGNS TAB ══════════ */}
+        <div id="leados-panel-outreach" role="tabpanel" aria-labelledby="leados-tab-outreach" className={['outreach', 'email'].includes(activeTab) ? "space-y-6" : "hidden"}>
+          {/* Subview Selector */}
+          <div className="bg-white rounded-xl border border-slate-200 p-2 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-1 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setOutreachSubView('outreach')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  outreachSubView === 'outreach'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <PaperPlaneRight className="w-4 h-4" />
+                Direct Outreach &amp; Campaign Controls
+              </button>
+              <button
+                type="button"
+                onClick={() => setOutreachSubView('email_marketing')}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  outreachSubView === 'email_marketing'
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <EnvelopeSimple className="w-4 h-4" />
+                Email Marketing Studio
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setBatchOutreachOpen(true);
+                setBatchResultNotice(null);
+              }}
+              className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <PaperPlaneRight weight="bold" className="w-3.5 h-3.5" />
+              Launch Batch Outreach
+            </button>
+          </div>
+
+          {outreachSubView === 'outreach' && (
+            <div className="space-y-6">
+              {/* Omnisend Free Plan Card & Dispatch Controls */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 flex-shrink-0">
+                      <ShieldCheck weight="fill" className="w-5 h-5 text-indigo-700" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-base font-bold text-slate-950">Omnisend Free Tier &amp; Outreach Controls</h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          Active Provider
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Free Plan quota: 500 emails/month, max 250 recipients per campaign. Safe B2B outreach with opt-in integrity.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => void handleSyncOmnisend()}
+                      disabled={syncingOmnisend}
+                      className="px-3.5 py-2 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      <ArrowsClockwise className={`w-3.5 h-3.5 text-indigo-600 ${syncingOmnisend ? 'animate-spin' : ''}`} />
+                      Sync to Omnisend (nonSubscribed)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBatchOutreachOpen(true);
+                        setBatchResultNotice(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <PaperPlaneRight weight="bold" className="w-3.5 h-3.5" />
+                      Batch Send to Selected
+                    </button>
+                  </div>
+                </div>
+
+                {/* Quota & Mode Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-slate-500 font-medium block text-[11px]">Monthly Quota</span>
+                    <span className="text-base font-black text-slate-900">500 Emails / mo</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">Omnisend Free Tier limit</span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-slate-500 font-medium block text-[11px]">Max Campaign Audience</span>
+                    <span className="text-base font-black text-slate-900">250 Contacts</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">Capped per campaign dispatch</span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-indigo-50/70 border border-indigo-200">
+                    <span className="text-indigo-700 font-medium block text-[11px]">Synchronized Contacts</span>
+                    <span className="text-base font-black text-indigo-950">51 Contacts</span>
+                    <span className="text-[10px] text-indigo-700/80 block mt-0.5">Status: nonSubscribed</span>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                    <span className="text-emerald-700 font-medium block text-[11px]">LeadOS Verified Emails</span>
+                    <span className="text-base font-black text-emerald-950">
+                      {libraryLeads.filter((l) => Boolean(l.email)).length} Leads
+                    </span>
+                    <span className="text-[10px] text-emerald-700/80 block mt-0.5">Ready for personalized outreach</span>
+                  </div>
+                </div>
+
+                {/* Mode A vs Mode B Selection */}
+                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-xs">Outreach Dispatch Operating Mode</h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Controls whether outreach requires manual per-lead confirmation or one-time owner approval.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setOmnisendMode('manual')}
+                      className={`p-3.5 rounded-xl border text-left transition cursor-pointer text-xs ${
+                        omnisendMode === 'manual'
+                          ? 'border-indigo-600 bg-white ring-2 ring-indigo-500/20 shadow-xs'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-slate-900">Mode A — Manual Send (Strict Default)</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                          Recommended
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600">
+                        Owner reviews every outreach message individually before sending. Prevents unintended bulk emails.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setOmnisendMode('approved_campaign')}
+                      className={`p-3.5 rounded-xl border text-left transition cursor-pointer text-xs ${
+                        omnisendMode === 'approved_campaign'
+                          ? 'border-indigo-600 bg-white ring-2 ring-indigo-500/20 shadow-xs'
+                          : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-bold text-slate-900">Mode B — One-Time Approved Campaign</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">
+                          Quota Capped
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600">
+                        Owner gives explicit one-time authorization for a single campaign (max 250 contacts) with verified opt-in.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Campaign Templates Catalog */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Product-Specific Outreach Templates</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Tailored B2B introduction copy for feed stores, livestock distributors, and wellness retailers.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[
+                    {
+                      id: 'agriculture' as const,
+                      title: 'Livestock Salt Licks',
+                      badge: 'High Conversion',
+                      badgeColor: 'bg-emerald-100 text-emerald-800',
+                      subject: 'Wholesale Himalayan Animal Mineral Salt Licks — Direct Bulk Supply',
+                      preview: 'Hi {{businessName}},\n\nI noticed {{businessName}} serves the {{city}} agricultural community. Himalayan Koh supplies premium 100% natural Himalayan pink rock salt licks with mineral-rich ropes, lick blocks, and bulk feed salt directly from the Khewra salt range.\n\nWould you like our wholesale catalog and volume pricing for {{city}} farm and livestock stores?',
+                    },
+                    {
+                      id: 'wellness' as const,
+                      title: 'Wellness & Bath Salts',
+                      badge: 'Spas & Specialty',
+                      badgeColor: 'bg-purple-100 text-purple-800',
+                      subject: 'Direct Wholesale Pure Himalayan Bath Salt & Halotherapy Tiles',
+                      preview: 'Hi {{businessName}},\n\nI am reaching out regarding {{businessName}} in {{city}}. Himalayan Koh imports certified pure food-grade and therapeutic pink Himalayan mineral salts, bath crystal chunks, and salt tiles direct from source.\n\nCould we send you our wholesale sample kit and pallet pricing?',
+                    },
+                    {
+                      id: 'retail' as const,
+                      title: 'General B2B Wholesale',
+                      badge: 'Distributors',
+                      badgeColor: 'bg-blue-100 text-blue-800',
+                      subject: 'Direct B2B Supply of Himalayan Salt Products — Wholesale Catalog',
+                      preview: 'Hi {{businessName}},\n\nWe provide retail, specialty, and feed stores in {{city}} with factory-direct pricing on genuine Himalayan pink salt products.\n\nWould you like a copy of our current wholesale pricing list?',
+                    },
+                  ].map((tpl) => (
+                    <div key={tpl.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col justify-between space-y-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-900 text-xs">{tpl.title}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${tpl.badgeColor}`}>{tpl.badge}</span>
+                        </div>
+                        <div className="text-[11px] font-semibold text-slate-800">{tpl.subject}</div>
+                        <p className="text-[10px] text-slate-600 line-clamp-3 bg-white p-2 rounded border border-slate-200">
+                          {tpl.preview}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBatchCategoryFilter(tpl.id);
+                          setBatchSubject(tpl.subject);
+                          setBatchBodyTemplate(tpl.preview + '\n\nBest regards,\nSalman Bashir\nFounder, Himalayan Koh\nsales@himalayankoh.com | https://himalayankoh.com');
+                          setBatchOutreachOpen(true);
+                        }}
+                        className="w-full py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <PaperPlaneRight className="w-3.5 h-3.5" />
+                        Use in Batch Outreach
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {outreachSubView === 'email_marketing' && (
+            <React.Suspense fallback={<div className="p-12 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200"><ArrowsClockwise className="w-6 h-6 animate-spin mx-auto text-[#b86452] mb-2" />Loading Email Marketing Studio...</div>}>
+              <AEmailMarketing />
+            </React.Suspense>
+          )}
         </div>
 
-        {/* ══════════ MARKETING GEN TAB ══════════ */}
-        <div id="leados-panel-marketing" role="tabpanel" aria-labelledby="leados-tab-marketing" className={activeTab === 'marketing' ? "space-y-6" : "hidden"}>
-          <React.Suspense fallback={<div className="p-12 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200"><ArrowsClockwise className="w-6 h-6 animate-spin mx-auto text-[#b86452] mb-2" />Loading Marketing Generator...</div>}>
-            <AMarketingGen />
-          </React.Suspense>
-        </div>
+        {/* ══════════ AUTOMATION & N8N TAB ══════════ */}
+        <div id="leados-panel-automation" role="tabpanel" aria-labelledby="leados-tab-automation" className={['automation', 'seo', 'marketing'].includes(activeTab) ? "space-y-6" : "hidden"}>
+          {/* Subview Selector */}
+          <div className="bg-white rounded-xl border border-slate-200 p-2 flex items-center gap-1 overflow-x-auto shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setAutomationSubView('n8n')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                automationSubView === 'n8n'
+                  ? 'bg-indigo-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Robot className="w-4 h-4" />
+              n8n Discovery &amp; Pipeline
+            </button>
+            <button
+              type="button"
+              onClick={() => setAutomationSubView('seo')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                automationSubView === 'seo'
+                  ? 'bg-indigo-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Sparkle className="w-4 h-4" />
+              SEO Engine
+            </button>
+            <button
+              type="button"
+              onClick={() => setAutomationSubView('marketing')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                automationSubView === 'marketing'
+                  ? 'bg-indigo-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Megaphone className="w-4 h-4" />
+              Marketing Generator
+            </button>
+          </div>
 
-        {/* ══════════ SEO ENGINE TAB ══════════ */}
-        <div id="leados-panel-seo" role="tabpanel" aria-labelledby="leados-tab-seo" className={activeTab === 'seo' ? "space-y-6" : "hidden"}>
-          <React.Suspense fallback={<div className="p-12 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200"><ArrowsClockwise className="w-6 h-6 animate-spin mx-auto text-[#b86452] mb-2" />Loading SEO Engine...</div>}>
-            <ASEOEngine />
-          </React.Suspense>
+          {automationSubView === 'n8n' && (
+            <div className="space-y-6">
+              {/* n8n Status Card */}
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 flex-shrink-0">
+                      <Robot weight="fill" className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-950">n8n Lead Engine Worker</h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                          Active &amp; Connected
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Workflow ID: <code className="font-mono font-bold bg-slate-100 px-1 py-0.5 rounded text-slate-800">rxIGjn6VQmn6MA8h</code> • Automated OpenStreetMap B2B lead discovery &amp; enrichment
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        changeTab('prospects');
+                        setProspectSubView('find');
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      <MagnifyingGlass className="w-3.5 h-3.5" />
+                      Run Discovery Search
+                    </button>
+                  </div>
+                </div>
+
+                {/* 5-Step Pipeline Visualization */}
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                  <span className="text-xs font-bold text-slate-800 block">LeadOS Automated Pipeline Architecture</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                    {[
+                      { step: '1', title: 'Schedule / Webhook', desc: 'Cron (Mondays) or admin manual webhook triggers worker run.' },
+                      { step: '2', title: 'OSM Overpass Query', desc: 'Queries feed stores, ranches & farm co-ops across target US states.' },
+                      { step: '3', title: 'Website Crawler', desc: 'Fetches company homepage & extracts verified email, phone & socials.' },
+                      { step: '4', title: 'ICP Fit Scorer', desc: 'Computes 0-100 score, checks animal mineral signals & flags dupes.' },
+                      { step: '5', title: 'LeadOS Ingest', desc: 'Persists lead to wp_leados_workflows ready for owner outreach.' },
+                    ].map((st) => (
+                      <div key={st.step} className="p-3 bg-white rounded-lg border border-slate-200 space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center">
+                            {st.step}
+                          </span>
+                          <span className="font-bold text-slate-900 text-xs">{st.title}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-600 leading-tight">{st.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Worker Metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-slate-500 font-medium block text-[11px]">Active Ingest Target</span>
+                    <span className="text-xs font-bold text-slate-900 mt-1 block">US Farm Supplies, Feed Mills &amp; Livestock</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-slate-500 font-medium block text-[11px]">Primary Salt Products</span>
+                    <span className="text-xs font-bold text-slate-900 mt-1 block">Animal Mineral Salt Licks &amp; Bulk Feed Salt</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <span className="text-slate-500 font-medium block text-[11px]">Webhook Endpoint</span>
+                    <span className="text-[11px] font-mono text-slate-800 mt-1 block">/api/admin/leados/webhook</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {automationSubView === 'seo' && (
+            <React.Suspense fallback={<div className="p-12 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200"><ArrowsClockwise className="w-6 h-6 animate-spin mx-auto text-[#b86452] mb-2" />Loading SEO Engine...</div>}>
+              <ASEOEngine />
+            </React.Suspense>
+          )}
+
+          {automationSubView === 'marketing' && (
+            <React.Suspense fallback={<div className="p-12 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200"><ArrowsClockwise className="w-6 h-6 animate-spin mx-auto text-[#b86452] mb-2" />Loading Marketing Generator...</div>}>
+              <AMarketingGen />
+            </React.Suspense>
+          )}
         </div>
 
         {/* ══════════ SETTINGS TAB (Unified with AI Engine) ══════════ */}

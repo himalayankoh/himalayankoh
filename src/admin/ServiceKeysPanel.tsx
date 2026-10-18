@@ -29,6 +29,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SETTINGS_REGISTRY, type SettingsCategory } from '../lib/settings/registry';
 import { getAccessToken } from '../services/wordpressAdminAuth';
+import { loadProviderSettings, saveProviderSettings, type AIProviderSettings } from '../features/ai/providers';
 
 const MASKED_MARK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
 
@@ -197,6 +198,14 @@ export default function ServiceKeysPanel() {
   const [omnisendBusy, setOmnisendBusy] = useState(false);
   const [omnisendNote, setOmnisendNote] = useState<{ kind: 'ok' | 'err' | 'warn'; text: string } | null>(null);
 
+  const [aiRouting, setAiRouting] = useState<AIProviderSettings>(() => loadProviderSettings());
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiSaveNote, setAiSaveNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [geminiTesting, setGeminiTesting] = useState(false);
+  const [geminiNote, setGeminiNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [openrouterTesting, setOpenrouterTesting] = useState(false);
+  const [openrouterNote, setOpenrouterNote] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
   const authHeaders = useCallback((): Record<string, string> => {
     const token = getAccessToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -294,9 +303,9 @@ export default function ServiceKeysPanel() {
     finally { setGoogleTesting(false); }
   };
 
-  // Stripe first: it is the credential an owner most often comes here to set.
+  // Stripe first; filter out gemini & openrouter so they live exclusively in the dedicated AI Providers card
   const categories = useMemo<SettingsCategory[]>(() => {
-    const all = SETTINGS_REGISTRY;
+    const all = SETTINGS_REGISTRY.filter((c) => c.id !== 'gemini' && c.id !== 'openrouter');
     const stripeCat = all.find((c) => c.id === 'stripe');
     return stripeCat ? [stripeCat, ...all.filter((c) => c.id !== 'stripe')] : all;
   }, []);
@@ -390,6 +399,54 @@ export default function ServiceKeysPanel() {
     }
   };
 
+  const testProvider = async (provider: 'gemini' | 'openrouter') => {
+    if (provider === 'gemini') {
+      setGeminiTesting(true);
+      setGeminiNote(null);
+    } else {
+      setOpenrouterTesting(true);
+      setOpenrouterNote(null);
+    }
+    try {
+      const res = await fetch(`/api/admin/seo/status?provider=${provider}`, { headers: authHeaders() });
+      const body = await res.json().catch(() => ({}));
+      const state = body?.status?.state || (res.ok ? 'OK' : 'ERROR');
+      const isOk = state === 'READY' || state === 'OK';
+      const resultNote = {
+        kind: isOk ? ('ok' as const) : ('err' as const),
+        text: isOk
+          ? `${provider === 'gemini' ? 'Gemini' : 'OpenRouter'} connected successfully!`
+          : (body?.status?.detail || body?.error || 'Connection failed'),
+      };
+      if (provider === 'gemini') setGeminiNote(resultNote);
+      else setOpenrouterNote(resultNote);
+    } catch (err) {
+      const resultNote = { kind: 'err' as const, text: (err as Error).message || 'Test failed' };
+      if (provider === 'gemini') setGeminiNote(resultNote);
+      else setOpenrouterNote(resultNote);
+    } finally {
+      if (provider === 'gemini') setGeminiTesting(false);
+      else setOpenrouterTesting(false);
+    }
+  };
+
+  const saveAiConfig = async () => {
+    setAiSaving(true);
+    setAiSaveNote(null);
+    try {
+      saveProviderSettings(aiRouting);
+      const geminiDirty = dirtyFor('gemini') > 0;
+      const openrouterDirty = dirtyFor('openrouter') > 0;
+      if (geminiDirty) await save('gemini');
+      if (openrouterDirty) await save('openrouter');
+      setAiSaveNote({ kind: 'ok', text: 'AI configuration and routing saved successfully!' });
+    } catch (err) {
+      setAiSaveNote({ kind: 'err', text: (err as Error).message || 'Failed to save AI configuration.' });
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
   if (loading) {
     return <p className="pt-5 text-sm text-gray-500">Loading service keys…</p>;
   }
@@ -419,6 +476,257 @@ export default function ServiceKeysPanel() {
       {note && (
         <p className={`text-sm ${note.kind === 'ok' ? 'text-emerald-700' : 'text-red-600'}`}>{note.text}</p>
       )}
+
+      {/* ── AI Providers (Google Gemini & OpenRouter) ── */}
+      <div className="rounded-xl border border-purple-200 bg-gradient-to-br from-purple-50/40 via-white to-indigo-50/30 p-5 shadow-sm space-y-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap border-b border-purple-100 pb-3">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <span>AI Providers — Google Gemini &amp; OpenRouter</span>
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
+                Core AI Engine
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1 max-w-2xl">
+              Unified server-side AI engine for SEO title/description generation, product listing copy, LeadOS intelligence, and smart communications. Secrets remain strictly server-side.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-purple-700 hover:text-purple-900 underline"
+            >
+              Get Gemini Key
+            </a>
+            <span className="text-gray-300">|</span>
+            <a
+              href="https://openrouter.ai/keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-purple-700 hover:text-purple-900 underline"
+            >
+              Get OpenRouter Key
+            </a>
+          </div>
+        </div>
+
+        {/* Two Providers Columns */}
+        <div className="grid md:grid-cols-2 gap-4">
+          {/* Google Gemini Card */}
+          <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                <h4 className="text-sm font-bold text-gray-800">Google Gemini</h4>
+              </div>
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                  (data?.sources['gemini']?.['api_key'] ?? 'unset') !== 'unset'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {(data?.sources['gemini']?.['api_key'] ?? 'unset') !== 'unset' ? 'Configured' : 'Not set'}
+              </span>
+            </div>
+
+            <div>
+              <label className={LABEL} htmlFor="gemini-api-key">Gemini API Key</label>
+              <input
+                id="gemini-api-key"
+                type="password"
+                className={INPUT}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={
+                  (data?.sources['gemini']?.['api_key'] ?? 'unset') !== 'unset'
+                    ? `${MASKED_MARK} (saved — type to replace)`
+                    : 'AIza...'
+                }
+                value={edits['gemini\u0000api_key'] ?? ''}
+                onChange={(e) => setEdit('gemini', 'api_key', e.target.value)}
+              />
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[11px] text-gray-400">Direct Google AI Studio API key</span>
+                {(data?.sources['gemini']?.['api_key'] ?? 'unset') !== 'unset' && (
+                  <button
+                    type="button"
+                    onClick={() => clearField('gemini', 'api_key')}
+                    className="text-[11px] font-semibold text-red-600 hover:text-red-800"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className={LABEL} htmlFor="gemini-model-select">Gemini Model</label>
+              <select
+                id="gemini-model-select"
+                className={INPUT}
+                value={edits['gemini\u0000model'] ?? data?.settings['gemini']?.['model'] ?? 'gemini-2.5-flash'}
+                onChange={(e) => setEdit('gemini', 'model', e.target.value)}
+              >
+                <option value="gemini-2.5-flash">gemini-2.5-flash (Recommended — Fast &amp; Smart)</option>
+                <option value="gemini-2.5-pro">gemini-2.5-pro (Deep Reasoning &amp; Long-Form)</option>
+                <option value="gemini-2.0-flash">gemini-2.0-flash (Legacy Fast)</option>
+              </select>
+            </div>
+
+            <div className="pt-1 flex items-center justify-between flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={geminiTesting}
+                onClick={() => void testProvider('gemini')}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-blue-300 text-blue-700 bg-blue-50/50 hover:bg-blue-100 disabled:opacity-50"
+              >
+                {geminiTesting ? 'Testing Gemini…' : 'Test Gemini Connection'}
+              </button>
+              {geminiNote && (
+                <span className={`text-xs font-medium ${geminiNote.kind === 'ok' ? 'text-emerald-700' : 'text-rose-600'}`}>
+                  {geminiNote.text}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* OpenRouter Card */}
+          <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                <h4 className="text-sm font-bold text-gray-800">OpenRouter</h4>
+              </div>
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                  (data?.sources['openrouter']?.['api_key'] ?? 'unset') !== 'unset'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {(data?.sources['openrouter']?.['api_key'] ?? 'unset') !== 'unset' ? 'Configured' : 'Not set'}
+              </span>
+            </div>
+
+            <div>
+              <label className={LABEL} htmlFor="openrouter-api-key">OpenRouter API Key</label>
+              <input
+                id="openrouter-api-key"
+                type="password"
+                className={INPUT}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={
+                  (data?.sources['openrouter']?.['api_key'] ?? 'unset') !== 'unset'
+                    ? `${MASKED_MARK} (saved — type to replace)`
+                    : 'sk-or-v1-...'
+                }
+                value={edits['openrouter\u0000api_key'] ?? ''}
+                onChange={(e) => setEdit('openrouter', 'api_key', e.target.value)}
+              />
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[11px] text-gray-400">Multi-provider gateway &amp; resilient fallback</span>
+                {(data?.sources['openrouter']?.['api_key'] ?? 'unset') !== 'unset' && (
+                  <button
+                    type="button"
+                    onClick={() => clearField('openrouter', 'api_key')}
+                    className="text-[11px] font-semibold text-red-600 hover:text-red-800"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className={LABEL} htmlFor="openrouter-model-select">OpenRouter Model</label>
+              <select
+                id="openrouter-model-select"
+                className={INPUT}
+                value={edits['openrouter\u0000model'] ?? data?.settings['openrouter']?.['model'] ?? 'google/gemini-2.5-flash'}
+                onChange={(e) => setEdit('openrouter', 'model', e.target.value)}
+              >
+                <option value="google/gemini-2.5-flash">google/gemini-2.5-flash (Recommended)</option>
+                <option value="deepseek/deepseek-chat">deepseek/deepseek-chat</option>
+                <option value="meta-llama/llama-3.3-70b-instruct">meta-llama/llama-3.3-70b-instruct</option>
+              </select>
+            </div>
+
+            <div className="pt-1 flex items-center justify-between flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={openrouterTesting}
+                onClick={() => void testProvider('openrouter')}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-300 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 disabled:opacity-50"
+              >
+                {openrouterTesting ? 'Testing OpenRouter…' : 'Test OpenRouter Connection'}
+              </button>
+              {openrouterNote && (
+                <span className={`text-xs font-medium ${openrouterNote.kind === 'ok' ? 'text-emerald-700' : 'text-rose-600'}`}>
+                  {openrouterNote.text}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Routing Controls */}
+        <div className="rounded-lg border border-purple-100 bg-purple-50/40 p-4">
+          <h5 className="text-xs font-bold uppercase tracking-wider text-purple-900 mb-2">Automated Routing &amp; Fallback</h5>
+          <div className="grid sm:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="block font-semibold text-gray-700 mb-1" htmlFor="default-provider-select">Default AI Provider</label>
+              <select
+                id="default-provider-select"
+                className={INPUT}
+                value={aiRouting.defaultProviderId}
+                onChange={(e) => setAiRouting((r) => ({ ...r, defaultProviderId: e.target.value }))}
+              >
+                <option value="gemini">Google Gemini (Direct AI Studio)</option>
+                <option value="openrouter">OpenRouter (Multi-Model Gateway)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block font-semibold text-gray-700 mb-1" htmlFor="fallback-provider-select">Fallback AI Provider</label>
+              <select
+                id="fallback-provider-select"
+                className={INPUT}
+                value={aiRouting.fallbackProviderId || ''}
+                onChange={(e) => setAiRouting((r) => ({ ...r, fallbackProviderId: e.target.value || null }))}
+              >
+                <option value="">Disabled (None)</option>
+                <option value="openrouter">OpenRouter (Multi-Model Gateway)</option>
+                <option value="gemini">Google Gemini (Direct AI Studio)</option>
+              </select>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-2">
+            When the primary provider is throttled or temporarily unavailable, requests automatically fall back to the backup provider so user workflows never stall.
+          </p>
+        </div>
+
+        {/* Save AI Configuration Button */}
+        <div className="flex items-center gap-3 pt-1 flex-wrap">
+          <button
+            type="button"
+            disabled={aiSaving}
+            onClick={() => void saveAiConfig()}
+            className="px-4 py-2 rounded-lg text-sm font-semibold bg-purple-700 text-white hover:bg-purple-800 disabled:opacity-40"
+          >
+            {aiSaving ? 'Saving AI Configuration…' : 'Save AI Configuration &amp; Routing'}
+          </button>
+          {aiSaveNote && (
+            <span className={`text-xs font-semibold ${aiSaveNote.kind === 'ok' ? 'text-emerald-700' : 'text-rose-600'}`}>
+              {aiSaveNote.text}
+            </span>
+          )}
+        </div>
+      </div>
 
       {categories.map((category) => {
         const values = data?.settings[category.id] ?? {};

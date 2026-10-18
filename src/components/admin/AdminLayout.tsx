@@ -6,26 +6,12 @@ import {
   SquaresFour,
   Package,
   Tag,
-  Gift,
-  Megaphone,
   ShoppingCart,
   Users as UsersIcon,
-  UserGear,
-  TreeStructure,
-  Star,
   FileText,
-  Sparkle,
   TrendUp,
-  PaperPlaneRight,
-  Stack,
-  Robot,
-  List,
   Target,
-  Cpu,
-  CreditCard,
-  CurrencyDollar,
   GearSix,
-  BookBookmark,
   Truck,
   ArrowLeft,
   SignOut,
@@ -35,7 +21,8 @@ import {
   X,
   CaretDown,
   SidebarSimple,
-  Images,
+  List,
+  EnvelopeSimple,
 } from '@phosphor-icons/react';
 import { useAuthContext } from '../../context/AuthContext';
 import { signOutOfBrowser } from '../../lib/auth/browserSignOut';
@@ -57,7 +44,15 @@ export interface AdminLayoutProps {
 }
 
 type NavIcon = React.ComponentType<Record<string, unknown>>;
-type NavItem = { to: string; icon: NavIcon; label: string; g: string; dot: string };
+type SubNavItem = { to: string; label: string };
+type NavItem = {
+  to: string;
+  icon: NavIcon;
+  label: string;
+  g: string;
+  dot: string;
+  subItems?: SubNavItem[];
+};
 
 /**
  * Restricted Himalayan Koh Brand Palette for Admin Rail
@@ -66,121 +61,105 @@ type NavItem = { to: string; icon: NavIcon; label: string; g: string; dot: strin
  * - Forest: #3F6550 -> #2a4435
  * - Gold / Bronze: #C98745 -> #9e632b
  * - Neutral Slate: #453d36 -> #2d2722
- */
-/**
- * The rail, grouped the way the shop is actually run.
  *
- * "Catalog" used to be one drawer holding thirteen unrelated things — products,
- * promotions, gift drops, campaigns, the order book, staff, coupons — so nothing
- * in it was findable by thinking about what you wanted to do. Each block below
- * answers one question instead:
- *
- *   Overview   how is the shop doing
- *   Catalog    what we sell, and what has been bought: products, orders, the
- *              people who bought, the people who work here, reviews, stock
- *   Wholesale  the B2B side, on its own
- *   Marketing  demand: LeadOS and outreach, SEO, channels, CRM, analytics
- *   Promotions the offer machinery, on its own rail
- *   Research   what to sell next: scouting, product research, intel
- *   AI Studio  the tooling that turns research into listings
- *   Media      the files
- *   System     running the store: shipping, suppliers, payment, settings
+ * Simplified 11-item primary navigation with compact secondary sub-items.
  */
-const SECTIONS: { title: string; items: NavItem[] }[] = [
+export const NAV_ITEMS: NavItem[] = [
   {
-    title: 'Overview',
-    items: [
-      { to: '/admin', icon: SquaresFour, label: 'Dashboard', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
-      { to: '/admin/sales', icon: CurrencyDollar, label: 'Sales & Profit', g: 'linear-gradient(145deg,#6BA98B,#366F60)', dot: '#3fb950' },
+    to: '/admin',
+    icon: SquaresFour,
+    label: 'Dashboard',
+    g: 'linear-gradient(145deg,#DB9479,#A05246)',
+    dot: '#B86452',
+  },
+  {
+    to: '/admin/leados',
+    icon: Target,
+    label: 'LeadOS',
+    g: 'linear-gradient(145deg,#67A596,#326C62)',
+    dot: '#3F6550',
+  },
+  {
+    to: '/admin/inbox',
+    icon: EnvelopeSimple,
+    label: 'Email Inbox',
+    g: 'linear-gradient(145deg,#D8B070,#AD783C)',
+    dot: '#C98745',
+  },
+  {
+    to: '/admin/products',
+    icon: Package,
+    label: 'Products',
+    g: 'linear-gradient(145deg,#DD9866,#AA5D3E)',
+    dot: '#E25726',
+    subItems: [
+      { to: '/admin/categories', label: 'Categories' },
+      { to: '/admin/category-hubs', label: 'Category Hubs' },
+      { to: '/admin/reviews', label: 'Reviews' },
     ],
   },
   {
-    title: 'LeadOS',
-    items: [
-      { to: '/admin/leados', icon: Target, label: 'LeadOS Workspace', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
+    to: '/admin/orders',
+    icon: ShoppingCart,
+    label: 'Orders',
+    g: 'linear-gradient(145deg,#67A596,#326C62)',
+    dot: '#3F6550',
+    subItems: [
+      { to: '/admin/labels', label: 'Shipping Labels' },
     ],
   },
   {
-    title: 'Catalog',
-    items: [
-      { to: '/admin/products', icon: Package, label: 'Products', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
-      { to: '/admin/orders', icon: ShoppingCart, label: 'Orders', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
-      { to: '/admin/customers', icon: UsersIcon, label: 'Customers', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
-      { to: '/admin/users', icon: UserGear, label: 'Users', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
-      { to: '/admin/reviews', icon: Star, label: 'Reviews', g: 'linear-gradient(145deg,#D8B070,#AD783C)', dot: '#C98745' },
-      { to: '/admin/inventory', icon: Stack, label: 'Inventory', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#E25726' },
-      { to: '/admin/categories', icon: TreeStructure, label: 'Categories', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
-      { to: '/admin/category-hubs', icon: SquaresFour, label: 'Category Hubs', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
-      { to: '/admin/blog', icon: FileText, label: 'Blog Posts', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
+    to: '/admin/customers',
+    icon: UsersIcon,
+    label: 'Customers',
+    g: 'linear-gradient(145deg,#8395AB,#4C627E)',
+    dot: '#C98745',
+  },
+  {
+    to: '/admin/wholesale',
+    icon: Truck,
+    label: 'Wholesale',
+    g: 'linear-gradient(145deg,#8AA38F,#526F68)',
+    dot: '#C98745',
+  },
+  {
+    to: '/admin/blog',
+    icon: FileText,
+    label: 'Content',
+    g: 'linear-gradient(145deg,#DB9479,#A05246)',
+    dot: '#B86452',
+    subItems: [
+      { to: '/admin/media', label: 'Media Library' },
     ],
   },
   {
-    title: 'Wholesale',
-    // One rail entry for the whole B2B side. Its fourteen views live inside the
-    // workspace's own tab set rather than as a second block of rail items — the
-    // retail catalogue keeps the rail it already had.
-    items: [
-      { to: '/admin/wholesale', icon: Truck, label: 'Wholesale', g: 'linear-gradient(145deg,#8AA38F,#526F68)', dot: '#C98745' },
+    to: '/admin/coupons',
+    icon: Tag,
+    label: 'Coupons',
+    g: 'linear-gradient(145deg,#DD9866,#AA5D3E)',
+    dot: '#E25726',
+  },
+  {
+    to: '/admin/analytics',
+    icon: TrendUp,
+    label: 'Analytics',
+    g: 'linear-gradient(145deg,#C9A366,#977039)',
+    dot: '#C98745',
+    subItems: [
+      { to: '/admin/sales', label: 'Sales & Profit' },
+      { to: '/admin/marketing-traffic', label: 'Marketing & Traffic' },
     ],
   },
   {
-    title: 'Marketing',
-    items: [
-      { to: '/admin/marketing-traffic', icon: TrendUp, label: 'Marketing & Traffic', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
-      { to: '/admin/crm', icon: UsersIcon, label: 'CRM (Leads)', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
-      { to: '/admin/analytics', icon: TrendUp, label: 'Analytics', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
-    ],
-  },
-  {
-    title: 'Promotions',
-    // Its own rail: everything that changes what a customer pays belongs together,
-    // and none of it belongs in the product catalogue.
-    items: [
-      { to: '/admin/promotions', icon: Tag, label: 'Promotions', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
-      { to: '/admin/coupons', icon: Tag, label: 'Coupons', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
-      { to: '/admin/gift-drop', icon: Gift, label: 'Gift Drop', g: 'linear-gradient(145deg,#D8B070,#AD783C)', dot: '#C98745' },
-      { to: '/admin/campaigns', icon: Megaphone, label: 'Campaigns', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
-    ],
-  },
-  {
-    title: 'Research',
-    // What to sell next — pulled out of AI Studio, where it was buried under the
-    // tools that build a listing rather than the work that decides one.
-    items: [
-      // Hidden for the private-label storefront (owner decision 2026-10-12):
-      // Product Scout + Product Research do not fit a private-label catalogue.
-      // Uncomment to restore — routes and code are untouched.
-      // { to: '/admin/scout', icon: Target, label: 'Product Scout', g: 'linear-gradient(145deg,#DD9866,#AA5D3E)', dot: '#E25726' },
-      // { to: '/admin/product-research', icon: TrendUp, label: 'Product Research', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
-      { to: '/admin/ai-intelligence', icon: Sparkle, label: 'AI Intelligence', g: 'linear-gradient(145deg,#B08CAA,#805D81)', dot: '#B86452' },
-    ],
-  },
-  {
-    title: 'AI Studio',
-    items: [
-      // Hidden for the private-label storefront (owner decision 2026-10-12).
-      // Uncomment to restore — route and code are untouched.
-      // { to: '/admin/variant-gen', icon: Stack, label: 'Variant Gen', g: 'linear-gradient(145deg,#8AA38F,#526F68)', dot: '#C98745' },
-      { to: '/admin/ai', icon: Robot, label: 'AI Hub', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
-      { to: '/admin/ai-import', icon: Robot, label: 'AI Import', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
-      { to: '/admin/listing-task', icon: List, label: 'Listing Task', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
-      { to: '/admin/ai-control', icon: Cpu, label: 'AI Control', g: 'linear-gradient(145deg,#67A596,#326C62)', dot: '#3F6550' },
-    ],
-  },
-  {
-    title: 'Media',
-    items: [
-      { to: '/admin/media', icon: Images, label: 'Media Library', g: 'linear-gradient(145deg,#D8B070,#AD783C)', dot: '#C98745' },
-    ],
-  },
-  {
-    title: 'System',
-    items: [
-      { to: '/admin/labels', icon: Truck, label: 'Shipping Labels', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
-      { to: '/admin/suppliers', icon: Package, label: 'Suppliers', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
-      { to: '/admin/payments', icon: CreditCard, label: 'Payments', g: 'linear-gradient(145deg,#C9A366,#977039)', dot: '#C98745' },
-      { to: '/admin/listing-playbook', icon: BookBookmark, label: 'Listing Playbook', g: 'linear-gradient(145deg,#DB9479,#A05246)', dot: '#B86452' },
-      { to: '/admin/settings', icon: GearSix, label: 'Settings', g: 'linear-gradient(145deg,#8395AB,#4C627E)', dot: '#C98745' },
+    to: '/admin/settings',
+    icon: GearSix,
+    label: 'Settings',
+    g: 'linear-gradient(145deg,#8395AB,#4C627E)',
+    dot: '#C98745',
+    subItems: [
+      { to: '/admin/users', label: 'Users & Permissions' },
+      { to: '/admin/suppliers', label: 'Suppliers' },
+      { to: '/admin/payments', label: 'Payments' },
     ],
   },
 ];
@@ -199,6 +178,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobSide, setMobSide] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   // Default to the full rail on the server (there is no storage to consult)
   // and apply the remembered width right after mount, so the first paint is
   // deterministic and nothing hydration-relevant depends on the browser.
@@ -407,52 +387,112 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       {/* The workspace filter needs its label to make sense, so the mini rail
           drops it instead of showing a mystery input. */}
       {!mini && <div className="px-3 py-3"><form role="search" aria-label="Filter admin workspaces" autoComplete="off" onSubmit={event => event.preventDefault()} className="admin-rail-search flex items-center gap-2 rounded-xl px-3"><MagnifyingGlass size={15} className="shrink-0" aria-hidden="true" /><input type="search" autoComplete="off" aria-label="Find an admin workspace" placeholder="Find a workspace…" value={railQuery} onChange={e => setRailQuery(e.target.value)} className="w-full min-w-0 min-h-10 bg-transparent text-xs text-white placeholder:text-[#F5DED5] outline-none" /></form></div>}
-      <nav aria-label="Admin workspaces" className="admin-rail-nav flex-1 p-2 space-y-4 overflow-y-auto">
-        {SECTIONS.map(sec => ({ ...sec, items: sec.items.filter(item => `${sec.title} ${item.label}`.toLowerCase().includes(railQuery.toLowerCase())) })).filter(sec => sec.items.length > 0).map((sec) => (
-          <div key={sec.title}>
-            <p className={`px-2.5 mb-1.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-[#FFF0E6] ${mini ? 'sr-only' : ''}`}>
-              {sec.title}
-            </p>
-            <div className="space-y-0.5">
-              {sec.items.map((l) => {
-                const isActive =
-                  location.pathname === l.to ||
-                  (l.to !== '/admin' && location.pathname.startsWith(`${l.to}/`));
-                const Icon = l.icon;
-                return (
-                  <Link prefetch={false}
-                    key={l.to}
-                    to={l.to}
-                    aria-current={isActive ? 'page' : undefined}
-                    title={l.label}
-                    className={`admin-rail-link group relative flex items-center gap-2.5 px-2.5 py-2 min-h-10 rounded-xl text-[13px] font-medium transition-colors duration-150 ${
-                      mini ? 'justify-center px-1.5' : ''
-                    } ${
-                      isActive ? 'admin-rail-link-active' : 'text-[#FFF3EB] hover:text-white'
-                    }`}
+      <nav aria-label="Admin workspaces" className="admin-rail-nav flex-1 p-2 space-y-1 overflow-y-auto">
+        {NAV_ITEMS.filter((item) => {
+          const q = railQuery.trim().toLowerCase();
+          if (!q) return true;
+          if (item.label.toLowerCase().includes(q)) return true;
+          return Boolean(item.subItems?.some((sub) => sub.label.toLowerCase().includes(q)));
+        }).map((l) => {
+          const isDirectActive =
+            location.pathname === l.to ||
+            (l.to !== '/admin' && location.pathname.startsWith(`${l.to}/`));
+          const hasActiveChild = Boolean(
+            l.subItems?.some(
+              (sub) => location.pathname === sub.to || location.pathname.startsWith(`${sub.to}/`),
+            ),
+          );
+          const isActive = isDirectActive || hasActiveChild;
+          const hasSubItems = Boolean(l.subItems && l.subItems.length > 0);
+          const isExpanded =
+            hasSubItems &&
+            !mini &&
+            (expandedGroups[l.to] !== undefined
+              ? expandedGroups[l.to]
+              : isActive || Boolean(railQuery.trim()));
+          const Icon = l.icon;
+          const q = railQuery.trim().toLowerCase();
+          const visibleSubItems = l.subItems?.filter((sub) =>
+            !q || l.label.toLowerCase().includes(q) ? true : sub.label.toLowerCase().includes(q),
+          );
+
+          return (
+            <div key={l.to} className="space-y-0.5">
+              <div className="relative flex items-center">
+                <Link
+                  prefetch={false}
+                  to={l.to}
+                  aria-current={isDirectActive ? 'page' : undefined}
+                  title={l.label}
+                  className={`admin-rail-link group relative flex flex-1 min-w-0 items-center gap-2.5 px-2.5 py-2 min-h-10 rounded-xl text-[13px] font-medium transition-colors duration-150 ${
+                    mini ? 'justify-center px-1.5' : hasSubItems ? 'pr-8' : ''
+                  } ${
+                    isActive ? 'admin-rail-link-active' : 'text-[#FFF3EB] hover:text-white'
+                  }`}
+                >
+                  {isActive && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-[#FFD8A9]" />
+                  )}
+                  <span
+                    className="admin-rail-icon w-8 h-8 shrink-0 rounded-[10px] flex items-center justify-center text-white"
+                    style={{
+                      background: l.g,
+                    }}
                   >
-                    {isActive && (
-                      <div
-                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-[#FFD8A9]"
-                      />
-                    )}
-                    <span
-                      className="admin-rail-icon w-8 h-8 shrink-0 rounded-[10px] flex items-center justify-center text-white"
-                      style={{
-                        background: l.g,
-                      }}
-                    >
-                      <Icon size={17} weight="duotone" />
-                    </span>
-                    {/* Kept in the tree (sr-only) in the mini rail so the link
-                        keeps a readable name for screen readers and tooltips. */}
-                    <span className={mini ? 'sr-only' : 'truncate'}>{l.label}</span>
-                  </Link>
-                );
-              })}
+                    <Icon size={17} weight="duotone" />
+                  </span>
+                  <span className={mini ? 'sr-only' : 'truncate'}>{l.label}</span>
+                </Link>
+                {hasSubItems && !mini && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setExpandedGroups((prev) => ({
+                        ...prev,
+                        [l.to]: !isExpanded,
+                      }));
+                    }}
+                    aria-expanded={isExpanded}
+                    aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${l.label} submenu`}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-[#F5DED5] hover:text-white hover:bg-white/10 transition-colors"
+                  >
+                    <CaretDown
+                      size={12}
+                      weight="bold"
+                      className={`transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                )}
+              </div>
+
+              {isExpanded && visibleSubItems && visibleSubItems.length > 0 && (
+                <div className="ml-6 pl-3 border-l border-white/15 space-y-0.5 py-0.5">
+                  {visibleSubItems.map((sub) => {
+                    const isSubActive =
+                      location.pathname === sub.to || location.pathname.startsWith(`${sub.to}/`);
+                    return (
+                      <Link
+                        prefetch={false}
+                        key={sub.to}
+                        to={sub.to}
+                        aria-current={isSubActive ? 'page' : undefined}
+                        className={`block px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors truncate ${
+                          isSubActive
+                            ? 'bg-white/15 text-white font-semibold'
+                            : 'text-[#F5DED5] hover:text-white hover:bg-white/10'
+                        }`}
+                      >
+                        {sub.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Footer / Store / Logout */}

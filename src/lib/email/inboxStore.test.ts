@@ -1,0 +1,218 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+
+const mockGetSetting = vi.fn();
+const mockUpsertSettings = vi.fn();
+const mockListSavedLeads = vi.fn();
+const mockGetSavedLeadById = vi.fn();
+const mockUpdateSavedLead = vi.fn();
+const mockListCrmLeads = vi.fn();
+const mockLeadosRequest = vi.fn();
+const mockRecordAuditEntry = vi.fn();
+
+vi.mock('@/lib/settings/serverSettings', () => ({
+  getSetting: (...args: unknown[]) => mockGetSetting(...args),
+  upsertSettings: (...args: unknown[]) => mockUpsertSettings(...args),
+}));
+
+vi.mock('@/lib/leados/db', () => ({
+  listSavedLeads: (...args: unknown[]) => mockListSavedLeads(...args),
+  getSavedLeadById: (...args: unknown[]) => mockGetSavedLeadById(...args),
+  updateSavedLead: (...args: unknown[]) => mockUpdateSavedLead(...args),
+  leadosRequest: (...args: unknown[]) => mockLeadosRequest(...args),
+  recordAuditEntry: (...args: unknown[]) => mockRecordAuditEntry(...args),
+}));
+
+vi.mock('@/lib/leados/crm', () => ({
+  listCrmLeads: (...args: unknown[]) => mockListCrmLeads(...args),
+}));
+
+vi.mock('@/lib/wordpress/siteContent', () => ({
+  siteSettingsApi: {
+    getSettings: vi.fn().mockResolvedValue({}),
+    updateSettings: vi.fn().mockResolvedValue({}),
+  },
+}));
+
+import {
+  saveInboxDraft,
+  sendInboxMessage,
+  recordInboundEmail,
+  getMailboxAndInfrastructureStatus,
+  listInboxState,
+  resetInboxMemoryCacheForTests,
+} from './inboxStore';
+
+describe('Admin Email Inbox Store & Threading Engine', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetInboxMemoryCacheForTests();
+
+    // Default mock returns: no existing messages in WordPress settings
+    mockGetSetting.mockResolvedValue(null);
+    mockUpsertSettings.mockResolvedValue({ ok: true, saved: 1, verified: true });
+    mockListSavedLeads.mockResolvedValue([]);
+    mockListCrmLeads.mockResolvedValue([]);
+    mockLeadosRequest.mockResolvedValue({ items: [] });
+  });
+
+  it('accurately reports the three mailbox identities and DNS infrastructure', async () => {
+    const { mailboxes, infrastructure } = await getMailboxAndInfrastructureStatus();
+
+    expect(mailboxes).toHaveLength(3);
+    const salman = mailboxes.find((m) => m.address === 'salman@himalayankoh.com');
+    const sales = mailboxes.find((m) => m.address === 'sales@himalayankoh.com');
+    const support = mailboxes.find((m) => m.address === 'support@himalayankoh.com');
+
+    expect(salman).toBeDefined();
+    expect(salman?.displayName).toBe('Salman — Himalayan Koh');
+    expect(sales).toBeDefined();
+    expect(sales?.displayName).toBe('Himalayan Koh Commercial Sales');
+    expect(support).toBeDefined();
+    expect(support?.displayName).toBe('Himalayan Koh Customer Support');
+
+    expect(infrastructure.spf.status).toBe('PASS');
+    expect(infrastructure.dkim.status).toBe('2048-bit Active');
+    expect(infrastructure.dmarc.status).toBe('PASS');
+    expect(infrastructure.mx.records[0]).toContain('jellyfish.systems');
+  });
+
+  it('saving a draft stores in the drafts folder and NEVER dispatches an email', async () => {
+    mockListSavedLeads.mockResolvedValue([
+      {
+        id: 'lead-123',
+        businessName: 'Lone Star Equine Supply',
+        email: 'buyer@lonestarequine.com',
+        status: 'qualified',
+      },
+    ]);
+
+    const draft = await saveInboxDraft({
+      mailbox: 'sales@himalayankoh.com',
+      to: 'buyer@lonestarequine.com',
+      subject: 'Equine Salt Lick Catalog',
+      bodyText: 'Hello team, attached is our commercial salt catalog.',
+    });
+
+    expect(draft.id).toBeDefined();
+    expect(draft.folder).toBe('drafts');
+    expect(draft.direction).toBe('outbound');
+    expect(draft.deliveryStatus).toBe('draft');
+    expect(draft.leadId).toBe('lead-123');
+    expect(draft.leadBusinessName).toBe('Lone Star Equine Supply');
+    expect(draft.to[0].email).toBe('buyer@lonestarequine.com');
+    expect(draft.subject).toBe('Equine Salt Lick Catalog');
+
+    // Verify draft was saved to settings
+    expect(mockUpsertSettings).toHaveBeenCalledTimes(1);
+    const savedArg = mockUpsertSettings.mock.calls[0][1];
+    expect(savedArg.messages_json).toContain('Equine Salt Lick Catalog');
+  });
+
+  it('sending a reply preserves threadId, inReplyTo, and references headers', async () => {
+    // Seed an initial inbound message
+    const inboundRes = await recordInboundEmail({
+      messageId: '<inbound-101@client.com>',
+      mailbox: 'sales@himalayankoh.com',
+      from: { name: 'Dr. Jane Smith', email: 'jane@vetclinics.org' },
+      to: [{ email: 'sales@himalayankoh.com' }],
+      subject: 'Inquiry regarding 2lb pink salt blocks',
+      bodyText: 'Can you provide a pallet price for the 2lb blocks?',
+      authIndicators: { spf: 'pass', dkim: 'pass', dmarc: 'pass' },
+    });
+
+    const inbound = inboundRes.message;
+    expect(inboundRes.duplicate).toBe(false);
+    expect(inbound.messageId).toBe('<inbound-101@client.com>');
+    expect(inbound.folder).toBe('inbox');
+
+    // Send a reply
+    const reply = await sendInboxMessage({
+      replyToMessageId: inbound.id,
+      mailbox: 'sales@himalayankoh.com',
+      to: 'jane@vetclinics.org',
+      subject: 'Re: Inquiry regarding 2lb pink salt blocks',
+      bodyText: 'Hello Dr. Smith, thank you for your inquiry. Pallet pricing is attached.',
+    });
+
+    expect(reply.folder).toBe('sent');
+    expect(reply.threadId).toBe(inbound.threadId);
+    expect(reply.inReplyTo).toBe('<inbound-101@client.com>');
+    expect(reply.references).toContain('<inbound-101@client.com>');
+    expect(reply.from.email).toBe('sales@himalayankoh.com');
+
+    // When listing inbox, verify thread grouping
+    const state = await listInboxState({ folder: 'sent' });
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].id).toBe(reply.id);
+  });
+
+  it('receiving an inbound email deduplicates by messageId and links matching LeadOS prospect', async () => {
+    mockListSavedLeads.mockResolvedValue([
+      {
+        id: 'lead-montana-77',
+        businessName: 'Montana Ranch Feed',
+        email: 'orders@montanaranchfeed.com',
+        status: 'contacted',
+      },
+    ]);
+
+    const inboundRes = await recordInboundEmail({
+      messageId: '<unique-msg-999@montanaranchfeed.com>',
+      mailbox: 'sales@himalayankoh.com',
+      from: { name: 'Bob Miller', email: 'orders@montanaranchfeed.com' },
+      to: [{ email: 'sales@himalayankoh.com' }],
+      subject: 'Re: Wholesale Livestock Salt Inquiry',
+      bodyText: 'We received your catalog and are interested in 5 tons of 30lb blocks.',
+      authIndicators: { spf: 'pass', dkim: 'pass', dmarc: 'pass' },
+    });
+
+    const inbound = inboundRes.message;
+    expect(inbound.leadId).toBe('lead-montana-77');
+    expect(inbound.leadBusinessName).toBe('Montana Ranch Feed');
+    expect(inbound.labels).toContain('LeadOS Prospect');
+
+    // Verify lead status was updated to replied
+    expect(mockUpdateSavedLead).toHaveBeenCalledWith('lead-montana-77', {
+      status: 'replied',
+    });
+
+    // Re-delivering the exact same messageId should return existing record idempotently
+    const duplicateRes = await recordInboundEmail({
+      messageId: '<unique-msg-999@montanaranchfeed.com>',
+      mailbox: 'sales@himalayankoh.com',
+      from: { name: 'Bob Miller', email: 'orders@montanaranchfeed.com' },
+      to: [{ email: 'sales@himalayankoh.com' }],
+      subject: 'Re: Wholesale Livestock Salt Inquiry',
+      bodyText: 'Duplicate body',
+    });
+
+    expect(duplicateRes.duplicate).toBe(true);
+    expect(duplicateRes.message.id).toBe(inbound.id);
+  });
+
+  it('does NOT mark unrelated email conversations as sales leads', async () => {
+    mockListSavedLeads.mockResolvedValue([
+      {
+        id: 'lead-some-feed',
+        businessName: 'Some Feed Store',
+        email: 'feed@example.com',
+        status: 'contacted',
+      },
+    ]);
+
+    const personalRes = await recordInboundEmail({
+      messageId: '<accounting-report-444@vendor.net>',
+      mailbox: 'salman@himalayankoh.com',
+      from: { name: 'Acme Accounting', email: 'billing@vendor.net' },
+      to: [{ email: 'salman@himalayankoh.com' }],
+      subject: 'Monthly Software Subscription Invoice',
+      bodyText: 'Your monthly invoice is ready for download.',
+    });
+
+    const personalOrVendorEmail = personalRes.message;
+    expect(personalOrVendorEmail.leadId).toBeNull();
+    expect(personalOrVendorEmail.leadBusinessName).toBeNull();
+    expect(personalOrVendorEmail.labels).not.toContain('LeadOS Prospect');
+    expect(mockUpdateSavedLead).not.toHaveBeenCalled();
+  });
+});

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { leadosRequest, getSavedLeadById, updateSavedLead, WordPressApiError } from '@/lib/leados/db';
-import { createIntroduction, PRODUCT_INTERESTS, type ProductInterest } from '@/lib/leados/intelligence';
+import { createIntroduction, determineProductRelevance, PRODUCT_INTERESTS, type ProductInterest } from '@/lib/leados/intelligence';
 import { validateOutboundCopy } from '@/lib/leados/claims';
 import { outreachReadiness } from '@/lib/leados/n8n';
 import { assistIntroduction } from '@/lib/leados/draftAssistant';
@@ -82,11 +82,27 @@ export async function GET(request: Request) {
       }
     } catch {}
 
+    let automationConfig: Record<string, any> | null = null;
+    let approvedCampaign: Record<string, any> | null = null;
+    try {
+      const configSettings = await siteSettingsApi.read('leados_config');
+      if (configSettings && typeof configSettings === 'object') {
+        if (configSettings.leados_auto_research) {
+          automationConfig = JSON.parse(configSettings.leados_auto_research);
+        }
+        if (configSettings.leados_approved_campaign) {
+          approvedCampaign = JSON.parse(configSettings.leados_approved_campaign);
+        }
+      }
+    } catch {}
+
     return NextResponse.json(
       {
         ok: true,
         items,
         data: { items },
+        automationConfig,
+        approvedCampaign,
         readiness: outreachReadiness(),
         providers: {
           overpass: true,
@@ -115,8 +131,71 @@ export async function POST(request: Request) {
     const body = await request.json();
     const action = String(body.action || '');
 
-    if (!['save_draft', 'update_status', 'approve', 'reject', 'reserve', 'dispatch_result', 'pause', 'save_search', 'record_reply', 'suppress', 'export_crm'].includes(action)) {
+    if (
+      ![
+        'save_draft',
+        'update_status',
+        'approve',
+        'reject',
+        'reserve',
+        'dispatch_result',
+        'pause',
+        'save_search',
+        'record_reply',
+        'suppress',
+        'export_crm',
+        'save_automation_config',
+        'save_approved_campaign',
+      ].includes(action)
+    ) {
       return NextResponse.json({ error: 'Unsupported workflow action.' }, { status: 400 });
+    }
+
+    if (action === 'save_automation_config') {
+      const configPayload = {
+        enabled: body.enabled !== false,
+        workflowId: 'rxIGjn6VQmn6MA8h',
+        intervalHours: 6,
+        priorityStates: Array.isArray(body.priorityStates)
+          ? body.priorityStates
+          : ['TX', 'MT', 'WY', 'KS', 'NE', 'OK', 'CO', 'IA', 'KY'],
+        targetCategories: Array.isArray(body.targetCategories)
+          ? body.targetCategories
+          : ['Agriculture & Livestock', 'Retail & Wholesale Salt', 'Wellness & Lifestyle'],
+        updatedAt: new Date().toISOString(),
+      };
+      await siteSettingsApi.write('leados_config', {
+        leados_auto_research: JSON.stringify(configPayload),
+      });
+      return NextResponse.json({ ok: true, automationConfig: configPayload }, { headers: { 'Cache-Control': 'private, no-store' } });
+    }
+
+    if (action === 'save_approved_campaign') {
+      const maxRecipients = Math.min(250, Math.max(1, Number(body.maxRecipients) || 250));
+      const maxEmailCredits = Math.min(500, Math.max(1, Number(body.maxEmailCredits) || 500));
+      const campaignPayload = {
+        campaignName: String(body.campaignName || 'Himalayan Koh Opted-In Newsletter & Wholesale Update').trim(),
+        approvedTemplate: String(body.approvedTemplate || 'wholesale').trim(),
+        audienceType: 'subscribed_opted_in_only',
+        sendingChannel: body.sendingChannel === 'transactional_b2b' ? 'transactional_b2b' : 'omnisend_opted_in',
+        schedule: String(body.schedule || 'Weekly (Tuesdays 10:00 AM CST)').trim(),
+        maxRecipients,
+        maxEmailCredits,
+        endDate: String(body.endDate || '').trim(),
+        suppressionRules:
+          String(
+            body.suppressionRules ||
+              'Exclude unsubscribed, bounced, and do_not_contact records; auto-stop when quota or end date is reached'
+          ).trim(),
+        authorized: Boolean(body.authorized),
+        paused: body.paused !== undefined ? Boolean(body.paused) : !Boolean(body.authorized),
+        authorizedAt: body.authorized ? new Date().toISOString() : null,
+        updatedAt: new Date().toISOString(),
+      };
+      await siteSettingsApi.write('leados_config', {
+        leados_approved_campaign: JSON.stringify(campaignPayload),
+      });
+      return NextResponse.json({ ok: true, approvedCampaign: campaignPayload }, { headers: { 'Cache-Control': 'private, no-store' } });
     }
 
     if (action === 'save_draft') {
@@ -137,23 +216,35 @@ export async function POST(request: Request) {
         }
       }
 
-      const interest: ProductInterest = PRODUCT_INTERESTS.includes(body.productInterest) ? body.productInterest : 'horse_salt';
+      const interest: ProductInterest = PRODUCT_INTERESTS.includes(body.productInterest)
+        ? body.productInterest
+        : determineProductRelevance(lead).productInterest;
       const intro = body.assist === true ? await assistIntroduction(lead, interest) : createIntroduction(lead, interest);
 
       const subject = typeof body.subject === 'string' && body.subject.trim() ? body.subject.trim().slice(0, 250) : intro.subject;
-      const message = typeof body.message === 'string' && body.message.trim() ? body.message.trim().slice(0, 12000) : intro.message;
+      const rawMessageInput =
+        typeof body.message === 'string' && body.message.trim()
+          ? body.message
+          : typeof body.body === 'string' && body.body.trim()
+          ? body.body
+          : '';
+      const message = rawMessageInput ? rawMessageInput.trim().slice(0, 12000) : intro.message;
 
       const checked = validateOutboundCopy(`${subject}\n${message}`);
       if (!checked.ok) {
         return NextResponse.json({ error: 'Remove unsupported product claims before saving.', claims: checked.claims }, { status: 400 });
       }
 
+      const rawIdCandidate = body.id || body.draftId || body.existingId;
       const existingId =
-        typeof (body.id || body.draftId) === 'string' && String(body.id || body.draftId).trim()
-          ? String(body.id || body.draftId).trim()
+        typeof rawIdCandidate === 'string' && String(rawIdCandidate).trim()
+          ? String(rawIdCandidate).trim()
           : undefined;
-      const existingRevision = Number.isInteger(body.revision) ? Number(body.revision) : undefined;
+      const rawRevisionCandidate = body.revision ?? body.existingRevision;
+      const existingRevision = Number.isInteger(rawRevisionCandidate) ? Number(rawRevisionCandidate) : undefined;
       const recipientFinal = requestedRecipient || (lead.email || '').trim().toLowerCase();
+      const senderEmail =
+        body.senderEmail === 'salman@himalayankoh.com' ? 'salman@himalayankoh.com' : 'sales@himalayankoh.com';
 
       const draftPayload = {
         leadId,
@@ -166,7 +257,7 @@ export async function POST(request: Request) {
         couponCode: typeof body.couponCode === 'string' ? body.couponCode : undefined,
         outreachMode: typeof body.outreachMode === 'string' ? body.outreachMode : 'wholesale',
         notes: typeof body.notes === 'string' ? body.notes : '',
-        senderEmail: 'sales@himalayankoh.com',
+        senderEmail,
         approvedBy: null,
         updatedAt: new Date().toISOString(),
       };

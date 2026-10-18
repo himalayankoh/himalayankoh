@@ -47,6 +47,7 @@ const BlogManager = lazy(() => import('./BlogManager'));
 const MediaManager = lazy(() => import('./MediaManager'));
 const YouTubeMediaPage = lazy(() => import('./YouTubeMedia').then((m) => ({ default: m.YouTubeMediaPage })));
 const LeadOSAdmin = lazy(() => import('./LeadOSAdmin'));
+const EmailInboxAdmin = lazy(() => import('./EmailInboxAdmin'));
 import type {
   Product, ProductVariant, AdminCategory, AppUser,
   AIProvider, EnterpriseVariant, VariantAttribute,
@@ -73,7 +74,7 @@ import {
   Target, ToggleLeft, ToggleRight, Trash, TrendUp, UploadSimple, User as UserIcon,
   Users as UsersIcon, MagicWand, X, Lightning, Truck, Printer, Barcode, MapPin,
   Receipt, CloudArrowUp, YoutubeLogo, CreditCard, Gift, BookBookmark, Images,
-  EnvelopeSimple, Broadcast, ArrowsClockwise, ArrowSquareOut,
+  EnvelopeSimple, Broadcast, ArrowsClockwise, ArrowSquareOut, Buildings,
 } from '@phosphor-icons/react';
 
 // ADMIN PANEL - FULL WORKING SYSTEM
@@ -98,66 +99,34 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   type NavItem = { to: string; icon: NavIcon; label: string; g: string; dot: string };
   const sections: { title: string; items: NavItem[] }[] = [
     {
-      title: 'Overview',
+      title: 'Sales & Communications',
       items: [
         { to: '/admin', icon: SquaresFour, label: 'Dashboard', g: 'linear-gradient(135deg,#3b82f6,#22d3ee)', dot: '#38bdf8' },
-        { to: '/admin/sales', icon: CurrencyDollar, label: 'Sales & Profit', g: 'linear-gradient(135deg,#10b981,#059669)', dot: '#34d399' },
+        { to: '/admin/leados', icon: Target, label: 'LeadOS', g: 'linear-gradient(135deg,#6366f1,#8b5cf6)', dot: '#a5b4fc' },
+        { to: '/admin/inbox', icon: EnvelopeSimple, label: 'Email Inbox', g: 'linear-gradient(135deg,#f59e0b,#ea580c)', dot: '#fbbf24' },
       ],
     },
     {
-      title: 'LeadOS',
+      title: 'Store & Fulfillment',
       items: [
-        { to: '/admin/leados', icon: Target, label: 'LeadOS Workspace', g: 'linear-gradient(135deg,#6366f1,#8b5cf6)', dot: '#a5b4fc' },
+        { to: '/admin/products', icon: Package, label: 'Products & Inventory', g: 'linear-gradient(135deg,#8b5cf6,#a855f7)', dot: '#a78bfa' },
+        { to: '/admin/orders', icon: ShoppingCart, label: 'Orders & Labels', g: 'linear-gradient(135deg,#10b981,#14b8a6)', dot: '#34d399' },
+        { to: '/admin/customers', icon: UsersIcon, label: 'Customers', g: 'linear-gradient(135deg,#06b6d4,#0284c7)', dot: '#38bdf8' },
+        { to: '/admin/wholesale', icon: Buildings, label: 'Wholesale B2B', g: 'linear-gradient(135deg,#e11d48,#be123c)', dot: '#fb7185' },
       ],
     },
     {
-      title: 'Catalog',
+      title: 'Content & Marketing',
       items: [
-        { to: '/admin/products', icon: Package, label: 'Products', g: 'linear-gradient(135deg,#8b5cf6,#a855f7)', dot: '#a78bfa' },
-        { to: '/admin/promotions', icon: Tag, label: 'Promotions', g: 'linear-gradient(135deg,#ec4899,#f43f5e)', dot: '#f472b6' },
-        { to: '/admin/gift-drop', icon: Gift, label: 'Gift Drop', g: 'linear-gradient(135deg,#f59e0b,#fbbf24)', dot: '#fbbf24' },
-        { to: '/admin/campaigns', icon: Gift, label: 'Campaigns', g: 'linear-gradient(135deg,#f472b6,#e879f9)', dot: '#f9a8d4' },
-        { to: '/admin/orders', icon: ShoppingCart, label: 'Orders', g: 'linear-gradient(135deg,#10b981,#14b8a6)', dot: '#34d399' },
-        { to: '/admin/users', icon: UsersIcon, label: 'Users', g: 'linear-gradient(135deg,#6366f1,#3b82f6)', dot: '#818cf8' },
-        { to: '/admin/categories', icon: TreeStructure, label: 'Categories', g: 'linear-gradient(135deg,#f59e0b,#f97316)', dot: '#fbbf24' },
-        { to: '/admin/reviews', icon: Star, label: 'Reviews', g: 'linear-gradient(135deg,#eab308,#f59e0b)', dot: '#facc15' },
-        { to: '/admin/blog', icon: FileText, label: 'Blog Posts', g: 'linear-gradient(135deg,#0ea5e9,#06b6d4)', dot: '#38bdf8' },
+        { to: '/admin/blog', icon: FileText, label: 'Content & Media', g: 'linear-gradient(135deg,#0ea5e9,#06b6d4)', dot: '#38bdf8' },
+        { to: '/admin/coupons', icon: Gift, label: 'Coupons', g: 'linear-gradient(135deg,#ec4899,#f43f5e)', dot: '#f472b6' },
+        { to: '/admin/analytics', icon: TrendUp, label: 'Analytics & Sales', g: 'linear-gradient(135deg,#10b981,#059669)', dot: '#34d399' },
       ],
     },
     {
-      title: 'Media',
+      title: 'System & Controls',
       items: [
-        { to: '/admin/media', icon: Images, label: 'Media Library', g: 'linear-gradient(135deg,#9a6f16,#26211C)', dot: '#9a6f16' },
-        { to: '/admin/youtube-media', icon: YoutubeLogo, label: 'YouTube Media', g: 'linear-gradient(135deg,#ff0000,#cc0000)', dot: '#ff4444' },
-      ],
-    },
-    {
-      title: 'Marketing',
-      items: [
-        { to: '/admin/marketing-traffic', icon: TrendUp, label: 'Marketing & Traffic', g: 'linear-gradient(135deg,#06b6d4,#2563eb)', dot: '#22d3ee' },
-        { to: '/admin/crm', icon: UsersIcon, label: 'CRM (Leads)', g: 'linear-gradient(135deg,#22c55e,#84cc16)', dot: '#4ade80' },
-      ],
-    },
-    {
-      title: 'AI Studio',
-      items: [
-        { to: '/admin/variant-gen', icon: Stack, label: 'Variant Gen', g: 'linear-gradient(135deg,#8b5cf6,#d946ef)', dot: '#c084fc' },
-        { to: '/admin/ai', icon: Robot, label: 'AI Hub', g: 'linear-gradient(135deg,#4f46e5,#7c3aed)', dot: '#818cf8' },
-        { to: '/admin/ai-import', icon: Robot, label: 'AI Import', g: 'linear-gradient(135deg,#9333ea,#c026d3)', dot: '#c084fc' },
-        { to: '/admin/listing-task', icon: List, label: 'Listing Task', g: 'linear-gradient(135deg,#2563eb,#0ea5e9)', dot: '#60a5fa' },
-        { to: '/admin/scout', icon: Target, label: 'Product Scout', g: 'linear-gradient(135deg,#f43f5e,#fb923c)', dot: '#fb7185' },
-        { to: '/admin/product-research', icon: TrendUp, label: 'Product Research', g: 'linear-gradient(135deg,#0d9488,#0891b2)', dot: '#2dd4bf' },
-        { to: '/admin/ai-control', icon: Cpu, label: 'AI Control', g: 'linear-gradient(135deg,#0ea5e9,#8b5cf6)', dot: '#60a5fa' },
-        { to: '/admin/hermes-intel', icon: Sparkle, label: 'AI Intelligence', g: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', dot: '#a78bfa' },
-      ],
-    },
-    {
-      title: 'System',
-      items: [
-        { to: '/admin/suppliers', icon: Package, label: 'Suppliers', g: 'linear-gradient(135deg,#10b981,#06b6d4)', dot: '#34d399' },
-        { to: '/admin/payments', icon: CreditCard, label: 'Payments', g: 'linear-gradient(135deg,#635bff,#8b5cf6)', dot: '#a78bfa' },
-        { to: '/admin/settings', icon: GearSix, label: 'Settings', g: 'linear-gradient(135deg,#94a3b8,#64748b)', dot: '#cbd5e1' },
-        { to: '/admin/listing-playbook', icon: BookBookmark, label: 'Listing Playbook', g: 'linear-gradient(135deg,#0ea5e9,#6366f1)', dot: '#60a5fa' },
+        { to: '/admin/settings', icon: GearSix, label: 'Settings & AI', g: 'linear-gradient(135deg,#94a3b8,#64748b)', dot: '#cbd5e1' },
       ],
     },
   ];
@@ -481,19 +450,18 @@ export function ADashboard() {
             : (inventoryReport.outOfStock > 0 ? `${inventoryReport.outOfStock} out of stock · 0 low stock` : 'All stocked'))
         : 'Loading inventory…',
       i: Warning,
-      to: '/admin/inventory',
+      to: '/admin/products?view=inventory',
       iconCls: inventoryReport && inventoryReport.lowStock > 0 ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-600',
     },
   ];
 
   const quickActions = [
-    { to: '/admin/ai-import', icon: MagicWand, label: 'Import Product', desc: 'Paste a product URL — AI researches & builds the listing' },
-    { to: '/admin/products/new?mode=detail', icon: Plus, label: 'Add Product Manually', desc: 'Full editor — images, variants, SEO, pricing and promotions' },
-    { to: '/admin/marketing', icon: Megaphone, label: 'Generate Product Content', desc: 'AI copy, SEO and descriptions for your catalog' },
-    { to: '/admin/variant-gen', icon: Stack, label: 'Create Variants', desc: 'Generate color/size combinations in one pass' },
-    { to: '/admin/seo-engine', icon: MagnifyingGlass, label: 'SEO Optimize', desc: 'Meta, schema and keyword suggestions for pages' },
-    { to: '/admin/hermes-intel', icon: Sparkle, label: 'Open AI Intelligence', desc: 'Hermes insights across catalog, media and traffic' },
-    { to: '/admin/leados', icon: Target, label: 'LeadOS Intelligence', desc: 'Find B2B mineral buyers, farm stores and salt distributors' },
+    { to: '/admin/leados', icon: Target, label: 'Find Leads', desc: 'Discover B2B mineral buyers, farm stores and distributors' },
+    { to: '/admin/leados?tab=outreach', icon: Megaphone, label: 'Review Outreach', desc: 'Category-matched copy and personalized B2B outreach' },
+    { to: '/admin/inbox', icon: EnvelopeSimple, label: 'Open Inbox', desc: 'Direct customer & wholesale correspondence across business emails' },
+    { to: '/admin/products?view=inventory', icon: Package, label: 'Update Stock', desc: 'Inline stock quantities for simple and variable products' },
+    { to: '/admin/products?view=promotions', icon: Tag, label: 'Enable Sale', desc: 'Manage promotional pricing and scheduled discounts' },
+    { to: '/admin/coupons', icon: Gift, label: 'Create Coupon', desc: 'Customer discount codes and promotional offers' },
   ];
 
   return (
@@ -2804,33 +2772,6 @@ const [open, setOpen] = useState<Record<string, boolean>>({
           </div>
 
           <p className="text-xs text-gray-400">AdSense on/off, client ID, auto ads, placements and the ads.txt record are managed in <button type="button" onClick={() => navigate('/admin/marketing-traffic')} className="text-blue-600 hover:text-blue-800 font-medium underline">Marketing &amp; Traffic</button>.</p>
-        </div>
-      </Accordion>
-
-      {/* Integrations — external research assistance (Hermes / Salman OS) */}
-      <Accordion id="integrations" title="Integrations" icon={<ShareNetwork size={18} className="text-[#3F6550]" />} open={open} toggle={toggle}>
-        <div className="pt-5 space-y-3">
-          <div className="flex items-center justify-between p-4 rounded-xl border border-[#E0D6C8] bg-[#FAF7F1]">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#3F6550]/10 flex items-center justify-center"><Robot size={20} className="text-[#3F6550]" /></div>
-              <div>
-                <p className="text-sm font-semibold text-[#26211C]">Hermes / Salman OS</p>
-                <p className="text-xs text-[#6D6258]">External AI market, competitor and product research evidence ingestion for project <span className="font-mono text-[#B86452]">himalayan-koh</span>.</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate('/admin/ai-intelligence')}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#B86452] hover:bg-[#8D4133] text-white transition-colors"
-            >
-              Review Intel
-            </button>
-          </div>
-          <ul className="text-xs text-[#6D6258] space-y-1.5 list-disc pl-5">
-            <li><span className="font-medium text-[#26211C]">Data Contract:</span> Research evidence only via <code className="text-[11px] bg-white px-1.5 py-0.5 rounded border border-[#E0D6C8]">/api/hermes/ingest</code>.</li>
-            <li><span className="font-medium text-[#26211C]">Safety Guard:</span> Cannot write WooCommerce data, change pricing, alter inventory, or publish WordPress posts directly.</li>
-            <li><span className="font-medium text-[#26211C]">Active Staging:</span> Synchronized with Salman OS control plane for <code className="text-[11px] bg-white px-1.5 py-0.5 rounded border border-[#E0D6C8]">preview.himalayankoh.com</code>.</li>
-          </ul>
         </div>
       </Accordion>
 
@@ -7302,37 +7243,43 @@ export default function AdminSection() {
       <Route path="products" element={<AdminLayout><CatalogProductsPage /></AdminLayout>} />
       <Route path="products/new" element={<AdminLayout><CatalogProductEditor /></AdminLayout>} />
       <Route path="products/edit/:id" element={<AdminLayout><CatalogProductEditor /></AdminLayout>} />
-      <Route path="promotions" element={<AdminLayout><CatalogPromotionsPage /></AdminLayout>} />
       <Route path="orders" element={<AdminLayout><AOrders /></AdminLayout>} />
-      <Route path="gift-drop" element={<AdminLayout><GiftDropAdmin /></AdminLayout>} />
-      <Route path="campaigns" element={<AdminLayout><CampaignManager /></AdminLayout>} />
       <Route path="users" element={<AdminLayout><AUsers /></AdminLayout>} />
       <Route path="categories" element={<AdminLayout><ACategories /></AdminLayout>} />
       <Route path="reviews" element={<AdminLayout><AReviews /></AdminLayout>} />
       <Route path="blogs" element={<AdminLayout><BlogManager /></AdminLayout>} />
+      <Route path="blog" element={<AdminLayout><BlogManager /></AdminLayout>} />
       <Route path="media" element={<AdminLayout><MediaManager /></AdminLayout>} />
       <Route path="youtube-media" element={<AdminLayout><YouTubeMediaPage /></AdminLayout>} />
-      <Route path="seo" element={<AdminLayout><LeadOSAdmin defaultTab="seo" /></AdminLayout>} />
-      <Route path="seo-engine" element={<AdminLayout><LeadOSAdmin defaultTab="seo" /></AdminLayout>} />
-      <Route path="marketing" element={<AdminLayout><LeadOSAdmin defaultTab="marketing" /></AdminLayout>} />
-      <Route path="variant-gen" element={<AdminLayout><AVariantGen /></AdminLayout>} />
-      <Route path="ai" element={<AdminLayout><AAIHub /></AdminLayout>} />
-      <Route path="ai-import" element={<AdminLayout><AAIImport /></AdminLayout>} />
-      <Route path="listing-task" element={<AdminLayout><ListingTaskAdmin /></AdminLayout>} />
-      <Route path="scout" element={<AdminLayout><ProductScout /></AdminLayout>} />
-      <Route path="product-research" element={<AdminLayout><ProductResearch /></AdminLayout>} />
-      <Route path="ai-control" element={<AdminLayout><AiControlCenter /></AdminLayout>} />
-      <Route path="hermes-intel" element={<AdminLayout><HermesIntel /></AdminLayout>} />
       <Route path="leados" element={<AdminLayout><LeadOSAdmin /></AdminLayout>} />
-      <Route path="client-outreach" element={<AdminLayout><LeadOSAdmin defaultTab="library" /></AdminLayout>} />
-      <Route path="cj-setup" element={<AdminLayout><CJSetup /></AdminLayout>} />
+      <Route path="inbox" element={<AdminLayout><EmailInboxAdmin /></AdminLayout>} />
       <Route path="payments" element={<AdminLayout><PaymentsSetup /></AdminLayout>} />
       <Route path="shipping" element={<AdminLayout><ShippingSetup /></AdminLayout>} />
       <Route path="settings" element={<AdminLayout><ASettings /></AdminLayout>} />
-      <Route path="settings/listing-playbook" element={<AdminLayout><ListingPlaybookAdmin /></AdminLayout>} />
       <Route path="marketing-traffic" element={<AdminLayout><AMarketingTraffic /></AdminLayout>} />
-      <Route path="email-marketing" element={<AdminLayout><LeadOSAdmin defaultTab="email" /></AdminLayout>} />
-      <Route path="crm" element={<AdminLayout><ACRM /></AdminLayout>} />
+      {/* Safe route redirects */}
+      <Route path="crm" element={<Navigate to="/admin/leados?tab=library&source=crm" replace />} />
+      <Route path="client-outreach" element={<Navigate to="/admin/leados?tab=outreach" replace />} />
+      <Route path="promotions" element={<Navigate to="/admin/products?view=promotions" replace />} />
+      <Route path="inventory" element={<Navigate to="/admin/products?view=inventory" replace />} />
+      <Route path="gift-drop" element={<Navigate to="/admin/coupons" replace />} />
+      <Route path="campaigns" element={<Navigate to="/admin/leados?tab=outreach" replace />} />
+      <Route path="email-marketing" element={<Navigate to="/admin/leados?tab=outreach" replace />} />
+      <Route path="seo" element={<Navigate to="/admin/leados?tab=automation" replace />} />
+      <Route path="seo-engine" element={<Navigate to="/admin/leados?tab=automation" replace />} />
+      <Route path="marketing" element={<Navigate to="/admin/leados?tab=outreach" replace />} />
+      <Route path="ai-intelligence" element={<Navigate to="/admin/leados?tab=automation" replace />} />
+      <Route path="hermes-intel" element={<Navigate to="/admin/leados?tab=automation" replace />} />
+      <Route path="ai" element={<Navigate to="/admin/settings?tab=ai-providers" replace />} />
+      <Route path="ai-import" element={<Navigate to="/admin/products" replace />} />
+      <Route path="listing-task" element={<Navigate to="/admin/products" replace />} />
+      <Route path="listing-playbook" element={<Navigate to="/admin/products" replace />} />
+      <Route path="settings/listing-playbook" element={<Navigate to="/admin/products" replace />} />
+      <Route path="ai-control" element={<Navigate to="/admin/settings?tab=ai-providers" replace />} />
+      <Route path="variant-gen" element={<Navigate to="/admin/products" replace />} />
+      <Route path="scout" element={<Navigate to="/admin/leados" replace />} />
+      <Route path="product-research" element={<Navigate to="/admin/products" replace />} />
+      <Route path="cj-setup" element={<Navigate to="/admin/suppliers" replace />} />
       <Route path="*" element={<Navigate to="/admin" replace />} />
     </Routes></Suspense>
     </AdminErrorBoundary>

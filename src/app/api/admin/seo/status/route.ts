@@ -23,8 +23,15 @@ export async function GET(request: Request) {
     );
   }
 
+  const { searchParams } = new URL(request.url);
+  const provider = searchParams.get('provider') || undefined;
+  const model = searchParams.get('model') || undefined;
+
   try {
-    const status = await testAiSeoConnection();
+    const status = await testAiSeoConnection({
+      provider: provider as any,
+      model,
+    });
     return NextResponse.json({ status });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Status check failed.';

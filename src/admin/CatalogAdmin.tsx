@@ -371,6 +371,28 @@ export function CatalogProductsPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  const viewMode = searchParams.get('view');
+
+  // Inline Stock Editor Modal state
+  const [stockModalProduct, setStockModalProduct] = useState<CatalogProduct | null>(null);
+  const [stockEditQty, setStockEditQty] = useState<number>(0);
+  const [stockEditStatus, setStockEditStatus] = useState<string>('instock');
+  const [stockEditThreshold, setStockEditThreshold] = useState<number>(5);
+  const [stockEditVariants, setStockEditVariants] = useState<CatalogVariant[]>([]);
+  const [stockSaving, setStockSaving] = useState(false);
+
+  // Inline Promotion Editor Modal state
+  const [promoModalProduct, setPromoModalProduct] = useState<CatalogProduct | null>(null);
+  const [promoSaleEnabled, setPromoSaleEnabled] = useState(false);
+  const [promoRegularPrice, setPromoRegularPrice] = useState<number>(0);
+  const [promoSalePrice, setPromoSalePrice] = useState<number>(0);
+  const [promoDiscountType, setPromoDiscountType] = useState<'percent' | 'fixed'>('percent');
+  const [promoDiscountValue, setPromoDiscountValue] = useState<number>(0);
+  const [promoStartDate, setPromoStartDate] = useState<string>('');
+  const [promoEndDate, setPromoEndDate] = useState<string>('');
+  const [promoPromoted, setPromoPromoted] = useState(false);
+  const [promoSaving, setPromoSaving] = useState(false);
   // Auto-publish toggle (persisted server-side, shared across devices).
   const [autoPublish, setAutoPublish] = useState<boolean | null>(null);
   const [autoPublishConfirm, setAutoPublishConfirm] = useState(false);
@@ -541,6 +563,80 @@ export function CatalogProductsPage() {
   const patchLocal = (upd: CatalogProduct | null) => {
     if (!upd) return;
     setProducts((prev) => prev.map((p) => (p.id === upd.id ? upd : p)));
+  };
+
+  const openStockModal = (p: CatalogProduct) => {
+    setStockModalProduct(p);
+    setStockEditQty(p.inventoryQty ?? 0);
+    setStockEditStatus(p.stockStatus === 'out_of_stock' ? 'outofstock' : p.stockStatus === 'on_backorder' ? 'onbackorder' : 'instock');
+    setStockEditThreshold(p.lowStockThreshold ?? 5);
+    setStockEditVariants(p.variants ? JSON.parse(JSON.stringify(p.variants)) : []);
+  };
+
+  const saveStockModal = async () => {
+    if (!stockModalProduct) return;
+    setStockSaving(true);
+    try {
+      if (stockEditVariants.length > 0) {
+        await saveProductVariants(stockModalProduct.id, stockEditVariants);
+        const totalQty = stockEditVariants.reduce((sum, v) => sum + (v.stockQuantity ?? v.inventoryQty ?? 0), 0);
+        const upd = await updateProduct(stockModalProduct.id, {
+          inventoryQty: totalQty,
+          stockStatus: totalQty > 0 ? 'in_stock' : 'out_of_stock',
+        });
+        if (upd) patchLocal(upd);
+        notify('Variation stock updated in WooCommerce');
+      } else {
+        const upd = await updateProduct(stockModalProduct.id, {
+          inventoryQty: stockEditQty,
+          stockStatus: stockEditStatus === 'instock' ? 'in_stock' : stockEditStatus === 'outofstock' ? 'out_of_stock' : 'on_backorder',
+          lowStockThreshold: stockEditThreshold,
+        });
+        if (upd) patchLocal(upd);
+        notify('Product stock updated in WooCommerce');
+      }
+      setStockModalProduct(null);
+    } catch (err) {
+      notify(`Failed to update stock: ${(err as Error).message}`, 'error');
+    } finally {
+      setStockSaving(false);
+    }
+  };
+
+  const openPromoModal = (p: CatalogProduct) => {
+    setPromoModalProduct(p);
+    setPromoSaleEnabled(Boolean(p.saleEnabled));
+    setPromoRegularPrice(p.compareAtPrice > p.price ? p.compareAtPrice : p.price);
+    setPromoSalePrice(p.saleEnabled ? p.price : (p.compareAtPrice > p.price ? p.price : Math.round(p.price * 0.9 * 100) / 100));
+    setPromoDiscountType(p.discountType || 'percent');
+    setPromoDiscountValue(p.discountValue ?? 10);
+    setPromoStartDate(p.saleStartDate ? p.saleStartDate.slice(0, 10) : '');
+    setPromoEndDate(p.saleEndDate ? p.saleEndDate.slice(0, 10) : '');
+    setPromoPromoted(Boolean(p.promoted));
+  };
+
+  const savePromoModal = async () => {
+    if (!promoModalProduct) return;
+    setPromoSaving(true);
+    try {
+      const upd = await updateProduct(promoModalProduct.id, {
+        saleEnabled: promoSaleEnabled,
+        price: promoSaleEnabled ? promoSalePrice : promoRegularPrice,
+        compareAtPrice: promoSaleEnabled ? promoRegularPrice : 0,
+        discountType: promoDiscountType,
+        discountValue: promoDiscountValue,
+        saleStartDate: promoStartDate ? new Date(promoStartDate).toISOString() : null,
+        saleEndDate: promoEndDate ? new Date(promoEndDate + 'T23:59:59').toISOString() : null,
+        promoted: promoPromoted,
+      });
+      if (upd) patchLocal(upd);
+      notify(promoSaleEnabled ? 'Sale promotion saved and active' : 'Promotion updated');
+      setPromoModalProduct(null);
+    } catch (err) {
+      notify(`Failed to update promotion: ${(err as Error).message}`, 'error');
+    } finally {
+      setPromoSaving(false);
+    }
   };
 
   // -------------------------------------------------------------------------
@@ -1058,6 +1154,24 @@ export function CatalogProductsPage() {
 
   return (
     <div className="space-y-2">
+      {viewMode === 'inventory' && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <Package size={18} className="text-amber-700" />
+            <span><strong>Inventory &amp; Stock View:</strong> Click any product's stock cell or row menu &gt; <em>Update Stock</em> to adjust simple stock or variation quantities directly in WooCommerce.</span>
+          </div>
+          <button onClick={() => nav('/admin/products')} className="text-amber-700 font-semibold underline hover:text-amber-900">Clear View Filter</button>
+        </div>
+      )}
+      {viewMode === 'promotions' && (
+        <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between text-xs text-purple-900">
+          <div className="flex items-center gap-2">
+            <Tag size={18} className="text-purple-700" />
+            <span><strong>Promotions &amp; Sales View:</strong> Click any product's promotion badge or row menu &gt; <em>Promotion &amp; Sale</em> to configure discount pricing and scheduled dates.</span>
+          </div>
+          <button onClick={() => nav('/admin/products')} className="text-purple-700 font-semibold underline hover:text-purple-900">Clear View Filter</button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2 py-0.5">
         <div className="flex items-center gap-2 flex-wrap">
           <h1 className="text-xl font-bold text-gray-900 leading-none">Products</h1>
@@ -1516,22 +1630,34 @@ export function CatalogProductsPage() {
                   ),
                   stock: (
                     <td className="px-3 py-1.5 text-xs whitespace-nowrap">
-                      {!p.trackInventory ? (
-                        p.stockStatus === 'in_stock' ? (
-                          <span className="text-green-700 font-medium">In stock</span>
-                        ) : p.stockStatus === 'out_of_stock' ? (
-                          <span className="text-red-600 font-medium">Out of stock</span>
-                        ) : p.stockStatus === 'on_backorder' ? (
-                          <span className="text-amber-600 font-medium">On backorder</span>
+                      <button
+                        type="button"
+                        onClick={() => openStockModal(p)}
+                        className="group flex items-center gap-1.5 hover:bg-amber-50 px-1.5 py-0.5 rounded transition-colors text-left"
+                        title="Click to edit stock quantity and status"
+                      >
+                        {!p.trackInventory ? (
+                          p.stockStatus === 'in_stock' ? (
+                            <span className="text-green-700 font-medium">In stock</span>
+                          ) : p.stockStatus === 'out_of_stock' ? (
+                            <span className="text-red-600 font-medium">Out of stock</span>
+                          ) : p.stockStatus === 'on_backorder' ? (
+                            <span className="text-amber-600 font-medium">On backorder</span>
+                          ) : (
+                            <span className="text-green-700 font-medium">In stock</span>
+                          )
                         ) : (
-                          <span className="text-green-700 font-medium">In stock</span>
-                        )
-                      ) : (
-                        <span className={p.inventoryQty <= p.lowStockThreshold && p.lowStockThreshold > 0 ? 'text-red-600 font-semibold' : ''} title={`${INVENTORY_SOURCE_LABELS[p.inventorySource || 'UNKNOWN']} stock`}>
-                          {p.inventoryQty <= 0 ? (p.stockStatus === 'out_of_stock' ? 'Out of stock' : '0') : p.inventoryQty}
-                        </span>
-                      )}
-                      {p.inventoryQty > 0 && p.inventorySource === 'INTERNAL_STOCK' && <span className="text-[10px] text-gray-400 ml-1">internal</span>}
+                          <span className={p.inventoryQty <= p.lowStockThreshold && p.lowStockThreshold > 0 ? 'text-red-600 font-semibold' : ''} title={`${INVENTORY_SOURCE_LABELS[p.inventorySource || 'UNKNOWN']} stock`}>
+                            {p.inventoryQty <= 0 ? (p.stockStatus === 'out_of_stock' ? 'Out of stock' : '0') : p.inventoryQty}
+                          </span>
+                        )}
+                        {p.variants && p.variants.length > 0 && (
+                          <span className="text-[10px] bg-slate-100 text-slate-600 px-1 py-0.2 rounded font-mono">
+                            {p.variants.length} vars
+                          </span>
+                        )}
+                        <PencilSimple size={11} className="text-gray-300 group-hover:text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </button>
                     </td>
                   ),
                   views: (
@@ -1682,6 +1808,8 @@ export function CatalogProductsPage() {
                               ) : (
                                 <>
                                   <button onClick={() => { setRowMenu(null); nav(`/admin/products/edit/${p.id}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2"><PencilSimple size={14} />Edit</button>
+                                  <button onClick={() => { setRowMenu(null); openStockModal(p); }} className="w-full text-left px-3 py-2 hover:bg-amber-50 text-amber-700 flex items-center gap-2 font-medium"><Package size={14} />Update Stock</button>
+                                  <button onClick={() => { setRowMenu(null); openPromoModal(p); }} className="w-full text-left px-3 py-2 hover:bg-purple-50 text-purple-700 flex items-center gap-2 font-medium"><Tag size={14} />Promotion &amp; Sale</button>
                                   <a href={productPath(p)} onClick={() => setRowMenu(null)} className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"><ArrowSquareOut size={14} />View live</a>
                                   <button onClick={() => { setRowMenu(null); void onDuplicate(p.id); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2"><Copy size={14} />Duplicate</button>
                                   <button onClick={() => { setRowMenu(null); void runAutoSeo([p]); }} disabled={seo.running} className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 text-purple-700"><Sparkle size={14} />Auto SEO</button>
@@ -1868,6 +1996,245 @@ export function CatalogProductsPage() {
           </div>
         </Modal>
       )}
+
+      {/* Inline Stock Management Modal */}
+      <Modal isOpen={!!stockModalProduct} onClose={() => !stockSaving && setStockModalProduct(null)} title={`Update Stock: ${stockModalProduct?.name || ''}`}>
+        {stockModalProduct && (
+          <div className="space-y-4 text-xs">
+            <div className="p-3 bg-gray-50 border rounded-lg text-gray-700 flex justify-between items-center">
+              <div>
+                <p className="font-semibold text-sm text-gray-900">{stockModalProduct.name}</p>
+                <p className="text-gray-500 font-mono mt-0.5">SKU: {stockModalProduct.sku || 'N/A'}</p>
+              </div>
+              <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                stockModalProduct.inventoryQty > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+              }`}>
+                Current: {stockModalProduct.inventoryQty} in stock
+              </span>
+            </div>
+
+            {stockEditVariants.length > 0 ? (
+              <div className="space-y-3">
+                <p className="font-semibold text-gray-800">
+                  Variable Product Variations ({stockEditVariants.length})
+                </p>
+                <p className="text-gray-500 text-[11px]">
+                  Each variation manages its own stock in WooCommerce. Changes persist directly.
+                </p>
+                <div className="max-h-60 overflow-y-auto border rounded-lg divide-y divide-gray-100">
+                  {stockEditVariants.map((v, idx) => (
+                    <div key={v.id || idx} className="p-2.5 flex items-center justify-between gap-3 bg-white">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-900 truncate">
+                          {v.name || (v.attributes && Object.keys(v.attributes).length > 0 ? Object.entries(v.attributes).map(([k, val]) => `${k}: ${val}`).join(' · ') : `Variation #${idx + 1}`)}
+                        </p>
+                        <p className="text-[11px] text-gray-400 font-mono">
+                          {v.sku ? `SKU: ${v.sku} · ` : ''}{v.price != null ? `$${v.price.toFixed(2)}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-gray-500 text-[11px]">Qty:</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={v.stockQuantity ?? v.inventoryQty ?? 0}
+                          onChange={(e) => {
+                            const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                            setStockEditVariants((prev) =>
+                              prev.map((item, i) =>
+                                i === idx ? { ...item, stockQuantity: val, inventoryQty: val, status: val > 0 ? 'instock' : 'outofstock' } : item
+                              )
+                            );
+                          }}
+                          className="w-20 px-2 py-1 border rounded text-xs text-right font-mono"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Stock Quantity</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={stockEditQty}
+                    onChange={(e) => setStockEditQty(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Stock Status</label>
+                  <select
+                    value={stockEditStatus}
+                    onChange={(e) => setStockEditStatus(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
+                  >
+                    <option value="instock">In stock (Available for purchase)</option>
+                    <option value="outofstock">Out of stock</option>
+                    <option value="onbackorder">On backorder</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Low Stock Warning Threshold</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={stockEditThreshold}
+                    onChange={(e) => setStockEditThreshold(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    className="w-full px-3 py-2 border rounded-lg text-sm font-mono"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                onClick={() => setStockModalProduct(null)}
+                className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveStockModal}
+                disabled={stockSaving}
+                className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold disabled:opacity-50"
+              >
+                {stockSaving ? 'Saving to WooCommerce…' : 'Save Stock'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Inline Promotions & Sale Modal */}
+      <Modal isOpen={!!promoModalProduct} onClose={() => !promoSaving && setPromoModalProduct(null)} title={`Promotion & Sale: ${promoModalProduct?.name || ''}`}>
+        {promoModalProduct && (
+          <div className="space-y-4 text-xs">
+            <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg flex items-center justify-between">
+              <div>
+                <p className="font-semibold text-sm text-purple-950">{promoModalProduct.name}</p>
+                <p className="text-purple-700 mt-0.5">Regular list price: <strong>${promoRegularPrice.toFixed(2)}</strong></p>
+              </div>
+              <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                promoSaleEnabled ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-gray-100 text-gray-600'
+              }`}>
+                {promoSaleEnabled ? 'SALE ACTIVE' : 'NO ACTIVE SALE'}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  checked={promoSaleEnabled}
+                  onChange={(e) => setPromoSaleEnabled(e.target.checked)}
+                  className="w-4 h-4 text-purple-600"
+                />
+                <div>
+                  <span className="font-semibold text-sm text-gray-900 block">Enable Sale / Discount</span>
+                  <span className="text-gray-500 text-[11px] block">Applies a discount price to the storefront. Customers see struck-through regular price.</span>
+                </div>
+              </label>
+
+              {promoSaleEnabled && (
+                <div className="grid grid-cols-2 gap-3 p-3 bg-gray-50 rounded-lg border">
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Discount Mode</label>
+                    <select
+                      value={promoDiscountType}
+                      onChange={(e) => setPromoDiscountType(e.target.value as 'percent' | 'fixed')}
+                      className="w-full px-2.5 py-1.5 border rounded bg-white text-xs"
+                    >
+                      <option value="percent">Percent off regular price (%)</option>
+                      <option value="fixed">Fixed dollar reduction ($)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-gray-700 mb-1">Discount Value</label>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={promoDiscountValue}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setPromoDiscountValue(val);
+                        if (promoDiscountType === 'percent') {
+                          setPromoSalePrice(Math.round(promoRegularPrice * (1 - val / 100) * 100) / 100);
+                        } else {
+                          setPromoSalePrice(Math.max(0, Math.round((promoRegularPrice - val) * 100) / 100));
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 border rounded text-xs font-mono"
+                    />
+                  </div>
+                  <div className="col-span-2 flex items-center justify-between pt-1">
+                    <span className="text-gray-600 font-medium">Effective Customer Price:</span>
+                    <span className="font-bold text-sm text-emerald-700 font-mono">${promoSalePrice.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Sale Start Date (Optional)</label>
+                  <input
+                    type="date"
+                    value={promoStartDate}
+                    onChange={(e) => setPromoStartDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 border rounded text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-gray-700 mb-1">Sale End Date (Optional)</label>
+                  <input
+                    type="date"
+                    value={promoEndDate}
+                    onChange={(e) => setPromoEndDate(e.target.value)}
+                    className="w-full px-2.5 py-1.5 border rounded text-xs"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 p-2.5 border rounded-lg cursor-pointer hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  checked={promoPromoted}
+                  onChange={(e) => setPromoPromoted(e.target.checked)}
+                  className="w-4 h-4 text-purple-600"
+                />
+                <div>
+                  <span className="font-medium text-gray-800">Highlight in Promoted Listings</span>
+                  <span className="text-gray-400 text-[11px] block">Displays promotional badge on catalog shelves.</span>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button
+                type="button"
+                onClick={() => setPromoModalProduct(null)}
+                className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={savePromoModal}
+                disabled={promoSaving}
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold disabled:opacity-50"
+              >
+                {promoSaving ? 'Saving Promotion…' : 'Save Promotion'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <CsvImportModal
         open={csvOpen}

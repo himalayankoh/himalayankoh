@@ -53,11 +53,13 @@ export interface CatalogVariant {
   productId: string;
   /** Real option map, e.g. { color: 'Gray', size: 'Large' }. */
   attributes: Record<string, string>;
+  name?: string;
   sku: string;
   price: number | null;
   compareAtPrice: number | null;
   costPrice: number | null;
   inventoryQty: number;
+  stockQuantity?: number;
   status: string;
   lowStockThreshold: number;
   /** Resolved variant image url when a genuine variant→image link exists. */
@@ -135,6 +137,9 @@ export interface CatalogProduct {
   saleEnabled: boolean;
   discountType?: DiscountType;
   discountValue?: number;
+  originalPrice?: number;
+  saleStartDate?: string | null;
+  saleEndDate?: string | null;
   seoTitle: string;
   seoDescription: string;
   /** Raw persisted seo_title column (no display fallback) — the truth used
