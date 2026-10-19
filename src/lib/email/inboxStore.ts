@@ -290,6 +290,20 @@ function makeSnippet(text: string): string {
   return collapsed.length > 140 ? `${collapsed.slice(0, 137)}...` : collapsed;
 }
 
+/**
+ * True when a stored body is really an unparsed MIME payload (nested boundaries,
+ * transfer headers) rather than human text.
+ */
+export function looksLikeRawMimeBody(text: string): boolean {
+  const value = (text || '').trim();
+  if (!value) return false;
+  return (
+    /^--[A-Za-z0-9._+=-]{6,}/.test(value) ||
+    /Content-Type:\s*(multipart\/|text\/(plain|html))/i.test(value) ||
+    /Content-Transfer-Encoding:/i.test(value)
+  );
+}
+
 export function normalizeSubject(subject: string): string {
   return (subject || '')
     .replace(/^(\s*(re|fwd|fw)\s*(\[\d+\])?\s*:\s*)+/i, '')
@@ -1443,9 +1457,30 @@ export async function recordInboundEmail(
       ? input.messageId.trim()
       : generateRfcMessageId('inbound');
 
-  // Deduplicate by RFC 5322 Message-ID
-  const existingDuplicate = messages.find((m) => m.messageId === incomingMessageId);
+  // Deduplicate by RFC 5322 Message-ID, but only against an inbound copy for the
+  // same mailbox. A reply we send is stored in Sent under the same Message-ID the
+  // recipient's server delivers back to us; matching that outbound record made the
+  // received copy look like a duplicate, so replies never appeared in the inbox.
+  const existingDuplicate = messages.find(
+    (m) =>
+      m.messageId === incomingMessageId &&
+      m.direction === 'inbound' &&
+      m.mailbox === mailbox
+  );
   if (existingDuplicate) {
+    // Heal bodies stored before the MIME walker learned to recurse: a few messages
+    // were saved with raw `--mixed-...`/`Content-Type: multipart` noise instead of
+    // their text. A later sync re-parses the same message cleanly, so fold that in
+    // rather than keeping the noisy copy forever.
+    const freshBody = String(input.bodyText || '').trim();
+    if (freshBody && looksLikeRawMimeBody(existingDuplicate.bodyText)) {
+      existingDuplicate.bodyText = freshBody;
+      if (input.bodyHtml) existingDuplicate.bodyHtml = input.bodyHtml;
+      existingDuplicate.snippet = makeSnippet(freshBody);
+      existingDuplicate.updatedAt = new Date().toISOString();
+      await writeStoredMessages(messages);
+      await persistSingleMessage(existingDuplicate);
+    }
     return { duplicate: true, message: existingDuplicate };
   }
 

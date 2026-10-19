@@ -193,6 +193,74 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     expect(duplicateRes.message.id).toBe(inbound.id);
   });
 
+  it('records the received copy of our own reply instead of treating it as a duplicate of Sent', async () => {
+    const inbound = await recordInboundEmail({
+      messageId: '<thread-start-55@admin.himalayankoh.com>',
+      mailbox: 'sales@himalayankoh.com',
+      from: { name: 'Himalayan Koh Administration', email: 'admin@himalayankoh.com' },
+      to: [{ email: 'sales@himalayankoh.com' }],
+      subject: 'Invoice question',
+      bodyText: 'Can you confirm this invoice?',
+    });
+
+    const reply = await sendInboxMessage({
+      replyToMessageId: inbound.message.id,
+      mailbox: 'sales@himalayankoh.com',
+      to: 'admin@himalayankoh.com',
+      subject: 'Re: Invoice question',
+      bodyText: 'Confirmed.',
+    });
+
+    // The same RFC 5322 Message-ID is now delivered back into the recipient mailbox.
+    const received = await recordInboundEmail({
+      messageId: reply.messageId,
+      inReplyTo: '<thread-start-55@admin.himalayankoh.com>',
+      mailbox: 'admin@himalayankoh.com',
+      from: { name: 'Himalayan Koh Commercial Sales', email: 'sales@himalayankoh.com' },
+      to: [{ email: 'admin@himalayankoh.com' }],
+      subject: 'Re: Invoice question',
+      bodyText: 'Confirmed.',
+    });
+
+    expect(received.duplicate).toBe(false);
+    expect(received.message.direction).toBe('inbound');
+    expect(received.message.mailbox).toBe('admin@himalayankoh.com');
+    expect(received.message.id).not.toBe(reply.id);
+
+    const adminState = await listInboxState({ folder: 'admin' });
+    expect(adminState.messages).toHaveLength(1);
+    expect(adminState.messages[0].subject).toBe('Re: Invoice question');
+  });
+
+  it('replaces a stored raw-MIME body when a later sync parses the same message', async () => {
+    await recordInboundEmail({
+      messageId: '<cpanel-config-101@himalayankoh.com>',
+      mailbox: 'admin@himalayankoh.com',
+      from: { name: 'cPanel', email: 'cpanel@himalayankoh.com' },
+      to: [{ email: 'admin@himalayankoh.com' }],
+      subject: 'Client configuration settings',
+      bodyText:
+        '--mixed-Cpanel::Email::Object-620023-1792387118-0.9\r\nContent-Type: multipart/alternative; boundary="alt"\r\n\r\n--alt\r\nContent-Type: text/plain\r\n\r\nYour settings were saved.',
+    });
+
+    const healed = await recordInboundEmail({
+      messageId: '<cpanel-config-101@himalayankoh.com>',
+      mailbox: 'admin@himalayankoh.com',
+      from: { name: 'cPanel', email: 'cpanel@himalayankoh.com' },
+      to: [{ email: 'admin@himalayankoh.com' }],
+      subject: 'Client configuration settings',
+      bodyText: 'Your settings were saved.',
+    });
+
+    expect(healed.duplicate).toBe(true);
+    expect(healed.message.bodyText).toBe('Your settings were saved.');
+    expect(healed.message.snippet).toBe('Your settings were saved.');
+
+    const state = await listInboxState({ folder: 'admin' });
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0].bodyText).toBe('Your settings were saved.');
+  });
+
   it('does NOT mark unrelated email conversations as sales leads', async () => {
     mockListSavedLeads.mockResolvedValue([
       {
