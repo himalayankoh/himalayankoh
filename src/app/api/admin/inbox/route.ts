@@ -47,6 +47,9 @@ export async function GET(request: Request) {
       search,
       leadId: leadId || undefined,
       skipExternalSync: !forceSync,
+      // A refresh request is a request to check the mail server, not only the
+      // cached store and the WordPress side.
+      forceSync,
     });
 
     return NextResponse.json({

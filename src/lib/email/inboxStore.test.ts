@@ -267,6 +267,17 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     expect(state.messages[0].bodyText).toBe('Your settings were saved.');
   });
 
+  it('a forced refresh re-reads correspondence instead of returning the TTL cache', async () => {
+    // The admin's "Check mail" button asks for `sync=true`. That request used to
+    // skip the external sync entirely inside the cache window, so new mail never
+    // appeared until the cache expired.
+    await listInboxState();
+    expect(mockLeadosRequest).not.toHaveBeenCalled();
+
+    await listInboxState({ forceSync: true });
+    expect(mockLeadosRequest).toHaveBeenCalled();
+  });
+
   it('does NOT mark unrelated email conversations as sales leads', async () => {
     mockListSavedLeads.mockResolvedValue([
       {

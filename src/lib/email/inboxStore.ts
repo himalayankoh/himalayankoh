@@ -1805,6 +1805,12 @@ export async function listInboxState(options?: {
   search?: string;
   leadId?: string;
   skipExternalSync?: boolean;
+  /**
+   * Set when the admin explicitly asks for new mail ("Check mail" / refresh).
+   * Without it a forced read only refreshed the WordPress/LeadOS side and never
+   * polled Dovecot, so the button looked like a sync that silently skipped IMAP.
+   */
+  forceSync?: boolean;
 }): Promise<{
   messages: InboxMessage[];
   threads: InboxThread[];
@@ -1814,7 +1820,7 @@ export async function listInboxState(options?: {
 }> {
   const allMessages = options?.skipExternalSync
     ? await readStoredMessages()
-    : await syncExternalCorrespondenceIntoInbox();
+    : await syncExternalCorrespondenceIntoInbox(options?.forceSync === true);
 
   const counts = computeInboxCounts(allMessages);
   const folder = options?.folder || 'all';
