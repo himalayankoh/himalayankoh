@@ -406,6 +406,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     }
   }, []);
 
+  // The centre used to seed three invented "notifications" ("Storefront
+  // Operations Active", "Business Mailboxes Ready", …). They were never events:
+  // nothing produced them, nothing could mark them delivered, and they read as
+  // live operational activity. The list is empty until a real server event
+  // exists; Web Push subscription and dispatch are not implemented yet, so
+  // saying so is the honest state.
   const [notifications, setNotifications] = useState<Array<{
     id: string;
     category: 'orders' | 'inbox' | 'leados' | 'system';
@@ -414,35 +420,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     timestamp: string;
     read: boolean;
     link: string;
-  }>>([
-    {
-      id: 'notif-1',
-      category: 'orders',
-      title: 'Storefront Operations Active',
-      body: 'Authoritative WooCommerce catalog and Stripe checkout verified.',
-      timestamp: 'Just now',
-      read: false,
-      link: '/admin/orders',
-    },
-    {
-      id: 'notif-2',
-      category: 'inbox',
-      title: 'Business Mailboxes Ready',
-      body: 'Namecheap cPanel SPF, DKIM, and DMARC authenticated.',
-      timestamp: '10m ago',
-      read: false,
-      link: '/admin/inbox',
-    },
-    {
-      id: 'notif-3',
-      category: 'leados',
-      title: 'Livestock Lead Quality Gate',
-      body: 'Autonomous discovery filter active: non-livestock prospects rejected.',
-      timestamp: '1h ago',
-      read: true,
-      link: '/admin/leados',
-    },
-  ]);
+  }>>([]);
 
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
 
@@ -838,18 +816,38 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   </div>
 
                   {pushStatus !== 'granted' && (
-                    <div className="p-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between text-xs text-amber-900">
-                      <span className="text-[11px] font-medium">Order Push Notifications</span>
+                    <div className="p-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between gap-2 text-xs text-amber-900">
+                      <span className="text-[11px] font-medium leading-tight">
+                        Device alerts only — server push is not configured yet
+                      </span>
                       <button
                         onClick={handleRequestPush}
-                        className="px-2 py-1 rounded bg-[#B86452] text-white text-[10px] font-semibold hover:bg-[#8D4133]"
+                        className="px-2 py-1 rounded bg-[#B86452] text-white text-[10px] font-semibold hover:bg-[#8D4133] shrink-0"
                       >
-                        Enable
+                        Test
                       </button>
                     </div>
                   )}
 
                   <div className="max-h-64 overflow-y-auto divide-y divide-[#E0D6C8]/60">
+                    {notifications.length === 0 && (
+                      <div className="p-4 text-center">
+                        <p className="text-xs font-semibold text-[#26211C]">No notifications yet</p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-[#6D6258]">
+                          Order, inbox and LeadOS alerts appear here once the server is configured to
+                          deliver them. Nothing is being simulated, and no push subscription exists yet.
+                        </p>
+                        <div className="mt-2 flex items-center justify-center gap-2 text-[11px] font-semibold">
+                          <Link to="/admin/orders" onClick={() => setNotifOpen(false)} className="text-[#B86452] hover:underline">
+                            Open Orders
+                          </Link>
+                          <span className="text-[#E0D6C8]">·</span>
+                          <Link to="/admin/inbox" onClick={() => setNotifOpen(false)} className="text-[#B86452] hover:underline">
+                            Open Inbox
+                          </Link>
+                        </div>
+                      </div>
+                    )}
                     {notifications.map((n) => (
                       <Link
                         key={n.id}

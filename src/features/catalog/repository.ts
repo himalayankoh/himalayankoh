@@ -396,6 +396,30 @@ export function invalidateCatalogCache(updatedProduct?: CatalogProduct | null, d
   catalogMemoryCache = null;
 }
 
+/**
+ * The rows a browser catalog read may trust, or a thrown reason it may not.
+ *
+ * A degraded read answers HTTP 200 with no rows when the store itself could not
+ * be reached. Returning that as an empty catalog put "0 total" on the Products
+ * screen and a confident zero on the dashboard, which reads as "this shop has no
+ * products" rather than "the store did not answer". An explicitly empty page
+ * that is *not* degraded stays a real zero-product result.
+ */
+export function trustedAdminCatalogRows(payload: unknown): Record<string, unknown>[] | null {
+  const rows = parseAdminCatalogRows(payload);
+  if (!rows) return null;
+  const page = (payload as { page?: { degraded?: boolean; warnings?: string[] } } | null)?.page;
+  if (rows.length === 0 && page?.degraded) {
+    const detail = (page.warnings ?? []).filter(Boolean).join(' ').trim();
+    throw new CatalogLoadError(
+      detail
+        ? `The store could not be read — ${detail}`
+        : 'The store could not be read, so an empty catalog cannot be trusted.'
+    );
+  }
+  return rows;
+}
+
 /** The browser read: the console's own route, which holds the credentials. */
 async function readBrowserCatalog(): Promise<CatalogProduct[]> {
   try {
@@ -404,12 +428,14 @@ async function readBrowserCatalog(): Promise<CatalogProduct[]> {
       cache: 'no-store',
     });
     if (res.ok) {
-      const rows = parseAdminCatalogRows(await res.json());
+      const rows = trustedAdminCatalogRows(await res.json());
       if (rows) return rows.map(catalogRowToProduct);
     }
     throw new Error(`the catalog read answered HTTP ${res.status}`);
   } catch (error) {
-    throw new CatalogLoadError(error instanceof Error ? error.message : undefined);
+    throw error instanceof CatalogLoadError
+      ? error
+      : new CatalogLoadError(error instanceof Error ? error.message : undefined);
   }
 }
 

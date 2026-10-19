@@ -4,6 +4,7 @@ import {
   getProduct,
   parseAdminCatalogRows,
   parsePublicCatalogRows,
+  trustedAdminCatalogRows,
 } from './repository';
 
 describe('catalog read error boundary', () => {
@@ -20,6 +21,40 @@ describe('catalog read error boundary', () => {
     expect(parseAdminCatalogRows({ page: {} })).toBeNull();
     expect(parsePublicCatalogRows({ products: 'not-an-array' })).toBeNull();
     expect(new CatalogLoadError().message).toBe('The product catalog could not be loaded.');
+  });
+});
+
+describe('a degraded catalog read is not an empty shop', () => {
+  it('refuses a degraded 200 with no rows and carries the adapter\u2019s own reason', () => {
+    // Measured on production: the origin answered 200 with `rows: []`,
+    // `degraded: true` and this warning while MySQL was refusing connections.
+    // The console rendered "0 total" and the dashboard "0 Active products".
+    expect(() =>
+      trustedAdminCatalogRows({
+        page: {
+          rows: [],
+          degraded: true,
+          warnings: ['WooCommerce REST v3 failed: WordPress error wp_die: Error establishing a database connection'],
+        },
+      })
+    ).toThrow(/store could not be read.*database connection/i);
+  });
+
+  it('still fails a degraded empty read that carried no reason', () => {
+    expect(() => trustedAdminCatalogRows({ page: { rows: [], degraded: true } })).toThrow(
+      /empty catalog cannot be trusted/i
+    );
+  });
+
+  it('keeps a non-degraded empty page as a real zero-product result', () => {
+    expect(trustedAdminCatalogRows({ page: { rows: [], degraded: false, warnings: [] } })).toEqual([]);
+  });
+
+  it('keeps the rows a degraded read did return', () => {
+    const row = { id: '2543', name: 'Himalayan Pink Salt Lick' };
+    expect(
+      trustedAdminCatalogRows({ page: { rows: [row], degraded: true, warnings: ['price fields missing'] } })
+    ).toEqual([row]);
   });
 });
 

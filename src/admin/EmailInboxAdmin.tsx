@@ -37,6 +37,28 @@ import type {
   MailboxStatusInfo,
 } from '@/lib/email/inboxStore';
 
+/**
+ * Renders a message body, but not binary content decoded as text.
+ *
+ * A DMARC aggregate report arrives as a gzip attachment with no text part, so
+ * the decoder hands back `PK\u0003\u0004…` and the thread used to print several
+ * kilobytes of control characters. The mail is still in the mailbox; there is
+ * simply nothing readable to show, and saying so is more useful than the blob.
+ */
+function EmailBodyText({ bodyText }: { bodyText?: string | null }) {
+  const body = bodyText || '';
+  const binary = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(body.slice(0, 2000));
+  if (binary) {
+    return (
+      <span className="italic text-slate-400">
+        This message has no text body — its content is a binary attachment (for example a
+        DMARC report). Open it in Gmail to read the attachment.
+      </span>
+    );
+  }
+  return <>{body}</>;
+}
+
 export default function EmailInboxAdmin() {
   const [activeFolder, setActiveFolder] = useState<InboxFilterFolder>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -980,7 +1002,7 @@ export default function EmailInboxAdmin() {
 
                     {/* Body */}
                     <div className="pt-2.5 text-xs md:text-sm text-slate-200 leading-relaxed whitespace-pre-wrap font-sans break-words">
-                      {msg.bodyText}
+                      <EmailBodyText bodyText={msg.bodyText} />
                     </div>
 
                     {/* Attachments */}
@@ -1207,7 +1229,10 @@ export default function EmailInboxAdmin() {
             </div>
 
             {/* Modal Footer */}
-            <div className="px-4 py-3 border-t border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0 pb-6 md:pb-3">
+            {/* The mobile bottom navigation is fixed, so the footer has to clear it
+                on small screens or Cancel/Send sit underneath the nav and cannot be
+                tapped. 4.75rem covers the 66px bar plus the safe-area inset. */}
+            <div className="px-4 pt-3 border-t border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0 pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-3">
               <button
                 type="button"
                 onClick={() => handleSendCompose(true)}
