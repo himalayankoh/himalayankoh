@@ -37,10 +37,21 @@ export function MobileThemeProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-mobile-theme', theme);
+      document.body.setAttribute('data-mobile-theme', theme);
+    }
+  }, [theme]);
+
   const setTheme = (next: MobileTheme) => {
     setThemeState(next);
     try {
       localStorage.setItem(STORAGE_KEY, next);
+      if (typeof document !== 'undefined') {
+        document.documentElement.setAttribute('data-mobile-theme', next);
+        document.body.setAttribute('data-mobile-theme', next);
+      }
     } catch {
       // Silently fail if localStorage is restricted
     }

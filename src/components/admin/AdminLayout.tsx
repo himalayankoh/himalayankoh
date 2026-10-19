@@ -680,11 +680,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div
+      data-theme={isDark ? 'dark' : 'light'}
       className={`hk-admin h-dvh w-full flex overflow-hidden font-sans ${
         isDark
-          ? 'max-md:bg-[#0B0E17] max-md:text-white bg-[#FAF7F1] text-[#26211C]'
-          : 'max-md:bg-[#F8FAFC] max-md:text-[#0F172A] bg-[#FAF7F1] text-[#26211C]'
-      }`}
+          ? 'bg-[#0B0E17] text-white'
+          : 'bg-[#F8FAFC] text-[#0F172A]'
+      } md:bg-[#FAF7F1] md:text-[#26211C]`}
       style={railVars}
     >
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip bg-white p-3 rounded-lg">Skip to workspace</a>
@@ -702,8 +703,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
       <div
         className={`flex-1 flex flex-col min-w-0 lg:pl-[var(--hk-rail)] h-dvh overflow-hidden ${
-          isDark ? 'max-md:bg-[#0B0E17]' : 'max-md:bg-[#F8FAFC]'
-        } ${
+          isDark ? 'bg-[#0B0E17]' : 'bg-[#F8FAFC]'
+        } md:bg-transparent ${
           railDragging ? '' : 'lg:transition-[padding-left] lg:duration-200'
         }`}
       >
@@ -1022,9 +1023,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           tabIndex={-1}
           className={`admin-content flex-1 overflow-y-auto min-w-0 p-3 pb-24 lg:p-5 transition-colors duration-200 ${
             isDark
-              ? 'max-md:bg-[#0B0E17] max-md:text-white'
-              : 'max-md:bg-[#F8FAFC] max-md:text-[#0F172A]'
-          }`}
+              ? 'bg-[#0B0E17] text-white'
+              : 'bg-[#F8FAFC] text-[#0F172A]'
+          } md:bg-transparent md:text-[#26211C]`}
         >
           {children}
         </main>
