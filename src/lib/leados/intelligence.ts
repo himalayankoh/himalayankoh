@@ -234,10 +234,13 @@ export const IRRELEVANT_PATTERNS = [
   /\banimal clinic\b/i,
   /\bveterinary clinic\b/i,
   /\bveterinary hospital\b/i,
+  /\bveterinar(?:y|ian)\b/i,
   /\bpet care\b/i,
   /\bpet resort\b/i,
   /\bdog\b/i,
   /\bcat\b/i,
+  /\bpets?\b/i,
+  /\bcompanion animal\b/i,
   /\bpuppy\b/i,
   /\bkitten\b/i,
   /\bcanine\b/i,
@@ -281,6 +284,7 @@ export const LIVESTOCK_PATTERNS = [
   /\bfeed & seed\b/i,
   /\bfeed store\b/i,
   /\bfeed mill\b/i,
+  /\bfeed\s*(?:&|and)?\s*(?:store|supply|company|co\.?|mill|seed)\b/i,
   /\bgrain elevator\b/i,
   /\bfarm supply\b/i,
   /\banimal nutrition\b/i,
@@ -314,12 +318,16 @@ export function classifyLivestockEligibility(lead: {
   reason: string;
 } {
   const cat = (lead.category || '').trim();
-  const text = [lead.businessName, lead.category, lead.notes, lead.website, lead.address, lead.city, lead.region]
+  // The discovery bucket a lead was found under is a request, not a fact about
+  // the business. When "Agriculture & Livestock" carried the word "livestock"
+  // into the signal text, every pet shop and veterinary clinic found in that bucket
+  // was classified as an eligible livestock prospect. Judge the business itself.
+  const subject = [lead.businessName, lead.notes, lead.website, lead.address, lead.city, lead.region]
     .filter(Boolean)
     .join(' ');
 
-  const isSpaOrCulinaryOrPet = IRRELEVANT_PATTERNS.some((p) => p.test(text)) || cat === 'Wellness & Lifestyle';
-  const hasLivestockSignal = LIVESTOCK_PATTERNS.some((p) => p.test(text));
+  const isSpaOrCulinaryOrPet = IRRELEVANT_PATTERNS.some((p) => p.test(subject)) || cat === 'Wellness & Lifestyle';
+  const hasLivestockSignal = LIVESTOCK_PATTERNS.some((p) => p.test(subject));
 
   if (isSpaOrCulinaryOrPet && !hasLivestockSignal) {
     return {
@@ -328,7 +336,17 @@ export function classifyLivestockEligibility(lead: {
     };
   }
 
-  if (hasLivestockSignal || (APPROVED_LIVESTOCK_CATEGORIES.has(cat) && !isSpaOrCulinaryOrPet)) {
+  if (hasLivestockSignal) {
+    return {
+      classification: 'ELIGIBLE_LIVESTOCK',
+      reason: 'Verified USA livestock operation, horse facility, cattle ranch, or feed & mineral supplier.',
+    };
+  }
+
+  // A specific buyer category is weaker evidence than the business name, but the
+  // broad discovery bucket says nothing about the business and is not evidence.
+  const specificCategory = APPROVED_LIVESTOCK_CATEGORIES.has(cat) && cat !== 'Agriculture & Livestock';
+  if (specificCategory && !isSpaOrCulinaryOrPet) {
     return {
       classification: 'ELIGIBLE_LIVESTOCK',
       reason: 'Verified USA livestock operation, horse facility, cattle ranch, or feed & mineral supplier.',

@@ -10,6 +10,7 @@ import {
   qualifyLead,
   classifyLeadEntity,
   isInformationalDomain,
+  classifyLivestockEligibility,
 } from './intelligence';
 import { discoveryQuery, normalizeSearchResults } from './discovery';
 import { outreachReadiness, dispatchApprovedDraft } from './n8n';
@@ -227,5 +228,31 @@ describe('LeadOS 3.1 Outreach Modes & Claim Compliance (Phase 3 & 4)', () => {
 
     const check = validateOutboundCopy(`${pl.subject}\n${pl.message}`);
     expect(check.ok).toBe(true);
+  });
+});
+
+describe('livestock-only eligibility', () => {
+  it('keeps a genuine feed store found under the broad discovery bucket', () => {
+    expect(
+      classifyLivestockEligibility({ businessName: 'Dawson\'s Feed Company', category: 'Agriculture & Livestock' })
+        .classification
+    ).toBe('ELIGIBLE_LIVESTOCK');
+  });
+
+  it('does not let the discovery bucket make a pet shop or clinic eligible', () => {
+    for (const businessName of ['Pet Valu', 'Jack\'s Pets & Aquarium', 'Rockwell Pet Clinic', 'The Academy of Canine Excellence']) {
+      expect(classifyLivestockEligibility({ businessName, category: 'Agriculture & Livestock' }).classification).toBe(
+        'IRRELEVANT'
+      );
+    }
+  });
+
+  it('treats a specific buyer category as evidence but the broad bucket as review', () => {
+    expect(classifyLivestockEligibility({ businessName: 'Frontier Supply', category: 'Feed Store' }).classification).toBe(
+      'ELIGIBLE_LIVESTOCK'
+    );
+    expect(
+      classifyLivestockEligibility({ businessName: 'Frontier Supply', category: 'Agriculture & Livestock' }).classification
+    ).toBe('NEEDS_REVIEW');
   });
 });
