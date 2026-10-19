@@ -686,7 +686,16 @@ export async function fetchRecentImapEmails(options: {
             rawMessages.push(cleanContent);
           }
 
-          const parsed = rawMessages.map((r) => parseRawRfc822Email(r, options.user));
+          const parsed = rawMessages
+            .map((r) => {
+              try {
+                return parseRawRfc822Email(r, options.user);
+              } catch {
+                // One malformed message must not fail the whole mailbox sync.
+                return null;
+              }
+            })
+            .filter((m): m is ParsedInboundEmail => m !== null);
           // "No new mail" and "the server had mail we failed to parse" are different
           // answers. Reporting the second as the first is how a broken sync looks
           // healthy forever.

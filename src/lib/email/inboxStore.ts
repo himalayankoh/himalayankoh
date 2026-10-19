@@ -667,7 +667,10 @@ export async function syncImapMailboxes(
         port: account.imapPort,
         user: account.imapUser,
         pass: account.imapPass,
-        limit: 25,
+        // A busy mailbox can hold a year of large messages; reading 25 raw MIME
+        // bodies in one request exceeded the Worker's CPU budget and failed the
+        // whole sync. A small window keeps first-sync fast and bounded.
+        limit: 8,
       });
 
       if (!res.ok) {
