@@ -623,7 +623,7 @@ export default function EmailInboxAdmin() {
         <div className="md:hidden p-3 border-b border-slate-800 bg-slate-900 flex items-center justify-between gap-2 shrink-0">
           <button
             onClick={() => setMobileMailboxDrawerOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold hover:bg-slate-700 transition-colors"
+            className="flex min-w-0 items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-semibold hover:bg-slate-700 transition-colors"
           >
             <EnvelopeSimple size={16} className="text-amber-400" />
             <span className="truncate max-w-[130px]">{getFolderLabel(activeFolder)}</span>
@@ -635,7 +635,7 @@ export default function EmailInboxAdmin() {
             <CaretDown size={12} className="text-slate-400" />
           </button>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1.5">
             <button
               onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
               className={`p-2 rounded-lg text-slate-300 hover:text-white transition-colors ${
