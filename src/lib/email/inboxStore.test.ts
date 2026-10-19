@@ -230,6 +230,12 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     const adminState = await listInboxState({ folder: 'admin' });
     expect(adminState.messages).toHaveLength(1);
     expect(adminState.messages[0].subject).toBe('Re: Invoice question');
+
+    // Both the Sent copy and the received copy share the Message-ID and must
+    // survive the store's merge rather than collapsing into one record; the
+    // counts are computed over every message, so both have to be present.
+    expect(adminState.counts.sent).toBe(1);
+    expect(adminState.counts.admin).toBe(1);
   });
 
   it('replaces a stored raw-MIME body when a later sync parses the same message', async () => {

@@ -588,10 +588,16 @@ async function readStoredMessages(): Promise<InboxMessage[]> {
   const add = (msg: InboxMessage) => {
     if (!msg || !msg.id) return;
     if (byId.has(msg.id)) return;
-    const key = String(msg.messageId || '').trim().toLowerCase();
-    if (key && byMessageId.has(key)) return;
+    // One RFC 5322 Message-ID legitimately appears twice: our Sent copy and the
+    // copy delivered into the recipient's mailbox. Collapsing on the ID alone hid
+    // every received reply from the inbox, so only collapse when the same message
+    // sits in the same folder direction of the same mailbox.
+    const key = `${msg.direction || ''}|${msg.mailbox || ''}|${String(msg.messageId || '')
+      .trim()
+      .toLowerCase()}`;
+    if (msg.messageId && byMessageId.has(key)) return;
     byId.set(msg.id, msg);
-    if (key) byMessageId.set(key, msg);
+    if (msg.messageId) byMessageId.set(key, msg);
   };
 
   // 1. Per-message records: append-only, so concurrent writes cannot clobber each other.
