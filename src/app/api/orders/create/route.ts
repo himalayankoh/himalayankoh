@@ -108,6 +108,35 @@ export async function POST(request: Request) {
       }
     );
 
+    // CRITICAL SECURITY GUARD: Verify server-side that the authoritative WooCommerce final
+    // total is exactly $0.00 before permitting free order completion.
+    // Client-supplied totals and paymentProvider claims are NEVER trusted.
+    if (isFreeOrder) {
+      const verifiedTotal = Number(reserved.raw?.total ?? reserved.order.total ?? 0);
+      if (verifiedTotal > 0 || Math.abs(verifiedTotal) > 0.001) {
+        return NextResponse.json(
+          {
+            error: `Order total is $${verifiedTotal.toFixed(2)}. Free checkout is only permitted when the authoritative final total is exactly $0.00. Please complete payment using card checkout.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Mark the verified $0.00 order as paid in WooCommerce
+      if (reserved.order.payment_status !== 'paid') {
+        try {
+          const { markWooOrderPaid } = await import('@/lib/woo/orders');
+          await markWooOrderPaid(Number(reserved.order.id), {
+            paymentMethod: 'free',
+            paymentMethodTitle: 'Free Order (100% Discount)',
+          });
+          reserved.order.payment_status = 'paid';
+        } catch (err) {
+          console.warn('[Orders] Could not mark $0.00 order as paid in WooCommerce:', err);
+        }
+      }
+    }
+
     // Only for a genuinely new order: a reused reservation has already announced
     // itself, and a retried invoice submit must not email the buyer twice.
     if (!reserved.reused) {

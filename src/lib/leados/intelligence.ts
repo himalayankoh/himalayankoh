@@ -227,12 +227,28 @@ export const IRRELEVANT_PATTERNS = [
   /\bbar & grill\b/i,
   /\bpet grooming\b/i,
   /\bpet salon\b/i,
+  /\bpetsmart\b/i,
+  /\bpetco\b/i,
+  /\bpet supplies\b/i,
+  /\banimal hospital\b/i,
+  /\banimal clinic\b/i,
+  /\bveterinary clinic\b/i,
+  /\bveterinary hospital\b/i,
+  /\bpet care\b/i,
+  /\bpet resort\b/i,
   /\bdog\b/i,
   /\bcat\b/i,
   /\bpuppy\b/i,
+  /\bkitten\b/i,
+  /\bcanine\b/i,
+  /\bfeline\b/i,
   /\baquarium\b/i,
   /\bbath salt\b/i,
   /\bhimalayan salt cave\b/i,
+  /\blumber\b/i,
+  /\belectric supply\b/i,
+  /\bbuilding materials?\b/i,
+  /\bblueprint\b/i,
 ];
 
 export const LIVESTOCK_PATTERNS = [
@@ -270,6 +286,9 @@ export const LIVESTOCK_PATTERNS = [
   /\banimal nutrition\b/i,
   /\bsalt lick\b/i,
   /\bmineral lick\b/i,
+  /\bfarm & ranch\b/i,
+  /\bco-op\b/i,
+  /\bcooperative\b/i,
 ];
 
 export const APPROVED_LIVESTOCK_CATEGORIES = new Set([
@@ -279,6 +298,7 @@ export const APPROVED_LIVESTOCK_CATEGORIES = new Set([
   'Equestrian Store',
   'Farm Supply',
   'Livestock Distributor',
+  'Salt Wholesaler',
 ]);
 
 export function classifyLivestockEligibility(lead: {
@@ -298,17 +318,17 @@ export function classifyLivestockEligibility(lead: {
     .filter(Boolean)
     .join(' ');
 
-  const isSpaOrCulinary = IRRELEVANT_PATTERNS.some((p) => p.test(text)) || cat === 'Wellness & Lifestyle';
+  const isSpaOrCulinaryOrPet = IRRELEVANT_PATTERNS.some((p) => p.test(text)) || cat === 'Wellness & Lifestyle';
   const hasLivestockSignal = LIVESTOCK_PATTERNS.some((p) => p.test(text));
 
-  if (isSpaOrCulinary && !hasLivestockSignal) {
+  if (isSpaOrCulinaryOrPet && !hasLivestockSignal) {
     return {
       classification: 'IRRELEVANT',
-      reason: 'Non-livestock entity (wellness/spa/salon/restaurant/pet store) archived per Himalayan Koh Livestock-Only policy.',
+      reason: 'Non-livestock entity (wellness/spa/salon/restaurant/pet store/materials) archived per Himalayan Koh Livestock-Only policy.',
     };
   }
 
-  if (hasLivestockSignal || APPROVED_LIVESTOCK_CATEGORIES.has(cat)) {
+  if (hasLivestockSignal || (APPROVED_LIVESTOCK_CATEGORIES.has(cat) && !isSpaOrCulinaryOrPet)) {
     return {
       classification: 'ELIGIBLE_LIVESTOCK',
       reason: 'Verified USA livestock operation, horse facility, cattle ranch, or feed & mineral supplier.',

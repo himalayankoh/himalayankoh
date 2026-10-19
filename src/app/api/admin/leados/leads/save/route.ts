@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { saveLeadToLibrary } from '@/lib/leados/db';
+import { classifyLivestockEligibility } from '@/lib/leados/intelligence';
 
 export async function POST(request: Request) {
   const auth = await verifyAdminRequest(request);
@@ -14,6 +15,27 @@ export async function POST(request: Request) {
 
     if (!lead || !lead.businessName) {
       return NextResponse.json({ error: 'Valid lead data with businessName is required' }, { status: 400 });
+    }
+
+    // POLICY ENFORCEMENT: Reject non-livestock businesses per owner livestock-only directive
+    const eligibility = classifyLivestockEligibility({
+      businessName: lead.businessName,
+      category: lead.category,
+      notes: lead.notes,
+      website: lead.website,
+      address: lead.address,
+      city: lead.city,
+      region: lead.region,
+    });
+
+    if (eligibility.classification === 'IRRELEVANT') {
+      return NextResponse.json(
+        {
+          error: `Lead rejected: ${lead.businessName} is classified as unrelated per Himalayan Koh Livestock-Only policy (${eligibility.reason}).`,
+          skipped: true,
+        },
+        { status: 422 }
+      );
     }
 
     const saved = await saveLeadToLibrary(

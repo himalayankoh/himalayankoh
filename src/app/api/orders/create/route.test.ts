@@ -57,7 +57,8 @@ beforeEach(() => {
   dispatchOrderCreatedNotifications.mockReset();
   reserveOrderForCheckout.mockResolvedValue({
     reused: true,
-    order: { id: 4321 },
+    order: { id: 4321, total: 0, payment_status: 'pending' },
+    raw: { total: '0.00' },
     cartToken: 'cart_token_test',
   });
 });
@@ -126,5 +127,23 @@ describe('POST /api/orders/create with ordering enabled', () => {
       expect.objectContaining({ paymentProvider: 'free' }),
       expect.objectContaining({ paymentMethod: 'free', paymentMethodTitle: 'Free Order (100% Discount)' })
     );
+  });
+
+  it('rejects a manipulated free order when authoritative order total is nonzero', async () => {
+    process.env[ORDERS_PAUSED_ENV_KEY] = 'false';
+    reserveOrderForCheckout.mockResolvedValueOnce({
+      reused: false,
+      order: { id: 5555, total: 49.95, payment_status: 'pending' },
+      raw: { total: '49.95' },
+      cartToken: 'cart_token_test',
+    });
+
+    const response = await POST(post({ ...INVOICE_BODY, paymentProvider: 'free' }) as never);
+    const body = (await response.json()) as { error?: string };
+
+    expect(response.status).toBe(400);
+    expect(body.error).toContain('Order total is $49.95. Free checkout is only permitted');
+    expect(clearReservedCart).not.toHaveBeenCalled();
+    expect(dispatchOrderCreatedNotifications).not.toHaveBeenCalled();
   });
 });

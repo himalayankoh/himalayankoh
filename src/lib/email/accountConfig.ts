@@ -110,23 +110,45 @@ const DEFAULT_IMAP_PORT = 993;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-async function getMailboxEncryptionKey(): Promise<CryptoKey> {
-  const rawSecret = (process.env.ADMIN_SESSION_SECRET || '').trim();
-  const secret = rawSecret.length >= 16 ? rawSecret : 'hk-fallback-mailbox-key-salt-32ch';
+function getSecretCandidates(): string[] {
+  const list: string[] = [];
+  const primary = (process.env.EMAIL_ENCRYPTION_SECRET || '').trim();
+  const session = (process.env.ADMIN_SESSION_SECRET || '').trim();
+  const previous = (process.env.EMAIL_ENCRYPTION_SECRET_PREVIOUS || '').trim();
+
+  if (primary.length >= 16) list.push(primary);
+  if (session.length >= 16 && !list.includes(session)) list.push(session);
+  if (previous.length >= 16 && !list.includes(previous)) list.push(previous);
+  return list;
+}
+
+async function deriveKeyFromSecret(secret: string): Promise<CryptoKey> {
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(`hk-mailbox-auth:v1:${secret}`));
   return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
 
+export async function getPrimaryMailboxEncryptionKey(): Promise<CryptoKey> {
+  const candidates = getSecretCandidates();
+  if (candidates.length === 0) {
+    throw new Error(
+      'Mailbox encryption key is unavailable. Configure EMAIL_ENCRYPTION_SECRET or ADMIN_SESSION_SECRET (minimum 16 characters).'
+    );
+  }
+  return deriveKeyFromSecret(candidates[0]);
+}
+
 /**
- * Seals a mailbox password with AES-256-GCM.
+ * Seals a mailbox password with AES-256-GCM using the primary dedicated secret.
+ * FAILS CLOSED if no valid encryption secret is provisioned.
  * Format: `v1.<iv_b64url>.<ciphertext_b64url>`
  */
 export async function sealMailboxPassword(password: string): Promise<string> {
   if (!password) return '';
+  const key = await getPrimaryMailboxEncryptionKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv, additionalData: encoder.encode('hk-mailbox-password:v1') },
-    await getMailboxEncryptionKey(),
+    key,
     encoder.encode(password)
   );
   return `v1.${base64UrlEncode(iv)}.${base64UrlEncode(new Uint8Array(encrypted))}`;
@@ -134,26 +156,45 @@ export async function sealMailboxPassword(password: string): Promise<string> {
 
 /**
  * Opens a sealed password. Plaintext legacy values are passed through unchanged.
+ * Supports seamless key rotation by attempting primary, secondary, and previous keys.
  */
 export async function openMailboxPassword(sealed: string): Promise<string> {
   if (!sealed) return '';
   if (!sealed.startsWith('v1.')) {
     return sealed;
   }
+  const parts = sealed.split('.');
+  if (parts.length !== 3 || parts[0] !== 'v1') return sealed;
+
+  let iv: Uint8Array;
+  let ciphertext: Uint8Array;
   try {
-    const parts = sealed.split('.');
-    if (parts.length !== 3 || parts[0] !== 'v1') return sealed;
-    const iv = new Uint8Array(base64UrlDecode(parts[1]));
-    const ciphertext = new Uint8Array(base64UrlDecode(parts[2]));
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv, additionalData: encoder.encode('hk-mailbox-password:v1') },
-      await getMailboxEncryptionKey(),
-      ciphertext
-    );
-    return decoder.decode(decrypted);
+    iv = new Uint8Array(base64UrlDecode(parts[1]));
+    ciphertext = new Uint8Array(base64UrlDecode(parts[2]));
   } catch {
     return '';
   }
+
+  const candidates = getSecretCandidates();
+  // Include legacy migration salt strictly for read/decrypt migration of existing records
+  const decryptionSecrets = [...candidates, 'hk-fallback-mailbox-key-salt-32ch'];
+
+  for (const secret of decryptionSecrets) {
+    try {
+      const key = await deriveKeyFromSecret(secret);
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv as unknown as BufferSource, additionalData: encoder.encode('hk-mailbox-password:v1') },
+        key,
+        ciphertext as unknown as BufferSource
+      );
+      return decoder.decode(decrypted);
+    } catch {
+      // Continue to next candidate secret
+    }
+  }
+
+  // Fail closed if unable to decrypt with any candidate key
+  return '';
 }
 
 let memoryCache: Record<string, string> | null = null;

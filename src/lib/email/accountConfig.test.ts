@@ -27,6 +27,7 @@ describe('Mailbox Account Configuration & IMAP/SMTP Security', () => {
     vi.clearAllMocks();
     mockRead.mockResolvedValue({});
     mockWrite.mockResolvedValue(undefined);
+    process.env.ADMIN_SESSION_SECRET = 'test-admin-session-secret-for-encryption-32ch';
   });
 
   it('defines the 4 required Himalayan Koh mailbox identities', () => {
@@ -132,5 +133,53 @@ describe('Mailbox Account Configuration & IMAP/SMTP Security', () => {
     expect(parsed.subject).toBe('Inquiry about bulk salt blocks');
     expect(parsed.messageId).toBe('<msg-unique-12345@example.com>');
     expect(parsed.bodyText).toContain('We would like a quote for 50 pallets');
+  });
+
+  it('fails closed when encryption secret is unavailable', async () => {
+    const origSession = process.env.ADMIN_SESSION_SECRET;
+    const origEmail = process.env.EMAIL_ENCRYPTION_SECRET;
+    try {
+      delete process.env.ADMIN_SESSION_SECRET;
+      delete process.env.EMAIL_ENCRYPTION_SECRET;
+      delete process.env.EMAIL_ENCRYPTION_SECRET_PREVIOUS;
+
+      await expect(sealMailboxPassword('my-secret-pass')).rejects.toThrow(
+        /Mailbox encryption key is unavailable/i
+      );
+    } finally {
+      if (origSession) process.env.ADMIN_SESSION_SECRET = origSession;
+      if (origEmail) process.env.EMAIL_ENCRYPTION_SECRET = origEmail;
+    }
+  });
+
+  it('supports key rotation across previous and primary secrets', async () => {
+    const origSession = process.env.ADMIN_SESSION_SECRET;
+    const origEmail = process.env.EMAIL_ENCRYPTION_SECRET;
+    const origPrev = process.env.EMAIL_ENCRYPTION_SECRET_PREVIOUS;
+
+    try {
+      // Step 1: Encrypt with key A
+      process.env.ADMIN_SESSION_SECRET = 'key-version-alpha-secret-32-chars-long';
+      delete process.env.EMAIL_ENCRYPTION_SECRET;
+      const sealedWithAlpha = await sealMailboxPassword('rotated-mailbox-password-123');
+
+      // Step 2: Rotate to key B, keeping key A as previous
+      process.env.EMAIL_ENCRYPTION_SECRET = 'key-version-bravo-secret-32-chars-long';
+      process.env.EMAIL_ENCRYPTION_SECRET_PREVIOUS = 'key-version-alpha-secret-32-chars-long';
+
+      // Step 3: Decrypt ciphertext that was sealed with key A
+      const decrypted = await openMailboxPassword(sealedWithAlpha);
+      expect(decrypted).toBe('rotated-mailbox-password-123');
+
+      // Step 4: New seal uses primary key B
+      const sealedWithBravo = await sealMailboxPassword('rotated-mailbox-password-123');
+      const decryptedBravo = await openMailboxPassword(sealedWithBravo);
+      expect(decryptedBravo).toBe('rotated-mailbox-password-123');
+    } finally {
+      if (origSession) process.env.ADMIN_SESSION_SECRET = origSession;
+      if (origEmail) process.env.EMAIL_ENCRYPTION_SECRET = origEmail;
+      if (origPrev) process.env.EMAIL_ENCRYPTION_SECRET_PREVIOUS = origPrev;
+      else delete process.env.EMAIL_ENCRYPTION_SECRET_PREVIOUS;
+    }
   });
 });
