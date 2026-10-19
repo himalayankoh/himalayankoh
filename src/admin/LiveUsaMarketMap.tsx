@@ -751,19 +751,19 @@ export default function LiveUsaMarketMap({
       <div
         id="live-usa-market-map-container"
         data-testid="market-map-container"
-        className={`relative w-full rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-lg flex transition-all duration-300 ${
+        className={`relative w-full rounded-2xl bg-[#FAF7F1] border border-slate-200 overflow-hidden shadow-xs flex transition-all duration-300 ${
           isExpanded
             ? 'h-[75vh] min-h-[560px]'
             : 'h-[340px] sm:h-[380px] md:h-[430px] lg:h-[450px]'
         }`}
       >
         {/* Floating Zoom & Control Bar */}
-        <div className="absolute top-3 left-3 z-20 flex flex-col gap-1 bg-slate-800/90 backdrop-blur-md p-1 rounded-xl border border-slate-700/80 shadow-md">
+        <div className="absolute top-3 left-3 z-20 flex flex-col gap-1 bg-white/95 backdrop-blur-md p-1 rounded-xl border border-slate-200 shadow-md">
           <button
             type="button"
             id="map-zoom-in-button"
             onClick={handleZoomIn}
-            className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
+            className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
             title="Zoom In (Consistent 1.25x step)"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -772,7 +772,7 @@ export default function LiveUsaMarketMap({
             type="button"
             id="map-zoom-out-button"
             onClick={handleZoomOut}
-            className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
+            className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
             title="Zoom Out (Consistent 1.25x step)"
           >
             <Minus className="w-3.5 h-3.5" />
@@ -782,7 +782,7 @@ export default function LiveUsaMarketMap({
               type="button"
               id="map-fit-state-button"
               onClick={handleFitState}
-              className="p-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 transition cursor-pointer border border-indigo-700/60"
+              className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer border border-indigo-200"
               title={`Fit ${selectedStateCode} to Screen`}
             >
               <Target className="w-3.5 h-3.5" />
@@ -792,7 +792,7 @@ export default function LiveUsaMarketMap({
             type="button"
             id="map-reset-usa-button"
             onClick={handleResetZoom}
-            className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
+            className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
             title="Reset to Full USA Map"
           >
             <Globe className="w-3.5 h-3.5" />
@@ -801,20 +801,20 @@ export default function LiveUsaMarketMap({
             type="button"
             id="map-expand-fullscreen-toggle"
             onClick={() => setIsExpanded((prev) => !prev)}
-            className="p-1.5 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-200 transition cursor-pointer border-t border-slate-700"
+            className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 transition cursor-pointer border border-slate-200"
             title={isExpanded ? 'Collapse to Compact View (450px)' : 'Expand Fullscreen Map View'}
           >
-            {isExpanded ? <ArrowsIn className="w-3.5 h-3.5 text-amber-300" /> : <ArrowsOut className="w-3.5 h-3.5 text-slate-300" />}
+            {isExpanded ? <ArrowsIn className="w-3.5 h-3.5 text-amber-600" /> : <ArrowsOut className="w-3.5 h-3.5 text-slate-600" />}
           </button>
-          <div className="text-[8px] font-mono text-center text-slate-400 py-0.5 border-t border-slate-700">
+          <div className="text-[8px] font-mono text-center text-slate-500 py-0.5 border-t border-slate-200">
             {zoomLevel.toFixed(1)}x
           </div>
         </div>
 
         {/* Legend / Overlay Badge */}
-        <div className="absolute bottom-3 left-3 z-20 bg-slate-800/90 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-slate-700 text-[10px] text-slate-300 space-y-0.5 shadow-md hidden sm:block">
-          <div className="font-bold text-slate-100 flex items-center gap-1.5 text-[11px]">
-            <Globe className="w-3 h-3 text-indigo-400" />
+        <div className="absolute bottom-3 left-3 z-20 bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-slate-200 text-[10px] text-slate-600 space-y-0.5 shadow-md hidden sm:block">
+          <div className="font-bold text-slate-900 flex items-center gap-1.5 text-[11px]">
+            <Globe className="w-3 h-3 text-indigo-600" />
             <span>US Market Opportunity Layer</span>
           </div>
           <div className="flex items-center gap-2.5 pt-0.5 text-[9px]">
@@ -881,38 +881,38 @@ export default function LiveUsaMarketMap({
                 const isSelected = selectedStateCode === state.code;
                 const isHovered = hoveredStateCode === state.code;
 
-                // Color calculation based on viewMode
-                let fillColor = '#1e293b'; // Default dark slate
-                let strokeColor = '#334155';
+                // Color calculation based on viewMode (Warm Light Porcelain Theme)
+                let fillColor = '#EDE6DB'; // Default warm sand/porcelain
+                let strokeColor = '#D5CCBE';
                 let strokeWidth = '0.75';
 
                 if (viewMode === 'heatmap') {
                   if (leadCount > 15) {
                     fillColor = 'url(#heatHigh)';
-                    strokeColor = '#34d399';
+                    strokeColor = '#10b981';
                   } else if (leadCount > 5) {
                     fillColor = 'url(#heatMed)';
-                    strokeColor = '#818cf8';
+                    strokeColor = '#6366f1';
                   } else if (leadCount > 0) {
                     fillColor = 'url(#heatLow)';
-                    strokeColor = '#38bdf8';
+                    strokeColor = '#0284c7';
                   } else {
-                    fillColor = '#0f172a';
-                    strokeColor = '#1e293b';
+                    fillColor = '#F2ECE4';
+                    strokeColor = '#D5CCBE';
                   }
                 } else {
                   // Clusters view
                   if (isSelected) {
-                    fillColor = '#312e81';
-                    strokeColor = '#818cf8';
+                    fillColor = '#b86452';
+                    strokeColor = '#8f4233';
                     strokeWidth = '1.5';
                   } else if (isHovered) {
-                    fillColor = '#1e1b4b';
-                    strokeColor = '#6366f1';
+                    fillColor = '#DDD3C4';
+                    strokeColor = '#a8a29e';
                     strokeWidth = '1.2';
                   } else if (leadCount > 0) {
-                    fillColor = '#1e293b';
-                    strokeColor = '#475569';
+                    fillColor = '#E3DBD0';
+                    strokeColor = '#C4BAAA';
                   }
                 }
 
@@ -939,13 +939,14 @@ export default function LiveUsaMarketMap({
               {USA_STATE_PATHS.map((state) => {
                 const metric = stateMetrics[state.code];
                 const count = metric ? metric.discoveredCount : 0;
+                const isSelected = selectedStateCode === state.code;
                 return (
                   <g key={`lbl-${state.code}`}>
                     <text
                       x={state.labelX}
                       y={state.labelY}
                       textAnchor="middle"
-                      fill="#94a3b8"
+                      fill={isSelected ? '#ffffff' : '#64748b'}
                       fontSize={zoomLevel > 2 ? 10 : 8}
                       fontWeight="bold"
                       className="select-none"
@@ -957,7 +958,7 @@ export default function LiveUsaMarketMap({
                         x={state.labelX}
                         y={state.labelY + 8}
                         textAnchor="middle"
-                        fill="#38bdf8"
+                        fill={isSelected ? '#fde68a' : '#0284c7'}
                         fontSize={zoomLevel > 2 ? 8 : 6}
                         fontWeight="semibold"
                       >
@@ -1071,32 +1072,32 @@ export default function LiveUsaMarketMap({
 
         {/* ── Slide-Over Sidebar: State Intelligence or Selected Lead Details ── */}
         {(focusedState || selectedPin) && (
-          <div className="absolute top-3 right-3 bottom-3 w-80 lg:w-96 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl p-4 text-slate-200 z-30 flex flex-col justify-between overflow-y-auto no-scrollbar animate-in slide-in-from-right-4 duration-200">
+          <div className="absolute top-3 right-3 bottom-3 w-80 lg:w-96 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl shadow-2xl p-4 text-slate-800 z-30 flex flex-col justify-between overflow-y-auto no-scrollbar animate-in slide-in-from-right-4 duration-200">
             
             {/* Case A: Selected Business Lead Details */}
             {selectedPin ? (
               <div className="space-y-4">
-                <div className="flex items-start justify-between pb-2 border-b border-slate-800">
+                <div className="flex items-start justify-between pb-2 border-b border-slate-100">
                   <div className="space-y-1">
                     <span
                       className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
                         selectedPin.marketCategory === 'agriculture'
-                          ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800'
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                           : selectedPin.marketCategory === 'salt_wholesale'
-                          ? 'bg-indigo-950/80 text-indigo-400 border border-indigo-800'
-                          : 'bg-amber-950/80 text-amber-400 border border-amber-800'
+                          ? 'bg-indigo-50 text-indigo-800 border border-indigo-200'
+                          : 'bg-amber-50 text-amber-800 border border-amber-200'
                       }`}
                     >
                       {MARKET_CATEGORIES[selectedPin.marketCategory]?.label || selectedPin.category}
                     </span>
-                    <h3 className="text-base font-bold text-white line-clamp-2">
+                    <h3 className="text-base font-bold text-slate-900 line-clamp-2">
                       {selectedPin.businessName}
                     </h3>
                   </div>
                   <button
                     type="button"
                     onClick={() => setSelectedPin(null)}
-                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1104,16 +1105,16 @@ export default function LiveUsaMarketMap({
 
                 {/* Score & Qualification Pill */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2 rounded-xl bg-slate-800/80 border border-slate-700/60">
-                    <div className="text-[10px] text-slate-400">Opportunity Score</div>
-                    <div className="text-sm font-bold text-emerald-400 flex items-center gap-1">
-                      <Target className="w-3.5 h-3.5" />
+                  <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="text-[10px] text-slate-500 font-semibold">Opportunity Score</div>
+                    <div className="text-sm font-bold text-emerald-700 flex items-center gap-1">
+                      <Target className="w-3.5 h-3.5 text-emerald-600" />
                       <span>{selectedPin.opportunityScore || 75}/100</span>
                     </div>
                   </div>
-                  <div className="p-2 rounded-xl bg-slate-800/80 border border-slate-700/60">
-                    <div className="text-[10px] text-slate-400">Lead Status</div>
-                    <div className="text-sm font-bold text-indigo-400 capitalize">
+                  <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="text-[10px] text-slate-500 font-semibold">Lead Status</div>
+                    <div className="text-sm font-bold text-indigo-700 capitalize">
                       {selectedPin.status}
                     </div>
                   </div>
@@ -1121,39 +1122,39 @@ export default function LiveUsaMarketMap({
 
                 {/* Location & Address */}
                 <div className="space-y-1.5 text-xs">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     Location & Contact
                   </div>
                   {selectedPin.address && (
-                    <div className="flex items-start gap-2 text-slate-300">
-                      <MapPin className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                    <div className="flex items-start gap-2 text-slate-700">
+                      <MapPin className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
                       <span>{selectedPin.address}</span>
                     </div>
                   )}
                   {selectedPin.phone && (
-                    <div className="flex items-center gap-2 text-slate-300">
-                      <Phone className="w-4 h-4 text-indigo-400 shrink-0" />
-                      <a href={`tel:${selectedPin.phone}`} className="hover:text-indigo-300 underline">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <Phone className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <a href={`tel:${selectedPin.phone}`} className="hover:text-indigo-700 underline font-medium">
                         {selectedPin.phone}
                       </a>
                     </div>
                   )}
                   {selectedPin.email && (
-                    <div className="flex items-center gap-2 text-slate-300">
-                      <EnvelopeSimple className="w-4 h-4 text-indigo-400 shrink-0" />
-                      <a href={`mailto:${selectedPin.email}`} className="hover:text-indigo-300 underline">
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <EnvelopeSimple className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <a href={`mailto:${selectedPin.email}`} className="hover:text-indigo-700 underline font-medium">
                         {selectedPin.email}
                       </a>
                     </div>
                   )}
                   {selectedPin.website && (
-                    <div className="flex items-center gap-2 text-slate-300">
-                      <ArrowSquareOut className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <ArrowSquareOut className="w-4 h-4 text-indigo-600 shrink-0" />
                       <a
                         href={selectedPin.website}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="hover:text-indigo-300 truncate max-w-[220px]"
+                        className="hover:text-indigo-700 underline font-medium truncate max-w-[220px]"
                       >
                         {selectedPin.website}
                       </a>
@@ -1164,13 +1165,13 @@ export default function LiveUsaMarketMap({
                 {/* Signals / Evidence */}
                 {selectedPin.opportunitySignals && selectedPin.opportunitySignals.length > 0 && (
                   <div className="space-y-1 text-xs">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                       Commercial Fit Evidence
                     </div>
-                    <ul className="space-y-1 text-slate-300 text-[11px]">
+                    <ul className="space-y-1 text-slate-700 text-[11px]">
                       {selectedPin.opportunitySignals.slice(0, 3).map((sig, i) => (
                         <li key={i} className="flex items-start gap-1.5">
-                          <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                           <span>{sig}</span>
                         </li>
                       ))}
@@ -1179,12 +1180,12 @@ export default function LiveUsaMarketMap({
                 )}
 
                 {/* Quick Actions */}
-                <div className="space-y-2 pt-2 border-t border-slate-800">
+                <div className="space-y-2 pt-2 border-t border-slate-100">
                   {onSelectLeadInLibrary && (
                     <button
                       type="button"
                       onClick={() => onSelectLeadInLibrary(selectedPin.businessName)}
-                      className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                      className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
                     >
                       <Storefront className="w-3.5 h-3.5" />
                       <span>View in Lead Library & CRM</span>
@@ -1197,7 +1198,7 @@ export default function LiveUsaMarketMap({
                         href={selectedPin.website}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-center flex items-center justify-center gap-1"
+                        className="py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-semibold text-center flex items-center justify-center gap-1"
                       >
                         <ArrowSquareOut className="w-3.5 h-3.5" /> Website
                       </a>
@@ -1205,7 +1206,7 @@ export default function LiveUsaMarketMap({
                     {selectedPin.phone && (
                       <a
                         href={`tel:${selectedPin.phone}`}
-                        className="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-center flex items-center justify-center gap-1"
+                        className="py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-semibold text-center flex items-center justify-center gap-1"
                       >
                         <Phone className="w-3.5 h-3.5" /> Call
                       </a>
@@ -1216,12 +1217,12 @@ export default function LiveUsaMarketMap({
             ) : focusedState ? (
               /* Case B: State Market Intelligence Overview */
               <div className="space-y-4">
-                <div className="flex items-start justify-between pb-2 border-b border-slate-800">
+                <div className="flex items-start justify-between pb-2 border-b border-slate-100">
                   <div>
-                    <div className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                    <div className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
                       {focusedState.region} Region • {focusedState.code}
                     </div>
-                    <h3 className="text-lg font-bold text-white">{focusedState.name}</h3>
+                    <h3 className="text-lg font-bold text-slate-900">{focusedState.name}</h3>
                   </div>
                   <button
                     type="button"
@@ -1229,7 +1230,7 @@ export default function LiveUsaMarketMap({
                       setSelectedStateCode(null);
                       setHoveredStateCode(null);
                     }}
-                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1237,33 +1238,33 @@ export default function LiveUsaMarketMap({
 
                 {/* State Metrics Grid */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/60">
-                    <div className="text-[10px] text-slate-400">Discovered Leads</div>
-                    <div className="text-base font-bold text-white">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="text-[10px] text-slate-500 font-semibold">Discovered Leads</div>
+                    <div className="text-base font-bold text-slate-900">
                       {focusedState.discoveredCount}
                     </div>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/60">
-                    <div className="text-[10px] text-slate-400">Qualified Buyers</div>
-                    <div className="text-base font-bold text-emerald-400">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="text-[10px] text-slate-500 font-semibold">Qualified Buyers</div>
+                    <div className="text-base font-bold text-emerald-700">
                       {focusedState.qualifiedCount}
                     </div>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/60">
-                    <div className="text-[10px] text-slate-400">Contactable</div>
-                    <div className="text-base font-bold text-indigo-400">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="text-[10px] text-slate-500 font-semibold">Contactable</div>
+                    <div className="text-base font-bold text-indigo-700">
                       {focusedState.contactableCount}
                     </div>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/60">
-                    <div className="text-[10px] text-slate-400">Coverage Status</div>
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="text-[10px] text-slate-500 font-semibold">Coverage Status</div>
                     <div
                       className={`text-xs font-bold capitalize mt-0.5 ${
                         focusedState.coverageStatus === 'not_scanned'
-                          ? 'text-slate-400'
+                          ? 'text-slate-500'
                           : focusedState.coverageStatus === 'partial'
-                          ? 'text-amber-400'
-                          : 'text-emerald-400'
+                          ? 'text-amber-700'
+                          : 'text-emerald-700'
                       }`}
                     >
                       {focusedState.coverageStatus === 'not_scanned'
@@ -1277,30 +1278,30 @@ export default function LiveUsaMarketMap({
 
                 {/* Category Breakdown */}
                 <div className="space-y-2 text-xs">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     Commercial Segments Breakdown
                   </div>
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-slate-300">
+                    <div className="flex items-center justify-between text-slate-700">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         Agriculture & Ranches
                       </span>
-                      <strong className="text-white">{focusedState.categoryBreakdown.agriculture}</strong>
+                      <strong className="text-slate-900">{focusedState.categoryBreakdown.agriculture}</strong>
                     </div>
-                    <div className="flex items-center justify-between text-slate-300">
+                    <div className="flex items-center justify-between text-slate-700">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-indigo-500" />
                         Salt & Wholesalers
                       </span>
-                      <strong className="text-white">{focusedState.categoryBreakdown.salt_wholesale}</strong>
+                      <strong className="text-slate-900">{focusedState.categoryBreakdown.salt_wholesale}</strong>
                     </div>
-                    <div className="flex items-center justify-between text-slate-300">
+                    <div className="flex items-center justify-between text-slate-700">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-amber-500" />
                         Spas, Wellness & Caves
                       </span>
-                      <strong className="text-white">{focusedState.categoryBreakdown.wellness}</strong>
+                      <strong className="text-slate-900">{focusedState.categoryBreakdown.wellness}</strong>
                     </div>
                   </div>
                 </div>
@@ -1308,7 +1309,7 @@ export default function LiveUsaMarketMap({
                 {/* Top Metropolitan Commercial Hubs */}
                 {focusedState.topHubs.length > 0 && (
                   <div className="space-y-1.5 text-xs">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                       Target Commercial Hubs
                     </div>
                     <div className="flex flex-wrap gap-1.5">
@@ -1326,10 +1327,10 @@ export default function LiveUsaMarketMap({
                                 handleZoomToCity(metro.lat, metro.lon);
                               }
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-indigo-950/80 hover:border-indigo-600 text-slate-300 hover:text-indigo-200 border border-slate-700 text-[11px] font-medium transition cursor-pointer flex items-center gap-1"
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:border-indigo-300 text-slate-700 hover:text-indigo-800 border border-slate-200 text-[11px] font-medium transition cursor-pointer flex items-center gap-1"
                             title={`Zoom to ${hub}`}
                           >
-                            <MapPin className="w-3 h-3 text-indigo-400" />
+                            <MapPin className="w-3 h-3 text-indigo-600" />
                             <span>{hub}</span>
                           </button>
                         );

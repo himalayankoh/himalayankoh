@@ -859,20 +859,20 @@ export default function InteractiveUsaMap({
   }, [leads]);
 
   return (
-    <div className={`bg-slate-900 text-white rounded-2xl border border-slate-800 shadow-2xl overflow-hidden p-4 sm:p-5 ${className}`}>
+    <div className={`bg-white text-slate-800 rounded-2xl border border-slate-200 shadow-xs overflow-hidden p-4 sm:p-5 ${className}`}>
       {/* ── Top Header & Presets Bar ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3 pb-3 border-b border-slate-800">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3 pb-3 border-b border-slate-200">
         <div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <h3 className="text-sm sm:text-base font-bold text-white tracking-wide flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-wide flex items-center gap-1.5">
               <span>Interactive USA Territory Vector Map</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#b86452]/20 text-[#e08b79] border border-[#b86452]/40">
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#b86452]/10 text-[#b86452] border border-[#b86452]/30">
                 50 States & Commercial Hubs
               </span>
             </h3>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5">
             Single-click any state to select and zoom. Double-click or use [+] to zoom into ranches, farms, and cities.
           </p>
         </div>
@@ -893,28 +893,28 @@ export default function InteractiveUsaMap({
           <button
             type="button"
             onClick={() => onSelectPreset(['Houston, TX'])}
-            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
           >
             Houston
           </button>
           <button
             type="button"
             onClick={() => onSelectPreset(['Dallas, TX', 'Fort Worth, TX'])}
-            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
           >
             Dallas/FW
           </button>
           <button
             type="button"
             onClick={() => onSelectPreset(['Austin, TX'])}
-            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
           >
             Austin
           </button>
           <button
             type="button"
             onClick={() => onSelectPreset(['Amarillo, TX', 'Lubbock, TX'])}
-            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
           >
             Amarillo/Ag
           </button>
@@ -925,7 +925,7 @@ export default function InteractiveUsaMap({
               const fl = USA_STATE_PATHS.find((s) => s.code === 'FL');
               if (fl) handleZoomToState(fl);
             }}
-            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
           >
             Florida/Ocala
           </button>
@@ -936,7 +936,7 @@ export default function InteractiveUsaMap({
               const ca = USA_STATE_PATHS.find((s) => s.code === 'CA');
               if (ca) handleZoomToState(ca);
             }}
-            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+            className="px-2 py-1 rounded-lg text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition cursor-pointer"
           >
             California Ag
           </button>
@@ -951,7 +951,7 @@ export default function InteractiveUsaMap({
             <button
               type="button"
               onClick={() => onSelectPreset([])}
-              className="px-2 py-1 rounded-lg text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 transition cursor-pointer flex items-center gap-1"
+              className="px-2 py-1 rounded-lg text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 transition cursor-pointer flex items-center gap-1"
             >
               <X className="w-3.5 h-3.5" />
               <span>Reset</span>
@@ -964,14 +964,14 @@ export default function InteractiveUsaMap({
       <div className="flex items-center justify-between gap-2 mb-2.5 flex-wrap text-xs">
         {/* Layer Filters */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[11px] font-semibold text-slate-400 mr-1">Show on Map:</span>
+          <span className="text-[11px] font-semibold text-slate-500 mr-1">Show on Map:</span>
           <button
             type="button"
             onClick={() => setPoiFilter('all')}
             className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold transition cursor-pointer border ${
               poiFilter === 'all'
-                ? 'bg-slate-100 text-slate-900 border-white'
-                : 'bg-slate-800 text-slate-400 hover:text-white border-slate-700'
+                ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                : 'bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border-slate-200'
             }`}
           >
             All Locations ({projectedPois.length + liveLeadPins.length})
@@ -981,8 +981,8 @@ export default function InteractiveUsaMap({
             onClick={() => setPoiFilter('ranch')}
             className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold transition cursor-pointer border flex items-center gap-1 ${
               poiFilter === 'ranch'
-                ? 'bg-amber-400 text-slate-950 border-amber-300 font-extrabold shadow-xs'
-                : 'bg-amber-950/40 text-amber-300 hover:bg-amber-900/60 border-amber-800/60'
+                ? 'bg-amber-500 text-white border-amber-500 font-extrabold shadow-xs'
+                : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border-amber-200'
             }`}
           >
             <span>🐎</span>
@@ -993,8 +993,8 @@ export default function InteractiveUsaMap({
             onClick={() => setPoiFilter('feed_store')}
             className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold transition cursor-pointer border flex items-center gap-1 ${
               poiFilter === 'feed_store'
-                ? 'bg-emerald-400 text-slate-950 border-emerald-300 font-extrabold shadow-xs'
-                : 'bg-emerald-950/40 text-emerald-300 hover:bg-emerald-900/60 border-emerald-800/60'
+                ? 'bg-emerald-600 text-white border-emerald-600 font-extrabold shadow-xs'
+                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border-emerald-200'
             }`}
           >
             <span>🌾</span>
@@ -1005,8 +1005,8 @@ export default function InteractiveUsaMap({
             onClick={() => setPoiFilter('livestock')}
             className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold transition cursor-pointer border flex items-center gap-1 ${
               poiFilter === 'livestock'
-                ? 'bg-orange-400 text-slate-950 border-orange-300 font-extrabold shadow-xs'
-                : 'bg-orange-950/40 text-orange-300 hover:bg-orange-900/60 border-orange-800/60'
+                ? 'bg-orange-500 text-white border-orange-500 font-extrabold shadow-xs'
+                : 'bg-orange-50 text-orange-800 hover:bg-orange-100 border-orange-200'
             }`}
           >
             <span>🐂</span>
@@ -1017,8 +1017,8 @@ export default function InteractiveUsaMap({
             onClick={() => setPoiFilter('city')}
             className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold transition cursor-pointer border flex items-center gap-1 ${
               poiFilter === 'city'
-                ? 'bg-cyan-400 text-slate-950 border-cyan-300 font-extrabold shadow-xs'
-                : 'bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/60 border-cyan-800/60'
+                ? 'bg-sky-600 text-white border-sky-600 font-extrabold shadow-xs'
+                : 'bg-sky-50 text-sky-800 hover:bg-sky-100 border-sky-200'
             }`}
           >
             <span>🏢</span>
@@ -1029,22 +1029,22 @@ export default function InteractiveUsaMap({
         {/* State Zoom Breadcrumb & Reset */}
         <div className="flex items-center gap-2 ml-auto">
           {activeZoomedState ? (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-950/80 border border-indigo-700/80 text-indigo-300 text-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
               <span>
                 Zoomed: <strong>{activeZoomedState.name}</strong> ({zoomLevel.toFixed(1)}x)
               </span>
               <button
                 type="button"
                 onClick={handleResetZoom}
-                className="text-xs text-indigo-200 hover:text-white underline cursor-pointer ml-1"
+                className="text-xs text-indigo-600 hover:text-indigo-800 underline font-semibold cursor-pointer ml-1"
                 title="Fit full USA map"
               >
                 Fit USA
               </button>
             </div>
           ) : (
-            <span className="text-[11px] text-slate-400 italic hidden sm:inline">
+            <span className="text-[11px] text-slate-500 italic hidden sm:inline">
               Double-click any state to zoom into cities & ranches
             </span>
           )}
@@ -1052,13 +1052,13 @@ export default function InteractiveUsaMap({
       </div>
 
       {/* ── Main SVG Map Canvas ── */}
-      <div className="relative w-full aspect-[960/600] max-h-[520px] select-none rounded-xl overflow-hidden bg-slate-950 border border-slate-800/90 shadow-inner">
+      <div className="relative w-full aspect-[960/600] max-h-[520px] select-none rounded-xl overflow-hidden bg-[#FAF7F1] border border-slate-200 shadow-xs">
         {/* Floating Zoom Controls (+ / - / Reset) */}
-        <div className="absolute top-3 right-3 z-30 flex flex-col gap-1.5 bg-slate-900/90 backdrop-blur-md p-1 rounded-xl border border-slate-700/80 shadow-xl">
+        <div className="absolute top-3 right-3 z-30 flex flex-col gap-1.5 bg-white/95 backdrop-blur-md p-1 rounded-xl border border-slate-200 shadow-md">
           <button
             type="button"
             onClick={handleZoomIn}
-            className="p-1.5 hover:bg-slate-800 text-slate-200 hover:text-white rounded-lg transition cursor-pointer"
+            className="p-1.5 hover:bg-slate-100 text-slate-700 hover:text-slate-900 rounded-lg transition cursor-pointer"
             title="Zoom In (Consistent 1.25x step)"
           >
             <Plus className="w-4 h-4" />
@@ -1066,7 +1066,7 @@ export default function InteractiveUsaMap({
           <button
             type="button"
             onClick={handleZoomOut}
-            className="p-1.5 hover:bg-slate-800 text-slate-200 hover:text-white rounded-lg transition cursor-pointer"
+            className="p-1.5 hover:bg-slate-100 text-slate-700 hover:text-slate-900 rounded-lg transition cursor-pointer"
             title="Zoom Out (Consistent 1.25x step)"
           >
             <Minus className="w-4 h-4" />
@@ -1075,17 +1075,17 @@ export default function InteractiveUsaMap({
             <button
               type="button"
               onClick={handleFitState}
-              className="p-1.5 hover:bg-indigo-950 text-indigo-300 hover:text-indigo-100 rounded-lg transition cursor-pointer"
+              className="p-1.5 hover:bg-indigo-50 text-indigo-700 hover:text-indigo-900 rounded-lg transition cursor-pointer"
               title={`Fit ${activeZoomedState.name} to screen`}
             >
               <Target className="w-4 h-4" />
             </button>
           )}
-          <div className="w-full h-px bg-slate-800 my-0.5" />
+          <div className="w-full h-px bg-slate-200 my-0.5" />
           <button
             type="button"
             onClick={handleResetZoom}
-            className="p-1.5 hover:bg-indigo-950 text-indigo-300 hover:text-indigo-100 rounded-lg transition cursor-pointer"
+            className="p-1.5 hover:bg-indigo-50 text-indigo-700 hover:text-indigo-900 rounded-lg transition cursor-pointer"
             title="Reset to Full USA Map"
           >
             <ArrowsOut className="w-4 h-4" />
@@ -1093,8 +1093,8 @@ export default function InteractiveUsaMap({
         </div>
 
         {/* Floating Instruction Badge */}
-        <div className="absolute top-3 left-3 z-30 pointer-events-none bg-slate-900/85 backdrop-blur-md border border-slate-800 px-2.5 py-1 rounded-lg text-[11px] text-slate-300 flex items-center gap-1.5 shadow-sm">
-          <Info className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+        <div className="absolute top-3 left-3 z-30 pointer-events-none bg-white/90 backdrop-blur-md border border-slate-200 px-2.5 py-1 rounded-lg text-[11px] text-slate-700 flex items-center gap-1.5 shadow-sm">
+          <Info className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
           <span>
             {activeZoomedState
               ? `Zoomed into ${activeZoomedState.name} · Click cities & ranches to target in search`
@@ -1113,7 +1113,7 @@ export default function InteractiveUsaMap({
           {/* Background Grid & Visual Effects */}
           <defs>
             <pattern id="map-grid-pattern" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(0,0,0,0.03)" strokeWidth="1" />
             </pattern>
             <filter id="glow-gold" x="-50%" y="-50%" width="200%" height="200%">
               <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#f59e0b" floodOpacity="0.8" />
@@ -1149,19 +1149,19 @@ export default function InteractiveUsaMap({
                     selected
                       ? '#b86452'
                       : isZoomed
-                      ? '#1e293b'
+                      ? '#E5DDD0'
                       : isHovered
-                      ? '#334155'
-                      : '#0f172a'
+                      ? '#DDD3C4'
+                      : '#EDE6DB'
                   }
                   stroke={
                     isZoomed
-                      ? '#38bdf8'
+                      ? '#2563eb'
                       : selected
-                      ? '#e08b79'
+                      ? '#8f4233'
                       : isHovered
-                      ? '#64748b'
-                      : '#1e293b'
+                      ? '#a8a29e'
+                      : '#D5CCBE'
                   }
                   strokeWidth={isZoomed ? '2.5' : selected ? '2' : '1'}
                 />
@@ -1185,10 +1185,10 @@ export default function InteractiveUsaMap({
                   pointerEvents="none"
                   className={`select-none transition-all ${
                     isZoomed
-                      ? 'fill-sky-400 font-extrabold text-[12px]'
+                      ? 'fill-indigo-700 font-extrabold text-[12px]'
                       : selected
                       ? 'fill-white font-extrabold text-[10px]'
-                      : 'fill-slate-500 font-semibold text-[9px]'
+                      : 'fill-slate-600 font-bold text-[9px]'
                   }`}
                 >
                   {state.code}
@@ -1311,24 +1311,24 @@ export default function InteractiveUsaMap({
         {/* ── Floating Tooltip for Hovered Agricultural POI ── */}
         {hoveredPoi && (
           <div
-            className="absolute z-40 pointer-events-auto bg-slate-950/95 backdrop-blur-md border border-slate-700 rounded-xl p-3 shadow-2xl text-xs max-w-[280px] animate-in fade-in zoom-in-95 duration-100"
+            className="absolute z-40 pointer-events-auto bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl p-3 shadow-xl text-xs max-w-[280px] animate-in fade-in zoom-in-95 duration-100 text-slate-800"
             style={{
               left: `${Math.min(78, Math.max(12, ((projectCoordinates(hoveredPoi.lat, hoveredPoi.lon)?.[0] || 480) - viewBox.x) / viewBox.w * 100))}%`,
               top: `${Math.min(72, Math.max(15, ((projectCoordinates(hoveredPoi.lat, hoveredPoi.lon)?.[1] || 300) - viewBox.y) / viewBox.h * 100))}%`,
               transform: 'translate(-50%, -120%)',
             }}
           >
-            <div className="flex items-center justify-between gap-1.5 border-b border-slate-800 pb-1.5 mb-1.5">
-              <span className="font-bold text-white text-sm truncate">{hoveredPoi.name}</span>
+            <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-1.5 mb-1.5">
+              <span className="font-bold text-slate-900 text-sm truncate">{hoveredPoi.name}</span>
               <span
                 className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                   hoveredPoi.type === 'ranch'
-                    ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
                     : hoveredPoi.type === 'feed_store'
-                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                     : hoveredPoi.type === 'livestock'
-                    ? 'bg-orange-950 text-orange-300 border border-orange-800'
-                    : 'bg-cyan-950 text-cyan-300 border border-cyan-800'
+                    ? 'bg-orange-100 text-orange-800 border border-orange-200'
+                    : 'bg-sky-100 text-sky-800 border border-sky-200'
                 }`}
               >
                 {hoveredPoi.type === 'ranch'
@@ -1340,8 +1340,8 @@ export default function InteractiveUsaMap({
                   : '🏢 City Hub'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-300 font-medium leading-snug">{hoveredPoi.subtitle}</p>
-            <p className="text-[10px] text-slate-400 mt-1">
+            <p className="text-[11px] text-slate-600 font-medium leading-snug">{hoveredPoi.subtitle}</p>
+            <p className="text-[10px] text-slate-500 mt-1">
               {hoveredPoi.city}, {hoveredPoi.state} · {hoveredPoi.category}
             </p>
             {hoveredPoi.phone && (
@@ -1364,17 +1364,17 @@ export default function InteractiveUsaMap({
 
         {/* ── Floating Tooltip for Hovered Live Lead ── */}
         {hoveredLead && (
-          <div className="absolute z-40 pointer-events-auto bg-slate-950/95 backdrop-blur-md border border-pink-500/60 rounded-xl p-3 shadow-2xl text-xs max-w-[280px] top-4 right-4">
-            <div className="flex items-center gap-1.5 text-pink-400 font-bold text-xs uppercase tracking-wider mb-1">
+          <div className="absolute z-40 pointer-events-auto bg-white/95 backdrop-blur-md border border-pink-300 rounded-xl p-3 shadow-xl text-xs max-w-[280px] top-4 right-4 text-slate-800">
+            <div className="flex items-center gap-1.5 text-pink-600 font-bold text-xs uppercase tracking-wider mb-1">
               <Sparkle weight="fill" className="w-3.5 h-3.5" />
               <span>Discovered Lead</span>
             </div>
-            <p className="font-bold text-white text-sm truncate">{hoveredLead.businessName}</p>
-            <p className="text-slate-300 text-[11px] mt-0.5">
+            <p className="font-bold text-slate-900 text-sm truncate">{hoveredLead.businessName}</p>
+            <p className="text-slate-600 text-[11px] mt-0.5">
               {hoveredLead.city ? `${hoveredLead.city}, ` : ''}{hoveredLead.region || 'USA'} · {hoveredLead.category}
             </p>
             {hoveredLead.phone && (
-              <p className="text-slate-400 text-[10px] mt-1 flex items-center gap-1">
+              <p className="text-slate-500 text-[10px] mt-1 flex items-center gap-1">
                 <Phone className="w-3 h-3" />
                 <span>{hoveredLead.phone}</span>
               </p>
@@ -1384,7 +1384,7 @@ export default function InteractiveUsaMap({
                 href={hoveredLead.website.startsWith('http') ? hoveredLead.website : `https://${hoveredLead.website}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-indigo-400 hover:text-indigo-300 text-[10px] mt-1 truncate flex items-center gap-1"
+                className="text-indigo-600 hover:text-indigo-800 text-[10px] mt-1 truncate flex items-center gap-1"
               >
                 <ArrowSquareOut className="w-3 h-3" />
                 <span>{hoveredLead.website}</span>
@@ -1396,52 +1396,52 @@ export default function InteractiveUsaMap({
         {/* ── Floating Tooltip for Hovered State (When no POI is hovered) ── */}
         {hoveredState && !hoveredPoi && !hoveredLead && (
           <div
-            className="absolute z-20 pointer-events-none bg-slate-950/90 backdrop-blur-md border border-slate-700/80 rounded-xl p-2.5 shadow-2xl text-xs max-w-[220px]"
+            className="absolute z-20 pointer-events-none bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl p-2.5 shadow-xl text-xs max-w-[220px] text-slate-800"
             style={{
               left: `${Math.min(78, Math.max(15, (hoveredState.labelX - viewBox.x) / viewBox.w * 100))}%`,
               top: `${Math.min(72, Math.max(15, (hoveredState.labelY - viewBox.y) / viewBox.h * 100))}%`,
               transform: 'translate(-50%, -120%)',
             }}
           >
-            <div className="flex items-center justify-between gap-1.5 border-b border-slate-800 pb-1 mb-1.5">
-              <span className="font-bold text-white text-sm">
+            <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 pb-1 mb-1.5">
+              <span className="font-bold text-slate-900 text-sm">
                 {hoveredState.name} ({hoveredState.code})
               </span>
               <span
                 className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                   isStateSelected(hoveredState.code, hoveredState.name)
-                    ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                    : 'bg-slate-800 text-slate-300'
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-slate-100 text-slate-700 border border-slate-200'
                 }`}
               >
                 {isStateSelected(hoveredState.code, hoveredState.name) ? 'Selected' : 'Click to Target'}
               </span>
             </div>
-            <p className="text-[10px] text-slate-400">
-              <strong className="text-slate-300">Commercial Hubs:</strong> {hoveredState.hubs.join(', ')}
+            <p className="text-[10px] text-slate-600">
+              <strong className="text-slate-800">Commercial Hubs:</strong> {hoveredState.hubs.join(', ')}
             </p>
-            <p className="text-[9px] text-sky-400 mt-1 italic">Click or double-click to zoom into {hoveredState.name}</p>
+            <p className="text-[9px] text-indigo-600 mt-1 italic">Click or double-click to zoom into {hoveredState.name}</p>
           </div>
         )}
       </div>
 
       {/* ── Bottom Targets & Pin Counter Footer ── */}
-      <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between flex-wrap gap-2 text-xs">
+      <div className="mt-3 pt-3 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2 text-xs">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-slate-400 font-semibold">Active Targets:</span>
+          <span className="text-slate-600 font-semibold">Active Targets:</span>
           {selectedLocations.length === 0 ? (
-            <span className="text-slate-500 italic">None selected (Click any state, city, or ranch above)</span>
+            <span className="text-slate-400 italic">None selected (Click any state, city, or ranch above)</span>
           ) : (
             selectedLocations.map((loc) => (
               <span
                 key={loc}
-                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#b86452]/20 border border-[#b86452]/50 text-[#e08b79] font-medium text-[11px]"
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#b86452]/10 border border-[#b86452]/30 text-[#b86452] font-semibold text-[11px]"
               >
                 <span>{loc}</span>
                 <button
                   type="button"
                   onClick={() => onToggleLocation(loc)}
-                  className="hover:text-white cursor-pointer ml-0.5"
+                  className="hover:text-[#a05246] cursor-pointer ml-0.5"
                   title={`Remove ${loc}`}
                 >
                   <X className="w-3 h-3" />
@@ -1453,18 +1453,18 @@ export default function InteractiveUsaMap({
 
         <div className="flex items-center gap-3 text-xs ml-auto">
           {dbLoading ? (
-            <span className="text-slate-400 flex items-center gap-1">
+            <span className="text-slate-500 flex items-center gap-1">
               <ArrowsClockwise className="w-3 h-3 animate-spin" />
               <span>Loading registered pins...</span>
             </span>
           ) : (
-            <span className="text-emerald-400 font-bold flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-emerald-700 font-bold flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>{projectedPois.length} Ranches, Farms & Commercial Hubs</span>
             </span>
           )}
           {liveLeadPins.length > 0 && (
-            <span className="text-pink-400 font-bold flex items-center gap-1">
+            <span className="text-pink-600 font-bold flex items-center gap-1">
               <Sparkle weight="fill" className="w-3 h-3" />
               <span>{liveLeadPins.length} Search Leads</span>
             </span>

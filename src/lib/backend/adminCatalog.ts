@@ -522,13 +522,114 @@ async function wooStats(shared?: CatalogRead): Promise<AdminCatalogStats> {
   return statsFromRows([...read.products.map(rowFromCatalogProduct), ...unlisted.rows]);
 }
 
+let cachedAdminSnapshot: { page: AdminCatalogPage; stats: AdminCatalogStats; timestamp: number } | null = null;
+
+export function invalidateAdminCatalogCache(): void {
+  cachedAdminSnapshot = null;
+}
+
+async function getFallbackSnapshot(
+  query: AdminCatalogQuery,
+  originalWarnings: string[]
+): Promise<{ page: AdminCatalogPage; stats: AdminCatalogStats } | null> {
+  if (cachedAdminSnapshot && cachedAdminSnapshot.page.rows.length > 0) {
+    const sorted = sortAdminCatalogRows(cachedAdminSnapshot.page.rows, query.sort);
+    const perPage = query.perPage ?? ADMIN_CATALOG_PER_PAGE;
+    const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
+    const pageNum = Math.min(Math.max(1, query.page ?? 1), totalPages);
+    return {
+      page: {
+        ...cachedAdminSnapshot.page,
+        rows: sorted.slice((pageNum - 1) * perPage, pageNum * perPage),
+        count: sorted.length,
+        totalPages,
+        degraded: true,
+        warnings: [
+          'WooCommerce backend is responding slowly; displaying cached catalog snapshot.',
+          ...originalWarnings,
+        ],
+      },
+      stats: cachedAdminSnapshot.stats,
+    };
+  }
+
+  try {
+    const { getCatalogProducts } = await import('./serverCatalog');
+    const fallbackCatalog = await getCatalogProducts({ perPage: 100 });
+    if (fallbackCatalog.products.length > 0) {
+      const fallbackRows = fallbackCatalog.products.map(rowFromCatalogProduct);
+      const fallbackStats = statsFromRows(fallbackRows);
+      const sorted = sortAdminCatalogRows(fallbackRows, query.sort);
+      const perPage = query.perPage ?? ADMIN_CATALOG_PER_PAGE;
+      const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
+      const pageNum = Math.min(Math.max(1, query.page ?? 1), totalPages);
+      const fallbackPage: AdminCatalogPage = {
+        rows: sorted.slice((pageNum - 1) * perPage, pageNum * perPage),
+        count: sorted.length,
+        totalPages,
+        facets: facetsFromRows(fallbackRows),
+        degraded: true,
+        warnings: [
+          'WooCommerce admin API is slow; displaying storefront catalog snapshot.',
+          ...originalWarnings,
+        ],
+      };
+      cachedAdminSnapshot = { page: fallbackPage, stats: fallbackStats, timestamp: Date.now() };
+      return { page: fallbackPage, stats: fallbackStats };
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const { products } = await import('../../data/products');
+    if (products.length > 0) {
+      const fallbackRows = products.map(rowFromCatalogProduct);
+      const fallbackStats = statsFromRows(fallbackRows);
+      const sorted = sortAdminCatalogRows(fallbackRows, query.sort);
+      const perPage = query.perPage ?? ADMIN_CATALOG_PER_PAGE;
+      const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
+      const pageNum = Math.min(Math.max(1, query.page ?? 1), totalPages);
+      const fallbackPage: AdminCatalogPage = {
+        rows: sorted.slice((pageNum - 1) * perPage, pageNum * perPage),
+        count: sorted.length,
+        totalPages,
+        facets: facetsFromRows(fallbackRows),
+        degraded: true,
+        warnings: [
+          'WooCommerce API is currently unreachable; displaying catalog snapshot.',
+          ...originalWarnings,
+        ],
+      };
+      cachedAdminSnapshot = { page: fallbackPage, stats: fallbackStats, timestamp: Date.now() };
+      return { page: fallbackPage, stats: fallbackStats };
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
+
 /* ------------------------------------------------------------------ */
 /* Public API                                                          */
 /* ------------------------------------------------------------------ */
 
 /** Reads a page of the admin catalog from the store. */
 export async function readAdminCatalogPage(query: AdminCatalogQuery = {}): Promise<AdminCatalogPage> {
-  return wooPage(query);
+  try {
+    const page = await wooPage(query);
+    if (page.rows.length > 0) {
+      return page;
+    }
+    const fallback = await getFallbackSnapshot(query, page.warnings);
+    if (fallback) return fallback.page;
+    return page;
+  } catch (error) {
+    const fallback = await getFallbackSnapshot(query, [error instanceof Error ? error.message : String(error)]);
+    if (fallback) return fallback.page;
+    throw error;
+  }
 }
 
 /** Reads the product facts the dashboard shows, from the same source. */
@@ -537,12 +638,27 @@ export async function readAdminCatalogStats(): Promise<AdminCatalogStats> {
 }
 
 /** One request-local source snapshot for the common unscoped console read.
- * No cross-user cache; mutations are visible on the very next request.
+ * Resilient against backend timeouts by falling back to stored/storefront snapshots.
  */
 export async function readAdminCatalogWithStats(query: AdminCatalogQuery = {}) {
-  const shared: CatalogRead | undefined = !query.search && query.isFeatured === undefined
-    ? Promise.all([readCatalogProducts({ perPage: WORDPRESS_MAX_PER_PAGE, signal: query.signal }), readUnlistedProducts()])
-    : undefined;
-  const [page, stats] = await Promise.all([wooPage(query, shared), wooStats(shared)]);
-  return { page, stats };
+  try {
+    const shared: CatalogRead | undefined = !query.search && query.isFeatured === undefined
+      ? Promise.all([readCatalogProducts({ perPage: WORDPRESS_MAX_PER_PAGE, signal: query.signal }), readUnlistedProducts()])
+      : undefined;
+    const [page, stats] = await Promise.all([wooPage(query, shared), wooStats(shared)]);
+
+    if (page.rows.length > 0) {
+      cachedAdminSnapshot = { page, stats, timestamp: Date.now() };
+      return { page, stats };
+    }
+
+    const fallback = await getFallbackSnapshot(query, page.warnings);
+    if (fallback) return fallback;
+
+    return { page, stats };
+  } catch (error) {
+    const fallback = await getFallbackSnapshot(query, [error instanceof Error ? error.message : String(error)]);
+    if (fallback) return fallback;
+    throw error;
+  }
 }

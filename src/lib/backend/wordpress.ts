@@ -165,7 +165,8 @@ export async function wordpressRequestWithMeta<T>(
     const isTransient =
       error instanceof WordPressApiError &&
       (error.status === 0 || error.status === 500 || error.status === 502 || error.status === 503 || error.status === 504) &&
-      !error.message.includes('WORDPRESS_BASE_URL is empty');
+      !error.message.includes('WORDPRESS_BASE_URL is empty') &&
+      !error.message.includes('timed out');
     if (!isWrite && !isTest && !options.signal?.aborted && isTransient) {
       await new Promise((resolve) => setTimeout(resolve, 350));
       return executeWordPressRequestWithMeta<T>(path, options);

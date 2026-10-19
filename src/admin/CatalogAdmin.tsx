@@ -534,7 +534,12 @@ export function CatalogProductsPage() {
       if (!current()) return;
       const message = e instanceof Error ? e.message : 'The product catalog could not be loaded.';
       setLoadError(message);
-      notify(`Could not load catalog: ${message}`, 'error');
+      setProducts((prev) => {
+        if (prev.length === 0) {
+          notify(`Could not load catalog: ${message}`, 'error');
+        }
+        return prev;
+      });
     } finally {
       if (current()) setLoading(false);
     }
@@ -1141,15 +1146,18 @@ export function CatalogProductsPage() {
     <div aria-hidden="true" className="rounded-xl border border-[#E0D6C8] bg-white p-4 space-y-4">{Array.from({length:6},(_,i)=><div key={i} className="h-12 rounded bg-[#FAF7F1] animate-pulse" />)}</div>
   </section>;
 
-  if (loadError) {
+  if (loadError && products.length === 0) {
     return (
       <div className="mx-auto max-w-xl rounded-xl border border-red-200 bg-red-50 px-5 py-8 text-center">
         <h1 className="text-lg font-semibold text-red-900">Products could not be loaded</h1>
         <p className="mt-2 text-sm text-red-700">{loadError}</p>
         <button
           type="button"
-          onClick={() => void load()}
-          className="mt-4 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800"
+          onClick={() => {
+            setLoadError(null);
+            void load();
+          }}
+          className="mt-4 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 cursor-pointer"
         >
           Retry
         </button>
@@ -1159,6 +1167,23 @@ export function CatalogProductsPage() {
 
   return (
     <div className="space-y-2">
+      {loadError && products.length > 0 && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
+          <div className="flex items-center gap-2">
+            <Warning size={18} className="text-amber-700 shrink-0" />
+            <span><strong>Store Connection:</strong> WooCommerce responded slowly. Displaying cached catalogue snapshot.</span>
+          </div>
+          <button
+            onClick={() => {
+              setLoadError(null);
+              void load();
+            }}
+            className="text-amber-700 font-semibold underline hover:text-amber-900 shrink-0 cursor-pointer ml-2"
+          >
+            Retry Sync
+          </button>
+        </div>
+      )}
       {viewMode === 'inventory' && (
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-900">
           <div className="flex items-center gap-2">

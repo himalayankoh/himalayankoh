@@ -429,14 +429,61 @@ async function readBrowserCatalog(): Promise<CatalogProduct[]> {
     });
     if (res.ok) {
       const rows = trustedAdminCatalogRows(await res.json());
-      if (rows) return rows.map(catalogRowToProduct);
+      if (rows && rows.length > 0) return rows.map(catalogRowToProduct);
     }
-    throw new Error(`the catalog read answered HTTP ${res.status}`);
   } catch (error) {
+    if (catalogMemoryCache && catalogMemoryCache.products.length > 0) {
+      return catalogMemoryCache.products;
+    }
+    try {
+      const pubRes = await fetch('/api/catalog', { cache: 'no-store' });
+      if (pubRes.ok) {
+        const pubData = (await pubRes.json()) as { products?: Record<string, unknown>[] };
+        if (Array.isArray(pubData.products) && pubData.products.length > 0) {
+          return pubData.products.map(catalogRowToProduct);
+        }
+      }
+    } catch {
+      // ignore public fallback error
+    }
+    try {
+      const { products } = await import('../../data/products');
+      if (Array.isArray(products) && products.length > 0) {
+        return products.map((p) => catalogRowToProduct(p as unknown as Record<string, unknown>));
+      }
+    } catch {
+      // ignore
+    }
     throw error instanceof CatalogLoadError
       ? error
       : new CatalogLoadError(error instanceof Error ? error.message : undefined);
   }
+
+  if (catalogMemoryCache && catalogMemoryCache.products.length > 0) {
+    return catalogMemoryCache.products;
+  }
+  try {
+    const pubRes = await fetch('/api/catalog', { cache: 'no-store' });
+    if (pubRes.ok) {
+      const pubData = (await pubRes.json()) as { products?: Record<string, unknown>[] };
+      if (Array.isArray(pubData.products) && pubData.products.length > 0) {
+        return pubData.products.map(catalogRowToProduct);
+      }
+    }
+  } catch {
+    // ignore public fallback error
+  }
+
+  try {
+    const { products } = await import('../../data/products');
+    if (Array.isArray(products) && products.length > 0) {
+      return products.map((p) => catalogRowToProduct(p as unknown as Record<string, unknown>));
+    }
+  } catch {
+    // ignore
+  }
+
+  throw new CatalogLoadError('The product catalog could not be loaded.');
 }
 
 /** All products (any status) — the console's view of the store. */
