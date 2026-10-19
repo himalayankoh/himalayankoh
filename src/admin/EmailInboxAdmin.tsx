@@ -45,9 +45,21 @@ import type {
  * kilobytes of control characters. The mail is still in the mailbox; there is
  * simply nothing readable to show, and saying so is more useful than the blob.
  */
+/** True when the decoded text is really a binary attachment (see above). */
+function looksBinary(text: string): boolean {
+  return /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(text.slice(0, 2000));
+}
+
+/** One safe line for the thread list, never a control-character blob. */
+function emailPreviewText(snippet?: string | null, bodyText?: string | null): string {
+  const candidate = (snippet || bodyText || '').trim();
+  if (!candidate) return 'No preview text';
+  return looksBinary(candidate) ? 'Binary attachment — no text preview' : candidate;
+}
+
 function EmailBodyText({ bodyText }: { bodyText?: string | null }) {
   const body = bodyText || '';
-  const binary = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(body.slice(0, 2000));
+  const binary = looksBinary(body);
   if (binary) {
     return (
       <span className="italic text-slate-400">
@@ -829,7 +841,7 @@ export default function EmailInboxAdmin() {
                   </div>
 
                   <p className="mt-1 text-[11px] text-slate-400 line-clamp-1">
-                    {latestMsg.snippet || latestMsg.bodyText}
+                    {emailPreviewText(latestMsg.snippet, latestMsg.bodyText)}
                   </p>
 
                   <div className="mt-2 flex items-center gap-1.5 flex-wrap">

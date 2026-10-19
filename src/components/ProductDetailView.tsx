@@ -213,7 +213,11 @@ export default function ProductDetailView({
       className={
         variant === 'modal'
           ? 'bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl'
-          : 'bg-white rounded-3xl shadow-lg overflow-hidden'
+          : // The page variant carries a fixed mobile buy bar, so it needs scroll
+            // room beneath the last control. Without it the Weight buttons sat under
+            // the bar at 390px: the page could not scroll far enough to lift them out,
+            // and the first tap on "6 lb" hit the bar's Add to Cart instead.
+            'bg-white rounded-3xl shadow-lg overflow-hidden pb-28 md:pb-0'
       }
       onClick={variant === 'modal' ? (e) => e.stopPropagation() : undefined}
     >
@@ -365,6 +369,9 @@ export default function ProductDetailView({
                       type="button"
                       onClick={() => { setSelectedGrain(g); setQty(1); }}
                       aria-pressed={selectedGrain === g}
+                      // Leaves the option clear of the fixed buy bar when
+                      // scrolled into view (scrollIntoView honours this).
+                      style={{ scrollMarginBottom: '7rem' }}
                       title={unavailable ? `${g} is out of stock` : undefined}
                       className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                         selectedGrain === g

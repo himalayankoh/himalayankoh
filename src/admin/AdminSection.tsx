@@ -317,6 +317,10 @@ export function ADashboard() {
   // read". Without this, a failed read rendered a confident 0 on the product
   // cards, which is indistinguishable from a genuinely empty shop.
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  // A read in flight is not a zero: the dashboard used to print "0 total" for the
+  // twenty-odd seconds a cold WooCommerce read can take, which reads as an empty
+  // shop. The figure stays "—" with the reason until the read answers.
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [inventoryReport, setInventoryReport] = useState<InventoryReport | null>(null);
   const [gift] = useState<{ active: boolean; remaining: number; total: number; claimsToday: number } | null>(null);
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
@@ -360,12 +364,14 @@ export function ADashboard() {
   const refresh = useAutoRefresh(loadOrders);
   useEffect(() => {
     refresh();
+    setCatalogLoading(true);
     listProducts()
       .then((products) => { setCatalog(products); setCatalogError(null); })
       .catch((error) => {
         setCatalog([]);
         setCatalogError(error instanceof Error ? error.message : 'The catalog could not be read.');
-      });
+      })
+      .finally(() => setCatalogLoading(false));
     fetchInventory().then(setInventoryReport).catch(() => setInventoryReport(null));
     // The basis of the money figures, from the same read the Analytics screen makes.
     // Without it this dashboard can only assert a revenue number; with it, it can say
@@ -450,7 +456,7 @@ export function ADashboard() {
     // The store's own account count, not this app's user list: the two are different
     // systems, and the tile used to show the app's (usually empty) list as "Customers".
     { l: 'Customers', v: money?.totalCustomers ?? users.length, sub: money ? 'accounts the store holds' : 'store account count not reported', i: UsersIcon, to: '/admin/customers', iconCls: 'bg-[#faf0eb] text-[#b86452]' },
-    { l: 'Active products', v: catalogError ? '—' : activeProducts, sub: catalogError ? 'Catalog could not be read — open Products and retry' : `${totalProducts} total · ${commerceReady} commerce-ready`, i: Package, to: '/admin/products', iconCls: 'bg-[#fdf5ea] text-[#c98745]' },
+    { l: 'Active products', v: catalogLoading || catalogError ? '—' : activeProducts, sub: catalogLoading ? 'Reading the catalog…' : catalogError ? 'Catalog could not be read — open Products and retry' : `${totalProducts} total · ${commerceReady} commerce-ready`, i: Package, to: '/admin/products', iconCls: 'bg-[#fdf5ea] text-[#c98745]' },
     {
       l: 'Low-stock products',
       v: inventoryReport ? inventoryReport.lowStock : (catalog.length ? 0 : '—'),
