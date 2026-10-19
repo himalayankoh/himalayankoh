@@ -37,6 +37,7 @@ import type {
   MailboxStatusInfo,
 } from '@/lib/email/inboxStore';
 import { buildReplyAllCc } from '@/lib/email/replyRecipients';
+import { MobileEmailInboxView } from '@/components/admin/mobile/MobileEmailInboxView';
 
 /**
  * Renders a message body, but not binary content decoded as text.
@@ -650,7 +651,30 @@ export default function EmailInboxAdmin() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-5rem)] w-full overflow-hidden bg-slate-950 text-slate-100 relative">
+    <>
+      {/* Mobile-Only Premium Email Inbox Interface (Reference Image 2) */}
+      <MobileEmailInboxView
+        threads={threads}
+        counts={counts}
+        activeFolder={activeFolder}
+        onSelectFolder={selectFolder}
+        onRefresh={() => fetchInbox(true)}
+        refreshing={refreshing}
+        onOpenCompose={() => {
+          setIsComposeOpen(true);
+          setComposeError(null);
+          setComposeSuccess(null);
+        }}
+        onSendReply={async (threadId, text, isReplyAll) => {
+          setQuickReplyBody(text);
+          setReplyAll(isReplyAll);
+          await handleSendQuickReply();
+        }}
+        sendingReply={sendingQuickReply}
+      />
+
+      {/* Desktop 3-Pane Interface (100% Preserved) */}
+      <div className="hidden md:flex h-[calc(100vh-5rem)] w-full overflow-hidden bg-slate-950 text-slate-100 relative">
       {/* 1. LEFT PANE — DESKTOP ONLY */}
       <div className="hidden md:flex md:w-64 flex-shrink-0 flex-col border-r border-slate-800 bg-slate-900/90 select-none">
         {renderMailboxAndFoldersList()}
@@ -1350,6 +1374,7 @@ export default function EmailInboxAdmin() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

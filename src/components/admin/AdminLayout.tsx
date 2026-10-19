@@ -40,6 +40,10 @@ import {
   loadRailWidth,
   saveRailWidth,
 } from './railWidth';
+import { useMobileTheme } from '@/context/MobileThemeContext';
+import { MobileAdminHeader } from './mobile/MobileAdminHeader';
+import { MobileAdminBottomNav } from './mobile/MobileAdminBottomNav';
+import { MobileQuickAddModal } from './mobile/MobileQuickAddModal';
 
 export interface AdminLayoutProps {
   children: ReactNode;
@@ -177,11 +181,13 @@ const MOBILE_NAV: { key: string; label: string; to?: string; icon: NavIcon }[] =
 ];
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
+  const { isDark } = useMobileTheme();
   const { user, profile } = useAuthContext();
   const { user: appUser } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobSide, setMobSide] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   // Default to the full rail on the server (there is no storage to consult)
   // and apply the remembered width right after mount, so the first paint is
@@ -695,8 +701,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           railDragging ? '' : 'lg:transition-[padding-left] lg:duration-200'
         }`}
       >
-        {/* Header */}
-        <header className="admin-topbar h-16 shrink-0 flex items-center justify-between gap-3 px-4 lg:px-6 z-30">
+        {/* Mobile-Only Header */}
+        <MobileAdminHeader
+          onOpenSidebar={() => setMobSide(true)}
+          onOpenNotifications={() => setNotifOpen(true)}
+          unreadNotifCount={unreadNotifCount}
+        />
+
+        {/* Desktop Header */}
+        <header className="hidden md:flex admin-topbar h-16 shrink-0 items-center justify-between gap-3 px-4 lg:px-6 z-30">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setMobSide(true)}
@@ -1000,64 +1013,27 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         {/* Content Canvas */}
         <main
           id="main-content"
-          tabIndex={-1} className="admin-content flex-1 overflow-y-auto min-w-0 p-3 pb-24 lg:p-5"
+          tabIndex={-1}
+          className={`admin-content flex-1 overflow-y-auto min-w-0 p-3 pb-24 lg:p-5 transition-colors duration-200 ${
+            isDark
+              ? 'max-md:bg-[#0B0E17] max-md:text-white'
+              : 'max-md:bg-[#F8FAFC] max-md:text-[#0F172A]'
+          }`}
         >
           {children}
         </main>
 
-        {/* Mobile quick navigation */}
-        <nav
-          className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-[#FFFDF8]/95 backdrop-blur border-t border-[#E0D6C8] shadow-[0_-4px_20px_rgba(38,33,28,0.08)]"
-          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
-          aria-label="Admin quick navigation"
-        >
-          <div className="grid grid-cols-6 max-w-lg mx-auto">
-            {MOBILE_NAV.map((it) => {
-              if (it.key === 'more') {
-                return (
-                  <button
-                    key="more"
-                    type="button"
-                    onClick={() => setMobSide(true)}
-                    className="flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium text-[#6D6258] hover:text-[#26211C] min-h-[50px]"
-                  >
-                    <span className="p-1">
-                      <List size={18} />
-                    </span>
-                    More
-                  </button>
-                );
-              }
-              const on =
-                it.key === 'home'
-                  ? location.pathname === '/admin'
-                  : it.key === 'products'
-                  ? location.pathname.startsWith('/admin/products')
-                  : it.key === 'leados'
-                  ? location.pathname.startsWith('/admin/leados')
-                  : it.key === 'inbox'
-                  ? location.pathname.startsWith('/admin/inbox')
-                  : it.key === 'orders'
-                  ? location.pathname.startsWith('/admin/orders')
-                  : false;
-              const Icon = it.icon;
-              return (
-                <Link prefetch={false}
-                  key={it.key}
-                  to={it.to || '/admin'}
-                  className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] min-h-[50px] ${
-                    on ? 'text-[#B86452] font-semibold' : 'text-[#6D6258] font-medium hover:text-[#26211C]'
-                  }`}
-                >
-                  <span className={`px-2 py-0.5 rounded-xl ${on ? 'bg-[#B86452]/10 text-[#B86452]' : ''}`}>
-                    <Icon size={18} weight={on ? 'bold' : 'regular'} />
-                  </span>
-                  {it.label}
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
+        {/* Mobile bottom navigation bar */}
+        <MobileAdminBottomNav
+          onOpenQuickAdd={() => setQuickAddOpen(true)}
+          onOpenMore={() => setMobSide(true)}
+        />
+
+        {/* Mobile quick actions drawer */}
+        <MobileQuickAddModal
+          isOpen={quickAddOpen}
+          onClose={() => setQuickAddOpen(false)}
+        />
       </div>
     </div>
   );

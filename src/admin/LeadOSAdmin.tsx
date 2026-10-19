@@ -61,6 +61,7 @@ import type {
 } from '@/lib/leados/types';
 import LeadIntelligencePanel from './LeadIntelligencePanel';
 import { LeadMobileCard } from '@/components/admin/LeadMobileCard';
+import { MobileLeadsView } from '@/components/admin/mobile/MobileLeadsView';
 import {
   BUYER_CATEGORIES,
   PRODUCT_INTERESTS,
@@ -3130,7 +3131,18 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
   ];
 
   return (
-    <div className="leados-workspace min-w-0">
+    <>
+      {/* Mobile-Only Premium Leads Interface (Reference Image 1) */}
+      <MobileLeadsView
+        leads={libraryLeads}
+        onUpdateLeadStatus={handleUpdateLeadStatus}
+        onDeleteLead={handleDeleteSavedLead}
+        onStartOutreach={startOutreachForLead}
+        isLoading={loadingLibrary}
+      />
+
+      {/* Desktop Interface (100% Preserved) */}
+      <div className="hidden md:block leados-workspace min-w-0">
       {/* ── Page Header ── */}
       <div className="bg-white border-b border-slate-200">
         <div className="leados-page-header max-w-[1400px] mx-auto">
@@ -8753,6 +8765,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           if (newLocs[0]) setLocation(newLocs[0]);
         }}
       />
-    </div>
+      </div>
+    </>
   );
 }

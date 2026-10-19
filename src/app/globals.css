@@ -526,6 +526,101 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
   .hk-admin .admin-content > .grid { grid-template-columns: minmax(0, 1fr); }
   .hk-admin .admin-content input, .hk-admin .admin-content select { font-size: 16px; }
 }
+
+/* ── Himalayan Koh Premium Mobile Admin Design System (0–767px ONLY) ────── */
+@media (max-width: 767px) {
+  /* Scoped strictly to mobile admin; does not leak to storefront or desktop */
+  [data-mobile-theme="dark"] .hk-admin .admin-content {
+    background-color: #0B0E17 !important;
+    color: #FFFFFF !important;
+  }
+
+  [data-mobile-theme="dark"] .hk-admin .admin-content :where(h1, h2, h3, h4) {
+    color: #FFFFFF !important;
+  }
+
+  [data-mobile-theme="dark"] .hk-admin .admin-content .bg-white,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .bg-\[\#fffdf8\],
+  [data-mobile-theme="dark"] .hk-admin .admin-content .bg-cream {
+    background-color: #131929 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #FFFFFF !important;
+  }
+
+  [data-mobile-theme="dark"] .hk-admin .admin-content .bg-slate-50,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .bg-slate-100,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .bg-\[\#FAF7F1\] {
+    background-color: #182035 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: #E2E8F0 !important;
+  }
+
+  [data-mobile-theme="dark"] .hk-admin .admin-content input:not([type="checkbox"]):not([type="radio"]),
+  [data-mobile-theme="dark"] .hk-admin .admin-content select,
+  [data-mobile-theme="dark"] .hk-admin .admin-content textarea {
+    background-color: #182035 !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    color: #FFFFFF !important;
+  }
+
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-900,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-950,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#26211C\] {
+    color: #FFFFFF !important;
+  }
+
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-700,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-600,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#6D6258\] {
+    color: #94A3B8 !important;
+  }
+
+  /* Premium Mobile Light Mode */
+  [data-mobile-theme="light"] .hk-admin .admin-content {
+    background-color: #F8FAFC !important;
+    color: #0F172A !important;
+  }
+
+  [data-mobile-theme="light"] .hk-admin .admin-content :where(h1, h2, h3, h4) {
+    color: #0F172A !important;
+  }
+
+  [data-mobile-theme="light"] .hk-admin .admin-content .bg-white,
+  [data-mobile-theme="light"] .hk-admin .admin-content .bg-\[\#fffdf8\],
+  [data-mobile-theme="light"] .hk-admin .admin-content .bg-cream {
+    background-color: #FFFFFF !important;
+    border-color: #E2E8F0 !important;
+    color: #0F172A !important;
+    box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.05) !important;
+  }
+
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-900,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-950,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#26211C\] {
+    color: #0F172A !important;
+  }
+
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-700,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-600,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#6D6258\] {
+    color: #475569 !important;
+  }
+
+  [data-mobile-theme="light"] .hk-admin .admin-content input:not([type="checkbox"]):not([type="radio"]),
+  [data-mobile-theme="light"] .hk-admin .admin-content select,
+  [data-mobile-theme="light"] .hk-admin .admin-content textarea {
+    background-color: #FFFFFF !important;
+    border-color: #E2E8F0 !important;
+    color: #0F172A !important;
+  }
+
+  /* Safe-area bottom padding for all mobile admin pages to clear bottom navigation */
+  .hk-admin .admin-content {
+    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)) !important;
+    overflow-x: hidden !important;
+    max-width: 100vw !important;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
