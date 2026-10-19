@@ -617,6 +617,18 @@ export async function fetchRecentImapEmails(options: {
           }
 
           const parsed = rawMessages.map((r) => parseRawRfc822Email(r, options.user));
+          // "No new mail" and "the server had mail we failed to parse" are different
+          // answers. Reporting the second as the first is how a broken sync looks
+          // healthy forever.
+          if (parsed.length === 0 && existsCount > 0) {
+            done({
+              ok: false,
+              count: 0,
+              messages: [],
+              error: `IMAP reported ${existsCount} message(s) in ${folder} but none could be read`,
+            });
+            return;
+          }
           done({ ok: true, count: parsed.length, messages: parsed });
         } else if (buffer.includes('A003 NO') || buffer.includes('A003 BAD')) {
           done({ ok: false, count: 0, messages: [], error: 'IMAP fetch command failed' });

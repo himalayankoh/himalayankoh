@@ -192,7 +192,7 @@ export async function POST(request: Request) {
       const { syncImapMailboxes } = await import('@/lib/email/inboxStore');
       const syncResult = await syncImapMailboxes(body.mailbox);
       return NextResponse.json({
-        ok: true,
+        ok: syncResult.ok,
         syncedCount: syncResult.syncedCount,
         error: syncResult.error,
       });

@@ -37,6 +37,8 @@ export interface CPanelEmailInput {
   bodyHtml?: string;
   attachments?: EmailAttachment[];
   headers?: Record<string, string>;
+  /** The RFC 5322 Message-ID the caller already recorded for this message. */
+  messageId?: string;
   simulate?: boolean;
 }
 
@@ -270,7 +272,9 @@ export function buildMimeMessage(input: {
  */
 export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEmailResult> {
   const timestamp = new Date().toISOString();
-  const messageId = generateMessageId();
+  // Reuse the id the inbox already stored, so the sent message and the record that
+  // links it to its thread share one Message-ID instead of two unrelated ones.
+  const messageId = input.messageId || generateMessageId();
   const sender = resolveAuthorizedSender(input.from);
   const fromName = input.fromName || sender.name;
 

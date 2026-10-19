@@ -569,47 +569,55 @@ async function readStoredMessages(): Promise<InboxMessage[]> {
     return [...memoryMessagesCache];
   }
 
-  // 1. Read from durable admin-records first
+  const byId = new Map<string, InboxMessage>();
+  const byMessageId = new Map<string, InboxMessage>();
+  const add = (msg: InboxMessage) => {
+    if (!msg || !msg.id) return;
+    if (byId.has(msg.id)) return;
+    const key = String(msg.messageId || '').trim().toLowerCase();
+    if (key && byMessageId.has(key)) return;
+    byId.set(msg.id, msg);
+    if (key) byMessageId.set(key, msg);
+  };
+
+  // 1. Per-message records: append-only, so concurrent writes cannot clobber each other.
   try {
     const res = await storefrontRequest<{ items: StoredAdminRecord[] }>('/admin-records', {
       params: { table: RECORD_TABLE, limit: 2000 },
     });
     if (res && Array.isArray(res.items)) {
-      const dbMsgs = res.items
-        .filter((r) => r.id && r.id.startsWith(MSG_RECORD_PREFIX) && r.payload && typeof r.payload === 'object')
-        .map((r) => r.payload);
-
-      if (dbMsgs.length > 0) {
-        dbMsgs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        memoryMessagesCache = dbMsgs;
-        return [...dbMsgs];
+      for (const r of res.items) {
+        if (r && r.id && r.id.startsWith(MSG_RECORD_PREFIX) && r.payload && typeof r.payload === 'object') {
+          add(r.payload);
+        }
       }
     }
   } catch {
     // If admin-records request fails or in offline/test mode, fall through
   }
 
-  // 2. Migration: Check legacy option in getSetting(SETTINGS_CATEGORY, SETTINGS_KEY)
+  // 2. Legacy whole-list option. Merged rather than only used as a fallback: records
+  // written before the per-message store existed, and records written by an older
+  // isolate, must neither vanish nor hide newer ones.
   try {
     const raw = await getSetting(SETTINGS_CATEGORY, SETTINGS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         for (const msg of parsed) {
-          if (msg && msg.id) {
-            void persistSingleMessage(msg);
-          }
+          if (msg && msg.id) add(msg);
         }
-        memoryMessagesCache = parsed;
-        return [...parsed];
       }
     }
   } catch {
     // Fallback
   }
 
-  memoryMessagesCache = [];
-  return [];
+  const merged = Array.from(byId.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  memoryMessagesCache = merged;
+  return [...merged];
 }
 
 async function writeStoredMessages(messages: InboxMessage[]): Promise<void> {
@@ -635,14 +643,22 @@ export async function syncImapMailboxes(
 ): Promise<{ ok: boolean; syncedCount: number; error?: string }> {
   const mailboxesToSync: MailboxAddress[] = targetMailbox
     ? [targetMailbox]
-    : ['sales@himalayankoh.com', 'support@himalayankoh.com', 'salman@himalayankoh.com'];
+    : [
+        'sales@himalayankoh.com',
+        'support@himalayankoh.com',
+        'salman@himalayankoh.com',
+        'admin@himalayankoh.com',
+      ];
 
   let totalSynced = 0;
+  // A mailbox that could not be read is reported, not silently reported as "0 new".
+  const failures: string[] = [];
 
   for (const mailbox of mailboxesToSync) {
     try {
       const account = await getEmailAccount(mailbox as MailboxEmail);
       if (!account || !account.imapPass || !account.imapUser) {
+        failures.push(`${mailbox}: no IMAP credential configured`);
         continue;
       }
 
@@ -653,6 +669,11 @@ export async function syncImapMailboxes(
         pass: account.imapPass,
         limit: 25,
       });
+
+      if (!res.ok) {
+        failures.push(`${mailbox}: ${res.error || 'IMAP read failed'}`);
+        continue;
+      }
 
       if (res.ok && res.messages.length > 0) {
         for (const inbound of res.messages) {
@@ -675,11 +696,16 @@ export async function syncImapMailboxes(
         }
       }
     } catch (err) {
+      failures.push(`${mailbox}: ${err instanceof Error ? err.message : String(err)}`);
       console.warn(`[syncImapMailboxes] Sync error for ${mailbox}:`, err);
     }
   }
 
-  return { ok: true, syncedCount: totalSynced };
+  return {
+    ok: failures.length === 0,
+    syncedCount: totalSynced,
+    error: failures.length > 0 ? failures.join('; ') : undefined,
+  };
 }
 
 export async function findMatchingLeadByEmail(
@@ -1249,6 +1275,7 @@ export async function sendInboxMessage(input: SendMessageInput): Promise<InboxMe
   if (!input.simulate) {
     try {
       const cpanelRes = await sendCPanelEmail({
+        messageId,
         from: mailbox,
         fromName: senderDisplay,
         to: toList.map((p) => (p.name ? `${p.name} <${p.email}>` : p.email)),
@@ -1326,6 +1353,10 @@ export async function sendInboxMessage(input: SendMessageInput): Promise<InboxMe
 
   filtered.unshift(sentMessage);
   await writeStoredMessages(filtered);
+  // Written as its own record, not only into the shared blob: the blob is a whole-list
+  // read-modify-write, so two sends in flight at once overwrite each other and the
+  // message survives only in memory. This is the durable copy.
+  await persistSingleMessage(sentMessage);
 
   // Sync LeadOS audit log if linked to a prospect
   if (sentMessage.leadId) {
@@ -1523,6 +1554,8 @@ export async function recordInboundEmail(
 
   messages.unshift(inboundMsg);
   await writeStoredMessages(messages);
+  // Same reason as outbound: the per-message record is what survives the isolate.
+  await persistSingleMessage(inboundMsg);
 
   return { duplicate: false, message: inboundMsg };
 }
