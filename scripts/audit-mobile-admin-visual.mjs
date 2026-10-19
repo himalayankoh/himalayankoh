@@ -108,6 +108,21 @@ async function runAudit() {
         document.documentElement.setAttribute('data-mobile-theme', current);
       `);
 
+      if (url.includes('/admin/leados')) {
+        await browser.evaluate(`
+          new Promise((resolve) => {
+            const start = Date.now();
+            const interval = setInterval(() => {
+              const hasItems = document.querySelectorAll('h3').length > 0;
+              if (hasItems || Date.now() - start > 12000) {
+                clearInterval(interval);
+                resolve();
+              }
+            }, 300);
+          })
+        `);
+      }
+
       // Check overflow metrics
       const metrics = await browser.evaluate(`(() => {
         const docWidth = document.documentElement.scrollWidth;
@@ -148,6 +163,21 @@ async function runAudit() {
 
       await browser.navigate(url);
       await new Promise((r) => setTimeout(r, waitMs));
+
+      if (url.includes('/admin/leados')) {
+        await browser.evaluate(`
+          new Promise((resolve) => {
+            const start = Date.now();
+            const interval = setInterval(() => {
+              const row = document.querySelector('tbody tr') || document.querySelector('.leados-workspace');
+              if (row || Date.now() - start > 12000) {
+                clearInterval(interval);
+                resolve();
+              }
+            }, 300);
+          })
+        `);
+      }
 
       const metrics = await browser.evaluate(`(() => {
         const docWidth = document.documentElement.scrollWidth;

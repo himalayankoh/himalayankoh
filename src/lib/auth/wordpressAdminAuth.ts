@@ -25,7 +25,7 @@ import { WordPressApiError, wordpressRequest } from '@/lib/backend/wordpress';
 /** The WordPress role that grants the admin console. */
 const ADMIN_ROLE = 'administrator';
 
-const WP_AUTH_TIMEOUT_MS = 12_000;
+const WP_AUTH_TIMEOUT_MS = Number(process.env.WP_AUTH_TIMEOUT_MS || 25_000);
 
 /** The fields we use from WordPress's own user object. */
 interface RawWordPressUser {

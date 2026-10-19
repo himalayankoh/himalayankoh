@@ -355,7 +355,27 @@ export function MobileLeadsView({
 
       {/* ── 4. Lead Cards List (Reference Image 1) ───────────────────────── */}
       <div className="space-y-3">
-        {filteredLeads.length === 0 ? (
+        {isLoading && leads.length === 0 ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className="rounded-2xl p-4 animate-pulse flex items-start gap-3"
+                style={{
+                  backgroundColor: palette.cardBg,
+                  border: `1px solid ${palette.cardBorder}`,
+                }}
+              >
+                <div className="w-11 h-11 rounded-full bg-slate-700/40 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-slate-700/40 rounded w-3/4" />
+                  <div className="h-3 bg-slate-700/30 rounded w-1/2" />
+                  <div className="h-3 bg-slate-700/20 rounded w-1/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredLeads.length === 0 ? (
           <div
             className="rounded-2xl p-8 text-center"
             style={{

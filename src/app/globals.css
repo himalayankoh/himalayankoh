@@ -312,8 +312,10 @@ img {
   font-family: var(--font-sans);
 }
 .hk-admin :where(h1, h2, h3) { letter-spacing: -0.025em; }
-.hk-admin .admin-content {
-  background: linear-gradient(135deg, #f9f5f1 0%, #f4efeb 65%, #f5eeeb 100%);
+@media (min-width: 768px) {
+  .hk-admin .admin-content {
+    background: linear-gradient(135deg, #f9f5f1 0%, #f4efeb 65%, #f5eeeb 100%);
+  }
 }
 .hk-admin .admin-rail {
   background: radial-gradient(ellipse at 0 0, #352a22 0, transparent 65%),
@@ -540,6 +542,8 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
   .hk-admin[data-theme="dark"],
   .hk-admin[data-theme="dark"] > div,
   .hk-admin[data-theme="dark"] .admin-content {
+    background: #0B0E17 !important;
+    background-image: none !important;
     background-color: #0B0E17 !important;
     color: #FFFFFF !important;
   }
@@ -632,6 +636,8 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
   .hk-admin[data-theme="light"],
   .hk-admin[data-theme="light"] > div,
   .hk-admin[data-theme="light"] .admin-content {
+    background: #F8FAFC !important;
+    background-image: none !important;
     background-color: #F8FAFC !important;
     color: #0F172A !important;
   }
