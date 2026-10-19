@@ -50,6 +50,7 @@ import {
 import { parseTagList } from './tags';
 import { consoleStatusFromWoo, wooListingStatusOrDraft } from '../../lib/woo/productStatus';
 import { CONSOLE_META_FIELDS, variationPriceFields, wooImageSources } from '../../lib/woo/productPayload';
+import { getKnownProductPrice } from '../../data/products';
 
 export function uid(): string {
   try {
@@ -161,9 +162,11 @@ function asTextList(v: unknown): string[] | null {
  * none. Badges therefore start false and the Promotions tab decides.
  */
 function catalogRowToProduct(r: Record<string, unknown>): CatalogProduct {
-  const priceNum = typeof r.priceMin === 'number'
+  const parsedPrice = parseFloat(String(r.price || '').replace(/[^0-9.]/g, '')) || 0;
+  const fallbackPrice = getKnownProductPrice(String(r.id || ''), String(r.slug || '')) || 0;
+  const priceNum = typeof r.priceMin === 'number' && r.priceMin > 0
     ? r.priceMin
-    : parseFloat(String(r.price || '').replace(/[^0-9.]/g, '')) || 0;
+    : (parsedPrice > 0 ? parsedPrice : fallbackPrice);
   const compareAt = typeof r.compareAtPrice === 'number' ? r.compareAtPrice : 0;
   // Two shapes reach this reader: the admin DTO reports image URLs as strings,
   // while a raw WooCommerce row reports objects (`{ id, src }`). Reading the

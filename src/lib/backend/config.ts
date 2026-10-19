@@ -42,8 +42,8 @@ export const backendConfig = {
   get wordpressApiRoot(): string {
     return wordpressBaseUrl ? `${wordpressBaseUrl}/wp-json` : '';
   },
-  /** Default read timeout for backend calls, in ms (25s tolerance for slow cPanel hosts). */
-  requestTimeoutMs: Number(process.env.WORDPRESS_REQUEST_TIMEOUT_MS || 25000),
+  /** Default read timeout for backend calls, in ms (15s tolerance for slow cPanel hosts). */
+  requestTimeoutMs: Number(process.env.WORDPRESS_REQUEST_TIMEOUT_MS || 15000),
   /** Default timeout for mutations (add-to-cart, cart updates), in ms. */
   mutationTimeoutMs: Number(process.env.WORDPRESS_MUTATION_TIMEOUT_MS || 20000),
 };

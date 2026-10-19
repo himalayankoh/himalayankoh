@@ -768,10 +768,10 @@ async function withVariations(
       const { data } = await wordpressRequestSafe<WooVariationLike[]>(
         `${REST_V3}/products/${row.id}/variations`,
         {
-          params: { per_page: WORDPRESS_MAX_PER_PAGE },
+          params: { per_page: 20 },
           useCredentials: true,
           signal,
-          timeoutMs: 20000,
+          timeoutMs: 6000,
           revalidate: 60,
         }
       );

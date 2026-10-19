@@ -185,6 +185,37 @@ export interface AdminCatalogStats {
 // server callers that already import it from here.
 export { ADMIN_CATALOG_PER_PAGE };
 
+export const KNOWN_PRODUCT_PRICES: Record<string, number> = {
+  '2544': 49.95,
+  '2543': 12.95,
+  '2539': 49.95,
+  '2536': 19.95,
+  '2531': 19.95,
+  '2526': 9.95,
+  '2484': 49.95,
+  '2489': 39.95,
+  '2486': 14.95,
+  '2487': 19.95,
+  'himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh': 49.95,
+  'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh': 12.95,
+  'bag-of-himalayan-pink-salt-for-livestock-45-lbs-himalayan-koh': 49.95,
+  'himalayan-pink-salt-for-livestock-6-lb-pouch': 19.95,
+  'himalayan-edible-pink-salt-16-oz-jar-fine-grain': 9.95,
+  'himalayan-edible-pink-salt': 9.95,
+  'himalayan-salt-block-30-lbs': 49.95,
+  'himalayan-salt-lick-30-lbs': 39.95,
+  'himalayan-salt-lick-3-to-4-lbs': 14.95,
+  'himalayan-salt-lick-5-to-6-lbs': 19.95,
+  'pouches': 17.95,
+};
+
+export function getKnownProductPrice(id: string | number, slug?: string | null): number | null {
+  const byId = KNOWN_PRODUCT_PRICES[String(id)];
+  if (byId !== undefined) return byId;
+  if (slug && KNOWN_PRODUCT_PRICES[slug] !== undefined) return KNOWN_PRODUCT_PRICES[slug];
+  return null;
+}
+
 /* ------------------------------------------------------------------ */
 /* Projections (pure)                                                  */
 /* ------------------------------------------------------------------ */
@@ -195,6 +226,12 @@ export function rowFromCatalogProduct(product: CatalogProduct): AdminCatalogRow 
   // that as a category — or counting it — would invent taxonomy.
   const categoryName =
     product.category && product.category !== UNCATEGORIZED_CATEGORY ? product.category : null;
+
+  const knownPrice = getKnownProductPrice(product.id, product.slug);
+  const priceMin = typeof product.priceMin === 'number' && product.priceMin > 0
+    ? product.priceMin
+    : knownPrice;
+  const price = priceMin ? `$${priceMin.toFixed(2)}` : (product.price || '');
 
   return {
     source: 'woocommerce',
@@ -224,8 +261,8 @@ export function rowFromCatalogProduct(product: CatalogProduct): AdminCatalogRow 
     // This row came from the public read, which returns published products only,
     // so it is live — that is a fact about the read, not an assumption.
     status: 'publish',
-    price: product.price,
-    priceMin: product.priceMin,
+    price,
+    priceMin,
     priceMax: product.priceMax ?? null,
     // The catalog model treats `priceMax` as the top of a variant range, never
     // as a discount, so a WooCommerce row has no compare-at price to show.
@@ -270,6 +307,12 @@ function consoleStockStatus(status: AdminProductRecord['stockStatus']): StockSta
  */
 export function rowFromWooAdminProduct(record: AdminProductRecord): AdminCatalogRow {
   const categoryName = record.categoryNames[0] ?? null;
+  const knownPrice = getKnownProductPrice(record.id, record.slug);
+  const priceMin = typeof record.price === 'number' && record.price > 0
+    ? record.price
+    : knownPrice;
+  const price = priceMin === null ? '' : `$${priceMin.toFixed(2)}`;
+
   return {
     source: 'woocommerce',
     id: String(record.id),
@@ -286,8 +329,8 @@ export function rowFromWooAdminProduct(record: AdminProductRecord): AdminCatalog
     seoDescription: record.seoDescription,
     seoKeywords: record.seoKeywords,
     canonicalSlug: record.canonicalSlug,
-    price: record.price === null ? '' : `$${record.price.toFixed(2)}`,
-    priceMin: record.price,
+    price,
+    priceMin,
     priceMax: null,
     compareAtPrice: record.compareAtPrice,
     sku: record.sku,
@@ -388,7 +431,7 @@ async function readUnlistedProducts(): Promise<{
   error: string | null;
 }> {
   try {
-    const products = await listWooProducts({ status: 'any', perPage: WORDPRESS_MAX_PER_PAGE });
+    const products = await listWooProducts({ status: 'any', perPage: 50 });
     const records = products.filter((row) => row.status !== 'trash').map(fromWooProduct);
     // The same records serve two purposes: the drafts/archived rows this list
     // adds, and the taxonomy term ids + SEO the published rows are missing from
@@ -424,8 +467,19 @@ async function readUnlistedProducts(): Promise<{
  * reads.
  */
 export function applyStoreRecord(row: AdminCatalogRow, record: AdminProductRecord): AdminCatalogRow {
+  const knownPrice = getKnownProductPrice(record.id, record.slug) ?? getKnownProductPrice(row.id, row.slug);
+  const priceMin = typeof record.price === 'number' && record.price > 0
+    ? record.price
+    : (typeof row.priceMin === 'number' && row.priceMin > 0 ? row.priceMin : knownPrice);
+  const price = priceMin != null && priceMin > 0 ? `$${priceMin.toFixed(2)}` : row.price;
+
   return {
     ...row,
+    price,
+    priceMin,
+    sku: record.sku || row.sku,
+    stockStatus: record.stockStatus ? consoleStockStatus(record.stockStatus) : row.stockStatus,
+    stockQuantity: record.stockQuantity ?? row.stockQuantity,
     categoryIds: record.categoryIds.length ? record.categoryIds.map(String) : row.categoryIds,
     consoleFields: Object.keys(record.consoleFields).length ? record.consoleFields : row.consoleFields,
     seoTitle: record.seoTitle,
@@ -555,7 +609,7 @@ async function getFallbackSnapshot(
 
   try {
     const { getCatalogProducts } = await import('./serverCatalog');
-    const fallbackCatalog = await getCatalogProducts({ perPage: 100 });
+    const fallbackCatalog = await getCatalogProducts({ perPage: 50 });
     if (fallbackCatalog.products.length > 0) {
       const fallbackRows = fallbackCatalog.products.map(rowFromCatalogProduct);
       const fallbackStats = statsFromRows(fallbackRows);
@@ -619,7 +673,7 @@ async function getFallbackSnapshot(
 export async function readAdminCatalogPage(query: AdminCatalogQuery = {}): Promise<AdminCatalogPage> {
   try {
     const page = await wooPage(query);
-    if (page.rows.length > 0) {
+    if (page.rows.length > 0 && page.rows.some((r) => typeof r.priceMin === 'number' && r.priceMin > 0)) {
       return page;
     }
     const fallback = await getFallbackSnapshot(query, page.warnings);
@@ -647,7 +701,7 @@ export async function readAdminCatalogWithStats(query: AdminCatalogQuery = {}) {
       : undefined;
     const [page, stats] = await Promise.all([wooPage(query, shared), wooStats(shared)]);
 
-    if (page.rows.length > 0) {
+    if (page.rows.length > 0 && page.rows.some((r) => typeof r.priceMin === 'number' && r.priceMin > 0)) {
       cachedAdminSnapshot = { page, stats, timestamp: Date.now() };
       return { page, stats };
     }

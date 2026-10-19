@@ -1,6 +1,37 @@
 import { legacyImage } from '@/lib/images/legacyAssets';
 import type { ResponsiveImageSources } from '@/lib/images/responsiveImage';
 
+export const KNOWN_PRODUCT_PRICES: Record<string, number> = {
+  '2544': 49.95,
+  '2543': 12.95,
+  '2539': 49.95,
+  '2536': 19.95,
+  '2531': 19.95,
+  '2526': 9.95,
+  '2484': 49.95,
+  '2489': 39.95,
+  '2486': 14.95,
+  '2487': 19.95,
+  'himalayan-salt-rock-for-cattle-30-lbs-bag-himalayan-koh': 49.95,
+  'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh': 12.95,
+  'bag-of-himalayan-pink-salt-for-livestock-45-lbs-himalayan-koh': 49.95,
+  'himalayan-pink-salt-for-livestock-6-lb-pouch': 19.95,
+  'himalayan-edible-pink-salt-16-oz-jar-fine-grain': 9.95,
+  'himalayan-edible-pink-salt': 9.95,
+  'himalayan-salt-block-30-lbs': 49.95,
+  'himalayan-salt-lick-30-lbs': 39.95,
+  'himalayan-salt-lick-3-to-4-lbs': 14.95,
+  'himalayan-salt-lick-5-to-6-lbs': 19.95,
+  'pouches': 17.95,
+};
+
+export function getKnownProductPrice(id: string | number, slug?: string | null): number | null {
+  const byId = KNOWN_PRODUCT_PRICES[String(id)];
+  if (byId !== undefined) return byId;
+  if (slug && KNOWN_PRODUCT_PRICES[slug] !== undefined) return KNOWN_PRODUCT_PRICES[slug];
+  return null;
+}
+
 /**
  * The bundled catalog: Himalayan pink salt, and nothing else.
  *
