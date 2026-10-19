@@ -560,3 +560,227 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
   border-color: #332d26;
   color: #f5ede6;
 }
+
+/* ── LeadOS workspace shell ───────────────────────────────────────────────
+   The desktop canvas keeps its 1400px rhythm; on phones the same markup goes
+   full-bleed with phone gutters, because the library, filters and actions are
+   the whole job there. */
+.leados-workspace {
+  min-width: 0;
+  background: rgb(248 250 252 / 0.5);
+}
+.leados-page-header { padding: 1rem 1.5rem; }
+.leados-project-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-shrink: 0;
+}
+.leados-section-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: -1px;
+}
+.leados-section-tabs::-webkit-scrollbar { display: none; }
+.leados-page-body { padding: 1.5rem; }
+.leados-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+.leados-library-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  border: 1px solid rgb(203 213 225);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+}
+.leados-library-tools > summary,
+.leados-filters > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid rgb(203 213 225);
+  border-radius: 0.75rem;
+  background: #fff;
+  color: rgb(30 41 59);
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.leados-library-tools > summary::-webkit-details-marker,
+.leados-filters > summary::-webkit-details-marker { display: none; }
+.leados-library-tools[open] > summary,
+.leados-filters[open] > summary { background: rgb(238 242 255); border-color: rgb(165 180 252); }
+.leados-library-tools > summary::after,
+.leados-filters > summary::after {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-left: 0.125rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 150ms ease;
+}
+.leados-library-tools[open] > summary::after,
+.leados-filters[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
+.leados-library-tools > div { margin-top: 0.75rem; }
+.leados-filter-body { margin-top: 0.75rem; }
+.leados-results { min-width: 0; }
+
+/* ── LeadOS mobile prospect cards ─────────────────────────────────────────── */
+.lead-mobile-list { display: flex; flex-direction: column; }
+.lead-mobile-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 0.875rem;
+  border-bottom: 1px solid rgb(226 232 240);
+  background: #fff;
+}
+.lead-mobile-card[data-selected='true'] { background: rgb(238 242 255 / 0.7); }
+.lead-mobile-heading { display: flex; align-items: flex-start; gap: 0.625rem; min-width: 0; }
+.lead-select-target { display: flex; padding-top: 0.125rem; }
+.lead-select-target input { width: 1rem; height: 1rem; accent-color: rgb(79 70 229); }
+.lead-mobile-identity { min-width: 0; flex: 1; }
+.lead-mobile-identity h3 { margin: 0; font-size: 0.875rem; font-weight: 800; line-height: 1.25; color: rgb(2 6 23); }
+.lead-mobile-identity h3 button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.lead-mobile-identity p {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0.25rem 0 0;
+  color: rgb(51 65 85);
+  font-size: 0.75rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.lead-mobile-meta { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.lead-mobile-meta > span {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid rgb(203 213 225);
+  border-radius: 999px;
+  background: rgb(248 250 252);
+  color: rgb(51 65 85);
+  font-size: 0.625rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+.lead-mobile-meta .lead-status { background: rgb(224 231 255); border-color: rgb(165 180 252); color: rgb(49 46 129); text-transform: capitalize; }
+.lead-mobile-actions { display: flex; align-items: stretch; gap: 0.5rem; }
+.lead-mobile-actions .workspace-primary {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: rgb(79 70 229);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.lead-mobile-actions .workspace-primary:active { transform: scale(0.98); }
+.lead-secondary-actions { position: relative; }
+.lead-secondary-actions > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 44px;
+  padding: 0 0.875rem;
+  border: 1px solid rgb(203 213 225);
+  border-radius: 0.75rem;
+  background: rgb(248 250 252);
+  color: rgb(30 41 59);
+  font-size: 0.75rem;
+  font-weight: 800;
+  list-style: none;
+  cursor: pointer;
+}
+.lead-secondary-actions > summary::-webkit-details-marker { display: none; }
+.lead-secondary-actions > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.375rem;
+  padding: 0.375rem;
+  border: 1px solid rgb(203 213 225);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.12);
+}
+.lead-secondary-actions > div > button,
+.lead-secondary-actions > div > a {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: rgb(30 41 59);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+.lead-secondary-actions > div > button:hover,
+.lead-secondary-actions > div > a:hover { background: rgb(241 245 249); }
+
+@media (max-width: 767px) {
+  .leados-page-header { padding: 0.875rem 1rem; }
+  .leados-project-controls { width: 100%; }
+  .leados-page-body { padding: 0.875rem 0.75rem 1.5rem; }
+  .leados-subnav { margin-bottom: 1rem; padding: 0.375rem; }
+  .leados-library-toolbar { gap: 1rem; padding: 1rem; border-radius: 0.875rem; }
+  .leados-section-tabs > button { flex-shrink: 0; }
+}
+
+.hk-admin[data-admin-theme='dark'] .leados-workspace { background: #12100e; }
+.hk-admin[data-admin-theme='dark'] .leados-subnav,
+.hk-admin[data-admin-theme='dark'] .leados-library-toolbar,
+.hk-admin[data-admin-theme='dark'] .leados-results,
+.hk-admin[data-admin-theme='dark'] .lead-mobile-card { background: #1e1b18; border-color: #332d26; }
+.hk-admin[data-admin-theme='dark'] .lead-mobile-card[data-selected='true'] { background: rgb(79 70 229 / 0.16); }
+.hk-admin[data-admin-theme='dark'] .lead-mobile-identity h3 { color: #f5ede6; }
+.hk-admin[data-admin-theme='dark'] .lead-mobile-identity p { color: #a69a8f; }
+.hk-admin[data-admin-theme='dark'] .lead-mobile-meta > span { background: #181512; border-color: #453d34; color: #d8ccc1; }
+.hk-admin[data-admin-theme='dark'] .leados-library-tools > summary,
+.hk-admin[data-admin-theme='dark'] .leados-filters > summary,
+.hk-admin[data-admin-theme='dark'] .lead-secondary-actions > summary { background: #181512; border-color: #453d34; color: #f5ede6; }
+.hk-admin[data-admin-theme='dark'] .lead-secondary-actions > div { background: #1e1b18; border-color: #453d34; }
+.hk-admin[data-admin-theme='dark'] .lead-secondary-actions > div > button,
+.hk-admin[data-admin-theme='dark'] .lead-secondary-actions > div > a { color: #f5ede6; }

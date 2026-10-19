@@ -36,6 +36,7 @@ import type {
   InboxInfrastructureStatus,
   MailboxStatusInfo,
 } from '@/lib/email/inboxStore';
+import { buildReplyAllCc } from '@/lib/email/replyRecipients';
 
 /**
  * Renders a message body, but not binary content decoded as text.
@@ -110,6 +111,8 @@ export default function EmailInboxAdmin() {
   // Inline Reply State
   const [quickReplyBody, setQuickReplyBody] = useState('');
   const [sendingQuickReply, setSendingQuickReply] = useState(false);
+  /** Reply carries only the sender; Reply All adds everyone else on the message. */
+  const [replyAll, setReplyAll] = useState(false);
 
   const getAuthToken = (): string => {
     try {
@@ -281,6 +284,34 @@ export default function EmailInboxAdmin() {
     }
   };
 
+  /** Everyone else on the thread's last message, for Reply All. */
+  const replyAllRecipients = useMemo(
+    () =>
+      selectedThread
+        ? buildReplyAllCc(
+            selectedThread.messages[selectedThread.messages.length - 1],
+            selectedThread.mailbox,
+          )
+        : '',
+    [selectedThread],
+  );
+
+  /** Forward opens the compose sheet prefilled, addressed by the owner. */
+  const handleForward = () => {
+    if (!selectedThread) return;
+    const last = selectedThread.messages[selectedThread.messages.length - 1];
+    if (!last) return;
+    setComposeMailbox((last.mailbox as MailboxAddress) || 'sales@himalayankoh.com');
+    setComposeTo('');
+    setComposeSubject(last.subject.startsWith('Fwd:') ? last.subject : `Fwd: ${last.subject}`);
+    setComposeBody(
+      `\n\n---------- Forwarded message ----------\nFrom: ${last.from.name} <${last.from.email}>\nDate: ${new Date(last.createdAt).toLocaleString()}\nSubject: ${last.subject}\n\n${last.bodyText || ''}`
+    );
+    setComposeError(null);
+    setComposeSuccess(null);
+    setIsComposeOpen(true);
+  };
+
   const handleSendQuickReply = async () => {
     if (!selectedThread || !quickReplyBody.trim()) return;
     setSendingQuickReply(true);
@@ -307,6 +338,7 @@ export default function EmailInboxAdmin() {
           to: replyTo,
           subject: lastMsg.subject.startsWith('Re:') ? lastMsg.subject : `Re: ${lastMsg.subject}`,
           bodyText: quickReplyBody,
+          ...(replyAll && replyAllRecipients ? { cc: replyAllRecipients } : {}),
           leadId: selectedThread.messages.find((m) => m.leadId)?.leadId || null,
         }),
       });
@@ -1047,6 +1079,36 @@ export default function EmailInboxAdmin() {
             {/* Quick Reply Box */}
             <div className="p-3 md:p-4 border-t border-slate-800 bg-slate-900/90 shrink-0 pb-16 md:pb-4">
               <div className="space-y-2">
+                <div className="flex items-center gap-1.5" role="group" aria-label="Reply mode">
+                  {(['reply', 'replyAll'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setReplyAll(mode === 'replyAll')}
+                      aria-pressed={mode === 'replyAll' ? replyAll : !replyAll}
+                      disabled={mode === 'replyAll' && !replyAllRecipients}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors disabled:opacity-40 ${
+                        (mode === 'replyAll' ? replyAll : !replyAll)
+                          ? 'bg-slate-800 border-slate-600 text-slate-100'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {mode === 'reply' ? 'Reply' : 'Reply All'}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={handleForward}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
+                  >
+                    Forward
+                  </button>
+                  {replyAll && replyAllRecipients && (
+                    <span className="truncate text-[10px] text-slate-500" title={replyAllRecipients}>
+                      cc: {replyAllRecipients}
+                    </span>
+                  )}
+                </div>
                 <textarea
                   value={quickReplyBody}
                   onChange={(e) => setQuickReplyBody(e.target.value)}
@@ -1064,7 +1126,9 @@ export default function EmailInboxAdmin() {
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs disabled:opacity-50 transition-all cursor-pointer shrink-0"
                   >
                     <PaperPlaneRight size={15} weight="bold" />
-                    <span>{sendingQuickReply ? 'Sending...' : 'Send Reply'}</span>
+                    <span>
+                      {sendingQuickReply ? 'Sending...' : replyAll ? 'Send Reply All' : 'Send Reply'}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -1090,7 +1154,9 @@ export default function EmailInboxAdmin() {
             <div className="px-4 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0">
               <div className="flex items-center gap-2">
                 <PencilSimple size={18} className="text-amber-400" />
-                <h3 className="font-semibold text-slate-100 text-sm">New Message</h3>
+                <h3 className="font-semibold text-slate-100 text-sm">
+                  {composeSubject.startsWith('Fwd:') ? 'Forward Message' : 'New Message'}
+                </h3>
               </div>
               <button
                 onClick={() => {

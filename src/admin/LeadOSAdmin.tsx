@@ -60,6 +60,7 @@ import type {
   SearchDiagnostics,
 } from '@/lib/leados/types';
 import LeadIntelligencePanel from './LeadIntelligencePanel';
+import { LeadMobileCard } from '@/components/admin/LeadMobileCard';
 import {
   BUYER_CATEGORIES,
   PRODUCT_INTERESTS,
@@ -1264,16 +1265,11 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
   // Load saved library once into memory (up to 500 leads) so search, channel filters, and pagination are instant without hammering WordPress/MySQL
   const loadLibrary = useCallback(async () => {
     const reqSeq = ++libraryRequestSeq.current;
-    setLibraryLeads((current) => {
-      if (current.length === 0) {
-        setLoadingLibrary(true);
-      }
-      return current;
-    });
+    setLoadingLibrary(true);
     setLibraryError(null);
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch('/api/admin/leados/leads?page=1&limit=500', { headers });
+      const res = await fetch('/api/admin/leados/leads?page=1&limit=500', { headers, cache: 'no-store' });
       if (reqSeq !== libraryRequestSeq.current) return;
 
       if (!res.ok) {
@@ -1496,12 +1492,6 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
       setSendingSocialReply(false);
     }
   };
-
-  useEffect(() => {
-    if (activeTab === 'library' || activeTab === 'prospects') {
-      void loadLibrary();
-    }
-  }, [activeTab, loadLibrary]);
 
   useEffect(() => {
     void loadLibrary();
@@ -3140,33 +3130,34 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
   ];
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-slate-50/50">
+    <div className="leados-workspace min-w-0">
       {/* ── Page Header ── */}
       <div className="bg-white border-b border-slate-200">
-        <div className="max-w-[1400px] mx-auto px-6 py-4">
+        <div className="leados-page-header max-w-[1400px] mx-auto">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black text-slate-950 tracking-tight">
-                  Himalayan Koh.
+                  LeadOS
                 </h1>
               </div>
               <p className="text-xs font-semibold text-slate-700 mt-0.5">
-                B2B Salt &amp; Minerals – Find and connect with farm stores, feed suppliers, livestock businesses, mineral buyers, distributors, and more.
+                Your B2B prospect workspace.
               </p>
             </div>
 
-            <div className="flex items-center gap-2.5 flex-shrink-0">
-              <div className="relative flex items-center">
+            <div className="leados-project-controls">
+              <div className="relative flex items-center min-w-0 flex-1">
                 <Storefront className="w-4 h-4 text-slate-700 absolute left-3 pointer-events-none" />
                 <select
+                  aria-label="Active project"
                   value={selectedProjectId}
                   onChange={(e) => {
                     setSelectedProjectId(e.target.value);
                     const p = projects.find((proj) => proj.id === e.target.value);
                     if (p) setActiveProject(p);
                   }}
-                  className="appearance-none pl-9 pr-8 py-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 shadow-2xs hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  className="w-full min-w-0 appearance-none pl-9 pr-8 py-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-900 shadow-2xs hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
                 >
                   {projects.length > 0 ? (
                     projects.map((p) => (
@@ -3193,7 +3184,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 <GearSix className={`w-4 h-4 ${activeTab === 'settings' ? 'text-indigo-700' : 'text-slate-700'}`} />
                 <div className="text-left">
                   <div className="text-xs font-extrabold leading-tight">Settings</div>
-                  <div className="text-[10px] font-semibold text-slate-600 leading-tight">AI Engine &amp; Preferences</div>
+                  
                 </div>
               </button>
             </div>
@@ -3203,13 +3194,13 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
       {/* ── Tab Navigation ── */}
       <div className="bg-white border-b border-slate-200 shadow-2xs">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6">
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-5">
           <div role="tablist" aria-label="LeadOS sections" className="flex items-center justify-between">
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mb-px flex-1">
+            <div className="leados-section-tabs min-w-0 flex-1">
               {[
-                { id: 'prospects' as const, label: 'Prospects & CRM', icon: BookBookmark },
-                { id: 'outreach' as const, label: 'Outreach & Campaigns', icon: PaperPlaneRight },
-                { id: 'automation' as const, label: 'Automation & n8n', icon: Robot },
+                { id: 'prospects' as const, label: 'Prospects', icon: BookBookmark },
+                { id: 'outreach' as const, label: 'Outreach', icon: PaperPlaneRight },
+                { id: 'automation' as const, label: 'Automation', icon: Robot },
                 { id: 'settings' as const, label: 'Settings', icon: GearSix },
               ].map((tab) => {
                 const Icon = tab.icon;
@@ -3339,11 +3330,11 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
       )}
 
       {/* ── Main Content ── */}
-      <div className="max-w-[1400px] mx-auto px-6 py-6">
+      <div className="leados-page-body max-w-[1400px] mx-auto">
 
         {/* ══════════ PROSPECTS & CRM SUBVIEW SELECTOR ══════════ */}
         {['prospects', 'library', 'find', 'market-map'].includes(activeTab) && (
-          <div className="bg-white rounded-xl border border-slate-200 p-2 mb-6 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+          <div className="leados-subnav">
             <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 type="button"
@@ -3355,7 +3346,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 }`}
               >
                 <BookBookmark className="w-4 h-4" />
-                Prospect Directory &amp; CRM
+                Directory
                 {(libraryTotal ?? libraryLeads.length) > 0 && (
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
                     (activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'directory'
@@ -3377,7 +3368,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 }`}
               >
                 <MagnifyingGlass className="w-4 h-4" />
-                Find More Leads (OSM Discovery)
+                Discover
                 {searching && <ArrowsClockwise className="w-3.5 h-3.5 animate-spin" />}
               </button>
 
@@ -3391,7 +3382,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 }`}
               >
                 <Globe className="w-4 h-4" />
-                Live USA Market Map
+                Market map
               </button>
             </div>
 
@@ -4880,7 +4871,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
         {/* ══════════ LEAD LIBRARY TAB ══════════ */}
         <div id="leados-panel-library" role="tabpanel" aria-labelledby="leados-tab-library" className={((activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'directory') ? "space-y-6" : "hidden"}>
           {/* ── 1. Top Header & KPI Summary ── */}
-          <div className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm space-y-5">
+          <div className="leados-library-toolbar">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
@@ -4893,7 +4884,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                   </span>
                 </div>
                 <p className="text-xs font-semibold text-slate-700 mt-1">
-                  Central repository for all saved B2B prospects, verified contacts, Facebook &amp; Instagram profiles, fit qualification scores, and wholesale outreach.
+                  Research, qualify and manage your prospects.
                 </p>
                 {!libraryUnavailable && libraryTotal !== null && libraryTotal > libraryLeads.length && (
                   <p className="text-xs font-bold text-amber-800 mt-1">
@@ -4904,7 +4895,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 )}
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
+              <details className="leados-library-tools"><summary>Library actions <CaretDown size={14} /></summary><div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => void handleBatchEnrichContacts()}
@@ -4950,7 +4941,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                   <MagnifyingGlass weight="bold" className="w-3.5 h-3.5" />
                   Find More Leads
                 </button>
-              </div>
+              </div></details>
             </div>
 
             {libraryActionNotice && (
@@ -4965,6 +4956,32 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 </button>
               </div>
             )}
+
+            <div className="relative flex-1">
+                      <MagnifyingGlass weight="bold" className="w-4 h-4 text-slate-600 absolute left-3 top-2.5 pointer-events-none" />
+                      <input
+                        type="text"
+                        aria-label="Search saved leads" placeholder="Search businesses, locations, contacts…"
+                        value={librarySearch}
+                        onChange={(e) => {
+                          setLibrarySearch(e.target.value);
+                          setLibraryPage(1);
+                        }}
+                        className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                      {librarySearch && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLibrarySearch('');
+                            setLibraryPage(1);
+                          }}
+                          className="absolute right-2.5 top-2.5 text-slate-600 hover:text-slate-900 text-xs font-black"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
 
             {/* Verification & Pipeline KPI statistics (Clickable Filter Cards) */}
             {(() => {
@@ -4981,6 +4998,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
               return (
                 <>
+                  <details className="leados-filters"><summary><Funnel size={16} /> Filters &amp; insights <CaretDown size={14} /></summary><div className="leados-filter-body">
                   <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 pt-3 border-t border-slate-200">
                     <button
                       type="button"
@@ -5056,32 +5074,6 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                   {/* Search and Multi-Filtering Controls */}
                   <div className="flex flex-col lg:flex-row gap-2.5 pt-2 border-t border-slate-200">
-                    <div className="relative flex-1">
-                      <MagnifyingGlass weight="bold" className="w-4 h-4 text-slate-600 absolute left-3 top-2.5 pointer-events-none" />
-                      <input
-                        type="text"
-                        placeholder="Search by business name, city, phone, email, Facebook/Instagram, notes, or category..."
-                        value={librarySearch}
-                        onChange={(e) => {
-                          setLibrarySearch(e.target.value);
-                          setLibraryPage(1);
-                        }}
-                        className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                      />
-                      {librarySearch && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setLibrarySearch('');
-                            setLibraryPage(1);
-                          }}
-                          className="absolute right-2.5 top-2.5 text-slate-600 hover:text-slate-900 text-xs font-black"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-
                     <div className="flex items-center gap-2 flex-wrap">
                       <select
                         value={librarySourceFilter}
@@ -5346,7 +5338,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         </button>
 
                         {showCustomizeCols && (
-                          <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-300 p-3.5 z-40 space-y-3 animate-in fade-in zoom-in-95 duration-150">
+                          <div className="absolute left-0 md:left-auto md:right-0 mt-2 w-72 max-w-[calc(100vw-4rem)] bg-white rounded-xl shadow-xl border border-slate-300 p-3.5 z-40 space-y-3 animate-in fade-in zoom-in-95 duration-150">
                             <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                               <span className="font-extrabold text-xs text-slate-950">Customize &amp; Move Columns</span>
                               <button
@@ -5445,6 +5437,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       </span>
                     </div>
                   </div>
+                  </div></details>
                 </>
               );
             })()}
@@ -5521,12 +5514,13 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           {libraryError && (
             <div className="p-3 bg-red-50 border border-red-300 rounded-lg text-xs font-bold text-red-900" role="alert">
               Lead Library error: {libraryError}
+              {libraryLeads.length > 0 && <p className="mt-1 font-normal">Previously loaded records are shown. Refresh to try again; these records may be out of date.</p>}
             </div>
           )}
 
           {/* ── 2. Leads Found Table (Single-Frame Unified View Without Side-Scroll) ── */}
-          <div className="rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-sm">
-            {loadingLibrary ? (
+          <div className="leados-results rounded-xl border border-slate-200 bg-white">
+            {loadingLibrary && libraryLeads.length === 0 ? (
               <div className="p-16 text-center text-slate-700 font-bold text-xs">
                 <ArrowsClockwise className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-600" />
                 Loading saved prospects...
@@ -5871,124 +5865,14 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                   </tbody>
                 </table>
 
-                {/* ── Mobile View: High-Touch Touch-Optimized Cards (< md) ── */}
-                <div className="md:hidden divide-y divide-slate-200">
-                  {paginatedLibraryLeads.map((lead, idx) => {
-                    const isSelected = librarySelectedIds.has(lead.id);
-                    const globalIdx = (safeLibraryPage - 1) * libraryPageSize + idx + 1;
-                    const displayScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 82;
-                    const mapQuery = [lead.businessName, lead.address, lead.city, lead.region].filter(Boolean).join(', ');
-                    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
-                    const locText = [lead.city, lead.region].filter(Boolean).join(', ') || lead.address || 'United States';
-
-                    return (
-                      <div
-                        key={`mobile-lead-${lead.id}`}
-                        className={`p-3.5 space-y-3 transition ${
-                          isSelected ? 'bg-indigo-50/50' : 'bg-white hover:bg-slate-50/80'
-                        }`}
-                      >
-                        {/* Header: Select + Index + Business Name + Category + Score */}
-                        <div className="flex items-start justify-between gap-2.5">
-                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleToggleSelectLibraryLead(lead.id)}
-                              className="mt-0.5 rounded border-slate-400 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-4 w-4"
-                            />
-                            <span className="text-[11px] font-mono text-slate-700 mt-0.5 font-bold">
-                              #{globalIdx}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <h4
-                                onClick={() => openLeadDrawer(lead, 'details')}
-                                className="font-extrabold text-slate-950 text-sm leading-tight hover:text-indigo-600 cursor-pointer truncate"
-                                title={lead.businessName}
-                              >
-                                {lead.businessName}
-                              </h4>
-                              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                                <span className="px-2 py-0.5 rounded-full bg-blue-100/80 text-blue-950 text-[10px] font-extrabold border border-blue-300">
-                                  {lead.category || 'Feed Store'}
-                                </span>
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
-                                  displayScore >= 80 ? 'bg-emerald-100 text-emerald-950 border-emerald-300' :
-                                  displayScore >= 60 ? 'bg-amber-100 text-amber-950 border-amber-300' :
-                                  'bg-slate-200 text-slate-900 border-slate-300'
-                                }`}>
-                                  {displayScore}% Match
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex-shrink-0">
-                            <StatusPill status={lead.status || 'new'} />
-                          </div>
-                        </div>
-
-                        {/* Location */}
-                        <div className="flex items-center gap-1.5 text-xs text-slate-700">
-                          <MapPin weight="fill" className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
-                          <span className="truncate font-medium">{locText}</span>
-                        </div>
-
-                        {/* Direct Mobile Touch Actions Bar (>= 44px tap targets) */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                          {lead.phone ? (
-                            <a
-                              href={`tel:${lead.phone}`}
-                              className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-xs transition active:scale-95"
-                              title={`Call ${lead.phone}`}
-                            >
-                              <Phone weight="fill" className="w-4 h-4 text-emerald-600" />
-                              <span>Call</span>
-                            </a>
-                          ) : (
-                            <button
-                              disabled
-                              className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-50 text-slate-600 border border-slate-200 font-semibold text-xs opacity-50 cursor-not-allowed"
-                            >
-                              <Phone className="w-4 h-4" />
-                              <span>No Phone</span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => startOutreachForLead(lead)}
-                            className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs transition shadow-2xs active:scale-95 cursor-pointer"
-                            title={lead.email ? `Email ${lead.email}` : 'Compose Wholesale Outreach'}
-                          >
-                            <PaperPlaneRight weight="fill" className="w-4 h-4" />
-                            <span>{lead.email ? 'Email' : 'Outreach'}</span>
-                          </button>
-
-                          <a
-                            href={mapUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold text-xs transition active:scale-95"
-                            title="Open in Google Maps"
-                          >
-                            <MapPin weight="bold" className="w-4 h-4 text-slate-600" />
-                            <span>Map</span>
-                          </a>
-
-                          <button
-                            type="button"
-                            onClick={() => openLeadDrawer(lead, 'details')}
-                            className="min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold text-xs transition active:scale-95 cursor-pointer"
-                            title="View Prospect Intel & Research"
-                          >
-                            <Eye weight="bold" className="w-4 h-4 text-slate-600" />
-                            <span>View</span>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="md:hidden lead-mobile-list">
+                  {paginatedLibraryLeads.map((lead) => (
+                    <LeadMobileCard key={lead.id} lead={lead}
+                      selected={librarySelectedIds.has(lead.id)}
+                      onSelect={() => handleToggleSelectLibraryLead(lead.id)}
+                      onView={() => openLeadDrawer(lead, 'details')}
+                      onOutreach={() => startOutreachForLead(lead)} />
+                  ))}
                 </div>
               </div>
             )}
