@@ -530,12 +530,15 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
 /* ── Himalayan Koh Premium Mobile Admin Design System (0–767px ONLY) ────── */
 @media (max-width: 767px) {
   /* Scoped strictly to mobile admin; does not leak to storefront or desktop */
+  [data-mobile-theme="dark"] body,
+  [data-mobile-theme="dark"] .hk-admin,
+  [data-mobile-theme="dark"] .hk-admin > div,
   [data-mobile-theme="dark"] .hk-admin .admin-content {
     background-color: #0B0E17 !important;
     color: #FFFFFF !important;
   }
 
-  [data-mobile-theme="dark"] .hk-admin .admin-content :where(h1, h2, h3, h4) {
+  [data-mobile-theme="dark"] .hk-admin .admin-content :where(h1, h2, h3, h4, h5, h6) {
     color: #FFFFFF !important;
   }
 
@@ -549,7 +552,8 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
 
   [data-mobile-theme="dark"] .hk-admin .admin-content .bg-slate-50,
   [data-mobile-theme="dark"] .hk-admin .admin-content .bg-slate-100,
-  [data-mobile-theme="dark"] .hk-admin .admin-content .bg-\[\#FAF7F1\] {
+  [data-mobile-theme="dark"] .hk-admin .admin-content .bg-\[\#FAF7F1\],
+  [data-mobile-theme="dark"] .hk-admin .admin-content .bg-\[\#faf7f1\] {
     background-color: #182035 !important;
     border-color: rgba(255, 255, 255, 0.08) !important;
     color: #E2E8F0 !important;
@@ -565,23 +569,37 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
 
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-900,
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-950,
-  [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#26211C\] {
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#26211C\],
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#26211c\],
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-charcoal {
     color: #FFFFFF !important;
   }
 
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-700,
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-600,
-  [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#6D6258\] {
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#6D6258\],
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#6d6258\],
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-charcoal-light {
     color: #94A3B8 !important;
   }
 
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-500,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-400,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#8e8276\],
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#8E8276\] {
+    color: #64748B !important;
+  }
+
   /* Premium Mobile Light Mode */
+  [data-mobile-theme="light"] body,
+  [data-mobile-theme="light"] .hk-admin,
+  [data-mobile-theme="light"] .hk-admin > div,
   [data-mobile-theme="light"] .hk-admin .admin-content {
     background-color: #F8FAFC !important;
     color: #0F172A !important;
   }
 
-  [data-mobile-theme="light"] .hk-admin .admin-content :where(h1, h2, h3, h4) {
+  [data-mobile-theme="light"] .hk-admin .admin-content :where(h1, h2, h3, h4, h5, h6) {
     color: #0F172A !important;
   }
 
@@ -596,14 +614,25 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
 
   [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-900,
   [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-950,
-  [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#26211C\] {
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#26211C\],
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#26211c\],
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-charcoal {
     color: #0F172A !important;
   }
 
   [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-700,
   [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-600,
-  [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#6D6258\] {
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#6D6258\],
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#6d6258\],
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-charcoal-light {
     color: #475569 !important;
+  }
+
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-500,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-400,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#8e8276\],
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#8E8276\] {
+    color: #94A3B8 !important;
   }
 
   [data-mobile-theme="light"] .hk-admin .admin-content input:not([type="checkbox"]):not([type="radio"]),

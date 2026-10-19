@@ -166,6 +166,7 @@ export function MobileLeadsView({
           backgroundColor: palette.cardBg,
           border: `1px solid ${palette.cardBorder}`,
           boxShadow: palette.cardShadow,
+          contain: 'paint',
         }}
       >
         {/* Subtle background glow accent */}

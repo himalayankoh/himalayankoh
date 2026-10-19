@@ -680,7 +680,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div
-      className="hk-admin h-dvh w-full flex overflow-hidden font-sans bg-[#FAF7F1] text-[#26211C]"
+      className={`hk-admin h-dvh w-full flex overflow-hidden font-sans ${
+        isDark
+          ? 'max-md:bg-[#0B0E17] max-md:text-white bg-[#FAF7F1] text-[#26211C]'
+          : 'max-md:bg-[#F8FAFC] max-md:text-[#0F172A] bg-[#FAF7F1] text-[#26211C]'
+      }`}
       style={railVars}
     >
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip bg-white p-3 rounded-lg">Skip to workspace</a>
@@ -698,6 +702,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
       <div
         className={`flex-1 flex flex-col min-w-0 lg:pl-[var(--hk-rail)] h-dvh overflow-hidden ${
+          isDark ? 'max-md:bg-[#0B0E17]' : 'max-md:bg-[#F8FAFC]'
+        } ${
           railDragging ? '' : 'lg:transition-[padding-left] lg:duration-200'
         }`}
       >

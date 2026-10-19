@@ -96,8 +96,11 @@ export function readStoredSession(): SbSession | null {
       session.accessToken &&
       typeof session.expiresAt === 'number' &&
       session.user &&
-      typeof session.user.id === 'string'
+      (typeof session.user.id === 'string' || typeof session.user.id === 'number')
     ) {
+      if (typeof session.user.id === 'number') {
+        session.user.id = String(session.user.id);
+      }
       return session as SbSession;
     }
     return null;
