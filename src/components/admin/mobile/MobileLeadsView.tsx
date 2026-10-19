@@ -539,7 +539,7 @@ export function MobileLeadsView({
 
       {/* ── 5. Lead Details Bottom Sheet / Modal ───────────────────────── */}
       {selectedLead && (
-        <div className="fixed inset-0 z-modal flex flex-col justify-end">
+        <div data-testid="lead-details-modal" className="fixed inset-0 z-modal flex flex-col justify-end">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-xs"
             onClick={() => setSelectedLead(null)}
