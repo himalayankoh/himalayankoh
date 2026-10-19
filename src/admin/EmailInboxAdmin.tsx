@@ -1175,7 +1175,7 @@ export default function EmailInboxAdmin() {
             </div>
 
             {/* Modal Body */}
-            <div className="p-4 flex-1 overflow-y-auto space-y-3 text-xs">
+            <div className="p-4 flex-1 min-w-0 overflow-y-auto space-y-3 text-xs">
               {composeError && (
                 <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300">
                   {composeError}
@@ -1193,7 +1193,7 @@ export default function EmailInboxAdmin() {
                 <select
                   value={composeMailbox}
                   onChange={(e) => setComposeMailbox(e.target.value as MailboxAddress)}
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 >
                   <option value="sales@himalayankoh.com">
                     Commercial Sales &lt;sales@himalayankoh.com&gt;
@@ -1218,7 +1218,7 @@ export default function EmailInboxAdmin() {
                   value={composeTo}
                   onChange={(e) => setComposeTo(e.target.value)}
                   placeholder="recipient@example.com"
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 />
                 <button
                   type="button"
@@ -1238,7 +1238,7 @@ export default function EmailInboxAdmin() {
                     value={composeCc}
                     onChange={(e) => setComposeCc(e.target.value)}
                     placeholder="colleague@example.com"
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                    className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               )}
@@ -1251,7 +1251,7 @@ export default function EmailInboxAdmin() {
                   value={composeSubject}
                   onChange={(e) => setComposeSubject(e.target.value)}
                   placeholder="Himalayan Mineral Salt Inquiry"
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 />
               </div>
 
