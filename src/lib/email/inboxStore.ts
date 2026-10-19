@@ -1274,6 +1274,12 @@ export async function sendInboxMessage(input: SendMessageInput): Promise<InboxMe
 
   if (!input.simulate) {
     try {
+      // Load and decrypt this mailbox's credential before sending. `sendCPanelEmail`
+      // reads the synchronous cache, which is empty in a fresh isolate — so without
+      // this await every send from a cold Worker fails as "unconfigured" even
+      // though the password is stored.
+      await getEmailAccount(mailbox as MailboxEmail);
+
       const cpanelRes = await sendCPanelEmail({
         messageId,
         from: mailbox,

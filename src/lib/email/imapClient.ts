@@ -396,6 +396,94 @@ export function parseAddressList(raw?: string): Array<{ name: string; email: str
 }
 
 /**
+ * Decode a MIME part's Content-Transfer-Encoding. Bodies arrive base64 or
+ * quoted-printable often enough that treating them as literal text is a visible bug.
+ */
+function decodeTransferEncoding(content: string, encoding?: string): string {
+  const enc = (encoding || '').trim().toLowerCase();
+  if (enc === 'base64') {
+    try {
+      return Buffer.from(content.replace(/\s+/g, ''), 'base64').toString('utf8');
+    } catch {
+      return content;
+    }
+  }
+  if (enc === 'quoted-printable') {
+    const bytes: number[] = [];
+    for (let i = 0; i < content.length; i++) {
+      const ch = content[i];
+      if (ch === '=' && content[i + 1] === '\r' && content[i + 2] === '\n') {
+        i += 2;
+        continue;
+      }
+      if (ch === '=' && content[i + 1] === '\n') {
+        i += 1;
+        continue;
+      }
+      if (ch === '=' && /^[0-9A-Fa-f]{2}$/.test(content.slice(i + 1, i + 3))) {
+        bytes.push(parseInt(content.slice(i + 1, i + 3), 16));
+        i += 2;
+        continue;
+      }
+      bytes.push(content.charCodeAt(i));
+    }
+    try {
+      return Buffer.from(bytes).toString('utf8');
+    } catch {
+      return content;
+    }
+  }
+  return content;
+}
+
+/**
+ * Walk a (possibly nested) MIME tree and return the first text and HTML bodies.
+ */
+function extractMimeBodies(raw: string, contentType: string, encoding?: string): { text: string; html?: string } {
+  const lower = (contentType || '').toLowerCase();
+
+  if (!lower.startsWith('multipart/')) {
+    const decoded = decodeTransferEncoding(raw, encoding);
+    return lower.includes('text/html') ? { text: '', html: decoded } : { text: decoded };
+  }
+
+  const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;\s]+))/i);
+  const boundary = boundaryMatch ? boundaryMatch[1] || boundaryMatch[2] : null;
+  if (!boundary) return { text: '' };
+
+  let text = '';
+  let html: string | undefined;
+
+  for (const chunk of raw.split(`--${boundary}`)) {
+    const part = chunk.replace(/^\r?\n/, '');
+    if (!part.trim() || part.trim() === '--') continue;
+
+    const headerEnd = part.search(/\r?\n\r?\n/);
+    if (headerEnd === -1) continue;
+
+    const partHeaderBlock = part.slice(0, headerEnd).replace(/\r?\n[ \t]+/g, ' ');
+    const partHeaders: Record<string, string> = {};
+    for (const line of partHeaderBlock.split(/\r?\n/)) {
+      const idx = line.indexOf(':');
+      if (idx > 0) partHeaders[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
+    }
+
+    const rawPartBody = part.slice(headerEnd).replace(/^\r?\n\r?\n/, '').replace(/\r?\n--$/, '');
+    const nested = extractMimeBodies(
+      rawPartBody,
+      partHeaders['content-type'] || 'text/plain',
+      partHeaders['content-transfer-encoding']
+    );
+
+    if (!text && nested.text) text = nested.text;
+    if (!html && nested.html) html = nested.html;
+    if (text && html) break;
+  }
+
+  return { text, html };
+}
+
+/**
  * Parse raw RFC 822 email headers and body
  */
 export function parseRawRfc822Email(raw: string, targetMailbox: string): ParsedInboundEmail {
@@ -439,38 +527,20 @@ export function parseRawRfc822Email(raw: string, targetMailbox: string): ParsedI
     }
   }
 
-  // Extract body
-  let bodyText = '';
-  let bodyHtml: string | undefined = undefined;
-
+  // Extract body. Multipart messages nest (mixed → alternative → text/html), so this
+  // recurses; a single-level split used to leave the inner boundaries in the body and
+  // show raw `--mixed-...` noise in the inbox.
   const contentType = headers['content-type'] || 'text/plain';
-
-  if (contentType.toLowerCase().includes('multipart/')) {
-    const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;\s]+))/i);
-    const boundary = boundaryMatch ? boundaryMatch[1] || boundaryMatch[2] : null;
-
-    if (boundary) {
-      const parts = rawBody.split(`--${boundary}`);
-      for (const part of parts) {
-        if (part.trim() === '--' || !part.trim()) continue;
-        const partHeaderEnd = part.search(/\r?\n\r?\n/);
-        const partHeaders = partHeaderEnd !== -1 ? part.slice(0, partHeaderEnd).toLowerCase() : '';
-        const partContent = partHeaderEnd !== -1 ? part.slice(partHeaderEnd).replace(/^\r?\n\r?\n/, '') : part;
-
-        if (partHeaders.includes('text/html')) {
-          bodyHtml = partContent.trim();
-        } else if (partHeaders.includes('text/plain') && !bodyText) {
-          bodyText = partContent.trim();
-        }
-      }
-    }
-  }
+  const extracted = extractMimeBodies(rawBody, contentType, headers['content-transfer-encoding']);
+  let bodyText = extracted.text.trim();
+  let bodyHtml: string | undefined = extracted.html ? extracted.html.trim() : undefined;
 
   if (!bodyText && !bodyHtml) {
+    const fallback = decodeTransferEncoding(rawBody.trim(), headers['content-transfer-encoding']);
     if (contentType.toLowerCase().includes('text/html')) {
-      bodyHtml = rawBody.trim();
+      bodyHtml = fallback;
     } else {
-      bodyText = rawBody.trim();
+      bodyText = fallback;
     }
   }
 
