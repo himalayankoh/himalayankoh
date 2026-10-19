@@ -400,7 +400,8 @@ export function MobileLeadsView({
             return (
               <div
                 key={lead.id}
-                className="rounded-2xl p-4 transition-all duration-150"
+                data-testid="mobile-lead-card"
+                className="hk-mobile-lead-card rounded-2xl p-4 transition-all duration-150"
                 style={{
                   backgroundColor: palette.cardBg,
                   border: `1px solid ${palette.cardBorder}`,

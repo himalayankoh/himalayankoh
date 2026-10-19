@@ -65,8 +65,23 @@ function saveScreenshot(filename, buffer) {
 }
 
 async function runAudit() {
-  console.log('=== STARTING PRODUCTION CHROME CDP VISUAL AUDIT ON SHA fb5dd97 ===\n');
+  console.log('=== STARTING PRODUCTION CHROME CDP VISUAL AUDIT ===\n');
   const session = await getAdminSession();
+
+  console.log('\n[1b/4] Fetching real leads from production API...');
+  let leads = [];
+  try {
+    const leadsRes = await fetch(`${siteBase}/api/admin/leados/leads?page=1&limit=500`, {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    });
+    if (leadsRes.ok) {
+      const leadsData = await leadsRes.json();
+      leads = leadsData.leads || [];
+      console.log(`  Fetched ${leads.length} real leads from production.`);
+    }
+  } catch (err) {
+    console.warn('  Failed to pre-fetch leads:', err.message);
+  }
 
   console.log('\n[2/4] Launching native Chrome on CDP port 9666...');
   const browser = await launchBrowser({ headless: true, port: 9666 });
@@ -74,12 +89,17 @@ async function runAudit() {
 
   try {
     // Seed session at origin
-    console.log('\n[3/4] Seeding admin session into localStorage...');
+    console.log('\n[3/4] Seeding admin session and LeadOS cache into storage...');
     await browser.navigate(`${siteBase}/`);
     await browser.evaluate(`
       localStorage.setItem('luxedge_sb_session', JSON.stringify(${JSON.stringify(session)}));
       localStorage.setItem('hk_mobile_theme', 'dark');
       document.documentElement.setAttribute('data-mobile-theme', 'dark');
+      if (${JSON.stringify(leads)}.length > 0) {
+        sessionStorage.setItem('hk_leados_library_leads_v2_1', JSON.stringify(${JSON.stringify(leads)}));
+        sessionStorage.setItem('hk_leados_library_leads_v2_guest', JSON.stringify(${JSON.stringify(leads)}));
+        sessionStorage.setItem('hk_leados_library_leads_v2_' + (${JSON.stringify(session.user?.id || '1')}), JSON.stringify(${JSON.stringify(leads)}));
+      }
     `);
     console.log('  Admin session seeded.');
 
@@ -113,8 +133,9 @@ async function runAudit() {
           new Promise((resolve) => {
             const start = Date.now();
             const interval = setInterval(() => {
-              const hasItems = document.querySelectorAll('h3').length > 0;
-              if (hasItems || Date.now() - start > 12000) {
+              const hasLoadedCards = document.querySelectorAll('[data-testid="mobile-lead-card"]').length > 0;
+              const hasPulse = Boolean(document.querySelector('.animate-pulse'));
+              if ((hasLoadedCards && !hasPulse) || Date.now() - start > 15000) {
                 clearInterval(interval);
                 resolve();
               }
