@@ -101,7 +101,7 @@ const GATE_COOKIE = 'hc_js_gate=1';
 const get = async (url, headers = {}) => {
   const res = await fetch(url, { headers: { Cookie: GATE_COOKIE, ...headers }, cache: 'no-store', redirect: 'manual' });
   const body = await res.text();
-  return { status: res.status, body, gated: /Checking your browser|One moment, please/.test(body) };
+  return { status: res.status, body, gated: /Checking your browser|One moment, please/.test(body), location: res.headers.get('location') };
 };
 
 const results = [];
@@ -207,10 +207,27 @@ async function closeWordPressRegistration() {
  */
 async function measureWordPressNative() {
   const page = await get(`${base}/wp-login.php?action=register`);
-  const formPresent = page.body.includes('id="registerform"');
-  const refused = /registration (is|has been) (currently )?(disabled|not allowed)|user registration is currently not allowed/i.test(
-    page.body
-  );
+  const isRedirectToDisabled =
+    (page.status === 301 || page.status === 302) && (page.location || '').includes('registration=disabled');
+  let formPresent = page.body.includes('id="registerform"');
+  let refused =
+    isRedirectToDisabled ||
+    /registration (is|has been) (currently )?(disabled|not allowed)|user registration is currently not allowed/i.test(
+      page.body
+    );
+
+  if (!refused && (page.status === 301 || page.status === 302) && page.location) {
+    const targetUrl = new URL(page.location, base).toString();
+    const target = await get(targetUrl);
+    if (
+      /registration (is|has been) (currently )?(disabled|not allowed)|user registration is currently not allowed/i.test(
+        target.body
+      )
+    ) {
+      refused = true;
+    }
+  }
+
   const option = await readUsersCanRegister();
   if (page.gated) {
     return {
@@ -224,7 +241,7 @@ async function measureWordPressNative() {
     open: formPresent,
     detail:
       `registerform served: ${formPresent} · says registration is disabled: ${refused} · ` +
-      `users_can_register: ${option.read ? JSON.stringify(option.value) : `not read (${option.note})`}`,
+      `users_can_register: ${option.read && option.value !== null ? JSON.stringify(option.value) : isRedirectToDisabled ? 'false (redirects to registration=disabled)' : `not exposed in wp/v2/settings (${option.note || 'core default'})`}`,
   };
 }
 
