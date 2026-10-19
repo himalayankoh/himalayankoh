@@ -437,6 +437,25 @@ export default function EmailInboxAdmin() {
           )}
         </button>
 
+        <button
+          onClick={() => selectFolder('admin')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'admin'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <User size={16} />
+            Admin
+          </span>
+          {counts && counts.adminUnread > 0 && (
+            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
+              {counts.adminUnread}
+            </span>
+          )}
+        </button>
+
         <div className="pt-3 pb-1 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
           Folders
         </div>
