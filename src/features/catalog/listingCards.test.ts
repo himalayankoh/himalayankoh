@@ -2,62 +2,74 @@ import { describe, expect, it } from 'vitest';
 import type { Product } from '../../data/products';
 import { listingCards, productCardKey, productCardPath } from './listingCards';
 import { productVariations } from '../../lib/woo/variationOptions';
-const product = (): Product => ({ id: 281, slug: 'salt-licks-for-horses', name: 'Licks', price: '$9.95 - $17.95',
-  priceMin: 9.95, priceMax: 17.95, inStock: true, category: 'Live Stock', image: 'original.jpg',
-  variations: productVariations([{ name: 'Size/Weight', variation: true, options: ['2 lbs.', '4 lbs.'] }], [
-    {id:1549,regular_price:'9.95',weight:'0.907',sku:'5483976372749',stock_status:'instock',attributes:[{name:'Size/Weight',option:'2 lbs.'}]},
-    {id:1547,regular_price:'14.95',weight:'1.814',sku:'5483976372749',stock_status:'instock',attributes:[{name:'Size/Weight',option:'4 lbs.'}]},
-    {id:1548,regular_price:'17.95',weight:'3',sku:'5483976372749',stock_status:'outofstock',attributes:[{name:'Size/Weight',option:'6 lbs.'}]},
-  ]) });
-describe('genuine salt lick listing variants', () => {
-  it('shows 2 lb and 6 lb first, keeps parent identity and distinct deep links', () => {
-    const p=product(); const cards=listingCards([p]);
-    expect(cards.map(c=>c.name)).toEqual(['Himalayan Pink Salt Lick — 2 lb','Himalayan Pink Salt Lick — 6 lb']);
-    expect(cards.map(c=>c.id)).toEqual([281,281]);
-    expect(cards.map(productCardKey)).toEqual(['281:1549','281:1548']);
-    expect(cards.map(productCardPath)).toEqual(['/products/salt-licks-for-horses?variation=1549','/products/salt-licks-for-horses?variation=1548']);
-    expect(cards.map(c=>c.priceMin)).toEqual([9.95,17.95]);
-    expect(cards.map(c=>c.inStock)).toEqual([true,false]);
-    expect(listingCards(cards)).toEqual(cards);
-    expect(p.variations?.options.map(o=>[o.id,o.label,o.value,o.weight])).toEqual([
-      [1549,'2 lb','2 lbs.','0.907'],[1547,'4 lb','4 lbs.','1.814'],[1548,'6 lb','6 lbs.','3']]);
+
+const product = (): Product => ({
+  id: 281,
+  slug: 'salt-licks-for-horses',
+  name: 'Licks',
+  price: '$9.95 - $17.95',
+  priceMin: 9.95,
+  priceMax: 17.95,
+  inStock: true,
+  category: 'Live Stock',
+  image: 'original.jpg',
+  variations: productVariations(
+    [{ name: 'Size/Weight', variation: true, options: ['2 lbs.', '4 lbs.'] }],
+    [
+      { id: 1549, regular_price: '9.95', weight: '0.907', sku: '5483976372749', stock_status: 'instock', attributes: [{ name: 'Size/Weight', option: '2 lbs.' }] },
+      { id: 1547, regular_price: '14.95', weight: '1.814', sku: '5483976372749', stock_status: 'instock', attributes: [{ name: 'Size/Weight', option: '4 lbs.' }] },
+      { id: 1548, regular_price: '17.95', weight: '3', sku: '5483976372749', stock_status: 'outofstock', attributes: [{ name: 'Size/Weight', option: '6 lbs.' }] },
+    ]
+  ),
+});
+
+describe('canonical single salt lick product card', () => {
+  it('renders exactly one canonical parent card without synthetic child splitting', () => {
+    const p = product();
+    const cards = listingCards([p]);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].id).toBe(281);
+    expect(cards[0].name).toBe('Licks');
+    expect(productCardKey(cards[0])).toBe('281:parent');
+    expect(productCardPath(cards[0])).toBe('/products/salt-licks-for-horses');
+    expect(cards[0].variations?.options).toHaveLength(3);
   });
-  it('never invents a missing 6 lb child or changes the legitimate 4 lb',()=>{
-    const p=product(); p.variations!.options=p.variations!.options.filter(o=>o.id!==1548);
-    expect(listingCards([p]).map(c=>c.selectedVariationId)).toEqual([1549]);
-    expect(p.variations!.options[1]).toMatchObject({id:1547,label:'4 lb',price:14.95});
-  });
-  it('leaves unrelated catalog products unchanged',()=>{const p={...product(),slug:'other'};expect(listingCards([p])).toEqual([p]);});
-  it('does not combine options from additional axes',()=>{
-    const v=productVariations([{name:'Size/Weight',variation:true,options:['2 lbs.']},{name:'Pack',variation:true,options:['3']}],
-      [{id:1548,attributes:[{name:'Size/Weight',option:'6 lbs.'},{name:'Pack',option:'3'}]}]);
-    expect(v).toBeUndefined();
-  });
-  it('correctly maps production product 2543 with Weight attribute into 2 lb and 6 lb cards', () => {
+
+  it('correctly maps production product 2543 as exactly ONE card with 2 lb and 6 lb variations', () => {
     const prod: Product = {
       id: 2543,
       slug: 'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh',
-      name: 'Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh',
+      name: 'Himalayan Pink Salt Lick',
       price: '$12.95 - $19.95',
       priceMin: 12.95,
       priceMax: 19.95,
       inStock: true,
       category: 'Live Stock',
       image: '/images/products/himalayan-salt-lick-rope-front.webp',
-      variations: productVariations([{ name: 'Weight', variation: true, options: ['2 lb', '6 lb'] }], [
-        { id: 2560, regular_price: '12.95', weight: '0.907', sku: 'HK-LFH-2lbs', stock_status: 'instock', attributes: [{ name: 'Weight', option: '2 lb' }] },
-        { id: 2561, regular_price: '19.95', weight: '2.721', sku: 'HK-LFH-6lbs', stock_status: 'instock', attributes: [{ name: 'Weight', option: '6 lb' }] },
-      ]),
+      variations: productVariations(
+        [{ name: 'Weight', variation: true, options: ['2 lb', '6 lb'] }],
+        [
+          { id: 2560, regular_price: '12.95', weight: '0.907', sku: 'HK-LFH-2lbs', stock_status: 'instock', attributes: [{ name: 'Weight', option: '2 lb' }] },
+          { id: 2561, regular_price: '19.95', weight: '2.721', sku: 'HK-LFH-6lbs', stock_status: 'instock', attributes: [{ name: 'Weight', option: '6 lb' }] },
+        ]
+      ),
     };
+
     const cards = listingCards([prod]);
-    expect(cards).toHaveLength(2);
-    expect(cards.map(c => c.name)).toEqual(['Himalayan Pink Salt Lick — 2 lb', 'Himalayan Pink Salt Lick — 6 lb']);
-    expect(cards.map(c => c.selectedVariationId)).toEqual([2560, 2561]);
-    expect(cards.map(c => c.priceMin)).toEqual([12.95, 19.95]);
-    expect(cards.map(c => c.sku)).toEqual(['HK-LFH-2lbs', 'HK-LFH-6lbs']);
-    expect(cards.map(productCardPath)).toEqual([
-      '/products/himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh?variation=2560',
-      '/products/himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh?variation=2561',
-    ]);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].id).toBe(2543);
+    expect(cards[0].name).toBe('Himalayan Pink Salt Lick');
+    expect(cards[0].selectedVariationId).toBeUndefined();
+    expect(cards[0].variations?.options.map(o => o.id)).toEqual([2560, 2561]);
+    expect(cards[0].variations?.options.map(o => o.price)).toEqual([12.95, 19.95]);
+    expect(productCardPath(cards[0])).toBe('/products/himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh');
+  });
+
+  it('deduplicates duplicate product inputs by canonical parent id', () => {
+    const p1 = product();
+    const p2 = { ...product() };
+    const cards = listingCards([p1, p2]);
+    expect(cards).toHaveLength(1);
+    expect(cards[0].id).toBe(281);
   });
 });

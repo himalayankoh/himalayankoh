@@ -840,30 +840,21 @@ export default function EmailInboxAdmin() {
       >
         {selectedThread ? (
           <div className="flex-1 flex flex-col h-full overflow-hidden">
-            {/* Thread Header Toolbar */}
-            <div className="p-3 md:p-4 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-900/50 shrink-0">
-              <div className="flex items-center gap-2 truncate">
+            {/* Thread Header Toolbar (Compact Gmail style) */}
+            <div className="p-2.5 md:p-3 border-b border-slate-800 flex items-center justify-between gap-2 bg-slate-900/80 shrink-0">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => setMobileView('list')}
-                  className="md:hidden flex items-center gap-1 text-xs text-amber-400 font-semibold px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors shrink-0"
+                  className="md:hidden flex items-center gap-1.5 text-xs text-amber-400 font-semibold px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors shrink-0"
                   aria-label="Back to inbox list"
                 >
                   <ArrowLeft size={16} weight="bold" />
                   <span>Inbox</span>
                 </button>
 
-                <div className="truncate">
-                  <h2 className="text-sm md:text-base font-semibold text-slate-100 truncate">
-                    {selectedThread.subject || '(No subject)'}
-                  </h2>
-                  <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 truncate">
-                    <span>
-                      Mailbox: <strong className="text-slate-300">{selectedThread.mailbox}</strong>
-                    </span>
-                    <span>•</span>
-                    <span>{selectedThread.messages.length} msg</span>
-                  </div>
-                </div>
+                <span className="hidden md:inline-flex px-2 py-0.5 rounded text-[11px] font-mono bg-slate-800 text-slate-300">
+                  {selectedThread.mailbox}
+                </span>
               </div>
 
               {/* Actions */}
@@ -889,6 +880,19 @@ export default function EmailInboxAdmin() {
                 >
                   <Trash size={17} />
                 </button>
+              </div>
+            </div>
+
+            {/* Dedicated Full-Width Subject Bar with Word-Wrap (Gmail mobile layout) */}
+            <div className="px-3.5 py-2.5 md:px-5 md:py-3 border-b border-slate-800/80 bg-slate-950 shrink-0">
+              <h1 className="text-sm md:text-base font-bold text-slate-100 break-words leading-snug">
+                {selectedThread.subject || '(No subject)'}
+              </h1>
+              <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
+                <span className="md:hidden font-mono text-[10px] bg-slate-800/80 px-1.5 py-0.5 rounded text-slate-300">
+                  {selectedThread.mailbox}
+                </span>
+                <span>{selectedThread.messages.length} message{selectedThread.messages.length > 1 ? 's' : ''}</span>
               </div>
             </div>
 

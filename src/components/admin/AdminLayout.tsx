@@ -23,6 +23,11 @@ import {
   SidebarSimple,
   List,
   EnvelopeSimple,
+  Bell,
+  Sun,
+  Moon,
+  Desktop,
+  DeviceMobile,
 } from '@phosphor-icons/react';
 import { useAuthContext } from '../../context/AuthContext';
 import { signOutOfBrowser } from '../../lib/auth/browserSignOut';
@@ -308,6 +313,169 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     };
   }, [userMenuOpen]);
 
+  // --- THEME SUPPORT (Light, Dark, System) ---
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('hk_admin_theme');
+        if (saved === 'light' || saved === 'dark' || saved === 'system') return saved;
+      } catch {}
+    }
+    return 'system';
+  });
+
+  const [effectiveDark, setEffectiveDark] = useState<boolean>(false);
+
+  useEffect(() => {
+    const updateDark = () => {
+      if (theme === 'dark') {
+        setEffectiveDark(true);
+      } else if (theme === 'light') {
+        setEffectiveDark(false);
+      } else {
+        setEffectiveDark(window.matchMedia('(prefers-color-scheme: dark)').matches);
+      }
+    };
+
+    updateDark();
+
+    if (theme === 'system') {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      mql.addEventListener('change', updateDark);
+      return () => mql.removeEventListener('change', updateDark);
+    }
+  }, [theme]);
+
+  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
+    setTheme(newTheme);
+    try {
+      localStorage.setItem('hk_admin_theme', newTheme);
+    } catch {}
+  };
+
+  // --- PWA SERVICE WORKER & INSTALLATION ---
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [canInstall, setCanInstall] = useState(false);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (!document.querySelector('link[rel="manifest"]')) {
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = '/admin-manifest.json';
+      document.head.appendChild(link);
+    }
+
+    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+      navigator.serviceWorker.register('/sw-admin.js', { scope: '/admin' }).catch(() => {});
+    }
+
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    setIsInstalled(Boolean(isStandalone));
+
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setCanInstall(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setCanInstall(false);
+    }
+    setDeferredPrompt(null);
+  };
+
+  // --- NOTIFICATION CENTER ---
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const [pushStatus, setPushStatus] = useState<'default' | 'granted' | 'denied'>('default');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPushStatus(Notification.permission);
+    }
+  }, []);
+
+  const [notifications, setNotifications] = useState<Array<{
+    id: string;
+    category: 'orders' | 'inbox' | 'leados' | 'system';
+    title: string;
+    body: string;
+    timestamp: string;
+    read: boolean;
+    link: string;
+  }>>([
+    {
+      id: 'notif-1',
+      category: 'orders',
+      title: 'Storefront Operations Active',
+      body: 'Authoritative WooCommerce catalog and Stripe checkout verified.',
+      timestamp: 'Just now',
+      read: false,
+      link: '/admin/orders',
+    },
+    {
+      id: 'notif-2',
+      category: 'inbox',
+      title: 'Business Mailboxes Ready',
+      body: 'Namecheap cPanel SPF, DKIM, and DMARC authenticated.',
+      timestamp: '10m ago',
+      read: false,
+      link: '/admin/inbox',
+    },
+    {
+      id: 'notif-3',
+      category: 'leados',
+      title: 'Livestock Lead Quality Gate',
+      body: 'Autonomous discovery filter active: non-livestock prospects rejected.',
+      timestamp: '1h ago',
+      read: true,
+      link: '/admin/leados',
+    },
+  ]);
+
+  const unreadNotifCount = notifications.filter((n) => !n.read).length;
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    if (notifOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [notifOpen]);
+
+  const handleRequestPush = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    try {
+      const res = await Notification.requestPermission();
+      setPushStatus(res);
+      if (res === 'granted' && 'serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        reg.showNotification('Himalayan Koh Notifications Enabled', {
+          body: 'You will receive real-time alerts for new orders and inquiries.',
+          icon: '/logo.svg',
+          badge: '/logo.svg',
+        });
+      }
+    } catch (err) {
+      console.error('Push notification permission error:', err);
+    }
+  };
+
   const handleSignOut = () => {
     // One owner for ending a session (`lib/auth/browserSignOut`), and it runs
     // before the navigation. Clearing only the Supabase keys used to leave the
@@ -552,7 +720,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const railVars = { '--hk-rail': `${railWidth}px` } as unknown as React.CSSProperties;
 
   return (
-    <div className="hk-admin h-dvh w-full flex overflow-hidden font-sans" style={railVars}>
+    <div
+      className="hk-admin h-dvh w-full flex overflow-hidden font-sans"
+      style={railVars}
+      data-admin-theme={effectiveDark ? 'dark' : 'light'}
+    >
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip bg-white p-3 rounded-lg">Skip to workspace</a>
       {renderSidebar({ mini: railMini })}
 
@@ -628,6 +800,81 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#C98745]"
               />
             </button>
+
+            {/* Notification Center Bell */}
+            <div className="relative" ref={notifRef}>
+              <button
+                type="button"
+                onClick={() => setNotifOpen((v) => !v)}
+                className="relative p-2 hover:bg-[#FAF7F1] rounded-lg text-[#3F6550] hover:text-[#26211C] transition-colors focus:outline-none"
+                aria-label="Notification center"
+                title="Notifications"
+              >
+                <Bell size={16} weight={unreadNotifCount > 0 ? 'fill' : 'regular'} />
+                {unreadNotifCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#B86452] ring-2 ring-white animate-pulse" />
+                )}
+              </button>
+
+              {notifOpen && (
+                <div
+                  className="absolute right-0 top-full mt-2 w-80 max-w-[90vw] bg-[#FFFDF8] border border-[#E0D6C8] rounded-xl shadow-2xl z-50 overflow-hidden"
+                  style={{
+                    boxShadow: '0 12px 32px -4px rgba(38, 33, 28, 0.18), 0 4px 12px -2px rgba(38, 33, 28, 0.08)',
+                  }}
+                >
+                  <div className="p-3 bg-[#FAF7F1] border-b border-[#E0D6C8] flex items-center justify-between">
+                    <span className="text-xs font-bold text-[#26211C] uppercase tracking-wider">
+                      Notification Center
+                    </span>
+                    {unreadNotifCount > 0 && (
+                      <button
+                        onClick={() => setNotifications((list) => list.map((n) => ({ ...n, read: true })))}
+                        className="text-[10px] font-semibold text-[#B86452] hover:underline"
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+
+                  {pushStatus !== 'granted' && (
+                    <div className="p-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between text-xs text-amber-900">
+                      <span className="text-[11px] font-medium">Order Push Notifications</span>
+                      <button
+                        onClick={handleRequestPush}
+                        className="px-2 py-1 rounded bg-[#B86452] text-white text-[10px] font-semibold hover:bg-[#8D4133]"
+                      >
+                        Enable
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="max-h-64 overflow-y-auto divide-y divide-[#E0D6C8]/60">
+                    {notifications.map((n) => (
+                      <Link
+                        key={n.id}
+                        to={n.link}
+                        onClick={() => {
+                          setNotifications((list) => list.map((item) => (item.id === n.id ? { ...item, read: true } : item)));
+                          setNotifOpen(false);
+                        }}
+                        className={`block p-3 hover:bg-[#FAF7F1] transition-colors ${!n.read ? 'bg-[#FAF7F1]/60' : ''}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#B86452]">
+                            {n.category}
+                          </span>
+                          <span className="text-[10px] text-[#8e8276]">{n.timestamp}</span>
+                        </div>
+                        <p className="text-xs font-semibold text-[#26211C] mt-0.5">{n.title}</p>
+                        <p className="text-[11px] text-[#6D6258] mt-0.5 line-clamp-2">{n.body}</p>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="relative pl-1.5 border-l border-[#E0D6C8]" ref={userMenuRef}>
               <button
                 type="button"
@@ -734,6 +981,59 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                       </div>
                     </Link>
                   </div>
+
+                  {/* Theme Mode Selector */}
+                  <div className="p-2 border-t border-[#E0D6C8] bg-[#FAF7F1]/50">
+                    <p className="text-[10px] font-bold text-[#6D6258] uppercase tracking-wider mb-1.5 px-1">
+                      Theme Appearance
+                    </p>
+                    <div className="grid grid-cols-3 gap-1 bg-[#E0D6C8]/40 p-0.5 rounded-lg text-[11px] font-medium text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleThemeChange('light')}
+                        className={`flex items-center justify-center gap-1 py-1 rounded-md transition-colors ${
+                          theme === 'light' ? 'bg-white text-[#26211C] font-semibold shadow-xs' : 'text-[#6D6258] hover:text-[#26211C]'
+                        }`}
+                      >
+                        <Sun size={12} weight={theme === 'light' ? 'bold' : 'regular'} /> Light
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleThemeChange('dark')}
+                        className={`flex items-center justify-center gap-1 py-1 rounded-md transition-colors ${
+                          theme === 'dark' ? 'bg-slate-900 text-white font-semibold shadow-xs' : 'text-[#6D6258] hover:text-[#26211C]'
+                        }`}
+                      >
+                        <Moon size={12} weight={theme === 'dark' ? 'bold' : 'regular'} /> Dark
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleThemeChange('system')}
+                        className={`flex items-center justify-center gap-1 py-1 rounded-md transition-colors ${
+                          theme === 'system' ? 'bg-white text-[#26211C] font-semibold shadow-xs' : 'text-[#6D6258] hover:text-[#26211C]'
+                        }`}
+                      >
+                        <Desktop size={12} weight={theme === 'system' ? 'bold' : 'regular'} /> Auto
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* PWA Install Button */}
+                  {canInstall && (
+                    <div className="p-1.5 border-t border-[#E0D6C8] bg-[#FFFDF8]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          handleInstallClick();
+                        }}
+                        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold text-[#B86452] hover:bg-[#FAF7F1] transition-colors"
+                      >
+                        <DeviceMobile size={15} weight="bold" />
+                        <span>Install HK Admin App</span>
+                      </button>
+                    </div>
+                  )}
 
                   {/* Logout / Sign Out Button */}
                   <div className="p-1.5 border-t border-[#E0D6C8] bg-[#FFFDF8]">

@@ -34,7 +34,7 @@ import type {
   SavedLeadRecord,
   NormalizedLead,
 } from './types';
-import { leadIdentity } from './intelligence';
+import { leadIdentity, classifyLivestockEligibility } from './intelligence';
 import {
   buildCacheKey,
   getCachedLeads,
@@ -368,6 +368,20 @@ export async function saveLeadToLibrary(
   },
   projectId?: string
 ): Promise<SavedLeadRecord> {
+  // POLICY ENFORCEMENT: Enforce Himalayan Koh livestock-only eligibility
+  const eligibility = classifyLivestockEligibility({
+    businessName: lead.businessName,
+    category: lead.category,
+    notes: (lead as any).notes,
+    website: lead.website,
+    address: lead.address,
+    city: lead.city,
+    region: lead.region,
+  });
+  if (eligibility.classification === 'IRRELEVANT') {
+    throw new Error(`Lead rejected: ${lead.businessName} is classified as unrelated per Himalayan Koh Livestock-Only policy (${eligibility.reason}).`);
+  }
+
   const payload = {
     workspace_id: HK_DEFAULT_WORKSPACE_ID,
     business_name: lead.businessName,
@@ -433,7 +447,21 @@ export async function saveLeadsBatchToLibrary(
   projectId?: string,
   chunkSize = 25
 ): Promise<BatchSaveResult> {
-  if (!leads.length) return { savedCount: 0, failedCount: 0, savedKeys: new Set(), savedIds: [], errors: [] };
+  // POLICY ENFORCEMENT: Enforce Himalayan Koh livestock-only eligibility
+  const eligibleLeads = leads.filter((lead) => {
+    const eligibility = classifyLivestockEligibility({
+      businessName: lead.businessName,
+      category: lead.category,
+      notes: (lead as any).notes,
+      website: lead.website,
+      address: lead.address,
+      city: lead.city,
+      region: lead.region,
+    });
+    return eligibility.classification !== 'IRRELEVANT';
+  });
+
+  if (!eligibleLeads.length) return { savedCount: 0, failedCount: 0, savedKeys: new Set(), savedIds: [], errors: [] };
   let totalSaved = 0;
   let totalFailed = 0;
   const savedKeys = new Set<string>();
@@ -442,8 +470,8 @@ export async function saveLeadsBatchToLibrary(
 
   const boundedChunkSize = Math.min(Math.max(chunkSize, 1), 25);
 
-  for (let i = 0; i < leads.length; i += boundedChunkSize) {
-    const chunk = leads.slice(i, i + boundedChunkSize);
+  for (let i = 0; i < eligibleLeads.length; i += boundedChunkSize) {
+    const chunk = eligibleLeads.slice(i, i + boundedChunkSize);
     const chunkPayload = chunk.map((lead) => ({
       workspace_id: HK_DEFAULT_WORKSPACE_ID,
       business_name: lead.businessName,

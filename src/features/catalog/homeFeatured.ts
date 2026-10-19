@@ -35,7 +35,8 @@ export const HOME_FEATURED_LIMIT = 4;
 export function selectHomeFeatured(products: Product[], limit = HOME_FEATURED_LIMIT): Product[] {
   if (!Array.isArray(products) || products.length === 0) return [];
 
-  const marked = products.filter((product) => product.isFeatured);
-  const chosen = listingCards(products).filter(p => p.selectedVariationId || !marked.length || p.isFeatured);
+  const cards = listingCards(products);
+  const marked = cards.filter((product) => product.isFeatured);
+  const chosen = marked.length > 0 ? marked : cards;
   return chosen.slice(0, Math.max(0, limit));
 }

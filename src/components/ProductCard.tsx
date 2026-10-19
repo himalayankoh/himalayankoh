@@ -45,6 +45,12 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
   // hand-written catalog entry.
   const grainChoices = product.variations?.options.filter(option => !product.selectedVariationId || option.id === product.selectedVariationId).map((option) => option.label) ?? product.grainSizes ?? [];
   const [selectedGrain, setSelectedGrain] = useState(grainChoices[0] || '');
+  const isVariableProduct = Boolean(
+    product.variations &&
+    product.variations.options &&
+    product.variations.options.length > 1 &&
+    !product.selectedVariationId
+  );
   const selectedOption = findVariationOption(product.variations, selectedGrain);
   const [failedImages, setFailedImages] = useState<string[]>([]);
   const imageUrl = [selectedOption?.image, product.image, ...(product.images ?? [])].find(url => url && !failedImages.includes(url)) || '/images/placeholder-product.svg';
@@ -209,8 +215,8 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
           {selectedOption ? variationPriceDisplay(product, selectedOption) : formatPriceDisplay(product)}
         </p>
 
-        {/* Grain Size Selector */}
-        {!product.selectedVariationId && grainChoices.length > 0 && (
+        {/* Grain Size Selector — shown only for simple products or preselected options */}
+        {!isVariableProduct && !product.selectedVariationId && grainChoices.length > 0 && (
           <select
             aria-label={`Choose ${product.variations?.attributeLabel ?? 'grain size'} for ${product.name}`}
             value={selectedGrain}
@@ -223,56 +229,66 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
           </select>
         )}
 
-        {/* Quantity + Add to Cart — omitted entirely while ordering is paused: a stepper
-            next to a disabled button still reads as a shop that takes orders. */}
-        <div className="flex flex-col items-start gap-2 mt-auto">
-          {ORDERING_ENABLED && (
-          <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-            <button
-              aria-label={`Decrease quantity for ${product.name}`}
-              disabled={qty <= 1 || isAdding}
-              onClick={() => setQty(Math.max(1, qty - 1))}
-              className="min-h-11 min-w-11 px-2 py-2 text-sm disabled:opacity-40 hover:bg-gray-100 transition-colors font-semibold text-charcoal"
+        {/* Action: Variable products navigate to PDP to Choose Options; simple products offer direct Add to Cart */}
+        <div className="flex flex-col items-start gap-2 mt-auto w-full">
+          {isVariableProduct ? (
+            <Link
+              to={productCardPath(product)}
+              className="w-full flex items-center justify-center gap-2 min-h-11 rounded-xl font-semibold text-sm transition-all duration-150 bg-himalayan hover:bg-himalayan-dark text-white text-center shadow-xs hover:shadow-md"
             >
-              −
-            </button>
-            <span className="px-3 py-2 text-sm font-semibold min-w-[2rem] text-center border-x border-gray-200 text-charcoal">
-              {qty}
-            </span>
-            <button
-              aria-label={`Increase quantity for ${product.name}`}
-              disabled={isAdding || (maxQuantity !== null && qty >= maxQuantity)}
-              onClick={() => setQty(q => maxQuantity === null ? q + 1 : Math.min(q + 1, maxQuantity))}
-              className="min-h-11 min-w-11 px-2 py-2 text-sm disabled:opacity-40 hover:bg-gray-100 transition-colors font-semibold text-charcoal"
-            >
-              +
-            </button>
-          </div>
+              Choose Options
+            </Link>
+          ) : (
+            <>
+              {ORDERING_ENABLED && (
+                <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
+                  <button
+                    aria-label={`Decrease quantity for ${product.name}`}
+                    disabled={qty <= 1 || isAdding}
+                    onClick={() => setQty(Math.max(1, qty - 1))}
+                    className="min-h-11 min-w-11 px-2 py-2 text-sm disabled:opacity-40 hover:bg-gray-100 transition-colors font-semibold text-charcoal"
+                  >
+                    −
+                  </button>
+                  <span className="px-3 py-2 text-sm font-semibold min-w-[2rem] text-center border-x border-gray-200 text-charcoal">
+                    {qty}
+                  </span>
+                  <button
+                    aria-label={`Increase quantity for ${product.name}`}
+                    disabled={isAdding || (maxQuantity !== null && qty >= maxQuantity)}
+                    onClick={() => setQty(q => maxQuantity === null ? q + 1 : Math.min(q + 1, maxQuantity))}
+                    className="min-h-11 min-w-11 px-2 py-2 text-sm disabled:opacity-40 hover:bg-gray-100 transition-colors font-semibold text-charcoal"
+                  >
+                    +
+                  </button>
+                </div>
+              )}
+              <motion.button
+                whileHover={priceKnown && !isAdding ? { scale: 1.02 } : undefined}
+                whileTap={priceKnown && !isAdding ? { scale: 0.98 } : undefined}
+                onClick={handleAddToCart}
+                disabled={!canBuy || isAdding}
+                aria-live="polite"
+                aria-busy={isAdding}
+                className={`w-full flex items-center justify-center gap-2 min-h-11 rounded-xl font-semibold text-sm transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  addedToCart
+                    ? 'bg-himalayan-green text-white'
+                    : 'bg-himalayan hover:bg-himalayan-dark text-white'
+                }`}
+              >
+                {isAdding ? <Loader2 size={16} className="animate-spin" /> : <ShoppingCart size={16} />}
+                {!ORDERING_ENABLED
+                  ? 'Ordering unavailable'
+                  : isAdding
+                    ? 'Adding…'
+                    : addedToCart
+                      ? 'Added!'
+                      : !canBuy
+                        ? (product.stockStatus === 'out_of_stock' || selectedOption?.inStock === false ? 'Out of stock' : 'Unavailable')
+                        : 'Add to Cart'}
+              </motion.button>
+            </>
           )}
-          <motion.button
-            whileHover={priceKnown && !isAdding ? { scale: 1.02 } : undefined}
-            whileTap={priceKnown && !isAdding ? { scale: 0.98 } : undefined}
-            onClick={handleAddToCart}
-            disabled={!canBuy || isAdding}
-            aria-live="polite"
-            aria-busy={isAdding}
-            className={`w-full flex items-center justify-center gap-2 min-h-11 rounded-xl font-semibold text-sm transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${
-              addedToCart
-                ? 'bg-himalayan-green text-white'
-                : 'bg-himalayan hover:bg-himalayan-dark text-white'
-            }`}
-          >
-            {isAdding ? <Loader2 size={16} className="animate-spin" /> : <ShoppingCart size={16} />}
-            {!ORDERING_ENABLED
-              ? 'Ordering unavailable'
-              : isAdding
-                ? 'Adding…'
-                : addedToCart
-                  ? 'Added!'
-                  : !canBuy
-                    ? (product.stockStatus === 'out_of_stock' || selectedOption?.inStock === false ? 'Out of stock' : 'Unavailable')
-                    : 'Add to Cart'}
-          </motion.button>
         </div>
       </div>
     </div>
