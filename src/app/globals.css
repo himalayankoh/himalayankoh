@@ -531,35 +531,6 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
-/* Admin Dark Theme tokens & styles — phone/mobile and user preference */
-.hk-admin[data-admin-theme="dark"] {
-  --color-admin-canvas: #12100e;
-  --color-admin-surface: #1e1b18;
-  --color-admin-surface-cream: #181512;
-  --color-admin-line: #332d26;
-  --color-admin-line-subtle: #27221d;
-  --color-admin-line-strong: #453d34;
-  --color-admin-ink: #f5ede6;
-  --color-admin-muted: #a69a8f;
-  color: #f5ede6;
-  background-color: #12100e;
-}
-
-.hk-admin[data-admin-theme="dark"] .admin-topbar {
-  background: rgba(30, 27, 24, 0.95);
-  border-bottom: 1px solid #332d26;
-}
-
-.hk-admin[data-admin-theme="dark"] nav[aria-label="Admin quick navigation"] {
-  background: rgba(24, 21, 18, 0.95);
-  border-top: 1px solid #332d26;
-}
-
-.hk-admin[data-admin-theme="dark"] .admin-surface {
-  background: #1e1b18;
-  border-color: #332d26;
-  color: #f5ede6;
-}
 
 /* ── LeadOS workspace shell ───────────────────────────────────────────────
    The desktop canvas keeps its 1400px rhythm; on phones the same markup goes
@@ -768,19 +739,3 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
   .leados-library-toolbar { gap: 1rem; padding: 1rem; border-radius: 0.875rem; }
   .leados-section-tabs > button { flex-shrink: 0; }
 }
-
-.hk-admin[data-admin-theme='dark'] .leados-workspace { background: #12100e; }
-.hk-admin[data-admin-theme='dark'] .leados-subnav,
-.hk-admin[data-admin-theme='dark'] .leados-library-toolbar,
-.hk-admin[data-admin-theme='dark'] .leados-results,
-.hk-admin[data-admin-theme='dark'] .lead-mobile-card { background: #1e1b18; border-color: #332d26; }
-.hk-admin[data-admin-theme='dark'] .lead-mobile-card[data-selected='true'] { background: rgb(79 70 229 / 0.16); }
-.hk-admin[data-admin-theme='dark'] .lead-mobile-identity h3 { color: #f5ede6; }
-.hk-admin[data-admin-theme='dark'] .lead-mobile-identity p { color: #a69a8f; }
-.hk-admin[data-admin-theme='dark'] .lead-mobile-meta > span { background: #181512; border-color: #453d34; color: #d8ccc1; }
-.hk-admin[data-admin-theme='dark'] .leados-library-tools > summary,
-.hk-admin[data-admin-theme='dark'] .leados-filters > summary,
-.hk-admin[data-admin-theme='dark'] .lead-secondary-actions > summary { background: #181512; border-color: #453d34; color: #f5ede6; }
-.hk-admin[data-admin-theme='dark'] .lead-secondary-actions > div { background: #1e1b18; border-color: #453d34; }
-.hk-admin[data-admin-theme='dark'] .lead-secondary-actions > div > button,
-.hk-admin[data-admin-theme='dark'] .lead-secondary-actions > div > a { color: #f5ede6; }

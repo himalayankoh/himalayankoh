@@ -477,12 +477,17 @@ export function CatalogProductsPage() {
   }, []);
 
   useEffect(() => {
-    setColOrder(loadCatalogColumns(window.localStorage));
-    applyColWidths(loadCatalogWidths(window.localStorage), false);
-    useSeoJobStore.getState().hydrate();
-    // Client-only state is applied only after the SSR/client first render agrees.
-    setRenderNowMs(Date.now());
-    setHydrated(true);
+    try {
+      setColOrder(loadCatalogColumns(window.localStorage));
+      applyColWidths(loadCatalogWidths(window.localStorage), false);
+      useSeoJobStore.getState().hydrate();
+      // Client-only state is applied only after the SSR/client first render agrees.
+      setRenderNowMs(Date.now());
+    } catch {
+      // In private browsing or restricted mobile storage, fallback to defaults
+    } finally {
+      setHydrated(true);
+    }
   }, [applyColWidths]);
   // Guard for the store's onFinished callback: skip the reload if we've unmounted.
   const mountedRef = useRef(true);

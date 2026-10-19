@@ -24,9 +24,6 @@ import {
   List,
   EnvelopeSimple,
   Bell,
-  Sun,
-  Moon,
-  Desktop,
   DeviceMobile,
 } from '@phosphor-icons/react';
 import { useAuthContext } from '../../context/AuthContext';
@@ -172,6 +169,7 @@ export const NAV_ITEMS: NavItem[] = [
 
 const MOBILE_NAV: { key: string; label: string; to?: string; icon: NavIcon }[] = [
   { key: 'home', label: 'Dashboard', to: '/admin', icon: SquaresFour },
+  { key: 'products', label: 'Products', to: '/admin/products', icon: Package },
   { key: 'leados', label: 'LeadOS', to: '/admin/leados', icon: Target },
   { key: 'inbox', label: 'Inbox', to: '/admin/inbox', icon: EnvelopeSimple },
   { key: 'orders', label: 'Orders', to: '/admin/orders', icon: ShoppingCart },
@@ -314,44 +312,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   }, [userMenuOpen]);
 
   // --- THEME SUPPORT (Light, Dark, System) ---
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('hk_admin_theme');
-        if (saved === 'light' || saved === 'dark' || saved === 'system') return saved;
-      } catch {}
-    }
-    return 'system';
-  });
-
-  const [effectiveDark, setEffectiveDark] = useState<boolean>(false);
-
+  // Light Console Theme permanently enforced
   useEffect(() => {
-    const updateDark = () => {
-      if (theme === 'dark') {
-        setEffectiveDark(true);
-      } else if (theme === 'light') {
-        setEffectiveDark(false);
-      } else {
-        setEffectiveDark(window.matchMedia('(prefers-color-scheme: dark)').matches);
-      }
-    };
-
-    updateDark();
-
-    if (theme === 'system') {
-      const mql = window.matchMedia('(prefers-color-scheme: dark)');
-      mql.addEventListener('change', updateDark);
-      return () => mql.removeEventListener('change', updateDark);
-    }
-  }, [theme]);
-
-  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
-    setTheme(newTheme);
     try {
-      localStorage.setItem('hk_admin_theme', newTheme);
+      localStorage.removeItem('hk_admin_theme');
     } catch {}
-  };
+  }, []);
 
   // --- PWA SERVICE WORKER & INSTALLATION ---
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -569,6 +535,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <Link
                   prefetch={false}
                   to={l.to}
+                  onClick={() => {
+                    if (mobile) setMobSide(false);
+                  }}
                   aria-current={isDirectActive ? 'page' : undefined}
                   title={l.label}
                   className={`admin-rail-link group relative flex flex-1 min-w-0 items-center gap-2.5 px-2.5 py-2 min-h-10 rounded-xl text-[13px] font-medium transition-colors duration-150 ${
@@ -624,6 +593,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         prefetch={false}
                         key={sub.to}
                         to={sub.to}
+                        onClick={() => {
+                          if (mobile) setMobSide(false);
+                        }}
                         aria-current={isSubActive ? 'page' : undefined}
                         className={`block px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors truncate ${
                           isSubActive
@@ -646,6 +618,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <div className="p-2 border-t border-white/15 bg-black/5 space-y-0.5">
         <Link prefetch={false}
           to="/"
+          onClick={() => {
+            if (mobile) setMobSide(false);
+          }}
           title="Storefront"
           className={`flex items-center gap-2 text-xs text-[#FFF3EB] hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-white/10 transition-colors ${mini ? 'justify-center px-1.5' : ''}`}
         >
@@ -699,9 +674,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div
-      className="hk-admin h-dvh w-full flex overflow-hidden font-sans"
+      className="hk-admin h-dvh w-full flex overflow-hidden font-sans bg-[#FAF7F1] text-[#26211C]"
       style={railVars}
-      data-admin-theme={effectiveDark ? 'dark' : 'light'}
     >
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip bg-white p-3 rounded-lg">Skip to workspace</a>
       {renderSidebar({ mini: railMini })}
@@ -980,41 +954,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     </Link>
                   </div>
 
-                  {/* Theme Mode Selector */}
-                  <div className="p-2 border-t border-[#E0D6C8] bg-[#FAF7F1]/50">
-                    <p className="text-[10px] font-bold text-[#6D6258] uppercase tracking-wider mb-1.5 px-1">
-                      Theme Appearance
-                    </p>
-                    <div className="grid grid-cols-3 gap-1 bg-[#E0D6C8]/40 p-0.5 rounded-lg text-[11px] font-medium text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleThemeChange('light')}
-                        className={`flex items-center justify-center gap-1 py-1 rounded-md transition-colors ${
-                          theme === 'light' ? 'bg-white text-[#26211C] font-semibold shadow-xs' : 'text-[#6D6258] hover:text-[#26211C]'
-                        }`}
-                      >
-                        <Sun size={12} weight={theme === 'light' ? 'bold' : 'regular'} /> Light
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleThemeChange('dark')}
-                        className={`flex items-center justify-center gap-1 py-1 rounded-md transition-colors ${
-                          theme === 'dark' ? 'bg-slate-900 text-white font-semibold shadow-xs' : 'text-[#6D6258] hover:text-[#26211C]'
-                        }`}
-                      >
-                        <Moon size={12} weight={theme === 'dark' ? 'bold' : 'regular'} /> Dark
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleThemeChange('system')}
-                        className={`flex items-center justify-center gap-1 py-1 rounded-md transition-colors ${
-                          theme === 'system' ? 'bg-white text-[#26211C] font-semibold shadow-xs' : 'text-[#6D6258] hover:text-[#26211C]'
-                        }`}
-                      >
-                        <Desktop size={12} weight={theme === 'system' ? 'bold' : 'regular'} /> Auto
-                      </button>
-                    </div>
-                  </div>
 
                   {/* PWA Install Button */}
                   {canInstall && (
@@ -1072,7 +1011,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
           aria-label="Admin quick navigation"
         >
-          <div className="grid grid-cols-5 max-w-lg mx-auto">
+          <div className="grid grid-cols-6 max-w-lg mx-auto">
             {MOBILE_NAV.map((it) => {
               if (it.key === 'more') {
                 return (
@@ -1080,10 +1019,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     key="more"
                     type="button"
                     onClick={() => setMobSide(true)}
-                    className="flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-medium text-[#6D6258] hover:text-[#26211C] min-h-[52px]"
+                    className="flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium text-[#6D6258] hover:text-[#26211C] min-h-[50px]"
                   >
-                    <span className="p-1.5">
-                      <List size={20} />
+                    <span className="p-1">
+                      <List size={18} />
                     </span>
                     More
                   </button>
@@ -1092,6 +1031,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               const on =
                 it.key === 'home'
                   ? location.pathname === '/admin'
+                  : it.key === 'products'
+                  ? location.pathname.startsWith('/admin/products')
                   : it.key === 'leados'
                   ? location.pathname.startsWith('/admin/leados')
                   : it.key === 'inbox'
@@ -1104,12 +1045,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <Link prefetch={false}
                   key={it.key}
                   to={it.to || '/admin'}
-                  className={`flex flex-col items-center justify-center gap-0.5 py-2 text-[10px] min-h-[52px] ${
+                  className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] min-h-[50px] ${
                     on ? 'text-[#B86452] font-semibold' : 'text-[#6D6258] font-medium hover:text-[#26211C]'
                   }`}
                 >
-                  <span className={`px-3 py-1 rounded-xl ${on ? 'bg-[#B86452]/10 text-[#B86452]' : ''}`}>
-                    <Icon size={20} weight={on ? 'bold' : 'regular'} />
+                  <span className={`px-2 py-0.5 rounded-xl ${on ? 'bg-[#B86452]/10 text-[#B86452]' : ''}`}>
+                    <Icon size={18} weight={on ? 'bold' : 'regular'} />
                   </span>
                   {it.label}
                 </Link>
