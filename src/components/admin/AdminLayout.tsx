@@ -444,7 +444,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       if (res === 'granted' && 'serviceWorker' in navigator) {
         const reg = await navigator.serviceWorker.ready;
         reg.showNotification('Himalayan Koh Notifications Enabled', {
-          body: 'You will receive real-time alerts for new orders and inquiries.',
+          body: 'This is a local test notification. Server push is not configured, so order alerts are not delivered yet.',
           icon: '/logo.svg',
           badge: '/logo.svg',
         });
