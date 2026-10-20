@@ -2432,6 +2432,7 @@ const [open, setOpen] = useState<Record<string, boolean>>({
   integrations: false,
   emailAccounts: true,
   serviceKeys: true,
+  mobileApp: true,
 });
   const toggle = (k: string) => setOpen(s => ({ ...s, [k]: !s[k] }));
 
@@ -2795,6 +2796,108 @@ const [open, setOpen] = useState<Record<string, boolean>>({
       {/* ── Email Accounts & Mailboxes ── */}
       <Accordion id="emailAccounts" title="Email Accounts &amp; Mailboxes" icon={<EnvelopeSimple size={18} className="text-sky-600" />} open={open} toggle={toggle}>
         <Suspense fallback={null}><EmailAccountsPanel /></Suspense>
+      </Accordion>
+
+      {/* ── Mobile Application (Android APK & iOS App) ── */}
+      <Accordion id="mobileApp" title="Mobile Admin Application (Android APK &amp; iOS PWA)" icon={<DeviceMobile size={18} className="text-indigo-600" />} borderClass="border-indigo-300" open={open} toggle={toggle}>
+        <div className="pt-5 space-y-5">
+          <div className="p-4 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-2xl flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+              <DeviceMobile size={22} weight="bold" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-sm font-bold text-slate-900">Himalayan Koh Mobile Admin v1.0.0</h4>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">Live Auto-Syncing</span>
+              </div>
+              <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Yeh application hamare live Cloudflare &amp; WordPress backend se real-time connected hai. <strong>Admin panel mein hum jo bhi fixing, redesign ya new feature live karenge, mobile app kholne par wo updates bina dobara install kiye foran auto-sync ho jate hain.</strong>
+              </p>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* 1. Android APK Card */}
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold text-xs">Android APK</span>
+                  <span className="text-xs text-slate-400 font-mono">v1.0.0 • 5.78 MB</span>
+                </div>
+                <h5 className="font-bold text-slate-900 text-sm">Download Native Android App</h5>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Dedicated Android container with hardware back button support, pull-to-refresh, camera, file attachment upload, and persistent login.
+                </p>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <a
+                  href="/downloads/HimalayanKoh-Admin.apk"
+                  download="HimalayanKoh-Admin.apk"
+                  className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                >
+                  <Download size={16} weight="bold" />
+                  <span>Download Android APK (Direct)</span>
+                </a>
+                <a
+                  href="https://github.com/himalayankoh/himalayankoh/actions/workflows/build-android-apk.yml"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <ArrowSquareOut size={14} />
+                  <span>GitHub Automated Builds &amp; Releases</span>
+                </a>
+              </div>
+            </div>
+
+            {/* 2. Apple iOS (iPhone) Card */}
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 font-bold text-xs">Apple iOS (iPhone / iPad)</span>
+                  <span className="text-xs text-slate-400">Standalone PWA</span>
+                </div>
+                <h5 className="font-bold text-slate-900 text-sm">Install on iPhone Without App Store</h5>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Apple Safari mein direct installable standalone app jo bina address bar ke 100% native mobile app feel deti hai.
+                </p>
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-[11px] text-slate-700 space-y-1">
+                  <p className="font-semibold text-slate-800">iPhone Install Steps:</p>
+                  <p>1. Safari mein <code>https://himalayankoh.com/admin</code> open karein.</p>
+                  <p>2. Neechay <strong>Share button</strong> (box with arrow) tap karein.</p>
+                  <p>3. <strong>&quot;Add to Home Screen&quot;</strong> select karein. Icon screen par aa jayega.</p>
+                </div>
+              </div>
+
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText('https://himalayankoh.com/admin');
+                    notify('Admin URL copied to clipboard for mobile sharing');
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Clipboard size={15} />
+                  <span>Copy Admin Link for Team Members</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs text-slate-700">
+            <p className="font-bold text-slate-900">How Updates Work (Aapke Sawal Ka Jawab):</p>
+            <ul className="list-disc pl-4 space-y-1 text-slate-600">
+              <li>
+                <strong>Link hamesha updated rahega:</strong> Yeh download link hamesha compiled APK provide karega.
+              </li>
+              <li>
+                <strong>Admin panel fixing par dobara install nahi karna parta:</strong> Android APK live website se connect rehti hai, is liye hum code mein jo bhi tabs, leads, email composer ya fixing deploy karte hain, wo foran APK ke andar auto-update ho jati hain.
+              </li>
+            </ul>
+          </div>
+        </div>
       </Accordion>
 
       {/* Service & API keys — the credentials the server reads (Stripe, freight, email…) */}

@@ -78,3 +78,11 @@ docs/production/*customer*.csv
 *.sqlite-journal
 ops/leados/data/
 
+
+# Android build outputs and local configuration
+.gradle/
+android/.gradle/
+android/app/build/
+android/local.properties
+android/gradle/wrapper/gradle-wrapper.jar
+
