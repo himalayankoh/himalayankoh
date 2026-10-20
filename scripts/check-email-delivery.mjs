@@ -140,7 +140,7 @@ report('SMTP HOST', 'CONFIGURED', `${host}:465 (TLS certificate verification enf
 report('IMAP HOST', 'CONFIGURED', `${host}:993 (SSL/TLS direct mailbox sync)`);
 
 process.stdout.write('\nAuthorized Business Mailboxes\n');
-const mailboxes = ['sales@himalayankoh.com', 'support@himalayankoh.com', 'salman@himalayankoh.com', 'admin@himalayankoh.com'];
+const mailboxes = ['support@himalayankoh.com', 'orders@himalayankoh.com', 'marketing@himalayankoh.com', 'salman@himalayankoh.com', 'admin@himalayankoh.com'];
 for (const mb of mailboxes) {
   report('MAILBOX', 'AUTHORIZED', `${mb} (Manageable in Admin -> Email Accounts)`);
 }
