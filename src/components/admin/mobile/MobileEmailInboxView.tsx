@@ -10,10 +10,9 @@ import {
   ArrowsClockwise,
   X,
   PencilSimple,
-  ShoppingCart,
   CaretDown,
   Check,
-  Sparkle,
+  Tray,
 } from '@phosphor-icons/react';
 import type {
   InboxThread,
@@ -37,17 +36,16 @@ interface MobileEmailInboxViewProps {
   sendingReply?: boolean;
 }
 
-type MobileCategoryTab =
+export type MobileFolderMode = 'inbox' | 'sent' | 'starred';
+
+export type MobileMailboxFilter =
   | 'all'
   | 'orders'
   | 'marketing'
   | 'support'
-  | 'inquiries'
-  | 'leados'
-  | 'starred'
-  | 'sent'
   | 'salman'
-  | 'admin';
+  | 'admin'
+  | 'leados';
 
 export function MobileEmailInboxView({
   threads,
@@ -65,121 +63,120 @@ export function MobileEmailInboxView({
   const palette = getMobilePalette(isDark);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<MobileCategoryTab>(() => {
+  const [folderMode, setFolderMode] = useState<MobileFolderMode>(() => {
+    return activeFolder === 'sent' ? 'sent' : 'inbox';
+  });
+  const [mailboxFilter, setMailboxFilter] = useState<MobileMailboxFilter>(() => {
     if (activeFolder === 'orders') return 'orders';
     if (activeFolder === 'marketing') return 'marketing';
     if (activeFolder === 'support') return 'support';
     if (activeFolder === 'salman') return 'salman';
     if (activeFolder === 'admin') return 'admin';
-    if (activeFolder === 'sent') return 'sent';
     return 'all';
   });
   const [selectedThread, setSelectedThread] = useState<InboxThread | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
-  // Sync activeTab when parent changes activeFolder
+  // Sync state if parent changes activeFolder externally
   React.useEffect(() => {
-    if (activeFolder === 'orders' && activeTab !== 'orders') setActiveTab('orders');
-    else if (activeFolder === 'marketing' && activeTab !== 'marketing') setActiveTab('marketing');
-    else if (activeFolder === 'support' && activeTab !== 'support') setActiveTab('support');
-    else if (activeFolder === 'salman' && activeTab !== 'salman') setActiveTab('salman');
-    else if (activeFolder === 'admin' && activeTab !== 'admin') setActiveTab('admin');
-    else if (activeFolder === 'all' && activeTab !== 'all' && activeTab !== 'starred' && activeTab !== 'leados' && activeTab !== 'inquiries') {
-      setActiveTab('all');
+    if (activeFolder === 'sent') {
+      setFolderMode('sent');
+    } else {
+      if (activeFolder === 'orders') setMailboxFilter('orders');
+      else if (activeFolder === 'marketing') setMailboxFilter('marketing');
+      else if (activeFolder === 'support') setMailboxFilter('support');
+      else if (activeFolder === 'salman') setMailboxFilter('salman');
+      else if (activeFolder === 'admin') setMailboxFilter('admin');
+      else if (activeFolder === 'all') setMailboxFilter('all');
     }
   }, [activeFolder]);
 
-  // Handle Tab / Mailbox Selection
-  const handleSelectTab = (tab: MobileCategoryTab) => {
-    setActiveTab(tab);
-    setAccountMenuOpen(false);
-
-    // Call server folder filter when appropriate
-    if (tab === 'orders') onSelectFolder('orders');
-    else if (tab === 'marketing') onSelectFolder('marketing');
-    else if (tab === 'support') onSelectFolder('support');
-    else if (tab === 'salman') onSelectFolder('salman');
-    else if (tab === 'admin') onSelectFolder('admin');
-    else if (tab === 'sent') onSelectFolder('sent');
-    else if (tab === 'all') onSelectFolder('all');
-    // Local filters (inquiries, leados, starred) operate on current pool
+  // Handle Switching between Inbox, Sent, and Starred
+  const handleSelectFolderMode = (mode: MobileFolderMode) => {
+    setFolderMode(mode);
+    if (mode === 'sent') {
+      onSelectFolder('sent');
+    } else if (mode === 'inbox') {
+      if (mailboxFilter === 'orders') onSelectFolder('orders');
+      else if (mailboxFilter === 'marketing') onSelectFolder('marketing');
+      else if (mailboxFilter === 'support') onSelectFolder('support');
+      else if (mailboxFilter === 'salman') onSelectFolder('salman');
+      else if (mailboxFilter === 'admin') onSelectFolder('admin');
+      else onSelectFolder('all');
+    }
   };
 
-  // Computed summary counts based on active category
-  const totalEmailsCount = useMemo(() => {
-    if (!counts) return threads.length;
-    if (activeTab === 'orders') return counts.orders;
-    if (activeTab === 'marketing') return counts.marketing;
-    if (activeTab === 'support') return counts.support;
-    if (activeTab === 'salman') return counts.salman;
-    if (activeTab === 'admin') return counts.admin;
-    if (activeTab === 'sent') return counts.sent;
-    return counts.all;
-  }, [counts, activeTab, threads.length]);
+  // Handle Switching Mailbox Account
+  const handleSelectMailbox = (mb: MobileMailboxFilter) => {
+    setMailboxFilter(mb);
+    setAccountMenuOpen(false);
 
-  const unreadCount = useMemo(() => {
-    if (!counts) return threads.filter((t) => t.unread).length;
-    if (activeTab === 'orders') return counts.ordersUnread;
-    if (activeTab === 'marketing') return counts.marketingUnread;
-    if (activeTab === 'support') return counts.supportUnread;
-    if (activeTab === 'salman') return counts.salmanUnread;
-    if (activeTab === 'admin') return counts.adminUnread;
-    return counts.allUnread;
-  }, [counts, activeTab, threads]);
+    if (folderMode === 'sent') {
+      // In Sent mode, keep sent query active on server, filter mailbox locally
+      onSelectFolder('sent');
+    } else {
+      // In Inbox mode, query selected server mailbox
+      if (mb === 'orders') onSelectFolder('orders');
+      else if (mb === 'marketing') onSelectFolder('marketing');
+      else if (mb === 'support') onSelectFolder('support');
+      else if (mb === 'salman') onSelectFolder('salman');
+      else if (mb === 'admin') onSelectFolder('admin');
+      else onSelectFolder('all');
+    }
+  };
 
-  const starredCount = useMemo(() => {
-    return threads.filter((t) => t.starred).length;
-  }, [threads]);
-
-  // Filtered threads list (Combining mailbox separation + tab + search)
+  // Filtered threads list (Strict Gmail-style filtering)
   const filteredThreads = useMemo(() => {
     return threads.filter((t) => {
       const mailbox = (t.mailbox || '').toLowerCase();
+      const latestMsg = t.latestMessage;
+      const isOutbound = latestMsg?.direction === 'outbound' || t.messages.some((m) => m.direction === 'outbound');
 
-      // Explicit mailbox isolation when selected
-      if (activeTab === 'orders' && !mailbox.includes('orders')) {
-        return false;
-      }
-      if (activeTab === 'marketing' && !mailbox.includes('marketing')) {
-        return false;
-      }
-      if (activeTab === 'support' && !mailbox.includes('support')) {
-        return false;
-      }
-      if (activeTab === 'salman' && !mailbox.includes('salman')) {
-        return false;
-      }
-      if (activeTab === 'admin' && !mailbox.includes('admin')) {
-        return false;
-      }
-
-      // Feature tabs
-      if (activeTab === 'sent' && !t.messages.some((m) => m.direction === 'outbound')) {
-        return false;
-      }
-      if (activeTab === 'starred' && !t.starred) {
-        return false;
-      }
-      if (activeTab === 'leados' && !t.messages.some((m) => m.leadId)) {
-        return false;
-      }
-      if (
-        activeTab === 'inquiries' &&
-        !t.subject.toLowerCase().includes('inquiry') &&
-        !t.subject.toLowerCase().includes('order') &&
-        !t.subject.toLowerCase().includes('quote')
-      ) {
-        return false;
+      // 1. Primary Folder Mode Filter
+      if (folderMode === 'sent') {
+        if (!isOutbound && !t.messages.some((m) => m.folder === 'sent')) {
+          return false;
+        }
+      } else if (folderMode === 'inbox') {
+        // When in Inbox view, if we're not explicitly in Sent, require incoming or non-sent
+        if (activeFolder === 'sent' && isOutbound) {
+          // If server returned sent pool, allow viewing
+        } else if (isOutbound && t.messages.every((m) => m.direction === 'outbound')) {
+          // Pure sent threads belong in Sent folder
+          return false;
+        }
+      } else if (folderMode === 'starred') {
+        if (!t.starred) return false;
       }
 
-      // Search query
+      // 2. Mailbox Account Filter
+      if (mailboxFilter === 'orders' && !mailbox.includes('orders')) {
+        return false;
+      }
+      if (mailboxFilter === 'marketing' && !mailbox.includes('marketing')) {
+        return false;
+      }
+      if (mailboxFilter === 'support' && !mailbox.includes('support')) {
+        return false;
+      }
+      if (mailboxFilter === 'salman' && !mailbox.includes('salman')) {
+        return false;
+      }
+      if (mailboxFilter === 'admin' && !mailbox.includes('admin')) {
+        return false;
+      }
+      if (mailboxFilter === 'leados' && !t.messages.some((m) => m.leadId)) {
+        return false;
+      }
+
+      // 3. Search Query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchesSubject = t.subject.toLowerCase().includes(q);
         const matchesSender = t.participants.some(
           (p) => (p.name || '').toLowerCase().includes(q) || p.email.toLowerCase().includes(q)
         );
-        const snippetText = t.latestMessage?.snippet || t.latestMessage?.bodyText || '';
+        const snippetText = latestMsg?.snippet || latestMsg?.bodyText || '';
         const matchesSnippet = snippetText.toLowerCase().includes(q);
         if (!matchesSubject && !matchesSender && !matchesSnippet) {
           return false;
@@ -188,30 +185,37 @@ export function MobileEmailInboxView({
 
       return true;
     });
-  }, [threads, activeTab, searchQuery]);
+  }, [threads, folderMode, mailboxFilter, searchQuery, activeFolder]);
 
-  // Meaningful sender resolver
-  const resolveMeaningfulSender = (thread: InboxThread) => {
+  // Meaningful recipient / sender resolver for Gmail list
+  const resolveListParticipant = (thread: InboxThread) => {
     const latest = thread.latestMessage;
-    if (latest && latest.direction === 'outbound') {
-      const fromEmail = (latest.from?.email || '').toLowerCase();
-      if (fromEmail.includes('orders')) return 'Orders & Fulfillment';
-      if (fromEmail.includes('support')) return 'Support Team';
-      if (fromEmail.includes('marketing')) return 'Marketing Team';
-      if (fromEmail.includes('salman')) return 'Salman';
-      if (fromEmail.includes('sales')) return 'Sales Team';
-      if (fromEmail.includes('admin')) return 'Admin';
-      return 'Himalayan Koh';
+    const isOutbound = folderMode === 'sent' || latest?.direction === 'outbound';
+
+    // In Sent mode: Show "To: recipient"
+    if (isOutbound) {
+      const externalTo = latest?.to?.find((p) => !p.email.toLowerCase().includes('himalayankoh.com'));
+      if (externalTo?.name && !externalTo.name.toLowerCase().includes('himalayan koh')) {
+        return `To: ${externalTo.name}`;
+      }
+      if (externalTo?.email) {
+        return `To: ${externalTo.email}`;
+      }
+      const firstTo = latest?.to?.[0];
+      if (firstTo?.name) return `To: ${firstTo.name}`;
+      if (firstTo?.email) return `To: ${firstTo.email}`;
+      return 'To: Recipient';
     }
 
-    const externalParticipant = thread.participants.find(
+    // In Inbox mode: Show incoming sender
+    const externalFrom = thread.participants.find(
       (p) => !p.email.toLowerCase().includes('himalayankoh.com')
     );
-    if (externalParticipant?.name && !externalParticipant.name.toLowerCase().includes('himalayan koh')) {
-      return externalParticipant.name;
+    if (externalFrom?.name && !externalFrom.name.toLowerCase().includes('himalayan koh')) {
+      return externalFrom.name;
     }
-    if (externalParticipant?.email) {
-      return externalParticipant.email.split('@')[0];
+    if (externalFrom?.email) {
+      return externalFrom.email.split('@')[0];
     }
 
     const p0 = thread.participants[0];
@@ -275,7 +279,6 @@ export function MobileEmailInboxView({
     return null;
   };
 
-  // Color generator for avatar initials
   const getAvatarBg = (name: string) => {
     const colors = [
       'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
@@ -316,293 +319,29 @@ export function MobileEmailInboxView({
     }
   };
 
-  // Active account information for Gmail-Style Switcher Header
-  const currentAccountInfo = useMemo(() => {
-    switch (activeTab) {
+  const currentMailboxLabel = useMemo(() => {
+    switch (mailboxFilter) {
       case 'orders':
-        return {
-          title: 'orders@himalayankoh.com',
-          subtitle: 'Orders & Store Fulfillment • Real-time Sync',
-          icon: '🛒',
-          pillColor: '#F59E0B',
-        };
+        return { name: 'orders@himalayankoh.com', icon: '🛒', tag: 'Orders' };
       case 'marketing':
-        return {
-          title: 'marketing@himalayankoh.com',
-          subtitle: 'Marketing & B2B Campaigns • Live',
-          icon: '📢',
-          pillColor: '#A855F7',
-        };
+        return { name: 'marketing@himalayankoh.com', icon: '📢', tag: 'Marketing' };
       case 'support':
-        return {
-          title: 'support@himalayankoh.com',
-          subtitle: 'Customer Support & Inquiries',
-          icon: '💬',
-          pillColor: '#10B981',
-        };
+        return { name: 'support@himalayankoh.com', icon: '💬', tag: 'Support' };
       case 'salman':
-        return {
-          title: 'salman@himalayankoh.com',
-          subtitle: 'Direct Executive Inquiries',
-          icon: '👤',
-          pillColor: '#3B82F6',
-        };
+        return { name: 'salman@himalayankoh.com', icon: '👤', tag: 'Direct' };
       case 'admin':
-        return {
-          title: 'admin@himalayankoh.com',
-          subtitle: 'System Notifications & Security',
-          icon: '🔒',
-          pillColor: '#64748B',
-        };
+        return { name: 'admin@himalayankoh.com', icon: '🔒', tag: 'Admin' };
       default:
-        return {
-          title: 'All Inboxes (Combined)',
-          subtitle: 'All Himalayan Koh Business Mailboxes',
-          icon: '🌟',
-          pillColor: '#8B5CF6',
-        };
+        return { name: 'All Inboxes', icon: '🌟', tag: 'All' };
     }
-  }, [activeTab]);
+  }, [mailboxFilter]);
 
   return (
-    <div className="md:hidden flex flex-col space-y-3.5 pb-20">
-      {/* ── 1. Top Overview 3-Stat Cards ───────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-2.5">
-        {/* Total Emails */}
-        <div
-          className="rounded-2xl p-3 flex flex-col justify-between transition-all"
-          style={{
-            backgroundColor: palette.cardBg,
-            border: `1px solid ${palette.cardBorder}`,
-            boxShadow: palette.cardShadow,
-          }}
-        >
-          <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-white mb-2 shrink-0 shadow-sm"
-            style={{
-              background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
-            }}
-          >
-            <EnvelopeSimple size={16} weight="bold" />
-          </div>
-          <div>
-            <div className="text-xl font-black leading-tight" style={{ color: palette.textPrimary }}>
-              {totalEmailsCount}
-            </div>
-            <div className="text-[10px] font-semibold mt-0.5 truncate" style={{ color: palette.textSecondary }}>
-              {activeTab === 'orders' ? 'Orders Total' : activeTab === 'marketing' ? 'Marketing Total' : 'Total Emails'}
-            </div>
-          </div>
-        </div>
-
-        {/* Unread */}
-        <div
-          className="rounded-2xl p-3 flex flex-col justify-between transition-all"
-          style={{
-            backgroundColor: palette.cardBg,
-            border: `1px solid ${palette.cardBorder}`,
-            boxShadow: palette.cardShadow,
-          }}
-        >
-          <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-white mb-2 shrink-0 shadow-sm"
-            style={{
-              background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
-            }}
-          >
-            <PaperPlaneRight size={16} weight="bold" />
-          </div>
-          <div>
-            <div className="text-xl font-black leading-tight" style={{ color: palette.textPrimary }}>
-              {unreadCount}
-            </div>
-            <div className="text-[10px] font-semibold mt-0.5 truncate" style={{ color: palette.textSecondary }}>
-              Unread
-            </div>
-          </div>
-        </div>
-
-        {/* Starred */}
-        <div
-          className="rounded-2xl p-3 flex flex-col justify-between transition-all"
-          style={{
-            backgroundColor: palette.cardBg,
-            border: `1px solid ${palette.cardBorder}`,
-            boxShadow: palette.cardShadow,
-          }}
-        >
-          <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center text-white mb-2 shrink-0 shadow-sm"
-            style={{
-              background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-            }}
-          >
-            <Star size={16} weight="fill" />
-          </div>
-          <div>
-            <div className="text-xl font-black leading-tight" style={{ color: palette.textPrimary }}>
-              {starredCount}
-            </div>
-            <div className="text-[10px] font-semibold mt-0.5 truncate" style={{ color: palette.textSecondary }}>
-              Starred
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 2. Gmail-Style Active Account Switcher Bar ─────────────────── */}
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setAccountMenuOpen((v) => !v)}
-          className="w-full p-2.5 rounded-2xl flex items-center justify-between transition-all active:scale-[0.99] cursor-pointer"
-          style={{
-            backgroundColor: isDark ? 'rgba(30, 41, 59, 0.7)' : '#FFFFFF',
-            border: `1.5px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0'}`,
-            boxShadow: palette.cardShadow,
-          }}
-        >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="text-lg shrink-0">{currentAccountInfo.icon}</span>
-            <div className="text-left min-w-0">
-              <div
-                className="text-xs font-black truncate flex items-center gap-1.5"
-                style={{ color: palette.textPrimary }}
-              >
-                <span>{currentAccountInfo.title}</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-              <div className="text-[10px] truncate" style={{ color: palette.textSecondary }}>
-                {currentAccountInfo.subtitle}
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold shrink-0 transition-colors"
-            style={{
-              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
-              color: palette.textPrimary,
-            }}
-          >
-            <span>Switch</span>
-            <CaretDown size={11} weight="bold" />
-          </div>
-        </button>
-
-        {/* Dropdown Modal for Account Switching */}
-        {accountMenuOpen && (
-          <div
-            className="absolute left-0 right-0 top-full mt-2 z-50 rounded-2xl p-2 shadow-2xl backdrop-blur-xl border animate-in fade-in duration-150"
-            style={{
-              backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
-              borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : '#CBD5E1',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3)',
-            }}
-          >
-            <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Select Himalayan Koh Mailbox
-            </div>
-
-            <div className="space-y-1">
-              {[
-                {
-                  id: 'all' as MobileCategoryTab,
-                  icon: '🌟',
-                  email: 'All Inboxes',
-                  label: 'Unified Inbox Stream',
-                  count: counts?.all ?? threads.length,
-                  unread: counts?.allUnread ?? 0,
-                },
-                {
-                  id: 'orders' as MobileCategoryTab,
-                  icon: '🛒',
-                  email: 'orders@himalayankoh.com',
-                  label: 'WooCommerce & Store Orders',
-                  count: counts?.orders ?? 0,
-                  unread: counts?.ordersUnread ?? 0,
-                },
-                {
-                  id: 'marketing' as MobileCategoryTab,
-                  icon: '📢',
-                  email: 'marketing@himalayankoh.com',
-                  label: 'B2B Wholesale & Outreach',
-                  count: counts?.marketing ?? 0,
-                  unread: counts?.marketingUnread ?? 0,
-                },
-                {
-                  id: 'support' as MobileCategoryTab,
-                  icon: '💬',
-                  email: 'support@himalayankoh.com',
-                  label: 'Customer Support & Helpdesk',
-                  count: counts?.support ?? 0,
-                  unread: counts?.supportUnread ?? 0,
-                },
-                {
-                  id: 'salman' as MobileCategoryTab,
-                  icon: '👤',
-                  email: 'salman@himalayankoh.com',
-                  label: 'Direct Executive Inquiries',
-                  count: counts?.salman ?? 0,
-                  unread: counts?.salmanUnread ?? 0,
-                },
-                {
-                  id: 'admin' as MobileCategoryTab,
-                  icon: '🔒',
-                  email: 'admin@himalayankoh.com',
-                  label: 'System & Security Logs',
-                  count: counts?.admin ?? 0,
-                  unread: counts?.adminUnread ?? 0,
-                },
-              ].map((acc) => {
-                const isSelected = activeTab === acc.id;
-                return (
-                  <button
-                    key={acc.id}
-                    type="button"
-                    onClick={() => handleSelectTab(acc.id)}
-                    className="w-full px-3 py-2.5 rounded-xl flex items-center justify-between transition-colors text-left active:scale-[0.99] cursor-pointer"
-                    style={{
-                      backgroundColor: isSelected
-                        ? isDark
-                          ? 'rgba(59, 130, 246, 0.2)'
-                          : '#EFF6FF'
-                        : 'transparent',
-                    }}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-base shrink-0">{acc.icon}</span>
-                      <div className="min-w-0">
-                        <div
-                          className={`text-xs truncate ${isSelected ? 'font-black text-blue-500' : 'font-bold'}`}
-                          style={{ color: isSelected ? undefined : palette.textPrimary }}
-                        >
-                          {acc.email}
-                        </div>
-                        <div className="text-[10px] text-slate-400 truncate">{acc.label}</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      {acc.unread > 0 && (
-                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white">
-                          {acc.unread}
-                        </span>
-                      )}
-                      {isSelected && <Check size={14} weight="bold" className="text-blue-500" />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── 3. Search & Action Row ──────────────────────────────────────── */}
+    <div className="md:hidden flex flex-col space-y-3 pb-20">
+      {/* ── 1. Gmail-Style Floating Search & Action Row ───────────────── */}
       <div className="flex items-center gap-2">
         <div
-          className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-all"
+          className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-all shadow-xs"
           style={{
             backgroundColor: palette.searchBg,
             borderColor: palette.searchBorder,
@@ -613,7 +352,7 @@ export function MobileEmailInboxView({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={`Search ${currentAccountInfo.title}...`}
+            placeholder={`Search ${folderMode === 'sent' ? 'sent emails' : currentMailboxLabel.tag}...`}
             aria-label="Search emails"
             className="w-full bg-transparent text-xs outline-none font-medium"
             style={{
@@ -665,44 +404,111 @@ export function MobileEmailInboxView({
         </button>
       </div>
 
-      {/* ── 4. Gmail-Style Horizontal Category Filter Chips ─────────────── */}
+      {/* ── 2. Gmail Standard Folders Bar (Inbox vs Sent vs Starred) ──── */}
+      <div
+        className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl border"
+        style={{
+          backgroundColor: isDark ? 'rgba(15, 23, 42, 0.6)' : '#F1F5F9',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+        }}
+      >
+        {/* Inbox Tab */}
+        <button
+          type="button"
+          onClick={() => handleSelectFolderMode('inbox')}
+          className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+            folderMode === 'inbox'
+              ? 'bg-blue-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Tray size={15} weight={folderMode === 'inbox' ? 'fill' : 'bold'} />
+          <span>Inbox</span>
+          {Boolean(counts?.allUnread && counts.allUnread > 0) && (
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[9px] font-black ${
+                folderMode === 'inbox' ? 'bg-white text-blue-700' : 'bg-blue-500 text-white'
+              }`}
+            >
+              {counts?.allUnread}
+            </span>
+          )}
+        </button>
+
+        {/* Sent Tab */}
+        <button
+          type="button"
+          onClick={() => handleSelectFolderMode('sent')}
+          className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+            folderMode === 'sent'
+              ? 'bg-violet-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <PaperPlaneRight size={15} weight={folderMode === 'sent' ? 'fill' : 'bold'} />
+          <span>Sent</span>
+          {Boolean(counts?.sent && counts.sent > 0) && (
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[9px] font-black ${
+                folderMode === 'sent' ? 'bg-white text-violet-700' : 'bg-slate-700 text-slate-300'
+              }`}
+            >
+              {counts?.sent}
+            </span>
+          )}
+        </button>
+
+        {/* Starred Tab */}
+        <button
+          type="button"
+          onClick={() => handleSelectFolderMode('starred')}
+          className={`py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all active:scale-95 cursor-pointer ${
+            folderMode === 'starred'
+              ? 'bg-amber-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Star size={15} weight={folderMode === 'starred' ? 'fill' : 'bold'} />
+          <span>Starred</span>
+        </button>
+      </div>
+
+      {/* ── 3. Gmail Account Filter Pills Row ─────────────────────────── */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
         {[
-          { id: 'all' as MobileCategoryTab, label: 'All', icon: '🌟' },
+          { id: 'all' as MobileMailboxFilter, label: 'All Accounts', icon: '🌟' },
           {
-            id: 'orders' as MobileCategoryTab,
+            id: 'orders' as MobileMailboxFilter,
             label: 'Orders',
             icon: '🛒',
             badge: counts?.ordersUnread,
             badgeColor: 'bg-amber-500 text-white',
           },
           {
-            id: 'marketing' as MobileCategoryTab,
+            id: 'marketing' as MobileMailboxFilter,
             label: 'Marketing',
             icon: '📢',
             badge: counts?.marketingUnread,
             badgeColor: 'bg-purple-500 text-white',
           },
           {
-            id: 'support' as MobileCategoryTab,
+            id: 'support' as MobileMailboxFilter,
             label: 'Support',
             icon: '💬',
             badge: counts?.supportUnread,
             badgeColor: 'bg-emerald-500 text-white',
           },
-          { id: 'inquiries' as MobileCategoryTab, label: 'Primary', icon: '💼' },
-          { id: 'leados' as MobileCategoryTab, label: 'LeadOS', icon: '🎯' },
-          { id: 'starred' as MobileCategoryTab, label: 'Starred', icon: '⭐' },
-          { id: 'sent' as MobileCategoryTab, label: 'Sent', icon: '📤' },
-          { id: 'admin' as MobileCategoryTab, label: 'Admin', icon: '🔒' },
+          { id: 'salman' as MobileMailboxFilter, label: 'Direct', icon: '👤' },
+          { id: 'admin' as MobileMailboxFilter, label: 'Admin', icon: '🔒' },
+          { id: 'leados' as MobileMailboxFilter, label: 'LeadOS', icon: '🎯' },
         ].map((chip) => {
-          const isActive = activeTab === chip.id;
+          const isActive = mailboxFilter === chip.id;
           return (
             <button
               key={chip.id}
               type="button"
-              onClick={() => handleSelectTab(chip.id)}
-              className="px-3.5 py-1.5 rounded-full text-xs font-bold shrink-0 transition-all active:scale-95 duration-150 cursor-pointer flex items-center gap-1.5"
+              onClick={() => handleSelectMailbox(chip.id)}
+              className="px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition-all active:scale-95 duration-150 cursor-pointer flex items-center gap-1.5"
               style={{
                 background: isActive ? palette.chipActiveBg : palette.chipInactiveBg,
                 color: isActive ? palette.chipActiveText : palette.chipInactiveText,
@@ -722,8 +528,19 @@ export function MobileEmailInboxView({
         })}
       </div>
 
-      {/* ── 5. Email Messages List With Distinct Mailbox Badges ─────────── */}
-      <div className="space-y-2.5">
+      {/* ── 4. Compact Gmail Mailbox Header Indicator ─────────────────── */}
+      <div className="flex items-center justify-between px-1 text-[11px] font-bold">
+        <div className="flex items-center gap-1.5 text-slate-400">
+          <span>{currentMailboxLabel.icon}</span>
+          <span style={{ color: palette.textPrimary }}>{currentMailboxLabel.name}</span>
+          <span className="text-slate-500">&bull;</span>
+          <span className="capitalize text-blue-400">{folderMode}</span>
+        </div>
+        <span className="text-slate-400 font-semibold">{filteredThreads.length} conversation(s)</span>
+      </div>
+
+      {/* ── 5. Email Messages List ─────────────────────────────────────── */}
+      <div className="space-y-2">
         {filteredThreads.length === 0 ? (
           <div
             className="rounded-2xl p-8 text-center"
@@ -734,32 +551,35 @@ export function MobileEmailInboxView({
           >
             <EnvelopeSimple size={32} className="mx-auto mb-2 text-slate-500" />
             <p className="text-sm font-bold" style={{ color: palette.textPrimary }}>
-              No messages in {currentAccountInfo.title}
+              No {folderMode} emails in {currentMailboxLabel.tag}
             </p>
             <p className="text-xs mt-1" style={{ color: palette.textSecondary }}>
               {searchQuery
                 ? `No emails matching "${searchQuery}"`
+                : folderMode === 'sent'
+                ? 'No sent messages recorded for this mailbox.'
                 : 'Your inbox is completely up to date in real time.'}
             </p>
           </div>
         ) : (
           filteredThreads.map((thread) => {
             const latest = thread.latestMessage;
-            const sender = resolveMeaningfulSender(thread);
-            const initial = sender.charAt(0).toUpperCase();
-            const avatarBg = getAvatarBg(sender);
+            const participantLabel = resolveListParticipant(thread);
+            const initial = participantLabel.replace(/^To:\s*/i, '').charAt(0).toUpperCase();
+            const avatarBg = getAvatarBg(participantLabel);
             const timeStr = formatThreadTime(latest?.createdAt || thread.updatedAt);
             const hasAttachments =
               thread.hasAttachments || thread.messages.some((m) => m.attachments && m.attachments.length > 0);
             const previewText = latest?.snippet || latest?.bodyText || 'No message preview';
-            const isUnread = Boolean(thread.unread);
+            const isUnread = Boolean(thread.unread && folderMode !== 'sent');
             const mailboxBadge = getMailboxBadge(thread.mailbox);
+            const isOutbound = folderMode === 'sent' || latest?.direction === 'outbound';
 
             return (
               <div
                 key={thread.threadId}
                 onClick={() => setSelectedThread(thread)}
-                className={`rounded-2xl p-3.5 flex items-start gap-3 transition-all duration-150 active:scale-[0.99] cursor-pointer ${
+                className={`rounded-2xl p-3 flex items-start gap-3 transition-all duration-150 active:scale-[0.99] cursor-pointer ${
                   isUnread ? 'shadow-md' : 'opacity-90 hover:opacity-100'
                 }`}
                 style={{
@@ -775,7 +595,7 @@ export function MobileEmailInboxView({
                     : `1px solid ${isDark ? 'rgba(255, 255, 255, 0.05)' : '#E2E8F0'}`,
                 }}
               >
-                {/* Unread indicator dot */}
+                {/* Unread dot / Status indicator */}
                 <div className="pt-2">
                   <span
                     className="block w-2.5 h-2.5 rounded-full transition-opacity"
@@ -798,7 +618,7 @@ export function MobileEmailInboxView({
                   {initial}
                 </div>
 
-                {/* Sender, Subject, Snippet */}
+                {/* Sender/Recipient, Subject, Snippet */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline justify-between gap-1.5">
                     <span
@@ -813,7 +633,7 @@ export function MobileEmailInboxView({
                           : '#475569',
                       }}
                     >
-                      {sender}
+                      {participantLabel}
                     </span>
                     <span
                       className="text-[10px] font-medium shrink-0"
@@ -823,11 +643,11 @@ export function MobileEmailInboxView({
                     </span>
                   </div>
 
-                  {/* Gmail-Style Mailbox Badge Row */}
+                  {/* Gmail Mailbox & Status Badges */}
                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                     {mailboxBadge && (
                       <span
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9.5px] font-black uppercase tracking-wider"
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider"
                         style={{
                           backgroundColor: mailboxBadge.bg,
                           color: mailboxBadge.text,
@@ -836,6 +656,13 @@ export function MobileEmailInboxView({
                       >
                         <span>{mailboxBadge.icon}</span>
                         <span>{mailboxBadge.label}</span>
+                      </span>
+                    )}
+
+                    {isOutbound && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-500/15 text-violet-400 border border-violet-500/25">
+                        <PaperPlaneRight size={10} weight="bold" />
+                        <span>Sent</span>
                       </span>
                     )}
 

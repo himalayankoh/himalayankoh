@@ -1749,6 +1749,8 @@ export function computeInboxCounts(messages: InboxMessage[]): InboxFolderCounts 
     if (m.folder === 'inbox') {
       counts.all++;
       if (m.unread) counts.allUnread++;
+    }
+    if (m.folder === 'inbox' || m.folder === 'sent') {
       if (m.mailbox === 'salman@himalayankoh.com') {
         counts.salman++;
         if (m.unread) counts.salmanUnread++;
@@ -1896,17 +1898,17 @@ export async function listInboxState(options?: {
     if (folder === 'all') {
       if (m.folder !== 'inbox') return false;
     } else if (folder === 'salman') {
-      if (m.folder !== 'inbox' || m.mailbox !== 'salman@himalayankoh.com') return false;
+      if ((m.folder !== 'inbox' && m.folder !== 'sent') || m.mailbox !== 'salman@himalayankoh.com') return false;
     } else if (folder === 'sales') {
-      if (m.folder !== 'inbox' || m.mailbox !== 'sales@himalayankoh.com') return false;
+      if ((m.folder !== 'inbox' && m.folder !== 'sent') || m.mailbox !== 'sales@himalayankoh.com') return false;
     } else if (folder === 'support') {
-      if (m.folder !== 'inbox' || m.mailbox !== 'support@himalayankoh.com') return false;
+      if ((m.folder !== 'inbox' && m.folder !== 'sent') || m.mailbox !== 'support@himalayankoh.com') return false;
     } else if (folder === 'orders') {
-      if (m.folder !== 'inbox' || m.mailbox !== 'orders@himalayankoh.com') return false;
+      if ((m.folder !== 'inbox' && m.folder !== 'sent') || m.mailbox !== 'orders@himalayankoh.com') return false;
     } else if (folder === 'marketing') {
-      if (m.folder !== 'inbox' || m.mailbox !== 'marketing@himalayankoh.com') return false;
+      if ((m.folder !== 'inbox' && m.folder !== 'sent') || m.mailbox !== 'marketing@himalayankoh.com') return false;
     } else if (folder === 'admin') {
-      if (m.folder !== 'inbox' || m.mailbox !== 'admin@himalayankoh.com') return false;
+      if ((m.folder !== 'inbox' && m.folder !== 'sent') || m.mailbox !== 'admin@himalayankoh.com') return false;
     } else if (folder === 'unread') {
       if (!m.unread || m.folder === 'trash' || m.folder === 'spam' || m.folder === 'drafts') {
         return false;
