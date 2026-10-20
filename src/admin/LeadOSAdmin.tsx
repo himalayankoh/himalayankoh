@@ -202,55 +202,55 @@ export function SourceBadge({ source }: { source?: string }) {
   const norm = (source || '').toLowerCase();
   if (norm.includes('google')) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-900 truncate max-w-full" title="Google Maps">
-        <span className="w-4 h-4 rounded-full bg-blue-100 border border-blue-300 text-blue-800 font-black flex items-center justify-center text-[10px] flex-shrink-0">G</span>
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-700 truncate max-w-full" title="Google Maps">
+        <span className="w-4 h-4 rounded-full bg-blue-100 border border-blue-200 text-blue-700 font-bold flex items-center justify-center text-[10px] flex-shrink-0">G</span>
         <span className="truncate">Google Maps</span>
       </span>
     );
   }
   if (norm.includes('facebook') || norm.includes('fb')) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-blue-900 truncate max-w-full" title="Facebook">
-        <span className="w-4 h-4 rounded-full bg-blue-600 text-white font-black flex items-center justify-center text-[10px] flex-shrink-0">f</span>
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-700 truncate max-w-full" title="Facebook">
+        <span className="w-4 h-4 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px] flex-shrink-0">f</span>
         <span className="truncate">Facebook</span>
       </span>
     );
   }
   if (norm.includes('instagram') || norm.includes('insta')) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-rose-900 truncate max-w-full" title="Instagram">
-        <span className="w-4 h-4 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 text-white font-black flex items-center justify-center text-[9px] flex-shrink-0">ig</span>
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-rose-700 truncate max-w-full" title="Instagram">
+        <span className="w-4 h-4 rounded-full bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 text-white font-bold flex items-center justify-center text-[9px] flex-shrink-0">ig</span>
         <span className="truncate">Instagram</span>
       </span>
     );
   }
   if (norm.includes('yelp')) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-900 truncate max-w-full" title="Yelp">
-        <span className="w-4 h-4 rounded-full bg-red-100 border border-red-300 text-red-700 font-black flex items-center justify-center text-[10px] flex-shrink-0">Y</span>
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-700 truncate max-w-full" title="Yelp">
+        <span className="w-4 h-4 rounded-full bg-red-100 border border-red-200 text-red-700 font-bold flex items-center justify-center text-[10px] flex-shrink-0">Y</span>
         <span className="truncate">Yelp</span>
       </span>
     );
   }
   if (norm.includes('website') || norm.includes('company')) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-900 truncate max-w-full" title="Company Website">
-        <Buildings weight="bold" className="w-3.5 h-3.5 text-slate-700 flex-shrink-0" />
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-700 truncate max-w-full" title="Company Website">
+        <Buildings weight="bold" className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
         <span className="truncate">Website</span>
       </span>
     );
   }
   if (norm.includes('searx') || norm.includes('web')) {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-900 truncate max-w-full" title="Website Search">
-        <Globe weight="bold" className="w-3.5 h-3.5 text-indigo-700 flex-shrink-0" />
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-700 truncate max-w-full" title="Website Search">
+        <Globe weight="bold" className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
         <span className="truncate">Web Search</span>
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] font-extrabold text-slate-900 truncate max-w-full" title="OpenStreetMap">
-      <MapPin weight="fill" className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-700 truncate max-w-full" title="OpenStreetMap">
+      <MapPin weight="fill" className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
       <span className="truncate">OSM</span>
     </span>
   );
@@ -715,23 +715,23 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
   // ── Lead Library Table Resizing, Sorting, Filtering & Row Reordering ──
   const DEFAULT_LIBRARY_COL_WIDTHS = {
-    reorder: 26,
-    check: 26,
-    index: 26,
-    name: 165,
-    location: 105,
-    category: 95,
-    contact: 175,
-    source: 85,
-    status: 80,
-    score: 55,
-    actions: 105,
+    reorder: 36,
+    check: 40,
+    index: 44,
+    name: 220,
+    location: 145,
+    category: 120,
+    contact: 220,
+    source: 95,
+    status: 105,
+    score: 75,
+    actions: 155,
   };
 
   const [libraryColWidths, setLibraryColWidths] = useState<Record<string, number>>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('hk_leados_lib_col_widths_v4');
+        const saved = localStorage.getItem('hk_leados_lib_col_widths_v5');
         if (saved) return { ...DEFAULT_LIBRARY_COL_WIDTHS, ...JSON.parse(saved) };
       } catch {}
     }
@@ -757,7 +757,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
       const newWidth = Math.max(minW, resizingLibColRef.current.startWidth + delta);
       setLibraryColWidths((prev) => {
         const next = { ...prev, [resizingLibColRef.current!.colKey]: newWidth };
-        try { localStorage.setItem('hk_leados_lib_col_widths_v4', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('hk_leados_lib_col_widths_v5', JSON.stringify(next)); } catch {}
         return next;
       });
     };
@@ -779,7 +779,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
   const handleResetLibColWidth = (colKey: string) => {
     setLibraryColWidths((prev) => {
       const next = { ...prev, [colKey]: (DEFAULT_LIBRARY_COL_WIDTHS as any)[colKey] || 100 };
-      try { localStorage.setItem('hk_leados_lib_col_widths_v4', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('hk_leados_lib_col_widths_v5', JSON.stringify(next)); } catch {}
       return next;
     });
   };
@@ -788,7 +788,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     setFitScreenMode(true);
     setLibraryColWidths(DEFAULT_LIBRARY_COL_WIDTHS);
     try {
-      localStorage.setItem('hk_leados_lib_col_widths_v4', JSON.stringify(DEFAULT_LIBRARY_COL_WIDTHS));
+      localStorage.setItem('hk_leados_lib_col_widths_v5', JSON.stringify(DEFAULT_LIBRARY_COL_WIDTHS));
     } catch {}
   };
 
@@ -2871,7 +2871,11 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     const isVerified = lead.emailSource === 'company_website' || lead.dataSource === 'openstreetmap' || Boolean(lead.phone && lead.website);
     const displayScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 82;
     const colWidth = libraryColWidths[colKey];
-    const cellStyle = fitScreenMode ? undefined : { width: colWidth, minWidth: colWidth };
+    const cellStyle = fitScreenMode
+      ? colKey === 'score'
+        ? { width: 75, minWidth: 75 }
+        : undefined
+      : { width: colWidth, minWidth: colWidth };
     const fbUrl = getLeadFacebook(lead);
     const igUrl = getLeadInstagram(lead);
 
@@ -2881,14 +2885,14 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-3 px-2.5 overflow-hidden"
+            className="py-3 px-3 overflow-hidden min-w-[220px]"
           >
-            <div className="flex items-center gap-2 min-w-0">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-extrabold text-xs flex-shrink-0 border shadow-2xs ${getAvatarBg(lead.businessName)}`}>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-semibold text-xs flex-shrink-0 border border-slate-200/60 shadow-2xs ${getAvatarBg(lead.businessName)}`}>
                 {getCompanyInitials(lead.businessName)}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="font-extrabold text-[13px] text-slate-950 flex items-center gap-1 hover:text-indigo-700 transition">
+                <div className="font-semibold text-[13px] text-slate-900 flex items-center gap-1 hover:text-indigo-600 transition">
                   <span className="truncate" title={lead.businessName}>{lead.businessName}</span>
                   {lead.osmUrl && (
                     <a
@@ -2896,18 +2900,18 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="text-slate-600 hover:text-indigo-700 inline-flex flex-shrink-0"
+                      className="text-slate-400 hover:text-indigo-600 inline-flex flex-shrink-0"
                       title="View on OpenStreetMap"
                     >
                       <ArrowSquareOut weight="bold" className="w-3.5 h-3.5" />
                     </a>
                   )}
                 </div>
-                <div className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5 mt-0.5">
+                <div className="text-[11px] font-normal text-slate-500 flex items-center gap-1.5 mt-0.5">
                   <span className="truncate">{lead.dataSource || 'OpenStreetMap'}</span>
                   {lead.notes && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold whitespace-nowrap">
-                      Has Notes
+                    <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200/70 text-[10px] font-medium whitespace-nowrap">
+                      Notes
                     </span>
                   )}
                 </div>
@@ -2925,7 +2929,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-3 px-2.5 text-slate-900 overflow-hidden"
+            className="py-3 px-3 text-slate-700 overflow-hidden min-w-[145px]"
             onClick={(e) => e.stopPropagation()}
           >
             <a
@@ -2935,12 +2939,12 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
               className="group flex flex-col text-left transition min-w-0"
               title={`Open "${mapQuery}" in Google Maps`}
             >
-              <div className="flex items-center gap-1 font-extrabold text-xs text-slate-900 group-hover:text-indigo-700 min-w-0">
-                <MapPin weight="fill" className="w-3.5 h-3.5 text-indigo-600 group-hover:text-indigo-700 flex-shrink-0" />
+              <div className="flex items-center gap-1 font-medium text-xs text-slate-800 group-hover:text-indigo-600 min-w-0">
+                <MapPin weight="fill" className="w-3.5 h-3.5 text-indigo-500 group-hover:text-indigo-600 flex-shrink-0" />
                 <span className="truncate underline-offset-2 group-hover:underline">{locText}</span>
               </div>
               {lead.address && (
-                <div className="text-[11px] font-semibold text-slate-700 group-hover:text-slate-900 truncate pl-4 mt-0.5" title={lead.address}>
+                <div className="text-[11px] font-normal text-slate-400 group-hover:text-slate-600 truncate pl-4.5 mt-0.5" title={lead.address}>
                   {lead.address}
                 </div>
               )}
@@ -2954,10 +2958,10 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-3 px-2 overflow-hidden"
+            className="py-3 px-2.5 overflow-hidden min-w-[120px]"
           >
             <span
-              className="inline-flex items-center px-2.5 py-1 rounded-full bg-blue-100/80 text-blue-950 text-[11px] font-extrabold border border-blue-300 truncate max-w-full"
+              className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-medium border border-slate-200/60 truncate max-w-full"
               title={lead.category || 'Feed Store'}
             >
               {lead.category || 'Feed Store'}
@@ -2970,59 +2974,59 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-2.5 px-2.5 text-xs overflow-hidden"
+            className="py-2.5 px-3 text-xs overflow-hidden min-w-[220px]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="space-y-1 min-w-0">
               {lead.website ? (
-                <div className="flex items-center gap-1 text-slate-900 min-w-0">
-                  <Globe weight="bold" className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                <div className="flex items-center gap-1.5 text-slate-700 min-w-0">
+                  <Globe weight="bold" className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
                   <a
                     href={lead.website}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-indigo-700 hover:text-indigo-950 hover:underline font-bold truncate inline-flex items-center gap-1 min-w-0"
+                    className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium truncate inline-flex items-center gap-1 min-w-0"
                     title={lead.website}
                   >
                     <span className="truncate">{lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
-                    <ArrowSquareOut weight="bold" className="w-3 h-3 flex-shrink-0" />
+                    <ArrowSquareOut weight="bold" className="w-3 h-3 flex-shrink-0 opacity-70" />
                   </a>
                 </div>
               ) : (
-                <div className="flex items-center gap-1 text-slate-500 font-semibold text-[11px]">
-                  <Globe className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" />
+                <div className="flex items-center gap-1.5 text-slate-400 font-normal text-[11px]">
+                  <Globe className="w-3.5 h-3.5 flex-shrink-0 text-slate-300" />
                   <span>No website</span>
                 </div>
               )}
 
               {lead.phone ? (
-                <div className="flex items-center gap-1 text-slate-900">
-                  <Phone weight="fill" className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
-                  <a href={`tel:${lead.phone}`} className="hover:underline font-extrabold text-slate-950 text-xs truncate" title={`Call ${lead.phone}`}>
+                <div className="flex items-center gap-1.5 text-slate-700">
+                  <Phone weight="fill" className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  <a href={`tel:${lead.phone}`} className="hover:underline font-medium text-slate-800 text-xs truncate" title={`Call ${lead.phone}`}>
                     {lead.phone}
                   </a>
                 </div>
               ) : (
-                <div className="flex items-center gap-1 text-slate-500 font-semibold text-[11px]">
-                  <Phone className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" />
-                  <span>No phone listed</span>
+                <div className="flex items-center gap-1.5 text-slate-400 font-normal text-[11px]">
+                  <Phone className="w-3.5 h-3.5 flex-shrink-0 text-slate-300" />
+                  <span>No phone</span>
                 </div>
               )}
 
               {lead.email ? (
-                <div className="flex items-center gap-1 min-w-0">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <a
                     href={`mailto:${lead.email}?subject=${encodeURIComponent(`Himalayan Salt Wholesale Inquiry - ${lead.businessName}`)}`}
-                    className="text-indigo-800 hover:text-indigo-950 hover:underline font-extrabold inline-flex items-center gap-1 truncate min-w-0 text-xs"
+                    className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium inline-flex items-center gap-1 truncate min-w-0 text-xs"
                     title={`Click to send email to ${lead.email}`}
                   >
-                    <EnvelopeSimple weight="fill" className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                    <EnvelopeSimple weight="fill" className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
                     <span className="truncate">{lead.email}</span>
                   </a>
-                  <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded whitespace-nowrap flex-shrink-0 ${
-                    lead.emailSource === 'company_website' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' :
-                    lead.emailSource === 'manually_entered' ? 'bg-blue-100 text-blue-900 border border-blue-300' :
-                    'bg-amber-100 text-amber-900 border border-amber-300'
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${
+                    lead.emailSource === 'company_website' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                    lead.emailSource === 'manually_entered' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                    'bg-amber-50 text-amber-700 border border-amber-200'
                   }`}>
                     {lead.emailSource === 'company_website' ? 'Web' : lead.emailSource === 'manually_entered' ? 'Staff' : 'OSM'}
                   </span>
@@ -3031,7 +3035,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 <button
                   type="button"
                   onClick={() => handleOpenEmailModal(lead)}
-                  className="text-indigo-700 hover:text-indigo-950 hover:underline flex items-center gap-1 font-bold text-[11px] cursor-pointer"
+                  className="text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 font-medium text-[11px] cursor-pointer"
                 >
                   <Plus weight="bold" className="w-3 h-3" /> Add email
                 </button>
@@ -3044,11 +3048,11 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       href={fbUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 hover:bg-blue-200 text-blue-950 border border-blue-300 text-[10px] font-extrabold transition"
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[10px] font-medium transition"
                       title={`Open Facebook: ${fbUrl}`}
                     >
                       <span>FB</span>
-                      <ArrowSquareOut weight="bold" className="w-2.5 h-2.5" />
+                      <ArrowSquareOut weight="bold" className="w-2.5 h-2.5 opacity-70" />
                     </a>
                   )}
                   {igUrl && (
@@ -3056,11 +3060,11 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       href={igUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-100 hover:bg-pink-200 text-pink-950 border border-pink-300 text-[10px] font-extrabold transition"
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 text-[10px] font-medium transition"
                       title={`Open Instagram: ${igUrl}`}
                     >
                       <span>IG</span>
-                      <ArrowSquareOut weight="bold" className="w-2.5 h-2.5" />
+                      <ArrowSquareOut weight="bold" className="w-2.5 h-2.5 opacity-70" />
                     </a>
                   )}
                 </div>
@@ -3074,7 +3078,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-3 px-2 overflow-hidden"
+            className="py-3 px-2.5 overflow-hidden min-w-[95px]"
           >
             <SourceBadge source={lead.dataSource || 'Google Maps'} />
           </td>
@@ -3085,16 +3089,16 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-3 px-2 overflow-hidden"
+            className="py-3 px-2.5 overflow-hidden min-w-[105px]"
           >
             {isVerified ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-950 border border-emerald-300">
-                <CheckCircle weight="fill" className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600 flex-shrink-0" />
                 <span className="truncate">Verified</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 text-amber-950 border border-amber-300">
-                <WarningCircle weight="fill" className="w-3.5 h-3.5 text-amber-700 flex-shrink-0" />
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                <WarningCircle weight="fill" className="w-3 h-3 text-amber-500 flex-shrink-0" />
                 <span className="truncate">Unverified</span>
               </span>
             )}
@@ -3105,13 +3109,13 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
         return (
           <td
             key={colKey}
-            style={cellStyle}
-            className="py-3 px-2 text-center"
+            style={fitScreenMode ? { width: '75px', minWidth: '75px' } : cellStyle}
+            className="py-3 px-2 text-center whitespace-nowrap w-[75px] min-w-[75px]"
           >
-            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-extrabold border ${
-              displayScore >= 80 ? 'bg-emerald-100 text-emerald-950 border-emerald-300' :
-              displayScore >= 60 ? 'bg-amber-100 text-amber-950 border-amber-300' :
-              'bg-slate-200 text-slate-900 border-slate-300'
+            <span className={`inline-flex items-center justify-center min-w-[38px] px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border ${
+              displayScore >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+              displayScore >= 60 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+              'bg-slate-100 text-slate-700 border-slate-200'
             }`}>
               {displayScore}
             </span>
@@ -3149,7 +3153,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-black text-slate-950 tracking-tight">
+                <h1 className="text-xl font-bold text-slate-900 tracking-tight">
                   LeadOS
                 </h1>
               </div>
@@ -3195,7 +3199,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
               >
                 <GearSix className={`w-4 h-4 ${activeTab === 'settings' ? 'text-indigo-700' : 'text-slate-700'}`} />
                 <div className="text-left">
-                  <div className="text-xs font-extrabold leading-tight">Settings</div>
+                  <div className="text-xs font-medium leading-tight">Settings</div>
                   
                 </div>
               </button>
@@ -3245,7 +3249,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       <ArrowsClockwise className="w-3.5 h-3.5 text-[#b86452] animate-spin ml-0.5" />
                     )}
                     {tab.id === 'prospects' && (libraryTotal ?? libraryLeads.length) > 0 && (
-                      <span className="ml-1 px-2 py-0.5 rounded-full text-[11px] bg-slate-200 text-slate-900 font-extrabold">
+                      <span className="ml-1 px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-700 font-medium">
                         {libraryTotal ?? libraryLeads.length}
                       </span>
                     )}
@@ -3360,8 +3364,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 <BookBookmark className="w-4 h-4" />
                 Directory
                 {(libraryTotal ?? libraryLeads.length) > 0 && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                    (activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'directory'
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${(activeTab === 'prospects' || activeTab === 'library') && prospectSubView === 'directory'
                       ? 'bg-indigo-800 text-white'
                       : 'bg-slate-100 text-slate-700'
                   }`}>
@@ -3403,7 +3406,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 <button
                   type="button"
                   onClick={() => { setBatchOutreachOpen(true); setBatchResultNotice(null); }}
-                  className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <PaperPlaneRight weight="bold" className="w-3.5 h-3.5" />
                   Send to Selected ({librarySelectedIds.size})
@@ -4240,8 +4243,8 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                           <th className="px-2.5 py-2.5 whitespace-nowrap min-w-[170px]">Contact Information</th>
                           <th className="px-2 py-2.5 whitespace-nowrap min-w-[85px]">Source</th>
                           <th className="px-2 py-2.5 whitespace-nowrap min-w-[80px]">Status</th>
-                          <th className="px-2 py-2.5 whitespace-nowrap min-w-[55px]">Score</th>
-                          <th className="px-2.5 py-2.5 text-right whitespace-nowrap min-w-[100px]">Actions</th>
+                          <th className="px-2 py-2.5 whitespace-nowrap min-w-[75px] text-center">Score</th>
+                          <th className="px-2.5 py-2.5 text-right whitespace-nowrap min-w-[145px]">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -4403,8 +4406,8 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                                 </td>
 
                                 {/* Fit Score */}
-                                <td className="px-3 py-3 whitespace-nowrap">
-                                  <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                <td className="px-3 py-3 whitespace-nowrap text-center min-w-[75px]">
+                                  <span className="inline-flex items-center justify-center min-w-[36px] px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap bg-emerald-50 text-emerald-700 border border-emerald-200">
                                     {lead.opportunityScore ?? 85}
                                   </span>
                                 </td>
@@ -4890,8 +4893,8 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                   <div className="w-8 h-8 rounded-lg bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700">
                     <BookBookmark weight="fill" className="w-5 h-5 text-indigo-700" />
                   </div>
-                  <h2 className="text-xl font-black text-slate-950 tracking-tight">Lead Library</h2>
-                  <span className="bg-slate-900 text-white text-xs font-extrabold px-3 py-0.5 rounded-full">
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">Lead Library</h2>
+                  <span className="bg-slate-900 text-white text-xs font-medium px-3 py-0.5 rounded-full">
                     {libraryUnavailable ? 'Unavailable' : `${libraryTotal ?? libraryLeads.length} Total Saved`}
                   </span>
                 </div>
@@ -4912,7 +4915,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                   type="button"
                   onClick={() => void handleBatchEnrichContacts()}
                   disabled={enrichingLibrary || loadingLibrary}
-                  className="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-2xs disabled:opacity-60"
+                  className="px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 font-medium text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs disabled:opacity-60"
                   title="Crawl saved business websites to extract Email, Facebook, Instagram, and Phone"
                 >
                   <Globe weight="bold" className={`w-3.5 h-3.5 ${enrichingLibrary ? 'animate-spin text-emerald-700' : 'text-emerald-700'}`} />
@@ -4948,7 +4951,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 <button
                   type="button"
                   onClick={() => changeTab('find')}
-                  className="px-4 py-1.5 rounded-lg bg-[#584de3] hover:bg-[#493ecb] text-white font-extrabold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                  className="px-3.5 py-1.5 rounded-lg bg-[#584de3] hover:bg-[#493ecb] text-white font-medium text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
                 >
                   <MagnifyingGlass weight="bold" className="w-3.5 h-3.5" />
                   Find More Leads
@@ -5019,8 +5022,8 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         libraryQuickContactFilter === 'all' ? 'bg-slate-200/80 border-slate-400 ring-2 ring-slate-900/10' : 'bg-slate-100/80 border-slate-200 hover:bg-slate-200/50'
                       }`}
                     >
-                      <span className="text-[11px] font-extrabold text-slate-700 block uppercase tracking-wider">Total Saved</span>
-                      <span className="text-xl font-black text-slate-950 mt-0.5 block">{libraryUnavailable ? '—' : libraryTotal ?? libraryLeads.length}</span>
+                      <span className="text-[11px] font-semibold text-slate-500 block uppercase tracking-wider">Total Saved</span>
+                      <span className="text-xl font-bold text-slate-900 mt-0.5 block">{libraryUnavailable ? '—' : libraryTotal ?? libraryLeads.length}</span>
                     </button>
                     <button
                       type="button"
@@ -5029,8 +5032,8 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         libraryQuickContactFilter === 'verified' ? 'bg-emerald-100 border-emerald-400 ring-2 ring-emerald-600/20' : 'bg-emerald-50/90 border-emerald-200 hover:bg-emerald-100/70'
                       }`}
                     >
-                      <span className="text-[11px] font-extrabold text-emerald-900 block uppercase tracking-wider">Verified Contacts</span>
-                      <span className="text-xl font-black text-emerald-950 mt-0.5 block">
+                      <span className="text-[11px] font-semibold text-emerald-700 block uppercase tracking-wider">Verified Contacts</span>
+                      <span className="text-xl font-bold text-emerald-700 mt-0.5 block">
                         {libraryUnavailable ? '—' : verifiedCount}
                       </span>
                     </button>
@@ -5041,8 +5044,8 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         libraryQuickContactFilter === 'phone' ? 'bg-blue-100 border-blue-400 ring-2 ring-blue-600/20' : 'bg-blue-50/90 border-blue-200 hover:bg-blue-100/70'
                       }`}
                     >
-                      <span className="text-[11px] font-extrabold text-blue-900 block uppercase tracking-wider">Direct Phone</span>
-                      <span className="text-xl font-black text-blue-950 mt-0.5 block">
+                      <span className="text-[11px] font-semibold text-blue-700 block uppercase tracking-wider">Direct Phone</span>
+                      <span className="text-xl font-bold text-blue-700 mt-0.5 block">
                         {libraryUnavailable ? '—' : phoneCount}
                       </span>
                     </button>
@@ -5053,8 +5056,8 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         libraryQuickContactFilter === 'email' ? 'bg-indigo-100 border-indigo-400 ring-2 ring-indigo-600/20' : 'bg-indigo-50/90 border-indigo-200 hover:bg-indigo-100/70'
                       }`}
                     >
-                      <span className="text-[11px] font-extrabold text-indigo-900 block uppercase tracking-wider">Email Verified</span>
-                      <span className="text-xl font-black text-indigo-950 mt-0.5 block">
+                      <span className="text-[11px] font-semibold text-indigo-700 block uppercase tracking-wider">Email Verified</span>
+                      <span className="text-xl font-bold text-indigo-700 mt-0.5 block">
                         {libraryUnavailable ? '—' : emailCount}
                       </span>
                     </button>
@@ -5067,14 +5070,14 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                           : 'bg-pink-50/90 border-pink-200 hover:bg-pink-100/70'
                       }`}
                     >
-                      <span className="text-[11px] font-extrabold text-pink-900 block uppercase tracking-wider">Facebook / IG</span>
-                      <span className="text-xl font-black text-pink-950 mt-0.5 block">
+                      <span className="text-[11px] font-semibold text-pink-700 block uppercase tracking-wider">Facebook / IG</span>
+                      <span className="text-xl font-bold text-pink-700 mt-0.5 block">
                         {libraryUnavailable ? '—' : `${socialCount} (${fbCount} FB / ${igCount} IG)`}
                       </span>
                     </button>
                     <div className="p-3 rounded-xl bg-purple-50/90 border border-purple-200">
-                      <span className="text-[11px] font-extrabold text-purple-900 block uppercase tracking-wider">In Sales Pipeline</span>
-                      <span className="text-xl font-black text-purple-950 mt-0.5 block">
+                      <span className="text-[11px] font-semibold text-purple-700 block uppercase tracking-wider">In Sales Pipeline</span>
+                      <span className="text-xl font-bold text-purple-700 mt-0.5 block">
                         {libraryUnavailable
                           ? '—'
                           : !librarySearch && statusFilter === 'all' && typeof stats?.inPipelineCount === 'number'
@@ -5143,7 +5146,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                   {/* Permanent Business Policy: Livestock Only Lead Library Filter */}
                   <div className="flex items-center gap-2 flex-wrap pt-2.5 pb-1 border-t border-slate-200">
-                    <span className="text-xs font-black text-amber-950 flex items-center gap-1.5 mr-1">
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 mr-1">
                       <ShieldCheck weight="fill" className="w-4 h-4 text-amber-600" />
                       Livestock Policy:
                     </span>
@@ -5153,7 +5156,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         setLibraryLivestockFilter('eligible');
                         setLibraryPage(1);
                       }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition border cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition border cursor-pointer flex items-center gap-1.5 ${
                         libraryLivestockFilter === 'eligible'
                           ? 'bg-emerald-700 text-white border-emerald-700 shadow-2xs ring-2 ring-emerald-500/20'
                           : 'bg-emerald-50 text-emerald-950 border-emerald-300 hover:bg-emerald-100'
@@ -5169,7 +5172,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         setLibraryLivestockFilter('needs_review');
                         setLibraryPage(1);
                       }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition border cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition border cursor-pointer flex items-center gap-1.5 ${
                         libraryLivestockFilter === 'needs_review'
                           ? 'bg-amber-600 text-white border-amber-600 shadow-2xs ring-2 ring-amber-500/20'
                           : 'bg-amber-50 text-amber-950 border-amber-300 hover:bg-amber-100'
@@ -5185,7 +5188,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         setLibraryLivestockFilter('archived');
                         setLibraryPage(1);
                       }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition border cursor-pointer flex items-center gap-1.5 ${
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition border cursor-pointer flex items-center gap-1.5 ${
                         libraryLivestockFilter === 'archived'
                           ? 'bg-slate-700 text-white border-slate-700 shadow-2xs ring-2 ring-slate-500/20'
                           : 'bg-slate-100 text-slate-800 border-slate-300 hover:bg-slate-200'
@@ -5201,7 +5204,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         setLibraryLivestockFilter('all');
                         setLibraryPage(1);
                       }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition border cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition border cursor-pointer ${
                         libraryLivestockFilter === 'all'
                           ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
                           : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
@@ -5215,14 +5218,14 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                   {/* Quick Filter Chips (Email, Facebook, Instagram, Phone, Website, Verified, High Score) & Table Helpers */}
                   <div className="flex items-center justify-between gap-2 flex-wrap pt-1 text-xs">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-extrabold text-slate-800 mr-1 flex items-center gap-1">
+                      <span className="text-xs font-semibold text-slate-600 mr-1 flex items-center gap-1">
                         <Funnel weight="fill" className="w-3.5 h-3.5 text-slate-700" />
                         Quick Filters:
                       </span>
                       <button
                         type="button"
                         onClick={() => setLibraryQuickContactFilter('all')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border cursor-pointer ${
                           libraryQuickContactFilter === 'all'
                             ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
                             : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
@@ -5233,7 +5236,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       <button
                         type="button"
                         onClick={() => setLibraryQuickContactFilter('email')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border cursor-pointer ${
                           libraryQuickContactFilter === 'email'
                             ? 'bg-indigo-700 text-white border-indigo-700 shadow-2xs'
                             : 'bg-indigo-50 text-indigo-950 border-indigo-300 hover:bg-indigo-100'
@@ -5244,7 +5247,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       <button
                         type="button"
                         onClick={() => setLibraryQuickContactFilter('facebook')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border cursor-pointer ${
                           libraryQuickContactFilter === 'facebook'
                             ? 'bg-blue-700 text-white border-blue-700 shadow-2xs'
                             : 'bg-blue-50 text-blue-950 border-blue-300 hover:bg-blue-100'
@@ -5255,7 +5258,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       <button
                         type="button"
                         onClick={() => setLibraryQuickContactFilter('instagram')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border cursor-pointer ${
                           libraryQuickContactFilter === 'instagram'
                             ? 'bg-pink-700 text-white border-pink-700 shadow-2xs'
                             : 'bg-pink-50 text-pink-950 border-pink-300 hover:bg-pink-100'
@@ -5266,7 +5269,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       <button
                         type="button"
                         onClick={() => setLibraryQuickContactFilter('social')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border cursor-pointer ${
                           libraryQuickContactFilter === 'social'
                             ? 'bg-purple-700 text-white border-purple-700 shadow-2xs'
                             : 'bg-purple-50 text-purple-950 border-purple-300 hover:bg-purple-100'
@@ -5277,7 +5280,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       <button
                         type="button"
                         onClick={() => setLibraryQuickContactFilter('phone')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border cursor-pointer ${
                           libraryQuickContactFilter === 'phone'
                             ? 'bg-sky-700 text-white border-sky-700 shadow-2xs'
                             : 'bg-sky-50 text-sky-950 border-sky-300 hover:bg-sky-100'
@@ -5288,7 +5291,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       <button
                         type="button"
                         onClick={() => setLibraryQuickContactFilter('website')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border cursor-pointer ${
                           libraryQuickContactFilter === 'website'
                             ? 'bg-teal-700 text-white border-teal-700 shadow-2xs'
                             : 'bg-teal-50 text-teal-950 border-teal-300 hover:bg-teal-100'
@@ -5299,7 +5302,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       <button
                         type="button"
                         onClick={() => setLibraryQuickContactFilter('verified')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border cursor-pointer ${
                           libraryQuickContactFilter === 'verified'
                             ? 'bg-emerald-700 text-white border-emerald-700 shadow-2xs'
                             : 'bg-emerald-50 text-emerald-950 border-emerald-300 hover:bg-emerald-100'
@@ -5310,7 +5313,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       <button
                         type="button"
                         onClick={() => setLibraryQuickContactFilter('high_score')}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition border cursor-pointer ${
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition border cursor-pointer ${
                           libraryQuickContactFilter === 'high_score'
                             ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
                             : 'bg-amber-50 text-amber-950 border-amber-300 hover:bg-amber-100'
@@ -5325,7 +5328,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       <button
                         type="button"
                         onClick={handleResetAllLibColWidths}
-                        className={`px-2.5 py-1 rounded-lg border text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer shadow-2xs ${
+                        className={`px-3 py-1 rounded-full border text-xs font-medium flex items-center gap-1.5 transition cursor-pointer shadow-xs ${
                           fitScreenMode
                             ? 'bg-indigo-600 text-white border-indigo-600'
                             : 'bg-white hover:bg-slate-100 text-slate-900 border-slate-300'
@@ -5341,7 +5344,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         <button
                           type="button"
                           onClick={() => setShowCustomizeCols(!showCustomizeCols)}
-                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-900 border border-slate-300 text-xs font-extrabold flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                          className="px-3 py-1 rounded-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer shadow-xs"
                           title="Customize visible columns and rearrange column order left/right"
                         >
                           <Sliders weight="bold" className="w-3.5 h-3.5 text-indigo-600" />
@@ -5379,7 +5382,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                                         onChange={() => handleToggleColVisibility(colKey)}
                                         className="rounded border-slate-400 text-indigo-600 focus:ring-indigo-500 cursor-pointer disabled:opacity-40"
                                       />
-                                      <span className={isHidden ? 'text-slate-500 line-through font-semibold' : 'font-extrabold text-slate-900'}>
+                                      <span className={isHidden ? 'text-slate-500 line-through font-semibold' : 'font-medium text-slate-700'}>
                                         {LIBRARY_COL_LABELS[colKey]}
                                       </span>
                                     </label>
@@ -5531,7 +5534,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           )}
 
           {/* ── 2. Leads Found Table (Single-Frame Unified View Without Side-Scroll) ── */}
-          <div className="leados-results rounded-xl border border-slate-200 bg-white">
+          <div className="leados-results rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
             {loadingLibrary && libraryLeads.length === 0 ? (
               <div className="p-16 text-center text-slate-700 font-bold text-xs">
                 <ArrowsClockwise className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-600" />
@@ -5542,7 +5545,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-600">
                   <BookBookmark className="w-6 h-6" />
                 </div>
-                <h4 className="font-extrabold text-slate-900 text-sm">
+                <h4 className="font-medium text-slate-700 text-sm">
                   {libraryUnavailable ? 'Saved prospects could not be read' : 'No Saved Leads Found'}
                 </h4>
                 <p className="text-xs font-semibold text-slate-700 max-w-sm mx-auto">
@@ -5572,10 +5575,10 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 )}
               </div>
             ) : (
-              <div className={fitScreenMode ? 'w-full overflow-x-hidden' : 'w-full overflow-x-auto'}>
-                <table className={`hidden md:table w-full text-left border-collapse text-xs ${fitScreenMode ? 'table-fixed' : ''}`}>
-                  <thead className="bg-slate-100 border-b-2 border-slate-300">
-                    <tr className="text-[11px] font-extrabold text-slate-900 uppercase tracking-wide select-none">
+              <div className="w-full overflow-x-auto">
+                <table className={`hidden md:table w-full min-w-[1150px] text-left border-collapse text-xs ${fitScreenMode ? 'table-fixed' : ''}`}>
+                  <thead className="bg-slate-50/90 border-b border-slate-200/80">
+                    <tr className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider select-none">
                       {/* Drag Reorder Handle Header */}
                       <th
                         style={fitScreenMode ? { width: '32px' } : { width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder, maxWidth: libraryColWidths.reorder }}
@@ -5587,7 +5590,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                       {/* Checkbox */}
                       <th
-                        style={fitScreenMode ? { width: '32px' } : { width: libraryColWidths.check, minWidth: libraryColWidths.check, maxWidth: libraryColWidths.check }}
+                        style={fitScreenMode ? { width: '40px', minWidth: '40px' } : { width: libraryColWidths.check, minWidth: libraryColWidths.check }}
                         className="py-3 px-1.5 text-center whitespace-nowrap"
                       >
                         <input
@@ -5614,19 +5617,19 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         const colWidth = libraryColWidths[colKey];
                         const colLabel = LIBRARY_COL_LABELS[colKey] || colKey;
                         const fitPercentMap: Record<LibraryColKey, string> = {
-                          name: '21%',
-                          location: '15%',
-                          category: '12%',
+                          name: '24%',
+                          location: '14%',
+                          category: '11%',
                           contact: '24%',
                           source: '8%',
-                          status: '8%',
-                          score: '5%',
+                          status: '9%',
+                          score: '75px',
                         };
 
                         return (
                           <th
                             key={colKey}
-                            style={fitScreenMode ? { width: fitPercentMap[colKey] } : { width: colWidth, minWidth: colWidth }}
+                            style={fitScreenMode ? (colKey === 'score' ? { width: '75px', minWidth: '75px' } : { width: fitPercentMap[colKey] }) : { width: colWidth, minWidth: colWidth }}
                             draggable={true}
                             onDragStart={(e) => {
                               e.dataTransfer.setData('text/plain', colKey);
@@ -5647,7 +5650,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                               e.preventDefault();
                               handleDropCol(colKey);
                             }}
-                            className={`relative py-3 px-2.5 font-extrabold text-slate-900 whitespace-nowrap group transition cursor-grab active:cursor-grabbing select-none ${
+                            className={`relative py-3 px-3 font-semibold text-slate-500 whitespace-nowrap group transition cursor-grab active:cursor-grabbing select-none ${
                               isBeingDragged ? 'opacity-30 bg-slate-200' : ''
                             } ${
                               isDropTarget && colDropPosition === 'before'
@@ -5726,8 +5729,8 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                       {/* Actions */}
                       <th
-                        style={fitScreenMode ? { width: '98px' } : { width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
-                        className="relative py-3 px-2.5 font-extrabold text-slate-900 whitespace-nowrap text-right"
+                        style={fitScreenMode ? { width: '155px', minWidth: '155px' } : { width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
+                        className="relative py-3 px-3 font-semibold text-slate-500 whitespace-nowrap text-right"
                       >
                         Actions
                         <div
@@ -5742,7 +5745,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
+                  <tbody className="divide-y divide-slate-100">
                     {paginatedLibraryLeads.map((lead, idx) => {
                       const isSelected = librarySelectedIds.has(lead.id);
                       const isBeingDragged = draggedLeadId === lead.id;
@@ -5765,24 +5768,24 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                               ? 'border-b-4 border-indigo-600 bg-indigo-50/40'
                               : isSelected
                               ? 'bg-indigo-50/40 hover:bg-indigo-50/70'
-                              : 'hover:bg-slate-100/70'
+                              : 'hover:bg-slate-50/80'
                           }`}
                         >
                           {/* Drag Reorder Handle */}
                           <td
-                            style={fitScreenMode ? undefined : { width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder, maxWidth: libraryColWidths.reorder }}
+                            style={fitScreenMode ? { width: '36px', minWidth: '36px' } : { width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder }}
                             className="py-3 px-1 text-center whitespace-nowrap cursor-grab active:cursor-grabbing group/drag"
                             onClick={(e) => e.stopPropagation()}
                             title="Drag row to reposition (or click arrows to move up/down)"
                           >
-                            <div className="flex flex-col items-center justify-center text-slate-600 group-hover/drag:text-indigo-700 transition">
+                            <div className="flex flex-col items-center justify-center text-slate-400 group-hover/drag:text-indigo-600 transition">
                               <DotsSixVertical weight="bold" className="w-4 h-4" />
                               <div className="flex items-center gap-0.5 opacity-0 group-hover/drag:opacity-100 transition mt-0.5">
                                 <button
                                   type="button"
                                   onClick={() => handleMoveRowOneStep(lead.id, 'up')}
                                   disabled={(safeLibraryPage - 1) * libraryPageSize + idx === 0}
-                                  className="text-[10px] text-slate-800 hover:text-indigo-700 disabled:opacity-20 px-0.5 font-black cursor-pointer"
+                                  className="text-[10px] text-slate-500 hover:text-indigo-600 disabled:opacity-20 px-0.5 font-bold cursor-pointer"
                                   title="Move row up"
                                 >
                                   ▲
@@ -5791,7 +5794,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                                   type="button"
                                   onClick={() => handleMoveRowOneStep(lead.id, 'down')}
                                   disabled={(safeLibraryPage - 1) * libraryPageSize + idx >= filteredLibraryLeads.length - 1}
-                                  className="text-[10px] text-slate-800 hover:text-indigo-700 disabled:opacity-20 px-0.5 font-black cursor-pointer"
+                                  className="text-[10px] text-slate-500 hover:text-indigo-600 disabled:opacity-20 px-0.5 font-bold cursor-pointer"
                                   title="Move row down"
                                 >
                                   ▼
@@ -5802,7 +5805,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                           {/* Checkbox */}
                           <td
-                            style={fitScreenMode ? undefined : { width: libraryColWidths.check, minWidth: libraryColWidths.check, maxWidth: libraryColWidths.check }}
+                            style={fitScreenMode ? { width: '40px', minWidth: '40px' } : { width: libraryColWidths.check, minWidth: libraryColWidths.check }}
                             className="py-3 px-1.5 text-center whitespace-nowrap"
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -5810,14 +5813,14 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleToggleSelectLibraryLead(lead.id)}
-                              className="rounded border-slate-400 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                             />
                           </td>
 
                           {/* Index */}
                           <td
-                            style={fitScreenMode ? undefined : { width: libraryColWidths.index, minWidth: libraryColWidths.index, maxWidth: libraryColWidths.index }}
-                            className="py-3 px-1.5 text-xs text-slate-800 font-extrabold whitespace-nowrap text-center"
+                            style={fitScreenMode ? { width: '44px', minWidth: '44px' } : { width: libraryColWidths.index, minWidth: libraryColWidths.index }}
+                            className="py-3 px-1.5 text-slate-400 font-mono text-[11px] font-medium whitespace-nowrap text-center"
                           >
                             {(safeLibraryPage - 1) * libraryPageSize + idx + 1}
                           </td>
@@ -5827,16 +5830,16 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                           {/* Actions */}
                           <td
-                            style={fitScreenMode ? undefined : { width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
-                            className="py-2.5 px-2 text-right whitespace-nowrap"
+                            style={fitScreenMode ? { width: '155px', minWidth: '155px' } : { width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
+                            className="py-2.5 px-3 text-right whitespace-nowrap"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <div className="flex items-center justify-end gap-1">
+                            <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
                               {lead.email ? (
                                 <button
                                   type="button"
                                   onClick={() => startOutreachForLead(lead)}
-                                  className="px-2 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[11px] flex items-center gap-1 transition cursor-pointer shadow-2xs whitespace-nowrap flex-shrink-0"
+                                  className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs whitespace-nowrap flex-shrink-0"
                                   title={`Send Wholesale Outreach Email to ${lead.email}`}
                                 >
                                   <PaperPlaneRight weight="fill" className="w-3 h-3 text-white" />
@@ -5846,17 +5849,17 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                                 <button
                                   type="button"
                                   onClick={() => startOutreachForLead(lead)}
-                                  className="px-2 py-1 rounded-md bg-indigo-100 hover:bg-indigo-200 text-indigo-950 font-extrabold text-[11px] flex items-center gap-1 transition cursor-pointer border border-indigo-300 whitespace-nowrap flex-shrink-0"
+                                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs flex items-center gap-1.5 transition cursor-pointer border border-slate-200 whitespace-nowrap flex-shrink-0"
                                   title="Compose Wholesale Outreach"
                                 >
-                                  <PaperPlaneRight weight="bold" className="w-3 h-3 text-indigo-700" />
+                                  <PaperPlaneRight weight="bold" className="w-3 h-3 text-slate-500" />
                                   <span>Outreach</span>
                                 </button>
                               )}
                               <button
                                 type="button"
                                 onClick={() => openLeadDrawer(lead, 'notes')}
-                                className="p-1 rounded-md hover:bg-slate-200 text-slate-700 hover:text-slate-950 transition cursor-pointer flex-shrink-0"
+                                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition cursor-pointer flex-shrink-0"
                                 title="Notes & Follow-up Schedule"
                               >
                                 <FileText weight="bold" className="w-3.5 h-3.5" />
@@ -5864,7 +5867,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                               <button
                                 type="button"
                                 onClick={() => handleDeleteSavedLead(lead.id)}
-                                className="p-1 rounded-md hover:bg-rose-100 text-slate-700 hover:text-rose-700 transition cursor-pointer flex-shrink-0"
+                                className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer flex-shrink-0"
                                 title="Delete Lead"
                               >
                                 <Trash weight="bold" className="w-3.5 h-3.5" />
@@ -5897,11 +5900,11 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
               const endRow = Math.min(matchCount, safeLibraryPage * libraryPageSize);
 
               return (
-                <div className="px-4 py-3 border-t border-slate-300 bg-slate-100/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="px-4 py-3 border-t border-slate-200/80 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                   <div className="text-slate-800 font-semibold">
-                    Showing <span className="font-extrabold text-slate-950">{startRow}–{endRow}</span> of{' '}
-                    <span className="font-extrabold text-slate-950">{matchCount}</span> matching leads (
-                    <span className="font-extrabold text-slate-950">{totalCount}</span> total saved in library)
+                    Showing <span className="font-semibold text-slate-900">{startRow}–{endRow}</span> of{' '}
+                    <span className="font-semibold text-slate-900">{matchCount}</span> matching leads (
+                    <span className="font-semibold text-slate-900">{totalCount}</span> total saved in library)
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <label className="flex items-center gap-1.5 text-slate-800 font-bold">
@@ -5912,7 +5915,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                           setLibraryPageSize(Number(e.target.value));
                           setLibraryPage(1);
                         }}
-                        className="px-2 py-1 rounded-lg border border-slate-300 bg-white text-slate-900 font-extrabold text-xs cursor-pointer"
+                        className="px-2 py-1 rounded-lg border border-slate-300 bg-white text-slate-900 font-medium text-xs cursor-pointer"
                       >
                         <option value={50}>50 / page</option>
                         <option value={100}>100 / page</option>
@@ -5925,18 +5928,18 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         type="button"
                         disabled={safeLibraryPage <= 1 || loadingLibrary}
                         onClick={() => setLibraryPage((p) => Math.max(1, p - 1))}
-                        className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-200 text-slate-900 font-extrabold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
+                        className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-200 text-slate-900 font-medium disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
                       >
                         ← Prev
                       </button>
-                      <span className="px-2.5 py-1 font-extrabold text-slate-900">
+                      <span className="px-2.5 py-1 font-medium text-slate-700">
                         Page {safeLibraryPage} of {totalLibraryPages}
                       </span>
                       <button
                         type="button"
                         disabled={safeLibraryPage >= totalLibraryPages || loadingLibrary}
                         onClick={() => setLibraryPage((p) => Math.min(totalLibraryPages, p + 1))}
-                        className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-200 text-slate-900 font-extrabold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
+                        className="px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-200 text-slate-900 font-medium disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition"
                       >
                         Next →
                       </button>
@@ -5990,7 +5993,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                     <span className="font-bold text-rose-700">−{omnisendSyncPreview.excludedOrSuppressedCount}</span>
                   </div>
                   <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
-                    <span className="font-extrabold text-slate-900">Eligible Unique Contacts to Sync:</span>
+                    <span className="font-medium text-slate-700">Eligible Unique Contacts to Sync:</span>
                     <span className="text-sm font-black text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-200">
                       {omnisendSyncPreview.eligibleCount}
                     </span>
