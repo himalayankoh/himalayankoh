@@ -52,10 +52,19 @@ export async function GET(request: Request) {
       forceSync,
     });
 
-    return NextResponse.json({
-      ok: true,
-      ...result,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        ...result,
+      },
+      {
+        headers: {
+          'Cache-Control': forceSync
+            ? 'no-store'
+            : 'private, max-age=10, stale-while-revalidate=60',
+        },
+      }
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to retrieve inbox messages';
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

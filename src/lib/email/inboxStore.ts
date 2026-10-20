@@ -600,37 +600,33 @@ async function readStoredMessages(): Promise<InboxMessage[]> {
     if (msg.messageId) byMessageId.set(key, msg);
   };
 
-  // 1. Per-message records: append-only, so concurrent writes cannot clobber each other.
-  try {
-    const res = await storefrontRequest<{ items: StoredAdminRecord[] }>('/admin-records', {
+  // 1 & 2. Query per-message records and settings store in parallel for speed.
+  const [adminRecordsResult, settingsResult] = await Promise.allSettled([
+    storefrontRequest<{ items: StoredAdminRecord[] }>('/admin-records', {
       params: { table: RECORD_TABLE, limit: 2000 },
-    });
-    if (res && Array.isArray(res.items)) {
-      for (const r of res.items) {
-        if (r && r.id && r.id.startsWith(MSG_RECORD_PREFIX) && r.payload && typeof r.payload === 'object') {
-          add(r.payload);
-        }
+    }),
+    getSetting(SETTINGS_CATEGORY, SETTINGS_KEY),
+  ]);
+
+  if (adminRecordsResult.status === 'fulfilled' && adminRecordsResult.value?.items && Array.isArray(adminRecordsResult.value.items)) {
+    for (const r of adminRecordsResult.value.items) {
+      if (r && r.id && r.id.startsWith(MSG_RECORD_PREFIX) && r.payload && typeof r.payload === 'object') {
+        add(r.payload);
       }
     }
-  } catch {
-    // If admin-records request fails or in offline/test mode, fall through
   }
 
-  // 2. Legacy whole-list option. Merged rather than only used as a fallback: records
-  // written before the per-message store existed, and records written by an older
-  // isolate, must neither vanish nor hide newer ones.
-  try {
-    const raw = await getSetting(SETTINGS_CATEGORY, SETTINGS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
+  if (settingsResult.status === 'fulfilled' && settingsResult.value) {
+    try {
+      const parsed = JSON.parse(settingsResult.value);
       if (Array.isArray(parsed)) {
         for (const msg of parsed) {
           if (msg && msg.id) add(msg);
         }
       }
+    } catch {
+      // Fallback
     }
-  } catch {
-    // Fallback
   }
 
   const merged = Array.from(byId.values()).sort(
@@ -674,55 +670,57 @@ export async function syncImapMailboxes(
   // A mailbox that could not be read is reported, not silently reported as "0 new".
   const failures: string[] = [];
 
-  for (const mailbox of mailboxesToSync) {
-    try {
-      const account = await getEmailAccount(mailbox as MailboxEmail);
-      if (!account || !account.imapPass || !account.imapUser) {
-        failures.push(`${mailbox}: no IMAP credential configured`);
-        continue;
-      }
+  await Promise.allSettled(
+    mailboxesToSync.map(async (mailbox) => {
+      try {
+        const account = await getEmailAccount(mailbox as MailboxEmail);
+        if (!account || !account.imapPass || !account.imapUser) {
+          failures.push(`${mailbox}: no IMAP credential configured`);
+          return;
+        }
 
-      const res = await fetchRecentImapEmails({
-        host: account.imapHost,
-        port: account.imapPort,
-        user: account.imapUser,
-        pass: account.imapPass,
-        // A busy mailbox can hold a year of large messages; reading 25 raw MIME
-        // bodies in one request exceeded the Worker's CPU budget and failed the
-        // whole sync. A small window keeps first-sync fast and bounded.
-        limit: 8,
-      });
+        const res = await fetchRecentImapEmails({
+          host: account.imapHost,
+          port: account.imapPort,
+          user: account.imapUser,
+          pass: account.imapPass,
+          // A busy mailbox can hold a year of large messages; reading 25 raw MIME
+          // bodies in one request exceeded the Worker's CPU budget and failed the
+          // whole sync. A small window keeps first-sync fast and bounded.
+          limit: 8,
+        });
 
-      if (!res.ok) {
-        failures.push(`${mailbox}: ${res.error || 'IMAP read failed'}`);
-        continue;
-      }
+        if (!res.ok) {
+          failures.push(`${mailbox}: ${res.error || 'IMAP read failed'}`);
+          return;
+        }
 
-      if (res.ok && res.messages.length > 0) {
-        for (const inbound of res.messages) {
-          const recorded = await recordInboundEmail({
-            messageId: inbound.messageId,
-            inReplyTo: inbound.inReplyTo,
-            references: inbound.references,
-            mailbox: inbound.mailbox as MailboxAddress,
-            from: inbound.from,
-            to: inbound.to,
-            cc: inbound.cc,
-            subject: inbound.subject,
-            bodyText: inbound.bodyText,
-            bodyHtml: inbound.bodyHtml,
-            createdAt: inbound.date,
-          });
-          if (!recorded.duplicate) {
-            totalSynced++;
+        if (res.ok && res.messages.length > 0) {
+          for (const inbound of res.messages) {
+            const recorded = await recordInboundEmail({
+              messageId: inbound.messageId,
+              inReplyTo: inbound.inReplyTo,
+              references: inbound.references,
+              mailbox: inbound.mailbox as MailboxAddress,
+              from: inbound.from,
+              to: inbound.to,
+              cc: inbound.cc,
+              subject: inbound.subject,
+              bodyText: inbound.bodyText,
+              bodyHtml: inbound.bodyHtml,
+              createdAt: inbound.date,
+            });
+            if (!recorded.duplicate) {
+              totalSynced++;
+            }
           }
         }
+      } catch (err) {
+        failures.push(`${mailbox}: ${err instanceof Error ? err.message : String(err)}`);
+        console.warn(`[syncImapMailboxes] Sync error for ${mailbox}:`, err);
       }
-    } catch (err) {
-      failures.push(`${mailbox}: ${err instanceof Error ? err.message : String(err)}`);
-      console.warn(`[syncImapMailboxes] Sync error for ${mailbox}:`, err);
-    }
-  }
+    })
+  );
 
   return {
     ok: failures.length === 0,
