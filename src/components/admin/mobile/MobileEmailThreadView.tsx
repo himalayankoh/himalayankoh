@@ -8,15 +8,17 @@ import {
   Sun,
   DotsThreeVertical,
   ArrowUUpLeft,
-  ArrowsLeftRight,
   ArrowUUpRight,
-  DotsThree,
   CaretDown,
   CaretUp,
   FilePdf,
+  Image as ImageIcon,
+  FileText,
   DownloadSimple,
+  Lock,
+  Paperclip,
 } from '@phosphor-icons/react';
-import type { InboxThread, InboxMessage } from '@/lib/email/inboxStore';
+import type { InboxThread, InboxMessage, InboxAttachment } from '@/lib/email/inboxStore';
 import { useMobileTheme } from '@/context/MobileThemeContext';
 import { getMobilePalette } from './MobileThemeTokens';
 import { MobileGmailReplyComposer, RecipientChip } from './MobileGmailReplyComposer';
@@ -39,66 +41,156 @@ export function MobileEmailThreadView({
   const { isDark, toggleTheme } = useMobileTheme();
   const palette = getMobilePalette(isDark);
 
-  const [composerMode, setComposerMode] = useState<'reply' | 'reply-all' | 'forward' | null>(null);
-  const [showQuoted, setShowQuoted] = useState(true);
+  const [composerMode, setComposerMode] = useState<'reply' | 'forward' | null>(null);
   const [isStarred, setIsStarred] = useState(Boolean(thread.starred));
+  // Track open state of details card per message (default: true for latest message)
+  const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({
+    latest: true,
+  });
 
-  // Determine sender identity logic
-  const getSenderDisplay = (msg: InboxMessage) => {
-    if (msg.direction === 'outbound') {
-      const email = msg.from.email.toLowerCase();
-      if (email.includes('sales')) return { name: 'Sales Team', role: 'Himalayan Koh Sales', avatarInitial: 'S', bg: '#10B981' };
-      if (email.includes('support')) return { name: 'Support Team', role: 'Customer Success', avatarInitial: 'S', bg: '#F97316' };
-      if (email.includes('salman')) return { name: 'Salman', role: 'Owner & Operator', avatarInitial: 'S', bg: '#6366F1' };
-      return { name: msg.from.name || 'Admin Team', role: 'Himalayan Koh', avatarInitial: 'A', bg: '#3B82F6' };
-    }
-    const cleanName = msg.from.name || msg.from.email.split('@')[0];
-    return {
-      name: cleanName,
-      role: 'Buyer / Prospect',
-      avatarInitial: cleanName.charAt(0).toUpperCase(),
-      bg: '#06B6D4',
-    };
-  };
+  const messages = thread.messages && thread.messages.length > 0
+    ? thread.messages
+    : [thread.latestMessage].filter(Boolean);
 
-  const messages = thread.messages || [];
   const latestMessage = messages[messages.length - 1];
-  const previousMessages = messages.slice(0, -1);
-
-  const latestSender = latestMessage ? getSenderDisplay(latestMessage) : { name: 'Salman', role: 'Himalayan Koh', avatarInitial: 'S', bg: '#6366F1' };
 
   const handleToggleStar = () => {
     setIsStarred(!isStarred);
     onToggleStar?.(thread.threadId);
   };
 
-  const handleComposerSend = async ({ bodyText, cc }: { bodyText: string; cc?: string }) => {
-    if (onSendReply) {
-      const isReplyAll = composerMode === 'reply-all';
-      await onSendReply(thread.threadId, bodyText, isReplyAll);
+  const toggleMessageDetails = (id: string) => {
+    setExpandedDetails((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const formatFullDate = (timestamp?: string) => {
+    if (!timestamp) return '';
+    try {
+      const d = new Date(timestamp);
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return timestamp;
     }
   };
 
-  const getRecipientChips = (mode: 'reply' | 'reply-all' | 'forward'): { to: RecipientChip[]; cc: RecipientChip[] } => {
+  const formatShortTime = (timestamp?: string) => {
+    if (!timestamp) return '';
+    try {
+      const d = new Date(timestamp);
+      return d.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return '';
+    }
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const getSenderDisplay = (msg: InboxMessage) => {
+    const isOutbound = msg.direction === 'outbound';
+    if (isOutbound) {
+      const fromEmail = (msg.from?.email || '').toLowerCase();
+      if (fromEmail.includes('orders')) {
+        return {
+          name: msg.from.name || 'Himalayan Koh Orders',
+          email: msg.from.email,
+          role: 'Orders & Fulfillment',
+          avatarInitial: 'O',
+          bg: '#F59E0B',
+        };
+      }
+      if (fromEmail.includes('marketing')) {
+        return {
+          name: msg.from.name || 'Himalayan Koh Marketing',
+          email: msg.from.email,
+          role: 'Livestock & B2B Wholesale',
+          avatarInitial: 'M',
+          bg: '#A855F7',
+        };
+      }
+      if (fromEmail.includes('support')) {
+        return {
+          name: msg.from.name || 'Himalayan Koh Support',
+          email: msg.from.email,
+          role: 'Customer Care',
+          avatarInitial: 'S',
+          bg: '#10B981',
+        };
+      }
+      if (fromEmail.includes('salman')) {
+        return {
+          name: msg.from.name || 'Salman Bashir',
+          email: msg.from.email,
+          role: 'Direct Executive',
+          avatarInitial: 'S',
+          bg: '#3B82F6',
+        };
+      }
+      return {
+        name: msg.from.name || 'Himalayan Koh',
+        email: msg.from.email || 'info@himalayankoh.com',
+        role: 'Official Team',
+        avatarInitial: 'H',
+        bg: '#B45309',
+      };
+    }
+
+    const cleanName = msg.from.name || msg.from.email.split('@')[0];
+    return {
+      name: cleanName,
+      email: msg.from.email,
+      role: 'Inbound Customer',
+      avatarInitial: cleanName.charAt(0).toUpperCase(),
+      bg: '#0EA5E9',
+    };
+  };
+
+  const getRecipientChips = (mode: 'reply' | 'forward'): { to: RecipientChip[]; cc: RecipientChip[] } => {
+    const isOutbound = latestMessage?.direction === 'outbound';
+    let targetEmail = latestMessage?.from?.email || 'customer@example.com';
+    let targetName = latestMessage?.from?.name || targetEmail.split('@')[0];
+
+    if (isOutbound && latestMessage?.to && latestMessage.to.length > 0) {
+      targetEmail = latestMessage.to[0].email;
+      targetName = latestMessage.to[0].name || targetEmail.split('@')[0];
+    }
+
     const to: RecipientChip[] = [
       {
         id: '1',
-        name: latestMessage?.direction === 'inbound' ? latestMessage.from.name || latestMessage.from.email : 'Support Team',
-        email: latestMessage?.direction === 'inbound' ? latestMessage.from.email : 'support@himalayankoh.com',
+        name: targetName,
+        email: targetEmail,
         avatarBg: '#10B981',
-        avatarInitial: 'S',
+        avatarInitial: targetName.charAt(0).toUpperCase(),
       },
     ];
 
-    const cc: RecipientChip[] =
-      mode === 'reply-all'
-        ? [
-            { id: 'cc1', name: 'Salman', email: 'salman@himalayankoh.com', avatarBg: '#6366F1', avatarInitial: 'S' },
-            { id: 'cc2', name: 'Support Team', email: 'support@himalayankoh.com', avatarBg: '#F97316', avatarInitial: 'S' },
-          ]
-        : [];
+    return { to, cc: [] };
+  };
 
-    return { to, cc };
+  const handleComposerSend = async ({ bodyText }: { bodyText: string; cc?: string }) => {
+    if (onSendReply) {
+      await onSendReply(thread.threadId, bodyText, false);
+      setComposerMode(null);
+    }
   };
 
   return (
@@ -108,7 +200,7 @@ export function MobileEmailThreadView({
         backgroundColor: isDark ? '#080C16' : '#F8FAFC',
       }}
     >
-      {/* ── 1. Top Bar with Subject & Actions (Reference Image 3) ──────── */}
+      {/* ── 1. Top Bar With Subject & Actions (Gmail Style) ────────────── */}
       <div
         className="px-4 py-3 border-b flex items-center justify-between gap-2 shrink-0"
         style={{
@@ -129,12 +221,17 @@ export function MobileEmailThreadView({
           <ArrowLeft size={18} weight="bold" />
         </button>
 
-        <div className="flex-1 min-w-0 px-1">
+        <div className="flex-1 min-w-0 px-2">
           <h1
-            className="text-sm font-bold truncate leading-tight"
+            className="text-sm font-black truncate leading-tight flex items-center gap-1.5"
             style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}
           >
-            {thread.subject || 'Re: Product Pricing for Livestock'}
+            <span>{thread.subject || '(No Subject)'}</span>
+            {thread.mailbox && (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                {thread.mailbox.split('@')[0]}
+              </span>
+            )}
           </h1>
         </div>
 
@@ -168,233 +265,216 @@ export function MobileEmailThreadView({
         </div>
       </div>
 
-      {/* ── 2. Scrollable Thread Body (Reference Image 3) ───────────────── */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar pb-24">
-        {/* Latest Active Message Card */}
-        <div
-          className="rounded-3xl p-4.5 space-y-3.5 transition-all shadow-sm"
-          style={{
-            backgroundColor: isDark ? '#0D1424' : '#FFFFFF',
-            border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0'}`,
-            color: isDark ? '#FFFFFF' : '#0F172A',
-          }}
-        >
-          {/* Sender Header */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              {/* Avatar */}
-              <div
-                className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-sm"
-                style={{
-                  background: latestSender.bg,
-                  border: '1.5px solid rgba(255, 255, 255, 0.2)',
-                }}
-              >
-                {latestSender.avatarInitial}
-              </div>
+      {/* ── 2. Scrollable Thread Body ───────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto p-3.5 space-y-3.5 no-scrollbar pb-28">
+        {messages.map((msg, index) => {
+          const isLatest = index === messages.length - 1;
+          const msgKey = msg.id || String(index);
+          const isDetailsOpen = Boolean(expandedDetails[msgKey] ?? isLatest);
+          const senderInfo = getSenderDisplay(msg);
+          const recipientStr =
+            msg.to && msg.to.length > 0
+              ? msg.to.map((t) => (t.name ? `${t.name} <${t.email}>` : t.email)).join(', ')
+              : 'undisclosed-recipients';
 
-              <div>
-                <h3 className="text-sm font-bold leading-tight" style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}>
-                  {latestSender.name}
-                </h3>
-                <p className="text-[11px] mt-0.5" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>
-                  to {latestMessage?.direction === 'outbound' ? latestMessage.to.map((t) => t.name || t.email).join(', ') : 'Sales Team'}
-                </p>
-              </div>
-            </div>
-
-            <span className="text-[11px] font-medium shrink-0" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>
-              Today, 9:12 AM
-            </span>
-          </div>
-
-          {/* Message Body */}
-          <div
-            className="text-xs leading-relaxed whitespace-pre-wrap py-1"
-            style={{ color: isDark ? '#E2E8F0' : '#1E293B' }}
-          >
-            {latestMessage?.bodyText ||
-              'Thanks for the updated pricing. This looks good.\nPlease also share the delivery timeline to Houston and if there are any bulk discounts for 10+ pallets.\n\nRegards,\nSalman'}
-          </div>
-
-          {/* Show Quoted Messages Button */}
-          {previousMessages.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowQuoted(!showQuoted)}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors"
+          return (
+            <div
+              key={msgKey}
+              className="rounded-3xl p-4 space-y-3 transition-all shadow-sm"
               style={{
-                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#F1F5F9',
+                backgroundColor: isDark ? '#0D1424' : '#FFFFFF',
+                border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0'}`,
+                color: isDark ? '#FFFFFF' : '#0F172A',
               }}
             >
-              <span>Show quoted messages ({previousMessages.length})</span>
-              {showQuoted ? <CaretUp size={14} weight="bold" /> : <CaretDown size={14} weight="bold" />}
-            </button>
-          )}
+              {/* Sender Header Row (Matching Gmail Exactly) */}
+              <div className="flex items-start justify-between gap-2.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  {/* Sender Avatar Circle */}
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-sm"
+                    style={{
+                      background: senderInfo.bg,
+                      border: '1.5px solid rgba(255, 255, 255, 0.2)',
+                    }}
+                  >
+                    {senderInfo.avatarInitial}
+                  </div>
 
-          {/* Action Buttons Row (Reply, Reply All, Forward, More) */}
-          <div className="pt-2 flex items-center justify-around gap-2 border-t" style={{ borderColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#E2E8F0' }}>
-            {/* Reply */}
-            <button
-              type="button"
-              onClick={() => setComposerMode('reply')}
-              className="flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-white transition-transform active:scale-95"
-            >
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9' }}
-              >
-                <ArrowUUpLeft size={16} weight="bold" />
-              </div>
-              <span className="text-[10px] font-medium">Reply</span>
-            </button>
+                  <div className="min-w-0">
+                    <h3
+                      className="text-xs font-bold leading-tight truncate"
+                      style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}
+                    >
+                      {senderInfo.name}
+                    </h3>
 
-            {/* Reply All */}
-            <button
-              type="button"
-              onClick={() => setComposerMode('reply-all')}
-              className="flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-white transition-transform active:scale-95"
-            >
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9' }}
-              >
-                <ArrowsLeftRight size={16} weight="bold" />
-              </div>
-              <span className="text-[10px] font-medium">Reply All</span>
-            </button>
+                    {/* Gmail "to me ᐯ" Expandable Button */}
+                    <button
+                      type="button"
+                      onClick={() => toggleMessageDetails(msgKey)}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-200 mt-0.5 cursor-pointer active:scale-95"
+                    >
+                      <span>
+                        to {msg.direction === 'outbound' ? (msg.to?.[0]?.name || msg.to?.[0]?.email || 'recipient') : 'me'}
+                      </span>
+                      {isDetailsOpen ? (
+                        <CaretUp size={11} weight="bold" />
+                      ) : (
+                        <CaretDown size={11} weight="bold" />
+                      )}
+                    </button>
+                  </div>
+                </div>
 
-            {/* Forward */}
-            <button
-              type="button"
-              onClick={() => setComposerMode('forward')}
-              className="flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-white transition-transform active:scale-95"
-            >
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9' }}
-              >
-                <ArrowUUpRight size={16} weight="bold" />
-              </div>
-              <span className="text-[10px] font-medium">Forward</span>
-            </button>
-
-            {/* More */}
-            <button
-              type="button"
-              className="flex flex-col items-center gap-1 p-2 text-slate-300 hover:text-white transition-transform active:scale-95"
-            >
-              <div
-                className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9' }}
-              >
-                <DotsThree size={20} weight="bold" />
-              </div>
-              <span className="text-[10px] font-medium">More</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Quoted / Previous Message Card */}
-        {showQuoted && (
-          <div
-            className="rounded-3xl p-4.5 space-y-3 transition-all"
-            style={{
-              backgroundColor: isDark ? '#0A0F1D' : '#F1F5F9',
-              border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.06)' : '#E2E8F0'}`,
-              color: isDark ? '#FFFFFF' : '#0F172A',
-            }}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                  style={{ backgroundColor: '#10B981' }}
+                {/* Date / Time */}
+                <span
+                  className="text-[11px] font-medium shrink-0 pt-0.5"
+                  style={{ color: isDark ? '#94A3B8' : '#64748B' }}
                 >
-                  S
+                  {formatShortTime(msg.createdAt)}
+                </span>
+              </div>
+
+              {/* ── Gmail Expandable Details Card (From, To, Date, Security) ── */}
+              {isDetailsOpen && (
+                <div
+                  className="p-3.5 rounded-2xl space-y-2 text-xs border animate-in fade-in duration-150"
+                  style={{
+                    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.45)' : '#F8FAFC',
+                    borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                  }}
+                >
+                  {/* From */}
+                  <div className="flex items-start gap-3">
+                    <span className="text-slate-400 font-semibold w-12 shrink-0">From</span>
+                    <span
+                      className="font-medium break-all"
+                      style={{ color: isDark ? '#F1F5F9' : '#0F172A' }}
+                    >
+                      {senderInfo.name} &bull;{' '}
+                      <span className="text-blue-400">{senderInfo.email}</span>
+                    </span>
+                  </div>
+
+                  {/* To */}
+                  <div className="flex items-start gap-3">
+                    <span className="text-slate-400 font-semibold w-12 shrink-0">To</span>
+                    <span
+                      className="font-medium break-all"
+                      style={{ color: isDark ? '#F1F5F9' : '#0F172A' }}
+                    >
+                      {recipientStr}
+                    </span>
+                  </div>
+
+                  {/* Date */}
+                  <div className="flex items-start gap-3">
+                    <span className="text-slate-400 font-semibold w-12 shrink-0">Date</span>
+                    <span
+                      className="font-medium"
+                      style={{ color: isDark ? '#F1F5F9' : '#0F172A' }}
+                    >
+                      {formatFullDate(msg.createdAt)}
+                    </span>
+                  </div>
+
+                  {/* Security / Encryption */}
+                  <div
+                    className="flex items-center gap-1.5 pt-2 border-t text-[11px] text-slate-300"
+                    style={{
+                      borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                    }}
+                  >
+                    <Lock size={13} weight="fill" className="text-emerald-400 shrink-0" />
+                    <span>Standard encryption (TLS).</span>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-xs font-bold leading-tight" style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}>
-                    Sales Team
-                  </h4>
-                  <p className="text-[10px] mt-0.5" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>
-                    to Salman
-                  </p>
+              )}
+
+              {/* ── Message Content ── */}
+              <div
+                className="text-xs leading-relaxed whitespace-pre-wrap py-1.5 select-text"
+                style={{ color: isDark ? '#E2E8F0' : '#1E293B' }}
+              >
+                {msg.bodyText || msg.snippet || 'No message content.'}
+              </div>
+
+              {/* ── Real Message Attachments ── */}
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div
+                  className="space-y-2 pt-2 border-t"
+                  style={{
+                    borderColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#E2E8F0',
+                  }}
+                >
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+                    <Paperclip size={13} weight="bold" />
+                    <span>{msg.attachments.length} Attachment(s)</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2">
+                    {msg.attachments.map((att: InboxAttachment) => {
+                      const isPdf = att.mimeType?.includes('pdf') || att.filename.endsWith('.pdf');
+                      const isImg = att.mimeType?.includes('image');
+                      const fileUrl =
+                        att.filename === 'Himalayan-Koh-Wholesale-Catalog-2026.pdf'
+                          ? '/Himalayan-Koh-Wholesale-Catalog-2026.pdf'
+                          : att.contentBase64
+                          ? `data:${att.mimeType};base64,${att.contentBase64}`
+                          : '#';
+
+                      return (
+                        <a
+                          key={att.id || att.filename}
+                          href={fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download={att.filename}
+                          className="p-3 rounded-2xl flex items-center justify-between gap-3 transition-all active:scale-[0.99] border hover:opacity-90"
+                          style={{
+                            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#F1F5F9',
+                            borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+                          }}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center text-rose-400 shrink-0">
+                              {isPdf ? (
+                                <FilePdf size={18} weight="fill" />
+                              ) : isImg ? (
+                                <ImageIcon size={18} weight="fill" />
+                              ) : (
+                                <FileText size={18} weight="fill" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p
+                                className="text-xs font-semibold truncate leading-tight"
+                                style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}
+                              >
+                                {att.filename}
+                              </p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                {formatFileSize(att.sizeBytes)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <DownloadSimple size={16} className="text-slate-400 shrink-0" />
+                        </a>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-              <span className="text-[10px] font-medium" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>
-                Yesterday, 4:28 PM
-              </span>
+              )}
             </div>
-
-            <div
-              className="text-xs leading-relaxed whitespace-pre-wrap py-1"
-              style={{ color: isDark ? '#CBD5E1' : '#334155' }}
-            >
-              {'Hi Salman,\n\nPlease find the updated pricing for livestock rock salt (45 lb).\nFor 10+ pallets we can offer an additional 5% discount.\nDelivery timeline to Houston is approximately 12–15 days.\n\nLet us know if you need a formal quotation.\n\nBest regards,\nHimalayan Koh Sales Team'}
-            </div>
-          </div>
-        )}
-
-        {/* Attachments Section (Reference Image 3) */}
-        <div className="space-y-2 pt-1">
-          <h4
-            className="text-xs font-bold uppercase tracking-wider"
-            style={{ color: isDark ? '#94A3B8' : '#64748B' }}
-          >
-            2 Attachments
-          </h4>
-
-          <div className="grid grid-cols-2 gap-2.5">
-            {/* Attachment 1: PDF */}
-            <div
-              className="p-3 rounded-2xl flex items-center gap-2.5 transition-all duration-150 active:scale-[0.98]"
-              style={{
-                backgroundColor: isDark ? '#0D1424' : '#FFFFFF',
-                border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0'}`,
-              }}
-            >
-              <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/20 flex items-center justify-center text-rose-500 shrink-0">
-                <FilePdf size={20} weight="fill" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold truncate leading-tight" style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}>
-                  HK_Pricing_2026.pdf
-                </p>
-                <p className="text-[10px] font-mono mt-0.5 text-slate-400">245 KB</p>
-              </div>
-            </div>
-
-            {/* Attachment 2: Image */}
-            <div
-              className="p-3 rounded-2xl flex items-center gap-2.5 transition-all duration-150 active:scale-[0.98]"
-              style={{
-                backgroundColor: isDark ? '#0D1424' : '#FFFFFF',
-                border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0'}`,
-              }}
-            >
-              <div className="w-10 h-10 rounded-xl overflow-hidden bg-white/10 shrink-0 border border-white/10">
-                <img
-                  src="/images/hk_salt_crystal.webp"
-                  alt="Attachment"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold truncate leading-tight" style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}>
-                  Rock_Salt_45lb.jpg
-                </p>
-                <p className="text-[10px] font-mono mt-0.5 text-slate-400">1.2 MB</p>
-              </div>
-              <DownloadSimple size={14} className="text-slate-400 shrink-0" />
-            </div>
-          </div>
-        </div>
+          );
+        })}
       </div>
 
-      {/* ── 3. Sticky Bottom Action Pills (Reference Image 3) ────────────── */}
+      {/* ── 3. Sticky Bottom Action Pills (Matching Gmail Exactly) ───────── */}
       <div
-        className="fixed bottom-0 inset-x-0 p-3.5 border-t flex items-center justify-center gap-2 shrink-0 z-30"
+        className="fixed bottom-0 inset-x-0 p-3.5 border-t flex items-center justify-center gap-3 shrink-0 z-30"
         style={{
           borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
           backgroundColor: isDark ? 'rgba(8, 12, 22, 0.95)' : 'rgba(255, 255, 255, 0.95)',
@@ -407,44 +487,29 @@ export function MobileEmailThreadView({
         <button
           type="button"
           onClick={() => setComposerMode('reply')}
-          className="flex-1 max-w-[120px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full text-xs font-bold text-white transition-all active:scale-95 shadow-md cursor-pointer"
+          className="flex-1 max-w-[150px] flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-xs font-extrabold transition-all active:scale-95 shadow-md cursor-pointer"
           style={{
             backgroundColor: isDark ? '#1E293B' : '#E2E8F0',
             color: isDark ? '#FFFFFF' : '#0F172A',
-            border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : '#CBD5E1'}`,
+            border: `1.5px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1'}`,
           }}
         >
-          <ArrowUUpLeft size={14} weight="bold" />
+          <ArrowUUpLeft size={16} weight="bold" />
           <span>Reply</span>
-        </button>
-
-        {/* Reply All Pill */}
-        <button
-          type="button"
-          onClick={() => setComposerMode('reply-all')}
-          className="flex-1 max-w-[120px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full text-xs font-bold text-white transition-all active:scale-95 shadow-md cursor-pointer"
-          style={{
-            backgroundColor: isDark ? '#1E293B' : '#E2E8F0',
-            color: isDark ? '#FFFFFF' : '#0F172A',
-            border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : '#CBD5E1'}`,
-          }}
-        >
-          <ArrowsLeftRight size={14} weight="bold" />
-          <span>Reply All</span>
         </button>
 
         {/* Forward Pill */}
         <button
           type="button"
           onClick={() => setComposerMode('forward')}
-          className="flex-1 max-w-[120px] flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-full text-xs font-bold text-white transition-all active:scale-95 shadow-md cursor-pointer"
+          className="flex-1 max-w-[150px] flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-xs font-extrabold transition-all active:scale-95 shadow-md cursor-pointer"
           style={{
             backgroundColor: isDark ? '#1E293B' : '#E2E8F0',
             color: isDark ? '#FFFFFF' : '#0F172A',
-            border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : '#CBD5E1'}`,
+            border: `1.5px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1'}`,
           }}
         >
-          <ArrowUUpRight size={14} weight="bold" />
+          <ArrowUUpRight size={16} weight="bold" />
           <span>Forward</span>
         </button>
       </div>
