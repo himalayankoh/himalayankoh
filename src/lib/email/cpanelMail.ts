@@ -213,7 +213,14 @@ export function generateMessageId(domain = 'himalayankoh.com'): string {
 /**
  * Build RFC 5322 MIME message raw string
  */
-export function buildMimeMessage(input: {
+export function encodeTextPart(text: string, type: 'text/plain' | 'text/html'): string {
+  const b64 = Buffer.from(text, 'utf8').toString('base64');
+  const chunks = b64.match(/.{1,76}/g) || [b64];
+  const wrapped = chunks.join('\r\n');
+  return `Content-Type: ${type}; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrapped}\r\n\r\n`;
+}
+
+function buildMimeMessage(input: {
   from: string;
   fromName: string;
   to: string[];
@@ -263,15 +270,12 @@ export function buildMimeMessage(input: {
     if (input.bodyHtml) {
       body += `Content-Type: multipart/alternative; boundary="${altBoundary}"\r\n\r\n`;
       body += `--${altBoundary}\r\n`;
-      body += `Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n`;
-      body += `${input.bodyText}\r\n\r\n`;
+      body += encodeTextPart(input.bodyText, 'text/plain');
       body += `--${altBoundary}\r\n`;
-      body += `Content-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n`;
-      body += `${input.bodyHtml}\r\n\r\n`;
+      body += encodeTextPart(input.bodyHtml, 'text/html');
       body += `--${altBoundary}--\r\n\r\n`;
     } else {
-      body += `Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n`;
-      body += `${input.bodyText}\r\n\r\n`;
+      body += encodeTextPart(input.bodyText, 'text/plain');
     }
 
     for (const att of input.attachments || []) {
@@ -290,14 +294,12 @@ export function buildMimeMessage(input: {
     body += `--${boundary}--\r\n`;
   } else if (input.bodyHtml) {
     body += `--${altBoundary}\r\n`;
-    body += `Content-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n`;
-    body += `${input.bodyText}\r\n\r\n`;
+    body += encodeTextPart(input.bodyText, 'text/plain');
     body += `--${altBoundary}\r\n`;
-    body += `Content-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n`;
-    body += `${input.bodyHtml}\r\n\r\n`;
+    body += encodeTextPart(input.bodyHtml, 'text/html');
     body += `--${altBoundary}--\r\n`;
   } else {
-    body += `${input.bodyText}\r\n`;
+    body += encodeTextPart(input.bodyText, 'text/plain');
   }
 
   return `${headers.join('\r\n')}\r\n\r\n${body}`;
