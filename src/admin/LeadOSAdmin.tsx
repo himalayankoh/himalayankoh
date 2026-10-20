@@ -1268,9 +1268,22 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     const reqSeq = ++libraryRequestSeq.current;
     setLoadingLibrary(true);
     setLibraryError(null);
-    try {
+
+    const attemptFetch = async (attempt: number): Promise<Response> => {
       const headers = await getAuthHeaders();
       const res = await fetch('/api/admin/leados/leads?page=1&limit=500', { headers, cache: 'no-store' });
+      if (reqSeq !== libraryRequestSeq.current) throw new Error('__STALE_SEQ__');
+      if (!res.ok && attempt < 2) {
+        // Auto-retry once after 1.2s for transient failures (500, network blip)
+        await new Promise((r) => setTimeout(r, 1200));
+        if (reqSeq !== libraryRequestSeq.current) throw new Error('__STALE_SEQ__');
+        return attemptFetch(attempt + 1);
+      }
+      return res;
+    };
+
+    try {
+      const res = await attemptFetch(1);
       if (reqSeq !== libraryRequestSeq.current) return;
 
       if (!res.ok) {
@@ -1298,6 +1311,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
       setLibraryLeads(leads);
       syncSessionLibraryCache(leads);
     } catch (err) {
+      if (err instanceof Error && err.message === '__STALE_SEQ__') return;
       if (reqSeq !== libraryRequestSeq.current) return;
       const message = err instanceof Error ? err.message : 'Lead Library failed to load.';
       setLibraryError(message);
@@ -3139,6 +3153,8 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
         onDeleteLead={handleDeleteSavedLead}
         onStartOutreach={startOutreachForLead}
         isLoading={loadingLibrary}
+        onRefresh={() => void loadLibrary()}
+        error={libraryError}
       />
 
       {/* Desktop Interface (100% Preserved) */}
@@ -4893,6 +4909,16 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                   <span className="bg-slate-900 text-white text-xs font-medium px-3 py-0.5 rounded-full">
                     {libraryUnavailable ? 'Unavailable' : `${libraryTotal ?? libraryLeads.length} Total Saved`}
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => void loadLibrary()}
+                    disabled={loadingLibrary}
+                    title="Refresh Lead Library"
+                    className="px-3 py-1 rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium text-xs flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50 transition-all"
+                  >
+                    <ArrowsClockwise weight="bold" className={`w-3.5 h-3.5 ${loadingLibrary ? 'animate-spin text-indigo-600' : 'text-slate-600'}`} />
+                    Refresh
+                  </button>
                 </div>
                 <p className="text-xs font-semibold text-slate-700 mt-1">
                   Research, qualify and manage your prospects.
@@ -4968,31 +4994,43 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
               </div>
             )}
 
-            <div className="relative flex-1">
-                      <MagnifyingGlass weight="bold" className="w-4 h-4 text-slate-600 absolute left-3 top-2.5 pointer-events-none" />
-                      <input
-                        type="text"
-                        aria-label="Search saved leads" placeholder="Search businesses, locations, contacts…"
-                        value={librarySearch}
-                        onChange={(e) => {
-                          setLibrarySearch(e.target.value);
-                          setLibraryPage(1);
-                        }}
-                        className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                      />
-                      {librarySearch && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setLibrarySearch('');
-                            setLibraryPage(1);
-                          }}
-                          className="absolute right-2.5 top-2.5 text-slate-600 hover:text-slate-900 text-xs font-black"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <MagnifyingGlass weight="bold" className="w-4 h-4 text-slate-600 absolute left-3 top-2.5 pointer-events-none" />
+                <input
+                  type="text"
+                  aria-label="Search saved leads" placeholder="Search businesses, locations, contacts…"
+                  value={librarySearch}
+                  onChange={(e) => {
+                    setLibrarySearch(e.target.value);
+                    setLibraryPage(1);
+                  }}
+                  className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-900 placeholder-slate-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                />
+                {librarySearch && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLibrarySearch('');
+                      setLibraryPage(1);
+                    }}
+                    className="absolute right-2.5 top-2.5 text-slate-600 hover:text-slate-900 text-xs font-black"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadLibrary()}
+                disabled={loadingLibrary}
+                title="Refresh Lead Library"
+                className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer disabled:opacity-50 transition-all"
+              >
+                <ArrowsClockwise weight="bold" className={`w-3.5 h-3.5 ${loadingLibrary ? 'animate-spin text-indigo-600' : 'text-slate-600'}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
 
             {/* Verification & Pipeline KPI statistics (Clickable Filter Cards) */}
             {(() => {
@@ -5523,9 +5561,29 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           </div>
 
           {libraryError && (
-            <div className="p-3 bg-red-50 border border-red-300 rounded-lg text-xs font-bold text-red-900" role="alert">
-              Lead Library error: {libraryError}
-              {libraryLeads.length > 0 && <p className="mt-1 font-normal">Previously loaded records are shown. Refresh to try again; these records may be out of date.</p>}
+            <div className="p-4 bg-red-50 border border-red-200 rounded-2xl shadow-xs flex items-start gap-3" role="alert">
+              <WarningCircle weight="fill" className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-red-900">Lead Library error: {libraryError}</p>
+                {libraryLeads.length > 0 && <p className="mt-0.5 text-xs text-red-700">Previously loaded records are shown. Click Refresh to try again.</p>}
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadLibrary()}
+                disabled={loadingLibrary}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-medium text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60 shadow-xs shrink-0 transition-all"
+              >
+                <ArrowsClockwise weight="bold" className={`w-3.5 h-3.5 ${loadingLibrary ? 'animate-spin' : ''}`} />
+                {loadingLibrary ? 'Refreshing…' : 'Refresh Leads Now'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLibraryError(null)}
+                className="text-red-400 hover:text-red-700 p-0.5 cursor-pointer shrink-0"
+                title="Dismiss"
+              >
+                <X weight="bold" className="w-4 h-4" />
+              </button>
             </div>
           )}
 

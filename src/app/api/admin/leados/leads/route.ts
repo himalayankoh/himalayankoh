@@ -41,14 +41,26 @@ export async function GET(request: Request) {
   const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '500', 10) || 500));
 
   try {
-    const { leads, total } = await listSavedLeads({ search, status, page, limit });
+    let result: { leads: any[]; total: number };
+    try {
+      result = await listSavedLeads({ search, status, page, limit });
+    } catch (firstErr) {
+      // Auto-retry once after a short delay for transient WordPress/network failures
+      console.warn('LeadOS leads first attempt failed, retrying in 800ms:', firstErr);
+      await new Promise((r) => setTimeout(r, 800));
+      result = await listSavedLeads({ search, status, page, limit, skipCache: true });
+    }
     return NextResponse.json(
-      { ok: true, leads, total, page, limit },
+      { ok: true, leads: result.leads, total: result.total, page, limit },
       { headers: { 'Cache-Control': 'private, max-age=15, stale-while-revalidate=120' } }
     );
   } catch (error) {
-    console.error('LeadOS get leads error:', error);
-    return NextResponse.json({ error: 'Failed to retrieve saved leads' }, { status: 500 });
+    console.error('LeadOS get leads error (after retry):', error);
+    const detail = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { error: `Failed to retrieve saved leads: ${detail}` },
+      { status: 500 }
+    );
   }
 }
 

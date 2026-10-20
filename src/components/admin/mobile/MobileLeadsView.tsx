@@ -13,6 +13,8 @@ import {
   Globe,
   Tag,
   Star,
+  ArrowsClockwise,
+  WarningCircle,
 } from '@phosphor-icons/react';
 import type { SavedLeadRecord } from '@/lib/leados/types';
 import { useMobileTheme } from '@/context/MobileThemeContext';
@@ -24,6 +26,8 @@ interface MobileLeadsViewProps {
   onDeleteLead?: (leadId: string) => void;
   onStartOutreach?: (lead: SavedLeadRecord) => void;
   isLoading?: boolean;
+  onRefresh?: () => void;
+  error?: string | null;
 }
 
 type FilterChip = 'all' | 'new' | 'contacted' | 'qualified' | 'converted';
@@ -34,6 +38,8 @@ export function MobileLeadsView({
   onDeleteLead,
   onStartOutreach,
   isLoading = false,
+  onRefresh,
+  error,
 }: MobileLeadsViewProps) {
   const { isDark } = useMobileTheme();
   const palette = getMobilePalette(isDark);
@@ -327,7 +333,60 @@ export function MobileLeadsView({
         >
           <Sliders size={18} weight={showFilters ? 'bold' : 'regular'} />
         </button>
+
+        {/* Refresh Button — Always Visible */}
+        {onRefresh && (
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={isLoading}
+            aria-label="Refresh leads"
+            className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 transition-all active:scale-95 disabled:opacity-50"
+            style={{
+              backgroundColor: palette.searchBg,
+              border: `1px solid ${palette.searchBorder}`,
+              color: isLoading ? palette.accentText : palette.textSecondary,
+            }}
+          >
+            <ArrowsClockwise size={18} weight="bold" className={isLoading ? 'animate-spin' : ''} />
+          </button>
+        )}
       </div>
+
+      {/* ── Error Banner with Refresh (Mobile) ─────────────────────────── */}
+      {error && (
+        <div
+          className="rounded-2xl p-3.5 flex items-center gap-3"
+          style={{
+            backgroundColor: isDark ? 'rgba(239, 68, 68, 0.12)' : '#FEF2F2',
+            border: `1px solid ${isDark ? 'rgba(239, 68, 68, 0.25)' : '#FECACA'}`,
+          }}
+        >
+          <WarningCircle weight="fill" size={20} style={{ color: '#EF4444', flexShrink: 0 }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold" style={{ color: isDark ? '#FCA5A5' : '#991B1B' }}>
+              {error}
+            </p>
+            {leads.length > 0 && (
+              <p className="text-[10px] mt-0.5" style={{ color: isDark ? '#FDA4AF' : '#B91C1C' }}>
+                Showing previously loaded records.
+              </p>
+            )}
+          </div>
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isLoading}
+              className="px-3 py-1.5 rounded-xl text-white text-xs font-semibold flex items-center gap-1.5 shrink-0 disabled:opacity-50 transition-all active:scale-95"
+              style={{ backgroundColor: '#DC2626' }}
+            >
+              <ArrowsClockwise size={14} weight="bold" className={isLoading ? 'animate-spin' : ''} />
+              {isLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── 3. Horizontal Filter Chips (Reference Image 1) ───────────────── */}
       <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
@@ -389,6 +448,18 @@ export function MobileLeadsView({
             <p className="text-xs mt-1" style={{ color: palette.textSecondary }}>
               {searchQuery ? `No records matching "${searchQuery}"` : 'No leads in this category yet.'}
             </p>
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={isLoading}
+                className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-xs font-semibold shadow-xs disabled:opacity-50 transition-all active:scale-95"
+                style={{ backgroundColor: '#6366F1' }}
+              >
+                <ArrowsClockwise size={14} weight="bold" className={isLoading ? 'animate-spin' : ''} />
+                <span>{isLoading ? 'Loading Leads…' : 'Refresh Leads'}</span>
+              </button>
+            )}
           </div>
         ) : (
           filteredLeads.map((lead) => {
