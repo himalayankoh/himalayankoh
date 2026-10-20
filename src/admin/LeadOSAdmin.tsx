@@ -809,10 +809,10 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     name: 'Business Name',
     location: 'Location',
     category: 'Category',
-    contact: 'Contact Information',
+    contact: 'Contact Info',
     source: 'Source',
-    status: 'CRM Status',
-    score: 'Fit Score',
+    status: 'Status',
+    score: 'Score',
   };
 
   const { user } = useAuthStore();
@@ -2871,11 +2871,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     const isVerified = lead.emailSource === 'company_website' || lead.dataSource === 'openstreetmap' || Boolean(lead.phone && lead.website);
     const displayScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 82;
     const colWidth = libraryColWidths[colKey];
-    const cellStyle = fitScreenMode
-      ? colKey === 'score'
-        ? { width: 75, minWidth: 75 }
-        : undefined
-      : { width: colWidth, minWidth: colWidth };
+    const cellStyle = { width: colWidth, minWidth: colWidth };
     const fbUrl = getLeadFacebook(lead);
     const igUrl = getLeadInstagram(lead);
 
@@ -5576,21 +5572,21 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
               </div>
             ) : (
               <div className="w-full overflow-x-auto">
-                <table className={`hidden md:table w-full min-w-[1150px] text-left border-collapse text-xs ${fitScreenMode ? 'table-fixed' : ''}`}>
+                <table className="hidden md:table w-full min-w-[1250px] text-left border-collapse text-xs">
                   <thead className="bg-slate-50/90 border-b border-slate-200/80">
                     <tr className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider select-none">
                       {/* Drag Reorder Handle Header */}
                       <th
-                        style={fitScreenMode ? { width: '32px' } : { width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder, maxWidth: libraryColWidths.reorder }}
-                        className="py-3 px-1 text-center whitespace-nowrap text-slate-700"
-                        title="Drag rows using handle (⋮⋮) to reorder"
+                        style={{ width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder }}
+                        className="py-3 px-1 text-center whitespace-nowrap text-slate-400"
+                        title="Drag rows to reorder"
                       >
-                        <DotsSixVertical weight="bold" className="w-4 h-4 mx-auto text-slate-700" />
+                        <DotsSixVertical weight="bold" className="w-4 h-4 mx-auto text-slate-400" />
                       </th>
 
                       {/* Checkbox */}
                       <th
-                        style={fitScreenMode ? { width: '40px', minWidth: '40px' } : { width: libraryColWidths.check, minWidth: libraryColWidths.check }}
+                        style={{ width: libraryColWidths.check, minWidth: libraryColWidths.check }}
                         className="py-3 px-1.5 text-center whitespace-nowrap"
                       >
                         <input
@@ -5603,8 +5599,8 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                       {/* Index */}
                       <th
-                        style={fitScreenMode ? { width: '38px' } : { width: libraryColWidths.index, minWidth: libraryColWidths.index, maxWidth: libraryColWidths.index }}
-                        className="py-3 px-1.5 text-slate-800 font-extrabold whitespace-nowrap text-center"
+                        style={{ width: libraryColWidths.index, minWidth: libraryColWidths.index }}
+                        className="py-3 px-1.5 text-slate-400 font-mono text-[11px] font-medium whitespace-nowrap text-center"
                       >
                         #
                       </th>
@@ -5629,7 +5625,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         return (
                           <th
                             key={colKey}
-                            style={fitScreenMode ? (colKey === 'score' ? { width: '75px', minWidth: '75px' } : { width: fitPercentMap[colKey] }) : { width: colWidth, minWidth: colWidth }}
+                            style={{ width: colWidth, minWidth: colWidth }}
                             draggable={true}
                             onDragStart={(e) => {
                               e.dataTransfer.setData('text/plain', colKey);
@@ -5666,8 +5662,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                                 onClick={() => handleToggleLibrarySort(colKey as any)}
                                 className="flex items-center gap-1 cursor-pointer flex-1 min-w-0"
                               >
-                                <DotsSixVertical weight="bold" className="w-3.5 h-3.5 text-slate-600 group-hover:text-indigo-700 flex-shrink-0 cursor-grab" />
-                                <span className="truncate">{colLabel}</span>
+                                <span className="font-semibold text-slate-500 uppercase tracking-wider text-[11px] whitespace-nowrap">{colLabel}</span>
                                 {isSorted ? (
                                   librarySortDirection === 'asc' ? (
                                     <CaretUp weight="bold" className="w-3.5 h-3.5 text-indigo-700 flex-shrink-0" />
@@ -5729,7 +5724,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                       {/* Actions */}
                       <th
-                        style={fitScreenMode ? { width: '155px', minWidth: '155px' } : { width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
+                        style={{ width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
                         className="relative py-3 px-3 font-semibold text-slate-500 whitespace-nowrap text-right"
                       >
                         Actions
@@ -5830,7 +5825,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                           {/* Actions */}
                           <td
-                            style={fitScreenMode ? { width: '155px', minWidth: '155px' } : { width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
+                            style={{ width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
                             className="py-2.5 px-3 text-right whitespace-nowrap"
                             onClick={(e) => e.stopPropagation()}
                           >
