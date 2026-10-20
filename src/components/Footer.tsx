@@ -105,7 +105,7 @@ export default function Footer({ compact = false }: { compact?: boolean }) {
     <footer className="border-t border-himalayan-line bg-white px-4 py-4 text-xs text-charcoal-light">
       <div className="mx-auto max-w-6xl">
         <div className="flex flex-wrap items-center justify-center gap-x-4">
-          <a href="mailto:support@himalayankoh.com" className="inline-flex min-h-11 items-center">support@himalayankoh.com</a>
+          <a href="mailto:sales@himalayankoh.com" className="inline-flex min-h-11 items-center">sales@himalayankoh.com</a>
           <a href="tel:8322246466" className="inline-flex min-h-11 items-center">(832) 224-6466</a>
         </div>
         <nav aria-label="Checkout policies" className="flex flex-wrap items-center justify-center gap-x-4">
@@ -234,9 +234,9 @@ export default function Footer({ compact = false }: { compact?: boolean }) {
           {/* Contact */}
           <FooterSection title="Customer Support">
             <div className="space-y-3">
-              <a href="mailto:support@himalayankoh.com" className="flex items-center gap-3 text-white/75 text-sm hover:text-himalayan transition-colors">
+              <a href="mailto:sales@himalayankoh.com" className="flex items-center gap-3 text-white/75 text-sm hover:text-himalayan transition-colors">
                 <Mail size={18} className="text-himalayan flex-shrink-0" />
-                support@himalayankoh.com
+                sales@himalayankoh.com
               </a>
               <a href="tel:8322246466" className="flex items-center gap-3 text-white/75 text-sm hover:text-himalayan transition-colors">
                 <Phone size={18} className="text-himalayan flex-shrink-0" />

@@ -36,7 +36,7 @@ const faqs: Faq[] = [
   {
     question: 'Where do I send a return request, and where do returns go?',
     answer:
-      'Email support@himalayankoh.com or call (832) 224-6466 to open a return request. Because returns require prior Return Merchandise Authorization (RMA), our support team will provide you with authorized return instructions and the appropriate receiving facility address when approving your request.',
+      'Email sales@himalayankoh.com or call (832) 224-6466 to open a return request. Because returns require prior Return Merchandise Authorization (RMA), our support team will provide you with authorized return instructions and the appropriate receiving facility address when approving your request.',
   },
   {
     question: 'How long does it take you to process an order for shipping?',
@@ -66,7 +66,7 @@ const faqs: Faq[] = [
   {
     question: 'My question is not answered here.',
     answer:
-      'No problem — send it to support@himalayankoh.com or call us on (832) 224-6466 and we will help.',
+      'No problem — send it to sales@himalayankoh.com or call us on (832) 224-6466 and we will help.',
   },
 ];
 

@@ -7,14 +7,14 @@ import { motion } from 'framer-motion';
  * Contact details and return protocols are aligned with approved business identity:
  * - General business address: 12620 FM 1960 W Ste A-4, Houston, TX 77065
  * - Phone: (832) 224-6466
- * - Email: support@himalayankoh.com
+ * - Email: sales@himalayankoh.com
  * - Returns: Require prior authorization; customers contact support for return instructions.
  */
 
 const BUSINESS_NAME = 'Himalayan Koh';
 const BUSINESS_ADDRESS = '12620 FM 1960 W Ste A-4, Houston, TX 77065';
 const STORE_PHONE = '(832) 224-6466';
-const SUPPORT_EMAIL = 'support@himalayankoh.com';
+const SUPPORT_EMAIL = 'sales@himalayankoh.com';
 
 interface LegalPageProps {
   type: 'terms' | 'privacy' | 'return' | 'shipping';

@@ -51,7 +51,7 @@ export const useSettingsStore = create<SettingsStore>()(
       },
       storeConfig: {
         storeName: 'Himalayan Koh',
-        contactEmail: 'support@himalayankoh.com',
+        contactEmail: 'sales@himalayankoh.com',
         phone: '(832) 224-6466',
         address: '12620 FM 1960 W Ste A-4, Houston, TX 77065, USA',
         freeShippingThreshold: 50,

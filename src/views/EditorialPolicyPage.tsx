@@ -54,7 +54,7 @@ const SECTIONS: { title: string; icon: typeof PenLine; paragraphs: string[] }[] 
     icon: RefreshCw,
     paragraphs: [
       'When a product, price, policy, or factual explanation changes, we update the article and change its “last updated” date. We keep the article URL when it is still useful rather than deleting and republishing it at a new address.',
-      'If something is wrong, tell us: email support@himalayankoh.com with the page address and what is incorrect. We check it against the source and correct the page, or remove the claim if we cannot support it. A correction that changes the substance of a guide is made in the article itself, not hidden in a footnote.',
+      'If something is wrong, tell us: email sales@himalayankoh.com with the page address and what is incorrect. We check it against the source and correct the page, or remove the claim if we cannot support it. A correction that changes the substance of a guide is made in the article itself, not hidden in a footnote.',
     ],
   },
   {
@@ -158,8 +158,8 @@ export default function EditorialPolicyPage() {
 
           <p className="text-sm text-charcoal-light">
             Questions, corrections, or a factual error to report? Email{' '}
-            <a href="mailto:support@himalayankoh.com" className="text-himalayan hover:underline font-semibold">
-              support@himalayankoh.com
+            <a href="mailto:sales@himalayankoh.com" className="text-himalayan hover:underline font-semibold">
+              sales@himalayankoh.com
             </a>{' '}
             or call (832) 224-6466. See our <Link href="/contact" className="underline">Contact page</Link> for customer-service hours.
           </p>

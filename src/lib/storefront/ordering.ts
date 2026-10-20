@@ -76,7 +76,7 @@ export const ORDERING_ENABLED = process.env.NEXT_PUBLIC_ORDERS_PAUSED !== 'true'
  * configuration — a shopper is owed the fact, not the diagnosis.
  */
 export const ORDERS_PAUSED_MESSAGE =
-  'Online ordering is temporarily unavailable. Please contact us at support@himalayankoh.com or (832) 224-6466 to place your order.';
+  'Online ordering is temporarily unavailable. Please contact us at sales@himalayankoh.com or (832) 224-6466 to place your order.';
 
 /** Where the pause came from, for the admin console and for support. */
 export type OrdersPausedSource = 'deployment' | 'default';

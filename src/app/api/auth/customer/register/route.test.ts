@@ -53,7 +53,7 @@ describe('POST /api/auth/customer/register', () => {
     expect(res.status).toBe(503);
     expect(body.error).not.toMatch(/CUSTOMER_SESSION_SECRET/);
     expect(body.error).toBe(
-      'Customer account creation is temporarily unavailable. Please try again in a few minutes, or email support@himalayankoh.com and we will help you directly.'
+      'Customer account creation is temporarily unavailable. Please try again in a few minutes, or email sales@himalayankoh.com and we will help you directly.'
     );
     expect(logged.mock.calls.flat().join(' ')).toMatch(/CUSTOMER_SESSION_SECRET/);
   });
@@ -84,7 +84,7 @@ describe('POST /api/auth/customer/register', () => {
 
     expect(res.status).toBe(429);
     expect(body.error).toBe(
-      'Too many accounts have been created from this connection. Please try again later, or email support@himalayankoh.com and we will help you directly.'
+      'Too many accounts have been created from this connection. Please try again later, or email sales@himalayankoh.com and we will help you directly.'
     );
     const [call] = stub.callsTo('/hk-storefront/v1/customer/register', 'POST');
     expect(call.headers['X-HK-Client-IP']).toBe('203.0.113.9');

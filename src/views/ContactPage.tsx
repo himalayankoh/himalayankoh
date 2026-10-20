@@ -90,8 +90,8 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <h4 className="font-semibold text-charcoal mb-0.5">Email</h4>
-                    <a href="mailto:support@himalayankoh.com" className="text-himalayan hover:underline text-sm">
-                      support@himalayankoh.com
+                    <a href="mailto:sales@himalayankoh.com" className="text-himalayan hover:underline text-sm">
+                      sales@himalayankoh.com
                     </a>
                   </div>
                 </div>

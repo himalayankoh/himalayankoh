@@ -80,7 +80,7 @@ describe('POST /api/auth/customer/login', () => {
     // operator's business, and this body used to carry its name verbatim.
     expect(body.error).not.toMatch(/CUSTOMER_SESSION_SECRET/);
     expect(body.error).toBe(
-      'Customer sign-in is temporarily unavailable. Please try again in a few minutes, or email support@himalayankoh.com and we will help you directly.'
+      'Customer sign-in is temporarily unavailable. Please try again in a few minutes, or email sales@himalayankoh.com and we will help you directly.'
     );
     // Withheld from the body, not swallowed: the note is in the log.
     expect(logged.mock.calls.flat().join(' ')).toMatch(/CUSTOMER_SESSION_SECRET/);

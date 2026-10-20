@@ -261,7 +261,7 @@ describe('WordPress customer authentication', () => {
     if (result.ok) return;
     expect(result.status).toBe(429);
     expect(result.error).toBe(
-      'Too many accounts have been created from this connection. Please try again later, or email support@himalayankoh.com and we will help you directly.'
+      'Too many accounts have been created from this connection. Please try again later, or email sales@himalayankoh.com and we will help you directly.'
     );
     // The refusal must not read as an internal fault: the shopper can wait and retry.
     expect(result.error).not.toMatch(/WordPress|plugin|variable|WORDPRESS_/);

@@ -44,10 +44,10 @@ export const AUTHORS: Record<string, Author> = {
       'Order coordination and supply inquiries',
       'Requests for available specifications',
     ],
-    bio: 'The Himalayan Koh team that handles product and supply inquiries, order coordination and requests for available specifications. This company profile is not a supplier-audit certification or a laboratory report. Questions and document requests go to support@himalayankoh.com.',
+    bio: 'The Himalayan Koh team that handles product and supply inquiries, order coordination and requests for available specifications. This company profile is not a supplier-audit certification or a laboratory report. Questions and document requests go to sales@himalayankoh.com.',
     avatar: '',
     socials: {
-      email: 'support@himalayankoh.com',
+      email: 'sales@himalayankoh.com',
     },
   },
   'editorial-board': {
@@ -63,7 +63,7 @@ export const AUTHORS: Record<string, Author> = {
     bio: 'The Himalayan Koh team that writes and updates the store’s guides and product descriptions, working from the individual product listings and, where a claim needs a source, from published university extension, government and food-science material. This is the company’s own team: it is not an independent reviewer, it is not a veterinary or nutrition panel, and it does not claim to have tested the products. How we research, cite and correct guides is set out in our editorial policy.',
     avatar: '',
     socials: {
-      email: 'support@himalayankoh.com',
+      email: 'sales@himalayankoh.com',
     },
   },
   // The slug is kept from the earlier profile so the two indexed URLs
@@ -83,7 +83,7 @@ export const AUTHORS: Record<string, Author> = {
     bio: 'The Himalayan Koh team that answers questions about the salt lick and livestock bag range — weights, packing, shipping and returns. It supplies product and order information only; it does not give veterinary or animal nutrition advice, and it will point you to an appropriately qualified professional for anything about an animal’s health.',
     avatar: '',
     socials: {
-      email: 'support@himalayankoh.com',
+      email: 'sales@himalayankoh.com',
     },
   },
 };

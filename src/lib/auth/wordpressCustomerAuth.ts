@@ -127,7 +127,7 @@ const PLUGIN_ERRORS: Record<string, { status: number; error: string }> = {
   hk_storefront_signup_rate_limited: {
     status: 429,
     error:
-      'Too many accounts have been created from this connection. Please try again later, or email support@himalayankoh.com and we will help you directly.',
+      'Too many accounts have been created from this connection. Please try again later, or email sales@himalayankoh.com and we will help you directly.',
   },
 };
 
@@ -154,7 +154,7 @@ export function storefrontNamespace(): string {
  * two apart, nor learn from either that a variable is unset. One sentence, one place.
  */
 export function customerAccountsUnavailable(verb: string): string {
-  return `Customer ${verb} is temporarily unavailable. Please try again in a few minutes, or email support@himalayankoh.com and we will help you directly.`;
+  return `Customer ${verb} is temporarily unavailable. Please try again in a few minutes, or email sales@himalayankoh.com and we will help you directly.`;
 }
 
 function describeFailure(error: unknown, verb: string): { status: number; error: string } {
