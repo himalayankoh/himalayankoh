@@ -55,6 +55,8 @@ export interface CPanelEmailResult {
 export const AUTHORIZED_SENDERS = [
   'sales@himalayankoh.com',
   'support@himalayankoh.com',
+  'orders@himalayankoh.com',
+  'marketing@himalayankoh.com',
   'salman@himalayankoh.com',
   'admin@himalayankoh.com',
 ] as const;
@@ -74,6 +76,16 @@ export const SENDER_PROFILES: Record<
     name: 'Himalayan Koh Customer Support',
     email: 'support@himalayankoh.com',
     title: 'Customer Service & Inquiries',
+  },
+  'orders@himalayankoh.com': {
+    name: 'Himalayan Koh Orders & Fulfillment',
+    email: 'orders@himalayankoh.com',
+    title: 'Customer Orders, Invoices & Logistics',
+  },
+  'marketing@himalayankoh.com': {
+    name: 'Himalayan Koh Livestock Division',
+    email: 'marketing@himalayankoh.com',
+    title: 'Livestock & Farm Supply Outreach',
   },
   'salman@himalayankoh.com': {
     name: 'Salman — Himalayan Koh',
@@ -113,13 +125,38 @@ export interface CPanelCredentials {
   pass: string;
 }
 
-import { getEmailAccountSync, type MailboxEmail, SUPPORTED_MAILBOXES } from './accountConfig';
+import { getEmailAccountSync, getEmailAccount, type MailboxEmail, SUPPORTED_MAILBOXES } from './accountConfig';
 
 /**
  * Resolve dedicated authenticated SMTP credentials.
  * Checks stored account settings in WordPress first, then dedicated environment variables.
  * NEVER guesses passwords or reuses general hosting/WordPress passwords.
  */
+export async function resolveCPanelCredentialsAsync(senderEmail?: string): Promise<CPanelCredentials | null> {
+  const host = process.env.NAMECHEAP_SMTP_HOST || 'premium164.web-hosting.com';
+  const port = Number(process.env.NAMECHEAP_SMTP_PORT || 465);
+
+  if (senderEmail) {
+    const norm = senderEmail.trim().toLowerCase();
+    if (SUPPORTED_MAILBOXES.includes(norm as MailboxEmail)) {
+      try {
+        const stored = await getEmailAccount(norm as MailboxEmail);
+        if (stored && stored.smtpPass && stored.smtpUser) {
+          return {
+            host: stored.smtpHost || host,
+            port: stored.smtpPort || port,
+            user: stored.smtpUser,
+            pass: stored.smtpPass,
+          };
+        }
+      } catch {
+        // Fall back to env
+      }
+    }
+  }
+  return resolveCPanelCredentials(senderEmail);
+}
+
 export function resolveCPanelCredentials(senderEmail?: string): CPanelCredentials | null {
   const host = process.env.NAMECHEAP_SMTP_HOST || 'premium164.web-hosting.com';
   const port = Number(process.env.NAMECHEAP_SMTP_PORT || 465);
@@ -316,7 +353,7 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
   }
 
   // Resolve dedicated authenticated SMTP credentials
-  const creds = resolveCPanelCredentials(sender.email);
+  const creds = (await resolveCPanelCredentialsAsync(sender.email)) || resolveCPanelCredentials(sender.email);
   if (!creds) {
     return {
       ok: false,
