@@ -715,23 +715,23 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
   // ── Lead Library Table Resizing, Sorting, Filtering & Row Reordering ──
   const DEFAULT_LIBRARY_COL_WIDTHS = {
-    reorder: 36,
-    check: 40,
-    index: 44,
-    name: 220,
-    location: 145,
-    category: 120,
-    contact: 220,
-    source: 95,
-    status: 105,
-    score: 75,
-    actions: 155,
+    reorder: 32,
+    check: 36,
+    index: 36,
+    name: 180,
+    location: 125,
+    category: 105,
+    contact: 195,
+    source: 80,
+    status: 85,
+    score: 60,
+    actions: 115,
   };
 
   const [libraryColWidths, setLibraryColWidths] = useState<Record<string, number>>(() => {
     if (typeof window !== 'undefined') {
       try {
-        const saved = localStorage.getItem('hk_leados_lib_col_widths_v5');
+        const saved = localStorage.getItem('hk_leados_lib_col_widths_v6');
         if (saved) return { ...DEFAULT_LIBRARY_COL_WIDTHS, ...JSON.parse(saved) };
       } catch {}
     }
@@ -757,7 +757,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
       const newWidth = Math.max(minW, resizingLibColRef.current.startWidth + delta);
       setLibraryColWidths((prev) => {
         const next = { ...prev, [resizingLibColRef.current!.colKey]: newWidth };
-        try { localStorage.setItem('hk_leados_lib_col_widths_v5', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('hk_leados_lib_col_widths_v6', JSON.stringify(next)); } catch {}
         return next;
       });
     };
@@ -779,7 +779,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
   const handleResetLibColWidth = (colKey: string) => {
     setLibraryColWidths((prev) => {
       const next = { ...prev, [colKey]: (DEFAULT_LIBRARY_COL_WIDTHS as any)[colKey] || 100 };
-      try { localStorage.setItem('hk_leados_lib_col_widths_v5', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('hk_leados_lib_col_widths_v6', JSON.stringify(next)); } catch {}
       return next;
     });
   };
@@ -788,7 +788,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     setFitScreenMode(true);
     setLibraryColWidths(DEFAULT_LIBRARY_COL_WIDTHS);
     try {
-      localStorage.setItem('hk_leados_lib_col_widths_v5', JSON.stringify(DEFAULT_LIBRARY_COL_WIDTHS));
+      localStorage.setItem('hk_leados_lib_col_widths_v6', JSON.stringify(DEFAULT_LIBRARY_COL_WIDTHS));
     } catch {}
   };
 
@@ -813,6 +813,26 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     source: 'Source',
     status: 'Status',
     score: 'Score',
+  };
+
+  const LIB_FIT_PERCENT_MAP: Record<LibraryColKey, string> = {
+    name: '22%',
+    location: '13%',
+    category: '11%',
+    contact: '23%',
+    source: '9%',
+    status: '9%',
+    score: '60px',
+  };
+
+  const LIB_FIT_MIN_PX_MAP: Record<LibraryColKey, string> = {
+    name: '150px',
+    location: '100px',
+    category: '85px',
+    contact: '165px',
+    source: '70px',
+    status: '75px',
+    score: '56px',
   };
 
   const { user } = useAuthStore();
@@ -2885,7 +2905,9 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     const isVerified = lead.emailSource === 'company_website' || lead.dataSource === 'openstreetmap' || Boolean(lead.phone && lead.website);
     const displayScore = lead.research?.qualification?.score ?? lead.opportunityScore ?? 82;
     const colWidth = libraryColWidths[colKey];
-    const cellStyle = { width: colWidth, minWidth: colWidth };
+    const cellStyle = fitScreenMode
+      ? { width: LIB_FIT_PERCENT_MAP[colKey], minWidth: LIB_FIT_MIN_PX_MAP[colKey] }
+      : { width: colWidth, minWidth: colWidth };
     const fbUrl = getLeadFacebook(lead);
     const igUrl = getLeadInstagram(lead);
 
@@ -2895,7 +2917,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-3 px-3 overflow-hidden min-w-[220px]"
+            className="py-2.5 px-2.5 overflow-hidden"
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-semibold text-xs flex-shrink-0 border border-slate-200/60 shadow-2xs ${getAvatarBg(lead.businessName)}`}>
@@ -2903,7 +2925,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
               </div>
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-[13px] text-slate-900 flex items-center gap-1 hover:text-indigo-600 transition">
-                  <span className="truncate" title={lead.businessName}>{lead.businessName}</span>
+                  <span className="truncate max-w-[200px]" title={lead.businessName}>{lead.businessName}</span>
                   {lead.osmUrl && (
                     <a
                       href={lead.osmUrl}
@@ -2939,7 +2961,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-3 px-3 text-slate-700 overflow-hidden min-w-[145px]"
+            className="py-2.5 px-2.5 text-slate-700 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <a
@@ -2951,10 +2973,10 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
             >
               <div className="flex items-center gap-1 font-medium text-xs text-slate-800 group-hover:text-indigo-600 min-w-0">
                 <MapPin weight="fill" className="w-3.5 h-3.5 text-indigo-500 group-hover:text-indigo-600 flex-shrink-0" />
-                <span className="truncate underline-offset-2 group-hover:underline">{locText}</span>
+                <span className="truncate underline-offset-2 group-hover:underline max-w-[150px]">{locText}</span>
               </div>
               {lead.address && (
-                <div className="text-[11px] font-normal text-slate-400 group-hover:text-slate-600 truncate pl-4.5 mt-0.5" title={lead.address}>
+                <div className="text-[11px] font-normal text-slate-400 group-hover:text-slate-600 truncate pl-4.5 mt-0.5 max-w-[150px]" title={lead.address}>
                   {lead.address}
                 </div>
               )}
@@ -2968,10 +2990,10 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-3 px-2.5 overflow-hidden min-w-[120px]"
+            className="py-2.5 px-2 overflow-hidden"
           >
             <span
-              className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-medium border border-slate-200/60 truncate max-w-full"
+              className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-medium border border-slate-200/60 truncate max-w-full"
               title={lead.category || 'Feed Store'}
             >
               {lead.category || 'Feed Store'}
@@ -2984,7 +3006,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-2.5 px-3 text-xs overflow-hidden min-w-[220px]"
+            className="py-2 px-2.5 text-xs overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="space-y-1 min-w-0">
@@ -2995,7 +3017,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                     href={lead.website}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium truncate inline-flex items-center gap-1 min-w-0"
+                    className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium truncate inline-flex items-center gap-1 min-w-0 max-w-[180px]"
                     title={lead.website}
                   >
                     <span className="truncate">{lead.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
@@ -3012,7 +3034,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
               {lead.phone ? (
                 <div className="flex items-center gap-1.5 text-slate-700">
                   <Phone weight="fill" className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                  <a href={`tel:${lead.phone}`} className="hover:underline font-medium text-slate-800 text-xs truncate" title={`Call ${lead.phone}`}>
+                  <a href={`tel:${lead.phone}`} className="hover:underline font-medium text-slate-800 text-xs truncate max-w-[160px]" title={`Call ${lead.phone}`}>
                     {lead.phone}
                   </a>
                 </div>
@@ -3027,7 +3049,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 <div className="flex items-center gap-1.5 min-w-0">
                   <a
                     href={`mailto:${lead.email}?subject=${encodeURIComponent(`Himalayan Salt Wholesale Inquiry - ${lead.businessName}`)}`}
-                    className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium inline-flex items-center gap-1 truncate min-w-0 text-xs"
+                    className="text-indigo-600 hover:text-indigo-800 hover:underline font-medium inline-flex items-center gap-1 truncate min-w-0 text-xs max-w-[160px]"
                     title={`Click to send email to ${lead.email}`}
                   >
                     <EnvelopeSimple weight="fill" className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
@@ -3088,7 +3110,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-3 px-2.5 overflow-hidden min-w-[95px]"
+            className="py-2.5 px-2 overflow-hidden"
           >
             <SourceBadge source={lead.dataSource || 'Google Maps'} />
           </td>
@@ -3099,15 +3121,15 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
           <td
             key={colKey}
             style={cellStyle}
-            className="py-3 px-2.5 overflow-hidden min-w-[105px]"
+            className="py-2.5 px-2 overflow-hidden"
           >
             {isVerified ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <CheckCircle weight="fill" className="w-3 h-3 text-emerald-600 flex-shrink-0" />
                 <span className="truncate">Verified</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
                 <WarningCircle weight="fill" className="w-3 h-3 text-amber-500 flex-shrink-0" />
                 <span className="truncate">Unverified</span>
               </span>
@@ -3119,10 +3141,10 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
         return (
           <td
             key={colKey}
-            style={fitScreenMode ? { width: '75px', minWidth: '75px' } : cellStyle}
-            className="py-3 px-2 text-center whitespace-nowrap w-[75px] min-w-[75px]"
+            style={fitScreenMode ? { width: '60px', minWidth: '56px' } : cellStyle}
+            className="py-2.5 px-1 text-center whitespace-nowrap"
           >
-            <span className={`inline-flex items-center justify-center min-w-[38px] px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border ${
+            <span className={`inline-flex items-center justify-center min-w-[34px] px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border ${
               displayScore >= 80 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
               displayScore >= 60 ? 'bg-amber-50 text-amber-700 border-amber-200' :
               'bg-slate-100 text-slate-700 border-slate-200'
@@ -5629,13 +5651,13 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                 )}
               </div>
             ) : (
-              <div className="w-full overflow-x-auto">
-                <table className="hidden md:table w-full min-w-[1250px] text-left border-collapse text-xs">
+              <div className="w-full overflow-x-auto scrollbar-thin">
+                <table className={`hidden md:table w-full text-left border-collapse text-xs ${fitScreenMode ? 'min-w-[960px]' : 'min-w-[1250px]'}`}>
                   <thead className="bg-slate-50/90 border-b border-slate-200/80">
                     <tr className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider select-none">
                       {/* Drag Reorder Handle Header */}
                       <th
-                        style={{ width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder }}
+                        style={fitScreenMode ? { width: '32px', minWidth: '32px' } : { width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder }}
                         className="py-3 px-1 text-center whitespace-nowrap text-slate-400"
                         title="Drag rows to reorder"
                       >
@@ -5644,7 +5666,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                       {/* Checkbox */}
                       <th
-                        style={{ width: libraryColWidths.check, minWidth: libraryColWidths.check }}
+                        style={fitScreenMode ? { width: '36px', minWidth: '36px' } : { width: libraryColWidths.check, minWidth: libraryColWidths.check }}
                         className="py-3 px-1.5 text-center whitespace-nowrap"
                       >
                         <input
@@ -5657,7 +5679,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                       {/* Index */}
                       <th
-                        style={{ width: libraryColWidths.index, minWidth: libraryColWidths.index }}
+                        style={fitScreenMode ? { width: '36px', minWidth: '36px' } : { width: libraryColWidths.index, minWidth: libraryColWidths.index }}
                         className="py-3 px-1.5 text-slate-400 font-mono text-[11px] font-medium whitespace-nowrap text-center"
                       >
                         #
@@ -5670,20 +5692,14 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         const isDropTarget = dragOverColKey === colKey && draggedColKey !== colKey;
                         const colWidth = libraryColWidths[colKey];
                         const colLabel = LIBRARY_COL_LABELS[colKey] || colKey;
-                        const fitPercentMap: Record<LibraryColKey, string> = {
-                          name: '24%',
-                          location: '14%',
-                          category: '11%',
-                          contact: '24%',
-                          source: '8%',
-                          status: '9%',
-                          score: '75px',
-                        };
+                        const headerStyle = fitScreenMode
+                          ? { width: LIB_FIT_PERCENT_MAP[colKey], minWidth: LIB_FIT_MIN_PX_MAP[colKey] }
+                          : { width: colWidth, minWidth: colWidth };
 
                         return (
                           <th
                             key={colKey}
-                            style={{ width: colWidth, minWidth: colWidth }}
+                            style={headerStyle}
                             draggable={true}
                             onDragStart={(e) => {
                               e.dataTransfer.setData('text/plain', colKey);
@@ -5782,7 +5798,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                       {/* Actions */}
                       <th
-                        style={{ width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
+                        style={fitScreenMode ? { width: '115px', minWidth: '115px' } : { width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
                         className="relative py-3 px-3 font-semibold text-slate-500 whitespace-nowrap text-right"
                       >
                         Actions
@@ -5826,7 +5842,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         >
                           {/* Drag Reorder Handle */}
                           <td
-                            style={fitScreenMode ? { width: '36px', minWidth: '36px' } : { width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder }}
+                            style={fitScreenMode ? { width: '32px', minWidth: '32px' } : { width: libraryColWidths.reorder, minWidth: libraryColWidths.reorder }}
                             className="py-3 px-1 text-center whitespace-nowrap cursor-grab active:cursor-grabbing group/drag"
                             onClick={(e) => e.stopPropagation()}
                             title="Drag row to reposition (or click arrows to move up/down)"
@@ -5858,7 +5874,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                           {/* Checkbox */}
                           <td
-                            style={fitScreenMode ? { width: '40px', minWidth: '40px' } : { width: libraryColWidths.check, minWidth: libraryColWidths.check }}
+                            style={fitScreenMode ? { width: '36px', minWidth: '36px' } : { width: libraryColWidths.check, minWidth: libraryColWidths.check }}
                             className="py-3 px-1.5 text-center whitespace-nowrap"
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -5872,7 +5888,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                           {/* Index */}
                           <td
-                            style={fitScreenMode ? { width: '44px', minWidth: '44px' } : { width: libraryColWidths.index, minWidth: libraryColWidths.index }}
+                            style={fitScreenMode ? { width: '36px', minWidth: '36px' } : { width: libraryColWidths.index, minWidth: libraryColWidths.index }}
                             className="py-3 px-1.5 text-slate-400 font-mono text-[11px] font-medium whitespace-nowrap text-center"
                           >
                             {(safeLibraryPage - 1) * libraryPageSize + idx + 1}
@@ -5883,7 +5899,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
                           {/* Actions */}
                           <td
-                            style={{ width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
+                            style={fitScreenMode ? { width: '115px', minWidth: '115px' } : { width: libraryColWidths.actions, minWidth: libraryColWidths.actions }}
                             className="py-2.5 px-3 text-right whitespace-nowrap"
                             onClick={(e) => e.stopPropagation()}
                           >
