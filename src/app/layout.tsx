@@ -42,7 +42,14 @@ export const metadata: Metadata = {
     description: DEFAULT_DESCRIPTION,
     images: [DEFAULT_OG_IMAGE],
   },
+  manifest: '/admin-manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Himalayan Koh Admin',
+  },
   icons: {
+    apple: '/images/hk_salt_crystal.webp',
     icon: '/logo.svg',
     shortcut: '/logo.svg',
   },
