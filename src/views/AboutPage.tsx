@@ -361,7 +361,7 @@ export default function AboutPage() {
               </p>
               <p className="text-sm text-amber-900 leading-relaxed mt-2">
                 For lot-specific documentation or a specification sheet, contact our team before ordering. We will confirm what is available for the item rather than imply that every product carries a laboratory report. Email{' '}
-                <a href="mailto:sales@himalayankoh.com" className="underline font-semibold">sales@himalayankoh.com</a>.
+                <a href="mailto:support@himalayankoh.com" className="underline font-semibold">support@himalayankoh.com</a>.
               </p>
             </div>
           </div>
@@ -477,8 +477,8 @@ export default function AboutPage() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-charcoal-light uppercase">Direct Inquiries</p>
-                  <a href="mailto:sales@himalayankoh.com" className="text-sm font-bold text-charcoal hover:text-himalayan">
-                    sales@himalayankoh.com
+                  <a href="mailto:support@himalayankoh.com" className="text-sm font-bold text-charcoal hover:text-himalayan">
+                    support@himalayankoh.com
                   </a>
                 </div>
               </div>

@@ -155,7 +155,7 @@ export async function POST(request: Request) {
       {
         error: publicMessage({
           internal: getErrorMessage(error, 'Unable to place order.'),
-          fallback: 'Unable to place order. Please try again, or email sales@himalayankoh.com.',
+          fallback: 'Unable to place order. Please try again, or email support@himalayankoh.com.',
           context: 'create-order',
         }),
       },

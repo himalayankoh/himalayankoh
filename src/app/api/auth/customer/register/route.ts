@@ -50,7 +50,7 @@ export async function POST(request: Request) {
   if (!rl.allowed) {
     console.warn(`[signup] rate limited ${ip} (${SIGNUP_RATE_LIMIT.limit} per hour)`);
     return NextResponse.json(
-      { error: 'Too many accounts have been created from this connection. Please try again later, or email sales@himalayankoh.com and we will help you directly.' },
+      { error: 'Too many accounts have been created from this connection. Please try again later, or email support@himalayankoh.com and we will help you directly.' },
       { status: 429 }
     );
   }

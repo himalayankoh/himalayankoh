@@ -165,7 +165,7 @@ export default function DisclaimerPage() {
               <p><strong className="text-charcoal">Business Name:</strong> Himalayan Koh</p>
               <p><strong className="text-charcoal">Mailing Address:</strong> 12620 FM 1960 W Ste A-4, Houston, TX 77065</p>
               <p><strong className="text-charcoal">Customer Service Telephone:</strong> (832) 224-6466</p>
-              <p><strong className="text-charcoal">General Inquiries & Support Email:</strong> <a href="mailto:sales@himalayankoh.com" className="text-himalayan hover:underline">sales@himalayankoh.com</a></p>
+              <p><strong className="text-charcoal">General Inquiries & Support Email:</strong> <a href="mailto:support@himalayankoh.com" className="text-himalayan hover:underline">support@himalayankoh.com</a></p>
               <p><strong className="text-charcoal">Customer Support Hours:</strong> Monday – Friday, 8:00 AM – 5:00 PM CST</p>
             </div>
             <div className="pt-2">

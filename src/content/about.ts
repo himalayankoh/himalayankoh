@@ -47,11 +47,11 @@ export const ABOUT_SECTIONS: AboutSection[] = [
   {
     title: 'What you can expect from us',
     body:
-      'Transparent sourcing, honest mineral disclosures, and reliable delivery. If an item arrives damaged or incomplete, contact sales@himalayankoh.com and our Houston team will make it right.',
+      'Transparent sourcing, honest mineral disclosures, and reliable delivery. If an item arrives damaged or incomplete, contact support@himalayankoh.com and our Houston team will make it right.',
   },
   {
     title: 'Customer support',
     body:
-      'See our Contact page for customer-service hours and our Return Policy for eligibility. Questions? Contact sales@himalayankoh.com or call (832) 224-6466.',
+      'See our Contact page for customer-service hours and our Return Policy for eligibility. Questions? Contact support@himalayankoh.com or call (832) 224-6466.',
   },
 ];

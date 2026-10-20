@@ -43,7 +43,7 @@ describe('the catalogue-only launch switch', () => {
   it('tells the shopper how to order instead, without naming configuration', () => {
     expect(ORDERS_PAUSED_MESSAGE).toMatch(/temporarily unavailable/i);
     // A real way to buy, not just a refusal.
-    expect(ORDERS_PAUSED_MESSAGE).toMatch(/sales@himalayankoh\.com/);
+    expect(ORDERS_PAUSED_MESSAGE).toMatch(/support@himalayankoh\.com/);
     expect(ORDERS_PAUSED_MESSAGE).toMatch(/832/);
     // Nothing about keys, Stripe, readiness or deployments: a shopper is owed the
     // fact, not the diagnosis.
