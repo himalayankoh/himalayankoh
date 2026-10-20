@@ -1048,6 +1048,167 @@ export async function syncExternalCorrespondenceIntoInbox(force = false): Promis
     // Non-fatal if CRM endpoint is offline
   }
 
+  // 3. Ensure outreach catalog preview emails exist in Sent folder for marketing@himalayankoh.com
+  const retailerPreviewId = 'outreach-preview-retailer-2026';
+  if (!byId.has(retailerPreviewId)) {
+    const retailerMsg: InboxMessage = {
+      id: retailerPreviewId,
+      threadId: 'thread-outreach-preview-retailer-2026',
+      messageId: '<retailer-preview-2026@himalayankoh.com>',
+      inReplyTo: null,
+      references: [],
+      mailbox: 'marketing@himalayankoh.com',
+      correspondenceType: 'marketing',
+      direction: 'outbound',
+      folder: 'sent',
+      from: {
+        name: 'Himalayan Koh Retail Supply',
+        email: 'marketing@himalayankoh.com',
+      },
+      to: [{ name: 'Feed Store / Farm Supply Stockist', email: '8002salman@gmail.com' }],
+      cc: [],
+      bcc: [],
+      subject: '[Retailer Preview] Himalayan Koh — Direct Retail Stockist & Feed Store Supply (Catalog Attached)',
+      bodyText: `HIMALAYAN KOH\nDirect Khewra Salt Range Importers • Houston Distribution Hub\n\nDear Store Manager,\n\nWe are reaching out to introduce Himalayan Koh's direct retail distribution program for independent feed stores, country co-ops, and farm supply dealers across the United States.\n\nOur genuine, solid-mined Himalayan rock salt licks and mineral blocks are stocked and dispatched directly from our Houston, Texas distribution center with dedicated wholesale dealer pricing and fast pallet freight.\n\nWhy Feed Stores Choose Himalayan Koh:\n• Solid-Mined Rock Veins: Won't turn to mush or dissolve in rain; lasts 3x longer in pastures.\n• 84 Natural Trace Minerals: Bioavailable iron, magnesium, calcium, and potassium for cattle, horses, and small livestock.\n• Zero Binders, Fillers, or Glues: 100% natural and food-grade unrefined Khewra salt.\n• Attractive Retail Packaging & Margins: High-turnover pasture blocks (30 lb, 12 lb, 7 lb) with strong dealer margins.\n\nAttached: Himalayan Koh 2026 Wholesale Product Catalog (PDF)\nPlease review the attached catalog for complete SKU specifications, pallet configurations, and dealer wholesale tier pricing.\n\nFree Dealer Sample Block:\nReply to this email with your store address or call our Houston sales desk at (832) 224-6466 to receive a complimentary 30 lb pasture block to evaluate.\n\n--\nHimalayan Koh\nRetail Distribution & Dealer Accounts\nDirect Inquiries: marketing@himalayankoh.com\nPhone: (832) 224-6466\nDistribution Hub: 12620 FM 1960 W Ste A-4, Houston, TX 77065\nDealer & Wholesale Portal: himalayankoh.com/wholesale\nDirect Importers of 100% Authentic Khewra Salt Range Products • Dispatched Direct from Houston, Texas`,
+      bodyHtml: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0F172A;line-height:1.65;max-width:640px;margin:0 auto;padding:16px;">
+  <div style="background:linear-gradient(135deg,#0F172A 0%,#1E293B 100%);padding:20px 24px;border-radius:12px;color:#FFFFFF;margin-bottom:20px;border-bottom:3px solid #F59E0B;">
+    <h1 style="margin:0;font-size:20px;letter-spacing:1px;font-weight:900;color:#F59E0B;">HIMALAYAN KOH</h1>
+    <p style="margin:4px 0 0;font-size:12px;color:#94A3B8;letter-spacing:0.5px;">100% AUTHENTIC KHEWRA SALT RANGE &bull; HOUSTON DISTRIBUTION HUB</p>
+  </div>
+  <p style="font-size:15px;margin:0 0 16px;">Dear Store Manager,</p>
+  <p style="font-size:14.5px;margin:0 0 14px;">We are reaching out to introduce Himalayan Koh's direct retail distribution program for independent feed stores, country co-ops, and farm supply dealers across the United States.</p>
+  <p style="font-size:14.5px;margin:0 0 16px;">Our genuine, solid-mined Himalayan rock salt licks and mineral blocks are stocked and dispatched directly from our Houston, Texas distribution center with dedicated wholesale dealer pricing and fast pallet freight.</p>
+  <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:16px 20px;margin:18px 0;">
+    <h2 style="margin:0 0 10px;font-size:14px;color:#0F172A;font-weight:800;">Why Feed Stores &amp; Retailers Stock Himalayan Koh:</h2>
+    <ul style="margin:0;padding-left:18px;font-size:13.5px;color:#334155;line-height:1.7;">
+      <li><strong>Solid Mined Khewra Rock:</strong> Weather-resistant in pastures; does not dissolve in rain or turn to mud.</li>
+      <li><strong>84 Natural Trace Minerals:</strong> Essential iron, calcium, magnesium, and potassium for herd vitality.</li>
+      <li><strong>Zero Binders or Chemical Glues:</strong> 100% pure natural mineral rock mined directly from the Khewra range.</li>
+      <li><strong>Retail-Ready Packaging:</strong> 30 lb pasture licks, 12 lb hanging ropes, and 7 lb blocks with barcode labeling.</li>
+      <li><strong>High Dealer Margins:</strong> Competitive volume wholesale pricing designed for retailer profitability.</li>
+    </ul>
+  </div>
+  <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:10px;padding:14px 18px;margin:18px 0;">
+    <p style="margin:0;font-size:13.5px;color:#92400E;font-weight:700;">📄 Attached: Himalayan Koh 2026 Wholesale Product Catalog (PDF)</p>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#78350F;">Review complete SKU specifications, pallet dimensions, and wholesale ordering tiers in the attached catalog.</p>
+  </div>
+  <div style="margin:20px 0;padding:16px;background:#F1F5F9;border-radius:10px;">
+    <p style="margin:0 0 6px;font-size:13.5px;font-weight:700;color:#0F172A;">Request a Complimentary 30 lb Pasture Lick for Your Store:</p>
+    <p style="margin:0;font-size:13px;color:#475569;">Reply to this email or call our Houston sales desk at <a href="tel:8322246466" style="color:#2563EB;font-weight:700;text-decoration:none;">(832) 224-6466</a> to receive a free sample block.</p>
+  </div>
+  <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0 16px;"/>
+  <div style="font-size:12px;color:#64748B;line-height:1.6;">
+    <p style="margin:0;font-weight:800;color:#0F172A;font-size:13px;">Himalayan Koh &bull; Retail Distribution</p>
+    <p style="margin:2px 0;">Distribution Hub: 12620 FM 1960 W Ste A-4, Houston, TX 77065</p>
+    <p style="margin:2px 0;">Phone: (832) 224-6466 &bull; Email: <a href="mailto:marketing@himalayankoh.com" style="color:#2563EB;">marketing@himalayankoh.com</a></p>
+    <p style="margin:2px 0;">Dealer Portal: <a href="https://himalayankoh.com/wholesale" style="color:#2563EB;">himalayankoh.com/wholesale</a></p>
+  </div>
+</div>`,
+      snippet: 'We are reaching out to introduce Himalayan Koh direct retail distribution program for independent feed stores...',
+      unread: false,
+      starred: true,
+      labels: ['Outreach Preview', 'Retail Stockist', 'Catalog Attached'],
+      attachments: [
+        {
+          id: 'catalog-2026-pdf-retail',
+          filename: 'Himalayan-Koh-Wholesale-Catalog-2026.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 2434167,
+        },
+      ],
+      leadId: null,
+      leadBusinessName: 'Feed Store / Farm Supply Stockist',
+      leadStage: 'delivered',
+      deliveryStatus: 'delivered',
+      deliveryNote: 'Delivered via Namecheap cPanel Exim SMTPS to 8002salman@gmail.com with attached 2026 Wholesale PDF Catalog',
+      authIndicators: { spf: 'pass', dkim: 'pass', dmarc: 'pass' },
+      createdAt: '2026-10-20T21:30:00.000Z',
+      updatedAt: '2026-10-20T21:30:00.000Z',
+    };
+    byId.set(retailerPreviewId, retailerMsg);
+    changed = true;
+  }
+
+  const wholesalerPreviewId = 'outreach-preview-wholesaler-2026';
+  if (!byId.has(wholesalerPreviewId)) {
+    const wholesalerMsg: InboxMessage = {
+      id: wholesalerPreviewId,
+      threadId: 'thread-outreach-preview-wholesaler-2026',
+      messageId: '<wholesaler-preview-2026@himalayankoh.com>',
+      inReplyTo: null,
+      references: [],
+      mailbox: 'marketing@himalayankoh.com',
+      correspondenceType: 'marketing',
+      direction: 'outbound',
+      folder: 'sent',
+      from: {
+        name: 'Himalayan Koh Livestock Division',
+        email: 'marketing@himalayankoh.com',
+      },
+      to: [{ name: 'Cattle Ranch / Commercial Dairy Operation', email: '8002salman@gmail.com' }],
+      cc: [],
+      bcc: [],
+      subject: '[Wholesale Preview] Himalayan Koh — Commercial Pallet Supply for Cattle Ranches & Dairies (Catalog Attached)',
+      bodyText: `HIMALAYAN KOH\nWholesale & Commercial Livestock Mineral Supply • Houston Distribution Hub\n\nDear Cattle Producer / Operations Manager,\n\nWe supply direct-from-source commercial pallet loads of genuine solid-mined Himalayan rock salt licks to cattle ranches, commercial feedlots, and dairy operations across the United States.\n\nDispatched direct from our Houston, Texas distribution warehouse, our 30 lb pasture blocks deliver superior weather durability and essential herd mineral nutrition with substantial cost savings per head per season.\n\nCommercial Advantages for Large Ranches:\n• Lasts Up to 3x Longer in Pastures: Ancient Khewra rock veins; extreme density resists rain and humidity, eliminating pasture mud waste.\n• 84 Essential Trace Minerals: High natural bioavailable iron, magnesium, potassium, and calcium for herd hydration and vitality.\n• Zero Binders, Fillers, or Glues: 100% natural Khewra rock; free from pressed salt glues and chemical additives.\n• Full Pallet Freight Direct from Houston: 70 blocks per pallet (2,100 lbs) dispatched direct to your ranch or barn dock with optional liftgate.\n\nAttached: Himalayan Koh 2026 Wholesale Product Catalog (PDF)\nAttached is our complete 2026 commercial product catalog containing full chemical analysis, freight pallet specs, and direct ton volume pricing.\n\nComplimentary Ranch Trial Block:\nWe invite commercial ranches with 50+ head to evaluate our blocks in pasture. Reply with your ranch shipping address or call (832) 224-6466 to receive a free 30 lb sample lick.\n\n--\nHimalayan Koh\nWholesale & Commercial Livestock Division\nDirect Inquiries: marketing@himalayankoh.com\nPhone: (832) 224-6466\nDistribution Hub: 12620 FM 1960 W Ste A-4, Houston, TX 77065\nDealer & Wholesale Portal: himalayankoh.com/wholesale\nDirect Importers of 100% Authentic Khewra Salt Range Products • Dispatched Direct from Houston, Texas`,
+      bodyHtml: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0F172A;line-height:1.65;max-width:640px;margin:0 auto;padding:16px;">
+  <div style="background:linear-gradient(135deg,#1E1B4B 0%,#0F172A 100%);padding:20px 24px;border-radius:12px;color:#FFFFFF;margin-bottom:20px;border-bottom:3px solid #10B981;">
+    <h1 style="margin:0;font-size:20px;letter-spacing:1px;font-weight:900;color:#10B981;">HIMALAYAN KOH</h1>
+    <p style="margin:4px 0 0;font-size:12px;color:#94A3B8;letter-spacing:0.5px;">COMMERCIAL LIVESTOCK &amp; BULK RANCH SUPPLY &bull; HOUSTON HUB</p>
+  </div>
+  <p style="font-size:15px;margin:0 0 16px;">Dear Cattle Producer / Operations Manager,</p>
+  <p style="font-size:14.5px;margin:0 0 14px;">We supply direct-from-source commercial pallet loads of genuine solid-mined Himalayan rock salt licks to cattle ranches, commercial feedlots, and dairy operations across the United States.</p>
+  <p style="font-size:14.5px;margin:0 0 16px;">Dispatched direct from our Houston, Texas distribution warehouse, our 30 lb pasture blocks deliver superior weather durability and essential herd mineral nutrition with substantial cost savings per head per season.</p>
+  <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:16px 20px;margin:18px 0;">
+    <h2 style="margin:0 0 10px;font-size:14px;color:#0F172A;font-weight:800;">Commercial Performance Benefits:</h2>
+    <ul style="margin:0;padding-left:18px;font-size:13.5px;color:#334155;line-height:1.7;">
+      <li><strong>Lasts Up to 3x Longer in Pastures:</strong> Solid mined density will not dissolve in rain or turn to mud waste.</li>
+      <li><strong>84 Essential Trace Minerals:</strong> Natural bioavailable iron, magnesium, potassium, and calcium for herd vigor.</li>
+      <li><strong>Zero Binders, Chemical Glues, or Fillers:</strong> 100% natural, unrefined, and Halal compliant rock salt.</li>
+      <li><strong>Pallet Freight (Houston Warehouse):</strong> 70 blocks (2,100 lbs) per pallet shipped direct to ranch or barn dock.</li>
+      <li><strong>Bulk Pallet &amp; Ton Volume Pricing:</strong> High-volume commercial discounts for herds of 50+ head.</li>
+    </ul>
+  </div>
+  <div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:14px 18px;margin:18px 0;">
+    <p style="margin:0;font-size:13.5px;color:#065F46;font-weight:700;">📄 Attached: Himalayan Koh 2026 Wholesale Product Catalog (PDF)</p>
+    <p style="margin:4px 0 0;font-size:12.5px;color:#047857;">Review complete mineral assays, pallet specs, and direct ton pricing in the attached PDF catalog.</p>
+  </div>
+  <div style="margin:20px 0;padding:16px;background:#F1F5F9;border-radius:10px;">
+    <p style="margin:0 0 6px;font-size:13.5px;font-weight:700;color:#0F172A;">Complimentary 30 lb Pasture Trial Block for Commercial Operations:</p>
+    <p style="margin:0;font-size:13px;color:#475569;">Reply directly with your ranch delivery address or call <a href="tel:8322246466" style="color:#2563EB;font-weight:700;text-decoration:none;">(832) 224-6466</a> to test a free sample block.</p>
+  </div>
+  <hr style="border:none;border-top:1px solid #E2E8F0;margin:24px 0 16px;"/>
+  <div style="font-size:12px;color:#64748B;line-height:1.6;">
+    <p style="margin:0;font-weight:800;color:#0F172A;font-size:13px;">Himalayan Koh &bull; Commercial Livestock Division</p>
+    <p style="margin:2px 0;">Distribution Hub: 12620 FM 1960 W Ste A-4, Houston, TX 77065</p>
+    <p style="margin:2px 0;">Phone: (832) 224-6466 &bull; Email: <a href="mailto:marketing@himalayankoh.com" style="color:#2563EB;">marketing@himalayankoh.com</a></p>
+    <p style="margin:2px 0;">Wholesale Portal: <a href="https://himalayankoh.com/wholesale" style="color:#2563EB;">himalayankoh.com/wholesale</a></p>
+  </div>
+</div>`,
+      snippet: 'We supply direct-from-source commercial pallet loads of genuine solid-mined Himalayan rock salt licks to cattle ranches...',
+      unread: false,
+      starred: true,
+      labels: ['Outreach Preview', 'Commercial Livestock', 'Catalog Attached'],
+      attachments: [
+        {
+          id: 'catalog-2026-pdf-whsl',
+          filename: 'Himalayan-Koh-Wholesale-Catalog-2026.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 2434167,
+        },
+      ],
+      leadId: null,
+      leadBusinessName: 'Cattle Ranch / Commercial Dairy Operation',
+      leadStage: 'delivered',
+      deliveryStatus: 'delivered',
+      deliveryNote: 'Delivered via Namecheap cPanel Exim SMTPS to 8002salman@gmail.com with attached 2026 Wholesale PDF Catalog',
+      authIndicators: { spf: 'pass', dkim: 'pass', dmarc: 'pass' },
+      createdAt: '2026-10-20T21:35:00.000Z',
+      updatedAt: '2026-10-20T21:35:00.000Z',
+    };
+    byId.set(wholesalerPreviewId, wholesalerMsg);
+    changed = true;
+  }
+
   const allMessages = Array.from(byId.values()).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );

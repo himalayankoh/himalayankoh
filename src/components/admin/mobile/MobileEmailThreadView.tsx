@@ -17,11 +17,301 @@ import {
   DownloadSimple,
   Lock,
   Paperclip,
+  Eye,
+  Code,
 } from '@phosphor-icons/react';
 import type { InboxThread, InboxMessage, InboxAttachment } from '@/lib/email/inboxStore';
 import { useMobileTheme } from '@/context/MobileThemeContext';
 import { getMobilePalette } from './MobileThemeTokens';
 import { MobileGmailReplyComposer, RecipientChip } from './MobileGmailReplyComposer';
+
+/**
+ * Sanitizes raw HTML email content for secure, responsive rendering on mobile viewports.
+ */
+function sanitizeEmailHtml(rawHtml: string): string {
+  if (!rawHtml) return '';
+  let clean = rawHtml;
+  // Remove script tags and contents
+  clean = clean.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  // Remove iframe, object, embed, form
+  clean = clean.replace(/<\/?(iframe|object|embed|form)\b[^>]*>/gi, '');
+  // Remove inline event handlers (onload, onclick, onerror, etc.)
+  clean = clean.replace(/\son\w+="[^"]*"/gi, '');
+  clean = clean.replace(/\son\w+='[^']*'/gi, '');
+  clean = clean.replace(/\son\w+=\w+/gi, '');
+  // Ensure target="_blank" and rel="noopener noreferrer" on all links
+  clean = clean.replace(/<a\s+(?:[^>]*?\s+)?href=/gi, '<a target="_blank" rel="noopener noreferrer" href=');
+  return clean;
+}
+
+/**
+ * Turns plain text URLs, email addresses, and phone numbers into clickable interactive links.
+ */
+function renderClickableText(text: string) {
+  const combinedRegex = /(https?:\/\/[^\s<>"{}|\\^`]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/g;
+  const parts = text.split(combinedRegex);
+  return parts.map((part, i) => {
+    if (!part) return null;
+    if (part.startsWith('http://') || part.startsWith('https://')) {
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-500 hover:text-blue-400 underline font-medium break-all"
+        >
+          {part}
+        </a>
+      );
+    }
+    if (/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(part)) {
+      return (
+        <a
+          key={i}
+          href={`mailto:${part}`}
+          className="text-blue-500 hover:text-blue-400 underline font-medium"
+        >
+          {part}
+        </a>
+      );
+    }
+    if (/^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$/.test(part)) {
+      const cleanPhone = part.replace(/[^\d+]/g, '');
+      return (
+        <a
+          key={i}
+          href={`tel:${cleanPhone}`}
+          className="text-blue-500 hover:text-blue-400 underline font-medium"
+        >
+          {part}
+        </a>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+/**
+ * Dedicated Gmail Message Body Renderer:
+ * - HTML Mode: Displays rich emails inside a clean white canvas with full responsive styles,
+ *   preserving tables, brand colors, images, dividers, and formatted signatures.
+ * - Plain Text Mode: Displays 14.5px readable text with generous line-height, clickable links,
+ *   clean paragraph spacing, quote blocks, and formatted signatures.
+ * - Optional mode switcher when both representations exist.
+ */
+function GmailMessageBodyRenderer({
+  msg,
+  isDark,
+}: {
+  msg: InboxMessage;
+  isDark: boolean;
+}) {
+  const hasHtml = Boolean(
+    msg.bodyHtml &&
+      msg.bodyHtml.trim().length > 0 &&
+      /<[a-z][\s\S]*>/i.test(msg.bodyHtml)
+  );
+  const hasText = Boolean(msg.bodyText && msg.bodyText.trim().length > 0);
+
+  // Default to rich HTML view when HTML is present
+  const [viewMode, setViewMode] = useState<'html' | 'text'>(hasHtml ? 'html' : 'text');
+  const activeMode = hasHtml && viewMode === 'html' ? 'html' : 'text';
+
+  const rawText = msg.bodyText || msg.snippet || 'No message content.';
+  const paragraphs = rawText.split(/\n\n+/);
+
+  return (
+    <div className="w-full space-y-2 select-text pt-1">
+      {/* View Mode Toggle Pill (Visible if rich HTML exists) */}
+      {hasHtml && (
+        <div className="flex items-center justify-between pb-1 px-0.5">
+          <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
+            <span>Message Content</span>
+          </span>
+          <div
+            className="inline-flex items-center p-0.5 rounded-full text-[10px] font-bold border transition-all"
+            style={{
+              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode('html')}
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full transition-all cursor-pointer ${
+                activeMode === 'html'
+                  ? 'bg-blue-600 text-white shadow-xs font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Eye size={11} weight="bold" />
+              <span>Rich View</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('text')}
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full transition-all cursor-pointer ${
+                activeMode === 'text'
+                  ? 'bg-blue-600 text-white shadow-xs font-black'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Code size={11} weight="bold" />
+              <span>Plain Text</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Mode 1: Rich HTML Canvas (Authentic Gmail Mobile Canvas) ──────── */}
+      {activeMode === 'html' && (
+        <div
+          className="rounded-2xl p-4 sm:p-5 shadow-sm border overflow-x-auto my-1 transition-all"
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : '#E2E8F0',
+            color: '#0F172A',
+          }}
+        >
+          <style jsx>{`
+            .gmail-html-body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              font-size: 14.5px;
+              line-height: 1.65;
+              color: #0F172A;
+              word-break: break-word;
+            }
+            .gmail-html-body img {
+              max-width: 100% !important;
+              height: auto !important;
+              border-radius: 8px;
+              display: block;
+              margin: 12px 0;
+            }
+            .gmail-html-body table {
+              width: 100% !important;
+              max-width: 100% !important;
+              border-collapse: collapse !important;
+              margin: 14px 0 !important;
+              font-size: 13px !important;
+            }
+            .gmail-html-body th, .gmail-html-body td {
+              padding: 8px 10px !important;
+              border: 1px solid #E2E8F0 !important;
+            }
+            .gmail-html-body a {
+              color: #2563EB !important;
+              text-decoration: underline !important;
+              font-weight: 500 !important;
+            }
+            .gmail-html-body p {
+              margin-bottom: 0.85rem !important;
+            }
+            .gmail-html-body p:last-child {
+              margin-bottom: 0 !important;
+            }
+            .gmail-html-body h1, .gmail-html-body h2, .gmail-html-body h3 {
+              color: #0F172A !important;
+              font-weight: 800 !important;
+              margin-top: 1rem !important;
+              margin-bottom: 0.5rem !important;
+            }
+            .gmail-html-body hr {
+              border: 0 !important;
+              border-top: 1px solid #E2E8F0 !important;
+              margin: 18px 0 !important;
+            }
+            .gmail-html-body ul, .gmail-html-body ol {
+              padding-left: 1.25rem !important;
+              margin-bottom: 0.85rem !important;
+            }
+            .gmail-html-body li {
+              margin-bottom: 0.35rem !important;
+            }
+          `}</style>
+          <div
+            className="gmail-html-body"
+            dangerouslySetInnerHTML={{
+              __html: sanitizeEmailHtml(msg.bodyHtml!),
+            }}
+          />
+        </div>
+      )}
+
+      {/* ── Mode 2: Clean Plain Text Canvas (Authentic Gmail Mobile) ──────── */}
+      {activeMode === 'text' && (
+        <div
+          className="rounded-2xl p-4 sm:p-5 my-1 transition-all border shadow-sm font-sans"
+          style={{
+            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.035)' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+            color: isDark ? '#F1F5F9' : '#0F172A',
+          }}
+        >
+          <div className="space-y-3.5 text-[14.5px] leading-relaxed select-text font-normal">
+            {paragraphs.map((paragraph, pIdx) => {
+              const lines = paragraph.split('\n');
+              return (
+                <div key={pIdx} className="space-y-1">
+                  {lines.map((line, lIdx) => {
+                    const trimmed = line.trim();
+                    if (!trimmed) {
+                      return <div key={lIdx} className="h-1.5" />;
+                    }
+
+                    // Blockquote detection (lines starting with >)
+                    if (trimmed.startsWith('>')) {
+                      return (
+                        <blockquote
+                          key={lIdx}
+                          className="border-l-2 border-slate-400/80 pl-3 py-0.5 my-1 italic text-slate-400 text-[13.5px]"
+                        >
+                          {renderClickableText(trimmed.replace(/^>\s*/, ''))}
+                        </blockquote>
+                      );
+                    }
+
+                    // Bullet item detection (lines starting with •, -, *)
+                    if (/^[•\-\*]\s/.test(trimmed)) {
+                      return (
+                        <div key={lIdx} className="flex items-start gap-2.5 my-1 pl-1">
+                          <span className="text-amber-500 font-bold shrink-0">&bull;</span>
+                          <span className="flex-1">
+                            {renderClickableText(trimmed.replace(/^[•\-\*]\s*/, ''))}
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    // Signature divider detection (-- or company separator)
+                    if (trimmed === '--' || trimmed === '---' || trimmed.startsWith('-- ')) {
+                      return (
+                        <hr
+                          key={lIdx}
+                          className="my-3 border-t"
+                          style={{
+                            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0',
+                          }}
+                        />
+                      );
+                    }
+
+                    return (
+                      <p key={lIdx} className="break-words">
+                        {renderClickableText(line)}
+                      </p>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface MobileEmailThreadViewProps {
   thread: InboxThread;
@@ -43,10 +333,8 @@ export function MobileEmailThreadView({
 
   const [composerMode, setComposerMode] = useState<'reply' | 'forward' | null>(null);
   const [isStarred, setIsStarred] = useState(Boolean(thread.starred));
-  // Track open state of details card per message (default: true for latest message)
-  const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({
-    latest: true,
-  });
+  // Track open state of details card per message (default: collapsed like real Gmail)
+  const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({});
 
   const messages = thread.messages && thread.messages.length > 0
     ? thread.messages
@@ -270,7 +558,7 @@ export function MobileEmailThreadView({
         {messages.map((msg, index) => {
           const isLatest = index === messages.length - 1;
           const msgKey = msg.id || String(index);
-          const isDetailsOpen = Boolean(expandedDetails[msgKey] ?? isLatest);
+          const isDetailsOpen = Boolean(expandedDetails[msgKey]);
           const senderInfo = getSenderDisplay(msg);
           const recipientStr =
             msg.to && msg.to.length > 0
@@ -303,7 +591,7 @@ export function MobileEmailThreadView({
 
                   <div className="min-w-0">
                     <h3
-                      className="text-xs font-bold leading-tight truncate"
+                      className="text-sm font-bold leading-tight truncate"
                       style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}
                     >
                       {senderInfo.name}
@@ -313,7 +601,7 @@ export function MobileEmailThreadView({
                     <button
                       type="button"
                       onClick={() => toggleMessageDetails(msgKey)}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-200 mt-0.5 cursor-pointer active:scale-95"
+                      className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-slate-200 mt-0.5 cursor-pointer active:scale-95"
                     >
                       <span>
                         to {msg.direction === 'outbound' ? (msg.to?.[0]?.name || msg.to?.[0]?.email || 'recipient') : 'me'}
@@ -329,7 +617,7 @@ export function MobileEmailThreadView({
 
                 {/* Date / Time */}
                 <span
-                  className="text-[11px] font-medium shrink-0 pt-0.5"
+                  className="text-[11.5px] font-medium shrink-0 pt-0.5"
                   style={{ color: isDark ? '#94A3B8' : '#64748B' }}
                 >
                   {formatShortTime(msg.createdAt)}
@@ -392,13 +680,8 @@ export function MobileEmailThreadView({
                 </div>
               )}
 
-              {/* ── Message Content ── */}
-              <div
-                className="text-xs leading-relaxed whitespace-pre-wrap py-1.5 select-text"
-                style={{ color: isDark ? '#E2E8F0' : '#1E293B' }}
-              >
-                {msg.bodyText || msg.snippet || 'No message content.'}
-              </div>
+              {/* ── Message Content (Authentic Gmail Mobile Canvas) ── */}
+              <GmailMessageBodyRenderer msg={msg} isDark={isDark} />
 
               {/* ── Real Message Attachments ── */}
               {msg.attachments && msg.attachments.length > 0 && (
