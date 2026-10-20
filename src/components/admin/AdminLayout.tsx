@@ -44,6 +44,7 @@ import { useMobileTheme } from '@/context/MobileThemeContext';
 import { MobileAdminHeader } from './mobile/MobileAdminHeader';
 import { MobileAdminBottomNav } from './mobile/MobileAdminBottomNav';
 import { MobileQuickAddModal } from './mobile/MobileQuickAddModal';
+import { SmartMobileSideMenu } from './mobile/SmartMobileSideMenu';
 
 export interface AdminLayoutProps {
   children: ReactNode;
@@ -696,7 +697,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <div className="fixed inset-0 z-modal lg:hidden">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setMobSide(false)} />
           <div ref={mobileDialog} role="dialog" aria-modal="true" aria-label="Admin navigation" tabIndex={-1} className="absolute left-0 top-0 h-full w-72 max-w-[90vw] shadow-2xl">
-            {renderSidebar({ mobile: true, mini: false })}
+            <SmartMobileSideMenu onClose={() => setMobSide(false)} />
+            {/* {renderSidebar({ mobile: true, mini: false })} */}
           </div>
         </div>
       )}
