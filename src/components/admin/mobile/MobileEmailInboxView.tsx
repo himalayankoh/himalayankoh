@@ -18,6 +18,7 @@ import type {
   InboxThread,
   InboxFolderCounts,
   InboxFilterFolder,
+  MailboxAddress,
 } from '@/lib/email/inboxStore';
 import { useMobileTheme } from '@/context/MobileThemeContext';
 import { getMobilePalette } from './MobileThemeTokens';
@@ -31,7 +32,7 @@ interface MobileEmailInboxViewProps {
   onRefresh: () => void;
   refreshing: boolean;
   onToggleStar?: (threadId: string) => void;
-  onOpenCompose: () => void;
+  onOpenCompose: (mailbox?: MailboxAddress) => void;
   onSendReply?: (threadId: string, replyText: string, replyAll: boolean) => Promise<void>;
   sendingReply?: boolean;
 }
@@ -76,6 +77,41 @@ export function MobileEmailInboxView({
   });
   const [selectedThread, setSelectedThread] = useState<InboxThread | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+
+  // Sync with browser history for native mobile back swipe and Android hardware back button
+  React.useEffect(() => {
+    if (!selectedThread) return;
+
+    try {
+      window.history.pushState({ modal: 'mobile-email-thread', id: selectedThread.threadId }, '');
+    } catch {
+      // safe fallback
+    }
+
+    const handlePopState = () => {
+      setSelectedThread(null);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [selectedThread?.threadId]);
+
+  const handleOpenThread = (thread: InboxThread) => {
+    setSelectedThread(thread);
+  };
+
+  const handleCloseThread = () => {
+    setSelectedThread(null);
+    try {
+      if (typeof window !== 'undefined' && window.history.state?.modal === 'mobile-email-thread') {
+        window.history.back();
+      }
+    } catch {
+      // safe fallback
+    }
+  };
 
   // Sync state if parent changes activeFolder externally
   React.useEffect(() => {
@@ -392,7 +428,21 @@ export function MobileEmailInboxView({
         {/* Compose Button in Violet Accent */}
         <button
           type="button"
-          onClick={onOpenCompose}
+          onClick={() => {
+            const defaultMailbox: MailboxAddress =
+              mailboxFilter === 'marketing'
+                ? 'marketing@himalayankoh.com'
+                : mailboxFilter === 'orders'
+                ? 'orders@himalayankoh.com'
+                : mailboxFilter === 'support'
+                ? 'support@himalayankoh.com'
+                : mailboxFilter === 'salman'
+                ? 'salman@himalayankoh.com'
+                : mailboxFilter === 'admin'
+                ? 'admin@himalayankoh.com'
+                : 'orders@himalayankoh.com';
+            onOpenCompose(defaultMailbox);
+          }}
           aria-label="Compose new email"
           className="w-11 h-11 rounded-2xl flex items-center justify-center text-white shrink-0 transition-transform active:scale-95 cursor-pointer shadow-md"
           style={{
@@ -578,7 +628,7 @@ export function MobileEmailInboxView({
             return (
               <div
                 key={thread.threadId}
-                onClick={() => setSelectedThread(thread)}
+                onClick={() => handleOpenThread(thread)}
                 className={`rounded-2xl p-3 flex items-start gap-3 transition-all duration-150 active:scale-[0.99] cursor-pointer ${
                   isUnread ? 'shadow-md' : 'opacity-90 hover:opacity-100'
                 }`}
@@ -725,7 +775,7 @@ export function MobileEmailInboxView({
       {selectedThread && (
         <MobileEmailThreadView
           thread={selectedThread}
-          onBack={() => setSelectedThread(null)}
+          onBack={handleCloseThread}
           onToggleStar={onToggleStar}
           onSendReply={onSendReply}
           sendingReply={sendingReply}

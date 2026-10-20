@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
+  FilePdf,
   EnvelopeSimple,
   PaperPlaneRight,
   PencilSimple,
@@ -110,6 +111,151 @@ export default function EmailInboxAdmin() {
   const [savingDraft, setSavingDraft] = useState(false);
   const [composeError, setComposeError] = useState<string | null>(null);
   const [composeSuccess, setComposeSuccess] = useState<string | null>(null);
+
+  // Sync compose modal with browser history for mobile back gesture / Android hardware back
+  useEffect(() => {
+    if (!isComposeOpen) return;
+
+    try {
+      window.history.pushState({ modal: 'email-compose' }, '');
+    } catch {
+      // safe fallback
+    }
+
+    const handlePopState = () => {
+      setIsComposeOpen(false);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [isComposeOpen]);
+
+  const handleCloseCompose = useCallback((confirmDiscard = false) => {
+    if (confirmDiscard && (composeSubject || composeBody)) {
+      if (!confirm('Discard unsaved email draft?')) {
+        return;
+      }
+    }
+    setIsComposeOpen(false);
+    try {
+      if (typeof window !== 'undefined' && window.history.state?.modal === 'email-compose') {
+        window.history.back();
+      }
+    } catch {
+      // safe fallback
+    }
+  }, [composeSubject, composeBody]);
+
+  // Touch gesture swipe-to-back for Compose Modal
+  const composeTouchStartRef = React.useRef<{ x: number; y: number; time: number } | null>(null);
+  const [composeSwipeOffset, setComposeSwipeOffset] = useState<number>(0);
+  const [isComposeSwiping, setIsComposeSwiping] = useState(false);
+
+  const handleComposeTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    composeTouchStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now(),
+    };
+    setIsComposeSwiping(false);
+  };
+
+  const handleComposeTouchMove = (e: React.TouchEvent) => {
+    if (!composeTouchStartRef.current) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - composeTouchStartRef.current.x;
+    const deltaY = touch.clientY - composeTouchStartRef.current.y;
+
+    if (!isComposeSwiping) {
+      if (Math.abs(deltaY) > 8 && Math.abs(deltaY) >= Math.abs(deltaX)) {
+        composeTouchStartRef.current = null;
+        return;
+      }
+      if (deltaX > 12 && deltaX > Math.abs(deltaY) * 1.2) {
+        setIsComposeSwiping(true);
+      }
+    }
+
+    if (isComposeSwiping && deltaX > 0) {
+      const dampened = deltaX > 200 ? 200 + (deltaX - 200) * 0.45 : deltaX;
+      setComposeSwipeOffset(dampened);
+    }
+  };
+
+  const handleComposeTouchEnd = () => {
+    if (!composeTouchStartRef.current) {
+      setComposeSwipeOffset(0);
+      setIsComposeSwiping(false);
+      return;
+    }
+    const deltaX = composeSwipeOffset;
+    const timeDiff = Date.now() - composeTouchStartRef.current.time;
+    const isQuickFlick = deltaX > 40 && timeDiff < 300;
+
+    if (isComposeSwiping && (deltaX > 75 || isQuickFlick)) {
+      handleCloseCompose(true);
+    }
+    setComposeSwipeOffset(0);
+    composeTouchStartRef.current = null;
+    setIsComposeSwiping(false);
+  };
+
+  const handleComposeTouchCancel = () => {
+    setComposeSwipeOffset(0);
+    composeTouchStartRef.current = null;
+    setIsComposeSwiping(false);
+  };
+
+  const handleAttachCatalogPdf = () => {
+    if (composeAttachments.some((a) => a.filename.includes('Wholesale-Catalog-2026'))) {
+      return;
+    }
+    setComposeAttachments((prev) => [
+      ...prev,
+      {
+        filename: 'Himalayan-Koh-Wholesale-Catalog-2026.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1980000,
+      },
+    ]);
+  };
+
+  const OUTREACH_TEMPLATES = [
+    {
+      label: 'Wholesale Salt Licks (Ranches & Feed Stores)',
+      subject: 'Himalayan Mineral Rock Salt Licks for Cattle & Livestock — Houston Direct',
+      body: 'Hi,\n\nWe supply 100% natural solid-mined Himalayan rock salt licks directly from our Houston, TX distribution center to feed stores, cattle ranches, and livestock operations.\n\nKey Advantages:\n- Solid Mined Rock: Lasts 3x longer in pastures and does not dissolve into mush in heavy rain\n- 84 Essential Minerals: Natural iron, calcium, magnesium, and potassium for herd health\n- Shipped direct by pallet or truckload from Houston with liftgate service\n\nAttached is our official 2026 Wholesale Product Catalog with complete SKU specifications.\n\nWould you like a complimentary sample block sent directly to your location?\n\nBest regards,\nHimalayan Koh Livestock Division\nPhone: (832) 224-6466\nWeb: himalayankoh.com/wholesale',
+      attachCatalog: true,
+      mailbox: 'marketing@himalayankoh.com' as MailboxAddress,
+    },
+    {
+      label: 'Order Status & Tracking Update',
+      subject: 'Order Status Update — Himalayan Koh',
+      body: 'Hi,\n\nThank you for your order with Himalayan Koh.\n\nYour shipment is being prepared for dispatch from our Houston distribution center.\n\nTracking details will be updated as soon as the freight carrier scans the pallet.\n\nIf you have any questions, please reply directly or call (832) 224-6466.\n\nBest regards,\nHimalayan Koh Fulfillment Team',
+      attachCatalog: false,
+      mailbox: 'orders@himalayankoh.com' as MailboxAddress,
+    },
+    {
+      label: 'Sample Block Confirmation',
+      subject: 'Complimentary Sample Rock Salt Lick Dispatched — Himalayan Koh',
+      body: 'Hi,\n\nThank you for requesting a sample block of our solid mined Himalayan rock salt lick.\n\nYour sample block has been queued for dispatch from our Houston, TX warehouse. You will be able to test its pasture durability and animal acceptance firsthand.\n\nPlease find our full 2026 Wholesale Catalog attached for reference.\n\nBest regards,\nHimalayan Koh B2B Team',
+      attachCatalog: true,
+      mailbox: 'marketing@himalayankoh.com' as MailboxAddress,
+    },
+  ];
+
+  const handleApplyTemplate = (tpl: (typeof OUTREACH_TEMPLATES)[0]) => {
+    setComposeSubject(tpl.subject);
+    setComposeBody(tpl.body);
+    setComposeMailbox(tpl.mailbox);
+    if (tpl.attachCatalog) {
+      handleAttachCatalogPdf();
+    }
+  };
 
   // Inline Reply State
   const [quickReplyBody, setQuickReplyBody] = useState('');
@@ -717,13 +863,6 @@ export default function EmailInboxAdmin() {
         sendingReply={sendingQuickReply}
       />
 
-      {/* Desktop 3-Pane Interface (100% Preserved) */}
-      <div className="hidden md:flex h-[calc(100vh-5rem)] w-full overflow-hidden bg-slate-950 text-slate-100 relative">
-      {/* 1. LEFT PANE — DESKTOP ONLY */}
-      <div className="hidden md:flex md:w-64 flex-shrink-0 flex-col border-r border-slate-800 bg-slate-900/90 select-none">
-        {renderMailboxAndFoldersList()}
-      </div>
-
       {/* MOBILE MAILBOX DRAWER / BOTTOM SHEET */}
       {mobileMailboxDrawerOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-xs">
@@ -746,6 +885,14 @@ export default function EmailInboxAdmin() {
           </div>
         </div>
       )}
+
+      
+      {/* Desktop 3-Pane Interface (100% Preserved) */}
+      <div className="hidden md:flex h-[calc(100vh-5rem)] w-full overflow-hidden bg-slate-950 text-slate-100 relative">
+      {/* 1. LEFT PANE — DESKTOP ONLY */}
+      <div className="hidden md:flex md:w-64 flex-shrink-0 flex-col border-r border-slate-800 bg-slate-900/90 select-none">
+        {renderMailboxAndFoldersList()}
+      </div>
 
       {/* 2. CENTER PANE — THREAD / MESSAGE LIST */}
       <div
@@ -1214,32 +1361,76 @@ export default function EmailInboxAdmin() {
         )}
       </div>
 
+      </div>
+
       {/* 4. COMPOSE EMAIL MODAL (Responsive: Full-screen on mobile, centered modal on desktop) */}
       {isComposeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div
+          onTouchStart={handleComposeTouchStart}
+          onTouchMove={handleComposeTouchMove}
+          onTouchEnd={handleComposeTouchEnd}
+          onTouchCancel={handleComposeTouchCancel}
+          className="fixed inset-0 z-[120] flex items-center justify-center p-0 md:p-4 bg-slate-950/80 backdrop-blur-sm select-none md:select-auto"
+          style={{
+            transform: composeSwipeOffset > 0 ? `translateX(${composeSwipeOffset}px)` : undefined,
+            transition: isComposeSwiping ? 'none' : 'transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1)',
+            touchAction: 'pan-y',
+            boxShadow: composeSwipeOffset > 0 ? '-12px 0 32px rgba(0, 0, 0, 0.5)' : undefined,
+          }}
+        >
+          {/* Floating Swipe-to-Back tactile indicator */}
+          {composeSwipeOffset > 10 && (
+            <div
+              className="pointer-events-none fixed left-3 top-1/2 -translate-y-1/2 z-[130] flex items-center justify-center w-10 h-10 rounded-full bg-blue-600/90 text-white shadow-xl transition-all"
+              style={{
+                opacity: Math.min(1, composeSwipeOffset / 50),
+                transform: `translateY(-50%) scale(${Math.min(1.15, 0.75 + composeSwipeOffset / 100)})`,
+              }}
+            >
+              <ArrowLeft size={20} weight="bold" />
+            </div>
+          )}
+
           <div className="w-full h-full md:h-auto md:max-w-2xl bg-slate-900 border-0 md:border md:border-slate-800 md:rounded-2xl shadow-2xl flex flex-col md:max-h-[90vh] overflow-hidden">
             {/* Modal Header */}
-            <div className="px-4 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0">
-              <div className="flex items-center gap-2">
-                <PencilSimple size={18} className="text-amber-400" />
-                <h3 className="font-semibold text-slate-100 text-sm">
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                {/* Back button for mobile users */}
+                <button
+                  type="button"
+                  onClick={() => handleCloseCompose(true)}
+                  aria-label="Back to inbox"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-800 transition-all active:scale-95 cursor-pointer mr-1"
+                >
+                  <ArrowLeft size={16} weight="bold" />
+                </button>
+                <PencilSimple size={18} className="text-amber-400 shrink-0" />
+                <h3 className="font-semibold text-slate-100 text-sm truncate">
                   {composeSubject.startsWith('Fwd:') ? 'Forward Message' : 'New Message'}
                 </h3>
               </div>
-              <button
-                onClick={() => {
-                  if (composeSubject || composeBody) {
-                    if (confirm('Discard unsaved email draft?')) {
-                      setIsComposeOpen(false);
-                    }
-                  } else {
-                    setIsComposeOpen(false);
-                  }
-                }}
-                className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg"
-              >
-                <X size={18} />
-              </button>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Direct Send button in header for 1-thumb tapping on mobile */}
+                <button
+                  type="button"
+                  onClick={() => handleSendCompose(false)}
+                  disabled={sendingDraft || savingDraft}
+                  className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-md shadow-amber-500/20 disabled:opacity-50 transition-all cursor-pointer"
+                >
+                  <PaperPlaneRight size={14} weight="bold" />
+                  <span>{sendingDraft ? '...' : 'Send'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleCloseCompose(true)}
+                  aria-label="Close compose modal"
+                  className="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             {/* Modal Body */}
@@ -1257,23 +1448,23 @@ export default function EmailInboxAdmin() {
 
               {/* From Selector */}
               <div className="flex items-center gap-2">
-                <label className="w-14 text-slate-400 font-medium shrink-0">From:</label>
+                <label className="w-16 text-slate-400 font-medium shrink-0">From:</label>
                 <select
                   value={composeMailbox}
                   onChange={(e) => setComposeMailbox(e.target.value as MailboxAddress)}
                   className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 >
+                  <option value="marketing@himalayankoh.com">
+                    Marketing &amp; B2B Wholesale &lt;marketing@himalayankoh.com&gt;
+                  </option>
                   <option value="orders@himalayankoh.com">
                     Orders &amp; Fulfillment &lt;orders@himalayankoh.com&gt;
                   </option>
                   <option value="support@himalayankoh.com">
                     Customer Support &lt;support@himalayankoh.com&gt;
                   </option>
-                  <option value="marketing@himalayankoh.com">
-                    Marketing &amp; Campaigns &lt;marketing@himalayankoh.com&gt;
-                  </option>
                   <option value="salman@himalayankoh.com">
-                    Salman &lt;salman@himalayankoh.com&gt;
+                    Salman Bashir &lt;salman@himalayankoh.com&gt;
                   </option>
                   <option value="admin@himalayankoh.com">
                     Administration &lt;admin@himalayankoh.com&gt;
@@ -1281,9 +1472,31 @@ export default function EmailInboxAdmin() {
                 </select>
               </div>
 
+              {/* Quick Template Selector */}
+              <div className="flex items-center gap-2">
+                <label className="w-16 text-slate-400 font-medium shrink-0">Template:</label>
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    const idx = Number(e.target.value);
+                    if (!isNaN(idx) && OUTREACH_TEMPLATES[idx]) {
+                      handleApplyTemplate(OUTREACH_TEMPLATES[idx]);
+                    }
+                  }}
+                  className="min-w-0 flex-1 bg-slate-950 border border-amber-500/40 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 focus:outline-none focus:border-amber-400"
+                >
+                  <option value="" disabled>Select pre-filled template (Wholesale, Orders, Samples)...</option>
+                  {OUTREACH_TEMPLATES.map((tpl, i) => (
+                    <option key={i} value={i} className="text-slate-200">
+                      {tpl.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* To Input */}
               <div className="flex items-center gap-2">
-                <label className="w-14 text-slate-400 font-medium shrink-0">To:</label>
+                <label className="w-16 text-slate-400 font-medium shrink-0">To:</label>
                 <input
                   type="email"
                   value={composeTo}
@@ -1294,7 +1507,7 @@ export default function EmailInboxAdmin() {
                 <button
                   type="button"
                   onClick={() => setShowCc(!showCc)}
-                  className="text-slate-400 hover:text-slate-200 text-xs px-2 shrink-0"
+                  className="text-slate-400 hover:text-slate-200 text-xs px-2 shrink-0 cursor-pointer"
                 >
                   Cc
                 </button>
@@ -1303,7 +1516,7 @@ export default function EmailInboxAdmin() {
               {/* Collapsible CC */}
               {showCc && (
                 <div className="flex items-center gap-2">
-                  <label className="w-14 text-slate-400 font-medium shrink-0">Cc:</label>
+                  <label className="w-16 text-slate-400 font-medium shrink-0">Cc:</label>
                   <input
                     type="text"
                     value={composeCc}
@@ -1316,7 +1529,7 @@ export default function EmailInboxAdmin() {
 
               {/* Subject */}
               <div className="flex items-center gap-2">
-                <label className="w-14 text-slate-400 font-medium shrink-0">Subject:</label>
+                <label className="w-16 text-slate-400 font-medium shrink-0">Subject:</label>
                 <input
                   type="text"
                   value={composeSubject}
@@ -1333,22 +1546,35 @@ export default function EmailInboxAdmin() {
                   value={composeBody}
                   onChange={(e) => setComposeBody(e.target.value)}
                   placeholder="Write your email message..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-amber-500 resize-none font-sans leading-relaxed"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-amber-500 resize-none font-sans leading-relaxed min-h-[160px] md:min-h-[200px]"
                 />
               </div>
 
-              {/* Attachments List & Upload */}
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 cursor-pointer">
-                  <Paperclip size={15} />
-                  <span>Attach File (Max 2MB)</span>
-                  <input
-                    type="file"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    multiple
-                  />
-                </label>
+              {/* Attachments List & Upload + Catalog Quick Attach */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 cursor-pointer transition-colors">
+                    <Paperclip size={14} />
+                    <span>Attach File</span>
+                    <input
+                      type="file"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      multiple
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={handleAttachCatalogPdf}
+                    title="Attach official 2026 Wholesale Catalog (2.4 MB)"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    <FilePdf size={14} weight="bold" />
+                    <span>+ Attach 2026 Wholesale Catalog (PDF)</span>
+                  </button>
+                </div>
+
                 <div className="text-[11px] text-slate-400 font-mono">
                   {composeAttachments.length} attachment(s)
                 </div>
@@ -1361,13 +1587,13 @@ export default function EmailInboxAdmin() {
                       key={idx}
                       className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] flex items-center gap-2"
                     >
-                      <span className="text-slate-300">{att.filename}</span>
+                      <span className="text-slate-300 truncate max-w-[200px]">{att.filename}</span>
                       <button
                         type="button"
                         onClick={() =>
                           setComposeAttachments((prev) => prev.filter((_, i) => i !== idx))
                         }
-                        className="text-slate-400 hover:text-red-400"
+                        className="text-slate-400 hover:text-red-400 cursor-pointer"
                       >
                         <X size={12} />
                       </button>
@@ -1378,10 +1604,7 @@ export default function EmailInboxAdmin() {
             </div>
 
             {/* Modal Footer */}
-            {/* The mobile bottom navigation is fixed, so the footer has to clear it
-                on small screens or Cancel/Send sit underneath the nav and cannot be
-                tapped. 4.75rem covers the 66px bar plus the safe-area inset. */}
-            <div className="px-4 pt-3 border-t border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0 pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-3">
+            <div className="px-4 py-3 border-t border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-3">
               <button
                 type="button"
                 onClick={() => handleSendCompose(true)}
@@ -1394,16 +1617,8 @@ export default function EmailInboxAdmin() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (composeSubject || composeBody) {
-                      if (confirm('Discard unsaved draft?')) {
-                        setIsComposeOpen(false);
-                      }
-                    } else {
-                      setIsComposeOpen(false);
-                    }
-                  }}
-                  className="px-3 py-2 text-xs text-slate-400 hover:text-slate-200"
+                  onClick={() => handleCloseCompose(true)}
+                  className="px-3 py-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1421,7 +1636,6 @@ export default function EmailInboxAdmin() {
           </div>
         </div>
       )}
-      </div>
     </>
   );
 }

@@ -336,6 +336,80 @@ export function MobileEmailThreadView({
   // Track open state of details card per message (default: collapsed like real Gmail)
   const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({});
 
+  // Touch gesture swipe-to-back state
+  const touchStartRef = React.useRef<{ x: number; y: number; time: number } | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState<number>(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    // Only track single touch
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    touchStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now(),
+    };
+    setIsSwiping(false);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartRef.current.x;
+    const deltaY = touch.clientY - touchStartRef.current.y;
+
+    if (!isSwiping) {
+      // If user moved vertically more than horizontally, cancel swipe tracking!
+      if (Math.abs(deltaY) > 8 && Math.abs(deltaY) >= Math.abs(deltaX)) {
+        touchStartRef.current = null;
+        return;
+      }
+      // If user swiped right by more than 12px and it's predominantly horizontal:
+      if (deltaX > 12 && deltaX > Math.abs(deltaY) * 1.2) {
+        setIsSwiping(true);
+      }
+    }
+
+    if (isSwiping) {
+      if (deltaX > 0) {
+        // Apply smooth logarithmic dampening for wide drags
+        const dampened = deltaX > 200 ? 200 + (deltaX - 200) * 0.45 : deltaX;
+        setSwipeOffset(dampened);
+      } else {
+        setSwipeOffset(0);
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStartRef.current) {
+      setSwipeOffset(0);
+      setIsSwiping(false);
+      return;
+    }
+    const deltaX = swipeOffset;
+    const timeDiff = Date.now() - touchStartRef.current.time;
+    const isQuickFlick = deltaX > 40 && timeDiff < 300;
+
+    if (isSwiping && (deltaX > 75 || isQuickFlick)) {
+      setSwipeOffset(window.innerWidth || 380);
+      setTimeout(() => {
+        onBack();
+      }, 160);
+    } else {
+      setSwipeOffset(0);
+    }
+    touchStartRef.current = null;
+    setIsSwiping(false);
+  };
+
+  const handleTouchCancel = () => {
+    setSwipeOffset(0);
+    touchStartRef.current = null;
+    setIsSwiping(false);
+  };
+
   const messages = thread.messages && thread.messages.length > 0
     ? thread.messages
     : [thread.latestMessage].filter(Boolean);
@@ -483,11 +557,32 @@ export function MobileEmailThreadView({
 
   return (
     <div
-      className="fixed inset-0 z-modal flex flex-col overflow-hidden text-white transition-colors duration-200"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
+      className="fixed inset-0 z-modal flex flex-col overflow-hidden text-white transition-colors duration-200 select-none md:select-auto"
       style={{
         backgroundColor: isDark ? '#080C16' : '#F8FAFC',
+        transform: swipeOffset > 0 ? `translateX(${swipeOffset}px)` : undefined,
+        transition: isSwiping ? 'none' : 'transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1)',
+        touchAction: 'pan-y',
+        boxShadow: swipeOffset > 0 ? '-12px 0 32px rgba(0, 0, 0, 0.45)' : undefined,
       }}
     >
+      {/* Floating Swipe-to-Back tactile indicator */}
+      {swipeOffset > 10 && (
+        <div
+          className="pointer-events-none fixed left-3 top-1/2 -translate-y-1/2 z-[110] flex items-center justify-center w-10 h-10 rounded-full bg-blue-600/90 text-white shadow-xl transition-all"
+          style={{
+            opacity: Math.min(1, swipeOffset / 50),
+            transform: `translateY(-50%) scale(${Math.min(1.15, 0.75 + swipeOffset / 100)})`,
+          }}
+        >
+          <ArrowLeft size={20} weight="bold" />
+        </div>
+      )}
+
       {/* ── 1. Top Bar With Subject & Actions (Gmail Style) ────────────── */}
       <div
         className="px-4 py-3 border-b flex items-center justify-between gap-2 shrink-0"
