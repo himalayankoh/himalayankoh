@@ -22,6 +22,8 @@ import {
   ArrowSquareOut,
   ShieldCheck,
   Tag,
+  Package,
+  Megaphone,
   User,
   Buildings,
   ArrowLeft,
@@ -397,6 +399,8 @@ export default function EmailInboxAdmin() {
       case 'salman': return 'Salman';
       case 'sales': return 'Sales & Wholesale';
       case 'support': return 'Support';
+      case 'orders': return 'Orders & Fulfillment';
+      case 'marketing': return 'Marketing & Campaigns';
       case 'admin': return 'Admin';
       case 'unread': return 'Unread';
       case 'sent': return 'Sent';
@@ -481,6 +485,44 @@ export default function EmailInboxAdmin() {
           {counts && counts.supportUnread > 0 && (
             <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
               {counts.supportUnread}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => selectFolder('orders')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'orders'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <Package size={16} />
+            Orders
+          </span>
+          {counts && (counts.ordersUnread || 0) > 0 && (
+            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
+              {counts.ordersUnread}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => selectFolder('marketing')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'marketing'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <Megaphone size={16} />
+            Marketing
+          </span>
+          {counts && (counts.marketingUnread || 0) > 0 && (
+            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
+              {counts.marketingUnread}
             </span>
           )}
         </button>
@@ -1200,11 +1242,17 @@ export default function EmailInboxAdmin() {
                   onChange={(e) => setComposeMailbox(e.target.value as MailboxAddress)}
                   className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 >
-                  <option value="salman@himalayankoh.com">
-                    Salman &lt;salman@himalayankoh.com&gt;
+                  <option value="orders@himalayankoh.com">
+                    Orders &amp; Fulfillment &lt;orders@himalayankoh.com&gt;
                   </option>
                   <option value="support@himalayankoh.com">
                     Customer Support &lt;support@himalayankoh.com&gt;
+                  </option>
+                  <option value="marketing@himalayankoh.com">
+                    Marketing &amp; Campaigns &lt;marketing@himalayankoh.com&gt;
+                  </option>
+                  <option value="salman@himalayankoh.com">
+                    Salman &lt;salman@himalayankoh.com&gt;
                   </option>
                   <option value="admin@himalayankoh.com">
                     Administration &lt;admin@himalayankoh.com&gt;

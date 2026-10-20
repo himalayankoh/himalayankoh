@@ -104,12 +104,14 @@ export function MobileEmailInboxView({
     const latest = thread.latestMessage;
     if (latest && latest.direction === 'outbound') {
       const fromEmail = (latest.from?.email || '').toLowerCase();
-      if (fromEmail.includes('sales')) return 'Sales Team';
+      if (fromEmail.includes('orders')) return 'Orders & Fulfillment';
       if (fromEmail.includes('support')) return 'Support Team';
-      if (fromEmail.includes('salman')) return 'Salman';
-      if (fromEmail.includes('accounts') || fromEmail.includes('billing')) return 'Accounts Team';
       if (fromEmail.includes('marketing')) return 'Marketing Team';
-      return 'Sales Team';
+      if (fromEmail.includes('salman')) return 'Salman';
+      if (fromEmail.includes('sales')) return 'Sales Team';
+      if (fromEmail.includes('accounts') || fromEmail.includes('billing')) return 'Accounts Team';
+      if (fromEmail.includes('admin')) return 'Admin';
+      return 'Himalayan Koh';
     }
 
     const externalParticipant = thread.participants.find(

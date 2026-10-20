@@ -19,11 +19,15 @@ import { base64UrlDecode, base64UrlEncode } from '@/lib/auth/sessionToken';
 export type MailboxEmail =
   | 'sales@himalayankoh.com'
   | 'support@himalayankoh.com'
+  | 'orders@himalayankoh.com'
+  | 'marketing@himalayankoh.com'
   | 'salman@himalayankoh.com'
   | 'admin@himalayankoh.com';
 
 export const SUPPORTED_MAILBOXES: MailboxEmail[] = [
   'support@himalayankoh.com',
+  'orders@himalayankoh.com',
+  'marketing@himalayankoh.com',
   'salman@himalayankoh.com',
   'admin@himalayankoh.com',
 ];
@@ -45,6 +49,20 @@ export const MAILBOX_METADATA: Record<
     role: 'Customer Service & Inquiries',
     defaultSignature:
       'Himalayan Koh Customer Support\nsupport@himalayankoh.com | https://himalayankoh.com',
+  },
+  'orders@himalayankoh.com': {
+    label: 'Orders',
+    displayName: 'Himalayan Koh Orders & Fulfillment',
+    role: 'Customer Orders, Invoices & Shipping Alerts',
+    defaultSignature:
+      'Himalayan Koh Orders & Fulfillment\norders@himalayankoh.com | https://himalayankoh.com\n12620 FM 1960 W Ste A-4, Houston, TX 77065',
+  },
+  'marketing@himalayankoh.com': {
+    label: 'Marketing',
+    displayName: 'Himalayan Koh Marketing',
+    role: 'Promotions, Campaigns & Prospect Engagement',
+    defaultSignature:
+      'Himalayan Koh Marketing\nmarketing@himalayankoh.com | https://himalayankoh.com',
   },
   'salman@himalayankoh.com': {
     label: 'Salman',

@@ -30,9 +30,11 @@ describe('Mailbox Account Configuration & IMAP/SMTP Security', () => {
     process.env.ADMIN_SESSION_SECRET = 'test-admin-session-secret-for-encryption-32ch';
   });
 
-  it('defines the 3 required Himalayan Koh admin mailbox identities', () => {
+  it('defines the 5 required Himalayan Koh admin mailbox identities', () => {
     expect(SUPPORTED_MAILBOXES).toEqual([
       'support@himalayankoh.com',
+      'orders@himalayankoh.com',
+      'marketing@himalayankoh.com',
       'salman@himalayankoh.com',
       'admin@himalayankoh.com',
     ]);

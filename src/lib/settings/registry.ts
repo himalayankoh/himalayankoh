@@ -319,7 +319,7 @@ export const SETTINGS_REGISTRY: SettingsCategory[] = [
         hint: 'Sending also needs a verified sending domain.',
         envFallback: 'RESEND_API_KEY',
       },
-      { key: 'from_email', label: 'From Email Address', type: 'text', placeholder: 'sales@himalayankoh.com', envFallback: 'RESEND_FROM' },
+      { key: 'from_email', label: 'From Email Address', type: 'text', placeholder: 'orders@himalayankoh.com', envFallback: 'RESEND_FROM' },
       { key: 'admin_email', label: 'Admin Notification Email', type: 'text', placeholder: 'admin@himalayankoh.com', envFallback: 'ADMIN_NOTIFICATION_EMAIL' },
     ],
   },

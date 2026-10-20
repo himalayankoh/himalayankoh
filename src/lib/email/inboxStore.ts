@@ -18,6 +18,8 @@ export type MailboxAddress =
   | 'salman@himalayankoh.com'
   | 'sales@himalayankoh.com'
   | 'support@himalayankoh.com'
+  | 'orders@himalayankoh.com'
+  | 'marketing@himalayankoh.com'
   | 'admin@himalayankoh.com';
 
 export type CorrespondenceType = 'business_correspondence' | 'transactional' | 'marketing';
@@ -29,6 +31,8 @@ export type InboxFilterFolder =
   | 'salman'
   | 'sales'
   | 'support'
+  | 'orders'
+  | 'marketing'
   | 'admin'
   | 'unread'
   | 'sent'
@@ -124,7 +128,7 @@ export type MailboxStatusInfo = MailboxIdentity;
 
 export interface MailboxIdentity {
   address: MailboxAddress;
-  shortKey: 'salman' | 'sales' | 'support' | 'admin';
+  shortKey: 'salman' | 'sales' | 'support' | 'orders' | 'marketing' | 'admin';
   label: string;
   displayName: string;
   role: string;
@@ -235,6 +239,38 @@ export const MAILBOX_DEFINITIONS: Record<
     dmarcStatus: 'pass',
     inboundStatus: 'active_mx_and_webhook',
   },
+  'orders@himalayankoh.com': {
+    address: 'orders@himalayankoh.com',
+    shortKey: 'orders',
+    label: 'Orders',
+    displayName: 'Himalayan Koh Orders & Fulfillment',
+    role: 'Customer Orders, Invoices & Shipping Alerts',
+    defaultSignature:
+      'Himalayan Koh Orders & Fulfillment\norders@himalayankoh.com | https://himalayankoh.com\n12620 FM 1960 W Ste A-4, Houston, TX 77065',
+    correspondenceType: 'transactional',
+    mxStatus: 'pass',
+    mxHost: 'mx1..3-hosting.jellyfish.systems',
+    spfStatus: 'pass',
+    dkimStatus: 'pass',
+    dmarcStatus: 'pass',
+    inboundStatus: 'active_mx_and_webhook',
+  },
+  'marketing@himalayankoh.com': {
+    address: 'marketing@himalayankoh.com',
+    shortKey: 'marketing',
+    label: 'Marketing',
+    displayName: 'Himalayan Koh Marketing',
+    role: 'Promotions, Campaigns & Prospect Engagement',
+    defaultSignature:
+      'Himalayan Koh Marketing\nmarketing@himalayankoh.com | https://himalayankoh.com',
+    correspondenceType: 'marketing',
+    mxStatus: 'pass',
+    mxHost: 'mx1..3-hosting.jellyfish.systems',
+    spfStatus: 'pass',
+    dkimStatus: 'pass',
+    dmarcStatus: 'pass',
+    inboundStatus: 'active_mx_and_webhook',
+  },
   'admin@himalayankoh.com': {
     address: 'admin@himalayankoh.com',
     shortKey: 'admin',
@@ -254,8 +290,10 @@ export const MAILBOX_DEFINITIONS: Record<
 };
 
 export const ALLOWED_MAILBOXES: MailboxAddress[] = [
-  'salman@himalayankoh.com',
   'support@himalayankoh.com',
+  'orders@himalayankoh.com',
+  'marketing@himalayankoh.com',
+  'salman@himalayankoh.com',
   'admin@himalayankoh.com',
 ];
 
@@ -267,6 +305,8 @@ export function resolveMailboxAddress(raw?: string | null): MailboxAddress {
   const clean = (raw || '').trim().toLowerCase();
   if (clean === 'salman' || clean === 'salman@himalayankoh.com') return 'salman@himalayankoh.com';
   if (clean === 'support' || clean === 'support@himalayankoh.com') return 'support@himalayankoh.com';
+  if (clean === 'orders' || clean === 'orders@himalayankoh.com') return 'orders@himalayankoh.com';
+  if (clean === 'marketing' || clean === 'marketing@himalayankoh.com') return 'marketing@himalayankoh.com';
   if (clean === 'admin' || clean === 'admin@himalayankoh.com') return 'admin@himalayankoh.com';
   if (clean === 'sales' || clean === 'sales@himalayankoh.com') return 'sales@himalayankoh.com';
   return 'support@himalayankoh.com';
@@ -660,6 +700,8 @@ export async function syncImapMailboxes(
     ? [targetMailbox]
     : [
         'support@himalayankoh.com',
+        'orders@himalayankoh.com',
+        'marketing@himalayankoh.com',
         'salman@himalayankoh.com',
         'admin@himalayankoh.com',
       ];
@@ -1665,6 +1707,10 @@ export interface InboxFolderCounts {
   salesUnread: number;
   support: number;
   supportUnread: number;
+  orders: number;
+  ordersUnread: number;
+  marketing: number;
+  marketingUnread: number;
   admin: number;
   adminUnread: number;
   unread: number;
@@ -1685,6 +1731,10 @@ export function computeInboxCounts(messages: InboxMessage[]): InboxFolderCounts 
     salesUnread: 0,
     support: 0,
     supportUnread: 0,
+    orders: 0,
+    ordersUnread: 0,
+    marketing: 0,
+    marketingUnread: 0,
     admin: 0,
     adminUnread: 0,
     unread: 0,
@@ -1708,6 +1758,12 @@ export function computeInboxCounts(messages: InboxMessage[]): InboxFolderCounts 
       } else if (m.mailbox === 'support@himalayankoh.com') {
         counts.support++;
         if (m.unread) counts.supportUnread++;
+      } else if (m.mailbox === 'orders@himalayankoh.com') {
+        counts.orders++;
+        if (m.unread) counts.ordersUnread++;
+      } else if (m.mailbox === 'marketing@himalayankoh.com') {
+        counts.marketing++;
+        if (m.unread) counts.marketingUnread++;
       } else if (m.mailbox === 'admin@himalayankoh.com') {
         counts.admin++;
         if (m.unread) counts.adminUnread++;
@@ -1845,6 +1901,10 @@ export async function listInboxState(options?: {
       if (m.folder !== 'inbox' || m.mailbox !== 'sales@himalayankoh.com') return false;
     } else if (folder === 'support') {
       if (m.folder !== 'inbox' || m.mailbox !== 'support@himalayankoh.com') return false;
+    } else if (folder === 'orders') {
+      if (m.folder !== 'inbox' || m.mailbox !== 'orders@himalayankoh.com') return false;
+    } else if (folder === 'marketing') {
+      if (m.folder !== 'inbox' || m.mailbox !== 'marketing@himalayankoh.com') return false;
     } else if (folder === 'admin') {
       if (m.folder !== 'inbox' || m.mailbox !== 'admin@himalayankoh.com') return false;
     } else if (folder === 'unread') {
