@@ -58,7 +58,7 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
   it('accurately reports the authorized mailbox identities and DNS infrastructure', async () => {
     const { mailboxes, infrastructure } = await getMailboxAndInfrastructureStatus();
 
-    expect(mailboxes).toHaveLength(4);
+    expect(mailboxes).toHaveLength(3);
     const salman = mailboxes.find((m) => m.address === 'salman@himalayankoh.com');
     const sales = mailboxes.find((m) => m.address === 'sales@himalayankoh.com');
     const support = mailboxes.find((m) => m.address === 'support@himalayankoh.com');
@@ -66,8 +66,7 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
 
     expect(salman).toBeDefined();
     expect(salman?.displayName).toBe('Salman — Himalayan Koh');
-    expect(sales).toBeDefined();
-    expect(sales?.displayName).toBe('Himalayan Koh Commercial Sales');
+    expect(sales).toBeUndefined();
     expect(support).toBeDefined();
     expect(support?.displayName).toBe('Himalayan Koh Customer Support');
     expect(admin).toBeDefined();
@@ -90,7 +89,7 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     ]);
 
     const draft = await saveInboxDraft({
-      mailbox: 'sales@himalayankoh.com',
+      mailbox: 'support@himalayankoh.com',
       to: 'buyer@lonestarequine.com',
       subject: 'Equine Salt Lick Catalog',
       bodyText: 'Hello team, attached is our commercial salt catalog.',
@@ -115,9 +114,9 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     // Seed an initial inbound message
     const inboundRes = await recordInboundEmail({
       messageId: '<inbound-101@client.com>',
-      mailbox: 'sales@himalayankoh.com',
+      mailbox: 'support@himalayankoh.com',
       from: { name: 'Dr. Jane Smith', email: 'jane@vetclinics.org' },
-      to: [{ email: 'sales@himalayankoh.com' }],
+      to: [{ email: 'support@himalayankoh.com' }],
       subject: 'Inquiry regarding 2lb pink salt blocks',
       bodyText: 'Can you provide a pallet price for the 2lb blocks?',
       authIndicators: { spf: 'pass', dkim: 'pass', dmarc: 'pass' },
@@ -131,7 +130,7 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     // Send a reply
     const reply = await sendInboxMessage({
       replyToMessageId: inbound.id,
-      mailbox: 'sales@himalayankoh.com',
+      mailbox: 'support@himalayankoh.com',
       to: 'jane@vetclinics.org',
       subject: 'Re: Inquiry regarding 2lb pink salt blocks',
       bodyText: 'Hello Dr. Smith, thank you for your inquiry. Pallet pricing is attached.',
@@ -141,7 +140,7 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     expect(reply.threadId).toBe(inbound.threadId);
     expect(reply.inReplyTo).toBe('<inbound-101@client.com>');
     expect(reply.references).toContain('<inbound-101@client.com>');
-    expect(reply.from.email).toBe('sales@himalayankoh.com');
+    expect(reply.from.email).toBe('support@himalayankoh.com');
 
     // When listing inbox, verify thread grouping
     const state = await listInboxState({ folder: 'sent' });
@@ -161,9 +160,9 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
 
     const inboundRes = await recordInboundEmail({
       messageId: '<unique-msg-999@montanaranchfeed.com>',
-      mailbox: 'sales@himalayankoh.com',
+      mailbox: 'support@himalayankoh.com',
       from: { name: 'Bob Miller', email: 'orders@montanaranchfeed.com' },
-      to: [{ email: 'sales@himalayankoh.com' }],
+      to: [{ email: 'support@himalayankoh.com' }],
       subject: 'Re: Wholesale Livestock Salt Inquiry',
       bodyText: 'We received your catalog and are interested in 5 tons of 30lb blocks.',
       authIndicators: { spf: 'pass', dkim: 'pass', dmarc: 'pass' },
@@ -182,9 +181,9 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     // Re-delivering the exact same messageId should return existing record idempotently
     const duplicateRes = await recordInboundEmail({
       messageId: '<unique-msg-999@montanaranchfeed.com>',
-      mailbox: 'sales@himalayankoh.com',
+      mailbox: 'support@himalayankoh.com',
       from: { name: 'Bob Miller', email: 'orders@montanaranchfeed.com' },
-      to: [{ email: 'sales@himalayankoh.com' }],
+      to: [{ email: 'support@himalayankoh.com' }],
       subject: 'Re: Wholesale Livestock Salt Inquiry',
       bodyText: 'Duplicate body',
     });
@@ -196,16 +195,16 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
   it('records the received copy of our own reply instead of treating it as a duplicate of Sent', async () => {
     const inbound = await recordInboundEmail({
       messageId: '<thread-start-55@admin.himalayankoh.com>',
-      mailbox: 'sales@himalayankoh.com',
+      mailbox: 'support@himalayankoh.com',
       from: { name: 'Himalayan Koh Administration', email: 'admin@himalayankoh.com' },
-      to: [{ email: 'sales@himalayankoh.com' }],
+      to: [{ email: 'support@himalayankoh.com' }],
       subject: 'Invoice question',
       bodyText: 'Can you confirm this invoice?',
     });
 
     const reply = await sendInboxMessage({
       replyToMessageId: inbound.message.id,
-      mailbox: 'sales@himalayankoh.com',
+      mailbox: 'support@himalayankoh.com',
       to: 'admin@himalayankoh.com',
       subject: 'Re: Invoice question',
       bodyText: 'Confirmed.',
@@ -216,7 +215,7 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
       messageId: reply.messageId,
       inReplyTo: '<thread-start-55@admin.himalayankoh.com>',
       mailbox: 'admin@himalayankoh.com',
-      from: { name: 'Himalayan Koh Commercial Sales', email: 'sales@himalayankoh.com' },
+      from: { name: 'Himalayan Koh Customer Support', email: 'support@himalayankoh.com' },
       to: [{ email: 'admin@himalayankoh.com' }],
       subject: 'Re: Invoice question',
       bodyText: 'Confirmed.',

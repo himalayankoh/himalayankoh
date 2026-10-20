@@ -57,7 +57,7 @@ export function MobileGmailReplyComposer({
   const [toChips, setToChips] = useState<RecipientChip[]>(
     initialTo.length > 0
       ? initialTo
-      : [{ id: '1', name: 'Sales Team', email: 'sales@himalayankoh.com', avatarBg: '#10B981', avatarInitial: 'S' }]
+      : [{ id: '1', name: 'Support Team', email: 'support@himalayankoh.com', avatarBg: '#10B981', avatarInitial: 'S' }]
   );
 
   const [ccChips, setCcChips] = useState<RecipientChip[]>(

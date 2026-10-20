@@ -255,7 +255,6 @@ export const MAILBOX_DEFINITIONS: Record<
 
 export const ALLOWED_MAILBOXES: MailboxAddress[] = [
   'salman@himalayankoh.com',
-  'sales@himalayankoh.com',
   'support@himalayankoh.com',
   'admin@himalayankoh.com',
 ];
@@ -267,10 +266,10 @@ export function isAllowedMailbox(value: string): value is MailboxAddress {
 export function resolveMailboxAddress(raw?: string | null): MailboxAddress {
   const clean = (raw || '').trim().toLowerCase();
   if (clean === 'salman' || clean === 'salman@himalayankoh.com') return 'salman@himalayankoh.com';
-  if (clean === 'sales' || clean === 'sales@himalayankoh.com') return 'sales@himalayankoh.com';
   if (clean === 'support' || clean === 'support@himalayankoh.com') return 'support@himalayankoh.com';
   if (clean === 'admin' || clean === 'admin@himalayankoh.com') return 'admin@himalayankoh.com';
-  return 'sales@himalayankoh.com';
+  if (clean === 'sales' || clean === 'sales@himalayankoh.com') return 'sales@himalayankoh.com';
+  return 'support@himalayankoh.com';
 }
 
 const SETTINGS_CATEGORY = 'email_inbox';
@@ -660,7 +659,6 @@ export async function syncImapMailboxes(
   const mailboxesToSync: MailboxAddress[] = targetMailbox
     ? [targetMailbox]
     : [
-        'sales@himalayankoh.com',
         'support@himalayankoh.com',
         'salman@himalayankoh.com',
         'admin@himalayankoh.com',
@@ -1816,9 +1814,12 @@ export async function listInboxState(options?: {
   mailboxes: MailboxIdentity[];
   infrastructure: InboxInfrastructureStatus;
 }> {
-  const allMessages = options?.skipExternalSync
+  const rawMessages = options?.skipExternalSync
     ? await readStoredMessages()
     : await syncExternalCorrespondenceIntoInbox(options?.forceSync === true);
+
+  // Exclude sales@himalayankoh.com from Admin Inbox display (handled externally via Outlook/Namecheap)
+  const allMessages = rawMessages.filter((m) => m.mailbox !== 'sales@himalayankoh.com');
 
   const counts = computeInboxCounts(allMessages);
   const folder = options?.folder || 'all';

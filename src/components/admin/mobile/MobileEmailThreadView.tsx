@@ -83,8 +83,8 @@ export function MobileEmailThreadView({
     const to: RecipientChip[] = [
       {
         id: '1',
-        name: latestMessage?.direction === 'inbound' ? latestMessage.from.name || latestMessage.from.email : 'Sales Team',
-        email: latestMessage?.direction === 'inbound' ? latestMessage.from.email : 'sales@himalayankoh.com',
+        name: latestMessage?.direction === 'inbound' ? latestMessage.from.name || latestMessage.from.email : 'Support Team',
+        email: latestMessage?.direction === 'inbound' ? latestMessage.from.email : 'support@himalayankoh.com',
         avatarBg: '#10B981',
         avatarInitial: 'S',
       },

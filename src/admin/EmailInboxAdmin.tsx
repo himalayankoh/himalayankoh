@@ -95,7 +95,7 @@ export default function EmailInboxAdmin() {
 
   // Compose Modal State
   const [isComposeOpen, setIsComposeOpen] = useState(false);
-  const [composeMailbox, setComposeMailbox] = useState<MailboxAddress>('sales@himalayankoh.com');
+  const [composeMailbox, setComposeMailbox] = useState<MailboxAddress>('support@himalayankoh.com');
   const [composeTo, setComposeTo] = useState('');
   const [composeCc, setComposeCc] = useState('');
   const [showCc, setShowCc] = useState(false);
@@ -302,7 +302,7 @@ export default function EmailInboxAdmin() {
     if (!selectedThread) return;
     const last = selectedThread.messages[selectedThread.messages.length - 1];
     if (!last) return;
-    setComposeMailbox((last.mailbox as MailboxAddress) || 'sales@himalayankoh.com');
+    setComposeMailbox((last.mailbox as MailboxAddress) || 'support@himalayankoh.com');
     setComposeTo('');
     setComposeSubject(last.subject.startsWith('Fwd:') ? last.subject : `Fwd: ${last.subject}`);
     setComposeBody(
@@ -321,7 +321,7 @@ export default function EmailInboxAdmin() {
       const replyTo =
         lastMsg.direction === 'inbound'
           ? lastMsg.from.email
-          : lastMsg.to[0]?.email || 'sales@himalayankoh.com';
+          : lastMsg.to[0]?.email || 'support@himalayankoh.com';
 
       const token = getAuthToken();
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -335,7 +335,7 @@ export default function EmailInboxAdmin() {
           action: 'reply',
           threadId: selectedThread.threadId,
           replyToMessageId: lastMsg.id,
-          mailbox: lastMsg.mailbox || 'sales@himalayankoh.com',
+          mailbox: lastMsg.mailbox || 'support@himalayankoh.com',
           to: replyTo,
           subject: lastMsg.subject.startsWith('Re:') ? lastMsg.subject : `Re: ${lastMsg.subject}`,
           bodyText: quickReplyBody,
@@ -462,25 +462,6 @@ export default function EmailInboxAdmin() {
           {counts && counts.salmanUnread > 0 && (
             <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
               {counts.salmanUnread}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => selectFolder('sales')}
-          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
-            activeFolder === 'sales'
-              ? 'bg-amber-500/15 text-amber-300 font-semibold'
-              : 'text-slate-300 hover:bg-slate-800/60'
-          }`}
-        >
-          <span className="flex items-center gap-2.5">
-            <Buildings size={16} />
-            Sales & Wholesale
-          </span>
-          {counts && counts.salesUnread > 0 && (
-            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
-              {counts.salesUnread}
             </span>
           )}
         </button>
@@ -1219,9 +1200,6 @@ export default function EmailInboxAdmin() {
                   onChange={(e) => setComposeMailbox(e.target.value as MailboxAddress)}
                   className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 >
-                  <option value="sales@himalayankoh.com">
-                    Commercial Sales &lt;sales@himalayankoh.com&gt;
-                  </option>
                   <option value="salman@himalayankoh.com">
                     Salman &lt;salman@himalayankoh.com&gt;
                   </option>

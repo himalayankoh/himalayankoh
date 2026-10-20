@@ -23,7 +23,6 @@ export type MailboxEmail =
   | 'admin@himalayankoh.com';
 
 export const SUPPORTED_MAILBOXES: MailboxEmail[] = [
-  'sales@himalayankoh.com',
   'support@himalayankoh.com',
   'salman@himalayankoh.com',
   'admin@himalayankoh.com',
