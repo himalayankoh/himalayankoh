@@ -176,6 +176,27 @@ export default function EmailInboxAdmin() {
 
   useEffect(() => {
     fetchInbox();
+
+    // Real-Time Background Synchronization: Poll every 30s
+    const pollInterval = setInterval(() => {
+      fetchInbox();
+    }, 30000);
+
+    // Sync immediately when returning to the app or switching browser tabs
+    const handleSyncOnFocus = () => {
+      if (document.visibilityState === "visible") {
+        fetchInbox();
+      }
+    };
+
+    window.addEventListener("focus", handleSyncOnFocus);
+    document.addEventListener("visibilitychange", handleSyncOnFocus);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener("focus", handleSyncOnFocus);
+      document.removeEventListener("visibilitychange", handleSyncOnFocus);
+    };
   }, [fetchInbox]);
 
   const selectedThread = useMemo(() => {

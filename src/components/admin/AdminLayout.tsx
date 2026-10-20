@@ -45,6 +45,7 @@ import { MobileAdminHeader } from './mobile/MobileAdminHeader';
 import { MobileAdminBottomNav } from './mobile/MobileAdminBottomNav';
 import { MobileQuickAddModal } from './mobile/MobileQuickAddModal';
 import { SmartMobileSideMenu } from './mobile/SmartMobileSideMenu';
+import { AdminUpdateBanner } from './AdminUpdateBanner';
 
 export interface AdminLayoutProps {
   children: ReactNode;
@@ -689,6 +690,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       } md:bg-[#FAF7F1] md:text-[#26211C]`}
       style={railVars}
     >
+      <AdminUpdateBanner />
       <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip bg-white p-3 rounded-lg">Skip to workspace</a>
       {renderSidebar({ mini: railMini })}
 

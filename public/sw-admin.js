@@ -33,6 +33,13 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Real-Time PWA & APK Hot-Update Listener
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING' || (event.data && event.data.type === 'SKIP_WAITING')) {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
