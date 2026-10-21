@@ -396,7 +396,7 @@ export default function Layout({ children }: LayoutProps) {
           is what read as a flick. Keyed on the path only, not the query, so
           filtering the catalogue re-renders in place instead of remounting and
           refetching. */}
-      <main id="main-content" className="flex-1 w-full max-w-full overflow-x-hidden" tabIndex={-1}>
+      <main id="main-content" className="flex-1 w-full max-w-full overflow-x-clip" tabIndex={-1}>
         <motion.div
           key={pathname}
           initial={false}

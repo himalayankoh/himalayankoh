@@ -174,6 +174,11 @@ public class MainActivity extends AppCompatActivity {
         // Disable Android native overscroll stretch / pull-down effects completely
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
+        // Ensure vertical scrolling is fully enabled
+        webView.setVerticalScrollBarEnabled(true);
+        webView.setHorizontalScrollBarEnabled(false);
+        webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+
         // Expose Native bridge indicator so web application detects the native APK instantly
         webView.addJavascriptInterface(new Object() {
             @android.webkit.JavascriptInterface

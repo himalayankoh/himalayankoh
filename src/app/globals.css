@@ -153,20 +153,22 @@
 
 html {
   scroll-behavior: smooth;
-  overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100vw;
 }
 
 /* ── APK Pull-to-Refresh & Overscroll Protection ───────── */
-/* In the native APK, disable overscroll bouncing/reloading. In standard web browsers, keep standard behavior. */
+/* In the native APK, disable pull-to-refresh reload on the root container while preserving normal document scrolling */
 html.is-apk-app,
-html.is-apk-app body,
-html.is-apk-app main,
-html.is-apk-app .admin-content,
-html.is-apk-app div,
-html.is-apk-app * {
-  overscroll-behavior-y: none !important;
-  overscroll-behavior: none !important;
+body.is-apk-app {
+  overscroll-behavior-y: none;
+  overscroll-behavior: none;
+}
+
+html.is-apk-app body {
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+  overflow-y: auto !important;
 }
 
 /* ── Mobile Font Size Adjustment System ─────────────────── */
@@ -190,9 +192,13 @@ body {
   font-family: var(--font-sans);
   color: var(--color-charcoal);
   background: var(--color-warm-white);
-  overflow-x: hidden;
+  overflow-x: clip;
+  overflow-y: auto;
+  min-height: 100%;
   max-width: 100vw;
   -webkit-font-smoothing: antialiased;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 @layer base {
