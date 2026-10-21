@@ -19,6 +19,7 @@ import {
   Paperclip,
   Eye,
   Code,
+  ChatText,
 } from '@phosphor-icons/react';
 import type { InboxThread, InboxMessage, InboxAttachment } from '@/lib/email/inboxStore';
 import { useMobileTheme } from '@/context/MobileThemeContext';
@@ -27,8 +28,10 @@ import { MobileGmailReplyComposer, RecipientChip } from './MobileGmailReplyCompo
 
 /**
  * Sanitizes raw HTML email content for secure, responsive rendering on mobile viewports.
+ * In dark mode, adapts inline text and background colors to prevent blinding white backgrounds
+ * or invisible black text on dark surfaces.
  */
-function sanitizeEmailHtml(rawHtml: string): string {
+function sanitizeEmailHtml(rawHtml: string, isDark = false): string {
   if (!rawHtml) return '';
   let clean = rawHtml;
   // Remove script tags and contents
@@ -41,6 +44,23 @@ function sanitizeEmailHtml(rawHtml: string): string {
   clean = clean.replace(/\son\w+=\w+/gi, '');
   // Ensure target="_blank" and rel="noopener noreferrer" on all links
   clean = clean.replace(/<a\s+(?:[^>]*?\s+)?href=/gi, '<a target="_blank" rel="noopener noreferrer" href=');
+
+  if (isDark) {
+    // 1. Replace dark hardcoded text colors with readable light text (#F1F5F9)
+    clean = clean.replace(
+      /color\s*:\s*(?:#0[0-9a-f]{5}|#1[0-9a-f]{5}|#2[0-9a-f]{5}|#3[0-9a-f]{5}|#475569|#334155|#1e293b|#0f172a|#000(?:000)?|#111(?:111)?|#222(?:222)?|#333(?:333)?|black|rgb\(\s*(?:[0-4]?[0-9]|50)\s*,\s*(?:[0-4]?[0-9]|50)\s*,\s*(?:[0-4]?[0-9]|50)\s*\))\b/gi,
+      'color: #F1F5F9'
+    );
+    // 2. Neutralize hardcoded white/near-white backgrounds from HTML tags so they don't produce white patches
+    clean = clean.replace(
+      /background(?:-color)?\s*:\s*(?:#fff(?:fff)?|white|#f8fafc|#f1f5f9|#e2e8f0|rgb\(\s*2(?:4[5-9]|5[0-5])\s*,\s*2(?:4[5-9]|5[0-5])\s*,\s*2(?:4[5-9]|5[0-5])\s*\))\b/gi,
+      'background-color: transparent'
+    );
+    clean = clean.replace(/\sbgcolor=["']?(?:#ffffff|white|#f8fafc|#f1f5f9)["']?/gi, '');
+    // 3. Neutralize light border colors
+    clean = clean.replace(/border(?:-top|-bottom|-left|-right)?\s*:\s*([^;]+#[eE][0-9a-fA-F]{5})/gi, 'border-color: rgba(255, 255, 255, 0.12)');
+  }
+
   return clean;
 }
 
@@ -123,12 +143,29 @@ function GmailMessageBodyRenderer({
 
   return (
     <div className="w-full space-y-2 select-text pt-1">
-      {/* View Mode Toggle Pill (Visible if rich HTML exists) */}
-      {hasHtml && (
-        <div className="flex items-center justify-between pb-1 px-0.5">
-          <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
-            <span>Message Content</span>
+      {/* ── Message Frame Header (Explicitly Identifies the Email Message Body) ──────── */}
+      <div
+        className="flex items-center justify-between px-1 pb-1 pt-0.5 border-b"
+        style={{
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
+        }}
+      >
+        <div className="flex items-center gap-1.5">
+          <ChatText
+            size={13}
+            weight="bold"
+            className={msg.direction === 'outbound' ? 'text-emerald-400' : 'text-blue-400'}
+          />
+          <span
+            className="text-[11px] font-bold tracking-wider uppercase"
+            style={{ color: isDark ? '#94A3B8' : '#64748B' }}
+          >
+            {msg.direction === 'outbound' ? 'Sent Message' : 'Message Body'}
           </span>
+        </div>
+
+        {/* View Mode Toggle Pill (Visible if rich HTML exists) */}
+        {hasHtml ? (
           <div
             className="inline-flex items-center p-0.5 rounded-full text-[10px] font-bold border transition-all"
             style={{
@@ -161,17 +198,31 @@ function GmailMessageBodyRenderer({
               <span>Plain Text</span>
             </button>
           </div>
-        </div>
-      )}
+        ) : (
+          <span
+            className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md"
+            style={{
+              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#F1F5F9',
+              color: isDark ? '#94A3B8' : '#64748B',
+            }}
+          >
+            <FileText size={10} weight="bold" />
+            <span>Plain Text</span>
+          </span>
+        )}
+      </div>
 
       {/* ── Mode 1: Rich HTML Canvas (Authentic Gmail Mobile Canvas) ──────── */}
       {activeMode === 'html' && (
         <div
           className="rounded-2xl p-4 sm:p-5 shadow-sm border overflow-x-auto my-1 transition-all"
           style={{
-            backgroundColor: '#FFFFFF',
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : '#E2E8F0',
-            color: '#0F172A',
+            backgroundColor: isDark ? '#060B16' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.09)' : '#E2E8F0',
+            color: isDark ? '#F1F5F9' : '#0F172A',
+            boxShadow: isDark
+              ? 'inset 0 1px 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.3)'
+              : '0 1px 3px rgba(0, 0, 0, 0.05)',
           }}
         >
           <style jsx>{`
@@ -179,8 +230,21 @@ function GmailMessageBodyRenderer({
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               font-size: 14.5px;
               line-height: 1.65;
-              color: #0F172A;
+              color: ${isDark ? '#F1F5F9' : '#0F172A'};
               word-break: break-word;
+            }
+            .gmail-html-body * {
+              box-sizing: border-box;
+            }
+            .gmail-html-body p,
+            .gmail-html-body div,
+            .gmail-html-body span,
+            .gmail-html-body td,
+            .gmail-html-body th,
+            .gmail-html-body li,
+            .gmail-html-body strong,
+            .gmail-html-body b {
+              color: ${isDark ? '#F1F5F9' : '#0F172A'};
             }
             .gmail-html-body img {
               max-width: 100% !important;
@@ -198,10 +262,11 @@ function GmailMessageBodyRenderer({
             }
             .gmail-html-body th, .gmail-html-body td {
               padding: 8px 10px !important;
-              border: 1px solid #E2E8F0 !important;
+              border: 1px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0'} !important;
+              color: ${isDark ? '#F1F5F9' : '#0F172A'} !important;
             }
             .gmail-html-body a {
-              color: #2563EB !important;
+              color: ${isDark ? '#60A5FA' : '#2563EB'} !important;
               text-decoration: underline !important;
               font-weight: 500 !important;
             }
@@ -211,15 +276,15 @@ function GmailMessageBodyRenderer({
             .gmail-html-body p:last-child {
               margin-bottom: 0 !important;
             }
-            .gmail-html-body h1, .gmail-html-body h2, .gmail-html-body h3 {
-              color: #0F172A !important;
+            .gmail-html-body h1, .gmail-html-body h2, .gmail-html-body h3, .gmail-html-body h4 {
+              color: ${isDark ? '#FFFFFF' : '#0F172A'} !important;
               font-weight: 800 !important;
               margin-top: 1rem !important;
               margin-bottom: 0.5rem !important;
             }
             .gmail-html-body hr {
               border: 0 !important;
-              border-top: 1px solid #E2E8F0 !important;
+              border-top: 1px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0'} !important;
               margin: 18px 0 !important;
             }
             .gmail-html-body ul, .gmail-html-body ol {
@@ -229,11 +294,18 @@ function GmailMessageBodyRenderer({
             .gmail-html-body li {
               margin-bottom: 0.35rem !important;
             }
+            .gmail-html-body blockquote {
+              border-left: 2px solid ${isDark ? 'rgba(96, 165, 250, 0.7)' : '#3B82F6'} !important;
+              padding-left: 0.75rem !important;
+              margin: 0.75rem 0 !important;
+              color: ${isDark ? '#94A3B8' : '#64748B'} !important;
+              font-style: italic !important;
+            }
           `}</style>
           <div
             className="gmail-html-body"
             dangerouslySetInnerHTML={{
-              __html: sanitizeEmailHtml(msg.bodyHtml!),
+              __html: sanitizeEmailHtml(msg.bodyHtml!, isDark),
             }}
           />
         </div>
@@ -244,9 +316,12 @@ function GmailMessageBodyRenderer({
         <div
           className="rounded-2xl p-4 sm:p-5 my-1 transition-all border shadow-sm font-sans"
           style={{
-            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.035)' : '#FFFFFF',
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0',
+            backgroundColor: isDark ? '#060B16' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.09)' : '#E2E8F0',
             color: isDark ? '#F1F5F9' : '#0F172A',
+            boxShadow: isDark
+              ? 'inset 0 1px 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.3)'
+              : '0 1px 3px rgba(0, 0, 0, 0.05)',
           }}
         >
           <div className="space-y-3.5 text-[14.5px] leading-relaxed select-text font-normal">
