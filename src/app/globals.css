@@ -157,6 +157,31 @@ html {
   max-width: 100vw;
 }
 
+/* ── APK Pull-to-Refresh & Overscroll Protection ───────── */
+/* In the native APK, disable overscroll bouncing/reloading. In standard web browsers, keep standard behavior. */
+html.is-apk-app,
+body.is-apk-app {
+  overscroll-behavior-y: none !important;
+  overscroll-behavior: none !important;
+}
+
+/* ── Mobile Font Size Adjustment System ─────────────────── */
+/* Scales rem units smoothly across mobile viewports while preserving layout geometry & line spacing */
+@media (max-width: 767px) {
+  html[data-mobile-font-size="normal"] {
+    font-size: 15.5px;
+  }
+  html[data-mobile-font-size="medium"] {
+    font-size: 17px; /* Default: +8-10% larger text for comfortable mobile readability */
+  }
+  html[data-mobile-font-size="large"] {
+    font-size: 18.5px;
+  }
+  html[data-mobile-font-size="xlarge"] {
+    font-size: 20px;
+  }
+}
+
 body {
   font-family: var(--font-sans);
   color: var(--color-charcoal);

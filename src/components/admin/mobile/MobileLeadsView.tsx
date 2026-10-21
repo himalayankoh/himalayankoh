@@ -286,7 +286,7 @@ export function MobileLeadsView({
             className="rounded-2xl p-2.5 flex flex-col items-center justify-center text-center transition-all"
             style={{ backgroundColor: palette.cardElevatedBg }}
           >
-            <span className="text-[10px] font-semibold" style={{ color: palette.textSecondary }}>
+            <span className="text-xs font-bold" style={{ color: palette.textSecondary }}>
               New
             </span>
             <span className="text-base font-extrabold mt-0.5" style={{ color: palette.status.new.text }}>
@@ -299,7 +299,7 @@ export function MobileLeadsView({
             className="rounded-2xl p-2.5 flex flex-col items-center justify-center text-center transition-all"
             style={{ backgroundColor: palette.cardElevatedBg }}
           >
-            <span className="text-[10px] font-semibold" style={{ color: palette.textSecondary }}>
+            <span className="text-xs font-bold" style={{ color: palette.textSecondary }}>
               Contacted
             </span>
             <span className="text-base font-extrabold mt-0.5" style={{ color: palette.status.contacted.text }}>
@@ -312,7 +312,7 @@ export function MobileLeadsView({
             className="rounded-2xl p-2.5 flex flex-col items-center justify-center text-center transition-all"
             style={{ backgroundColor: palette.cardElevatedBg }}
           >
-            <span className="text-[10px] font-semibold" style={{ color: palette.textSecondary }}>
+            <span className="text-xs font-bold" style={{ color: palette.textSecondary }}>
               Qualified
             </span>
             <span className="text-base font-extrabold mt-0.5" style={{ color: palette.status.qualified.text }}>
@@ -325,7 +325,7 @@ export function MobileLeadsView({
             className="rounded-2xl p-2.5 flex flex-col items-center justify-center text-center transition-all"
             style={{ backgroundColor: palette.cardElevatedBg }}
           >
-            <span className="text-[10px] font-semibold" style={{ color: palette.textSecondary }}>
+            <span className="text-xs font-bold" style={{ color: palette.textSecondary }}>
               Converted
             </span>
             <span className="text-base font-extrabold mt-0.5" style={{ color: palette.status.converted.text }}>
@@ -578,55 +578,55 @@ export function MobileLeadsView({
                     <div className="flex items-baseline justify-between gap-2">
                       <h3
                         onClick={() => setSelectedLead(lead)}
-                        className="text-sm font-bold truncate leading-tight cursor-pointer"
+                        className="text-sm font-extrabold truncate leading-tight cursor-pointer"
                         style={{ color: palette.textPrimary }}
                       >
                         {lead.businessName}
                       </h3>
-                      <span className="text-[10px] font-medium shrink-0" style={{ color: palette.textMuted }}>
+                      <span className="text-[11px] font-medium shrink-0" style={{ color: palette.textMuted }}>
                         {formatTimeAgo(lead.createdAt || lead.discoveredAt)}
                       </span>
                     </div>
 
-                    <div className="text-xs truncate mt-0.5" style={{ color: palette.textSecondary }}>
+                    <div className="text-[13px] font-medium truncate mt-0.5" style={{ color: palette.textSecondary }}>
                       {lead.category || location}
                     </div>
 
                     {lead.phone && (
-                      <div className="text-[11px] font-mono mt-0.5" style={{ color: palette.textMuted }}>
+                      <div className="text-xs font-mono mt-0.5 font-medium" style={{ color: palette.textMuted }}>
                         {lead.phone}
                       </div>
                     )}
 
                     {/* Micro Channel & Commercial Badges (User Request) */}
-                    <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                       {lead.email && (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/25">
-                          <EnvelopeSimple size={10} weight="bold" /> Email
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/25">
+                          <EnvelopeSimple size={11} weight="bold" /> Email
                         </span>
                       )}
                       {lead.phone && (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
-                          <Phone size={10} weight="bold" /> Call
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                          <Phone size={11} weight="bold" /> Call
                         </span>
                       )}
                       {(lead.facebook || lead.research?.facebook) && (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/25">
-                          <FacebookLogo size={10} weight="bold" /> FB
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/25">
+                          <FacebookLogo size={11} weight="bold" /> FB
                         </span>
                       )}
                       {(lead.instagram || lead.research?.instagram) && (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-pink-500/15 text-pink-400 border border-pink-500/25">
-                          <InstagramLogo size={10} weight="bold" /> IG
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-pink-500/15 text-pink-400 border border-pink-500/25">
+                          <InstagramLogo size={11} weight="bold" /> IG
                         </span>
                       )}
                       {/wholesal|distribut|bulk|feed mill/i.test([lead.businessName, lead.category].join(' ')) ? (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/25">
-                          <Buildings size={10} weight="bold" /> Wholesale
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                          <Buildings size={11} weight="bold" /> Wholesale
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/25">
-                          <Storefront size={10} weight="bold" /> Retail
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/25">
+                          <Storefront size={11} weight="bold" /> Retail
                         </span>
                       )}
                     </div>
@@ -683,17 +683,17 @@ export function MobileLeadsView({
                       <button
                         type="button"
                         onClick={() => onStartOutreach?.(lead)}
-                        className="text-[11px] font-extrabold px-3 py-1 rounded-full text-white shadow-sm flex items-center gap-1 active:scale-95 ml-auto"
+                        className="text-xs font-extrabold px-3 py-1.5 rounded-full text-white shadow-sm flex items-center gap-1 active:scale-95 ml-auto"
                         style={{ background: palette.accentGradient }}
                       >
-                        <PaperPlaneRight size={11} weight="bold" />
+                        <PaperPlaneRight size={12} weight="bold" />
                         <span>Outreach</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setSelectedLead(lead)}
-                        className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors"
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-full transition-colors"
                         style={{
                           backgroundColor: palette.cardElevatedBg,
                           color: palette.textSecondary,
@@ -708,7 +708,7 @@ export function MobileLeadsView({
                   {/* Right: Status Pill & Menu */}
                   <div className="flex flex-col items-end justify-between shrink-0 self-stretch">
                     <span
-                      className="px-2.5 py-0.5 rounded-full text-[10px] font-bold"
+                      className="px-2.5 py-0.5 rounded-full text-[11px] font-bold"
                       style={{
                         color: badge.text,
                         backgroundColor: badge.bg,

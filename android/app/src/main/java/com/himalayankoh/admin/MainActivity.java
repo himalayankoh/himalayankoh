@@ -92,6 +92,8 @@ public class MainActivity extends AppCompatActivity {
 
         swipeRefresh.setColorSchemeResources(R.color.primary, R.color.accent);
         swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.card_dark);
+        // User request: In the mobile APK container, pulling down should NOT trigger a page refresh
+        swipeRefresh.setEnabled(false);
         swipeRefresh.setOnRefreshListener(() -> {
             if (isNetworkAvailable()) {
                 hideErrorLayout();

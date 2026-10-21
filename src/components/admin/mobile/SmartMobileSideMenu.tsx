@@ -21,6 +21,7 @@ import {
   SignOut,
   CaretDown,
   Download,
+  TextAa,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { useAuthStore } from '@/store/authStore';
@@ -51,7 +52,7 @@ export function SmartMobileSideMenu({
 }: SmartMobileSideMenuProps) {
   const location = useLocation();
   const { signOut } = useAuthStore();
-  const { isDark } = useMobileTheme();
+  const { isDark, fontSize, setFontSize } = useMobileTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [productsExpanded, setProductsExpanded] = useState(false);
 
@@ -347,6 +348,57 @@ export function SmartMobileSideMenu({
           );
         })}
       </nav>
+
+      {/* ── Text Readability & Font Size Switcher (User Request) ── */}
+      <div
+        className="px-4 py-3 border-t space-y-2 shrink-0"
+        style={{
+          borderColor: 'rgba(255, 255, 255, 0.08)',
+          backgroundColor: 'rgba(255, 255, 255, 0.02)',
+        }}
+      >
+        <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
+          <span className="flex items-center gap-1.5">
+            <TextAa size={16} weight="bold" className="text-indigo-400" />
+            <span>Text Size</span>
+          </span>
+          <span className="text-[11px] font-mono text-indigo-400 font-bold uppercase">
+            {fontSize === 'xlarge'
+              ? '130% Extra Large'
+              : fontSize === 'large'
+              ? '120% Large'
+              : fontSize === 'medium'
+              ? '110% Medium'
+              : '100% Standard'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-4 gap-1.5">
+          {[
+            { id: 'normal', label: '100%' },
+            { id: 'medium', label: '110%' },
+            { id: 'large', label: '120%' },
+            { id: 'xlarge', label: '130%' },
+          ].map((item) => {
+            const isSelected = fontSize === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setFontSize(item.id as any)}
+                className="py-1.5 rounded-xl text-[11px] font-bold text-center transition-all active:scale-95"
+                style={{
+                  backgroundColor: isSelected ? '#6366F1' : 'rgba(255, 255, 255, 0.06)',
+                  color: isSelected ? '#FFFFFF' : '#94A3B8',
+                  border: `1px solid ${isSelected ? '#818CF8' : 'rgba(255, 255, 255, 0.08)'}`,
+                }}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* ── 4. Bottom Actions (Download APK + View Storefront + Logout) ── */}
       <div

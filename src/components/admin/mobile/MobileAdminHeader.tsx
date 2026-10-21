@@ -1,9 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { List, Sun, Moon, Bell } from '@phosphor-icons/react';
-import { useMobileTheme } from '@/context/MobileThemeContext';
+import { List, Sun, Moon, Bell, TextAa, X, Check } from '@phosphor-icons/react';
+import { useMobileTheme, type MobileFontSize } from '@/context/MobileThemeContext';
 import { getMobilePalette } from './MobileThemeTokens';
 
 interface MobileAdminHeaderProps {
@@ -18,8 +18,9 @@ export function MobileAdminHeader({
   unreadNotifCount = 0,
 }: MobileAdminHeaderProps) {
   const location = useLocation();
-  const { isDark, toggleTheme } = useMobileTheme();
+  const { isDark, toggleTheme, fontSize, setFontSize, increaseFontSize, decreaseFontSize } = useMobileTheme();
   const palette = getMobilePalette(isDark);
+  const [showFontSizeModal, setShowFontSizeModal] = useState(false);
 
   // Dynamic Page Title & Subtitle matching the reference designs
   const getHeaderInfo = (pathname: string) => {
@@ -123,8 +124,34 @@ export function MobileAdminHeader({
         </div>
       </div>
 
-      {/* Right: Theme Toggle + Notification Bell */}
+      {/* Right: Font Size + Theme Toggle + Notification Bell */}
       <div className="flex items-center gap-2 shrink-0">
+        {/* Font Size Adjuster Button (User Request: Accessible from every page) */}
+        <button
+          type="button"
+          onClick={() => setShowFontSizeModal(true)}
+          aria-label="Adjust Font Size"
+          title="Adjust Text Size (Readability)"
+          className="w-11 h-11 rounded-full flex items-center justify-center transition-all duration-150 active:scale-95 cursor-pointer relative"
+          style={{
+            backgroundColor: palette.iconBtnBg,
+            border: `1px solid ${palette.iconBtnBorder}`,
+            color: palette.iconBtnText,
+            boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.3)' : '0 1px 3px rgba(0,0,0,0.06)',
+          }}
+        >
+          <TextAa size={20} weight="bold" />
+          <span
+            className="absolute -bottom-0.5 -right-0.5 px-1 rounded-full text-[9px] font-extrabold uppercase shadow-xs"
+            style={{
+              backgroundColor: '#6366F1',
+              color: '#FFFFFF',
+            }}
+          >
+            {fontSize === 'xlarge' ? 'XL' : fontSize === 'large' ? 'L' : fontSize === 'medium' ? 'M' : 'S'}
+          </span>
+        </button>
+
         {/* Dark/Light Theme Toggle */}
         <button
           type="button"
@@ -171,6 +198,160 @@ export function MobileAdminHeader({
           )}
         </button>
       </div>
+
+      {/* ── Font Size Control Bottom Sheet ─────────────────────────── */}
+      {showFontSizeModal && (
+        <div
+          data-testid="font-size-modal"
+          className="fixed inset-0 z-modal flex flex-col justify-end bg-black/65 backdrop-blur-xs animate-fadeIn"
+          onClick={() => setShowFontSizeModal(false)}
+        >
+          <div
+            className="rounded-t-3xl border-t p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: palette.cardBg,
+              borderColor: palette.cardBorder,
+              color: palette.textPrimary,
+              boxShadow: '0 -8px 32px rgba(0, 0, 0, 0.45)',
+            }}
+          >
+            <div className="w-12 h-1 rounded-full bg-slate-500/40 mx-auto" />
+
+            <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: palette.divider }}>
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-indigo-400 shrink-0"
+                  style={{ backgroundColor: 'rgba(99, 102, 241, 0.15)' }}
+                >
+                  <TextAa size={18} weight="bold" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-white">Font Size &amp; Readability</h3>
+                  <p className="text-[11px] text-slate-400">Scale text across all admin pages</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowFontSizeModal(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white"
+                style={{ backgroundColor: palette.iconBtnBg }}
+              >
+                <X size={16} weight="bold" />
+              </button>
+            </div>
+
+            {/* Live Text Preview Box */}
+            <div
+              className="p-3.5 rounded-2xl border transition-all"
+              style={{
+                backgroundColor: palette.cardElevatedBg,
+                borderColor: palette.cardBorder,
+              }}
+            >
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 mb-1.5">
+                <span>LIVE PREVIEW</span>
+                <span className="text-indigo-400 uppercase font-mono font-bold">
+                  {fontSize === 'xlarge'
+                    ? '130% Extra Large'
+                    : fontSize === 'large'
+                    ? '120% Large'
+                    : fontSize === 'medium'
+                    ? '110% Medium (Default)'
+                    : '100% Standard'}
+                </span>
+              </div>
+              <p className="font-bold text-white leading-snug">
+                Himalayan Koh • 30 lb Pasture Salt Licks
+              </p>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                Weather-resistant mined mineral rocks. 84 essential trace elements for livestock herd health. Dispatched direct from Houston, TX.
+              </p>
+            </div>
+
+            {/* Quick Increment / Decrement Stepper */}
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={decreaseFontSize}
+                disabled={fontSize === 'normal'}
+                className="flex-1 py-2.5 px-3 rounded-2xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all disabled:opacity-40 active:scale-95"
+                style={{
+                  backgroundColor: palette.cardElevatedBg,
+                  color: palette.textPrimary,
+                  border: `1px solid ${palette.cardBorder}`,
+                }}
+              >
+                <span className="text-sm font-extrabold">A−</span>
+                <span>Smaller</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={increaseFontSize}
+                disabled={fontSize === 'xlarge'}
+                className="flex-1 py-2.5 px-3 rounded-2xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all disabled:opacity-40 active:scale-95"
+                style={{
+                  backgroundColor: palette.cardElevatedBg,
+                  color: palette.textPrimary,
+                  border: `1px solid ${palette.cardBorder}`,
+                }}
+              >
+                <span className="text-sm font-extrabold">A+</span>
+                <span>Larger</span>
+              </button>
+            </div>
+
+            {/* 4 Preset Options Grid */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              {[
+                { id: 'normal' as MobileFontSize, label: 'Standard', sub: '100% Base Scale' },
+                { id: 'medium' as MobileFontSize, label: 'Medium', sub: '110% Recommended' },
+                { id: 'large' as MobileFontSize, label: 'Large', sub: '120% Prominent' },
+                { id: 'xlarge' as MobileFontSize, label: 'Extra Large', sub: '130% Maximum' },
+              ].map((opt) => {
+                const isSelected = fontSize === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setFontSize(opt.id)}
+                    className="p-3 rounded-2xl text-left transition-all active:scale-95 flex flex-col justify-between"
+                    style={{
+                      background: isSelected ? palette.accentGradient : palette.cardElevatedBg,
+                      color: isSelected ? '#FFFFFF' : palette.textPrimary,
+                      border: `1.5px solid ${isSelected ? 'transparent' : palette.cardBorder}`,
+                      boxShadow: isSelected ? palette.accentGlow : 'none',
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-extrabold">{opt.label}</span>
+                      {isSelected && <Check size={14} weight="bold" />}
+                    </div>
+                    <span
+                      className="text-[10px] mt-1"
+                      style={{ color: isSelected ? 'rgba(255,255,255,0.85)' : palette.textMuted }}
+                    >
+                      {opt.sub}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowFontSizeModal(false)}
+              className="w-full py-3 rounded-2xl text-xs font-bold text-white shadow-md active:scale-95 transition-all text-center"
+              style={{ background: palette.accentGradient }}
+            >
+              Apply &amp; Done
+            </button>
+          </div>
+        </div>
+      )}
     </header>
   );
 }
