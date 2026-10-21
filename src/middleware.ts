@@ -105,6 +105,14 @@ function enforcePreviewAccess(request: NextRequest): NextResponse | null {
   // `NEXT_PHASE` is process state, so no request can set it.
   if (process.env.NEXT_PHASE === 'phase-production-build') return null;
 
+  // Allow direct download of the Admin APK and public download assets regardless of preview gate
+  if (
+    request.nextUrl.pathname === '/api/download-apk' ||
+    request.nextUrl.pathname.startsWith('/downloads/')
+  ) {
+    return null;
+  }
+
   const host = request.headers.get('host');
   const configuredToken = process.env.PREVIEW_ACCESS_TOKEN ?? '';
   const supplied = request.nextUrl.searchParams.get(PREVIEW_QUERY_PARAM);
