@@ -66,7 +66,10 @@ export function MobileThemeProvider({ children }: { children: ReactNode }) {
     if (typeof navigator !== 'undefined') {
       const isNativeApk =
         navigator.userAgent.includes('HimalayanKohAdminApp') ||
-        (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches);
+        (typeof window !== 'undefined' && 'HimalayanKohNative' in window) ||
+        (typeof window !== 'undefined' && (window as unknown as { HimalayanKohNative?: unknown }).HimalayanKohNative !== undefined) ||
+        (typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches) ||
+        (typeof navigator !== 'undefined' && (navigator as unknown as { standalone?: boolean }).standalone === true);
       setIsApk(isNativeApk);
       if (isNativeApk && typeof document !== 'undefined') {
         document.documentElement.classList.add('is-apk-app');
@@ -74,6 +77,48 @@ export function MobileThemeProvider({ children }: { children: ReactNode }) {
       }
     }
   }, []);
+
+  // APK Only: prevent pull-down reload when user swipes downwards at top of screen
+  // Regular Chrome mobile view retains standard browser pull-to-refresh behavior
+  useEffect(() => {
+    if (!isApk || typeof window === 'undefined') return;
+
+    let touchStartY = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        touchStartY = e.touches[0].clientY;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const touchY = e.touches[0].clientY;
+      const touchDelta = touchY - touchStartY;
+
+      // Intervene only when pulling downwards at the very top of page / container
+      if (touchDelta > 0 && window.scrollY <= 0) {
+        let el = e.target as HTMLElement | null;
+        let isScrolledDown = false;
+        while (el && el !== document.body && el !== document.documentElement) {
+          if (el.scrollTop > 0) {
+            isScrolledDown = true;
+            break;
+          }
+          el = el.parentElement;
+        }
+        if (!isScrolledDown && e.cancelable) {
+          e.preventDefault();
+        }
+      }
+    };
+
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+    };
+  }, [isApk]);
 
   useEffect(() => {
     if (typeof document !== 'undefined') {

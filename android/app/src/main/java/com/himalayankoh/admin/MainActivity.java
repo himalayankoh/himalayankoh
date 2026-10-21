@@ -35,7 +35,6 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import java.io.File;
 import java.io.IOException;
@@ -56,7 +55,6 @@ public class MainActivity extends AppCompatActivity {
     private static final String APP_USER_AGENT_TAG = " HimalayanKohAdminApp/1.0.0";
 
     private WebView webView;
-    private SwipeRefreshLayout swipeRefresh;
     private ProgressBar progressBar;
     private LinearLayout errorLayout;
     private Button btnRetry;
@@ -85,24 +83,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void initViews() {
         webView = findViewById(R.id.webview);
-        swipeRefresh = findViewById(R.id.swipe_refresh);
         progressBar = findViewById(R.id.progress_bar);
         errorLayout = findViewById(R.id.error_layout);
         btnRetry = findViewById(R.id.btn_retry);
-
-        swipeRefresh.setColorSchemeResources(R.color.primary, R.color.accent);
-        swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.card_dark);
-        // User request: In the mobile APK container, pulling down should NOT trigger a page refresh
-        swipeRefresh.setEnabled(false);
-        swipeRefresh.setOnRefreshListener(() -> {
-            if (isNetworkAvailable()) {
-                hideErrorLayout();
-                webView.reload();
-            } else {
-                swipeRefresh.setRefreshing(false);
-                showErrorLayout();
-            }
-        });
 
         btnRetry.setOnClickListener(v -> {
             if (isNetworkAvailable()) {
@@ -188,6 +171,17 @@ public class MainActivity extends AppCompatActivity {
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
+        // Disable Android native overscroll stretch / pull-down effects completely
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+
+        // Expose Native bridge indicator so web application detects the native APK instantly
+        webView.addJavascriptInterface(new Object() {
+            @android.webkit.JavascriptInterface
+            public boolean isNativeApp() {
+                return true;
+            }
+        }, "HimalayanKohNative");
+
         webView.setWebViewClient(new AdminWebViewClient());
         webView.setWebChromeClient(new AdminWebChromeClient());
     }
@@ -223,7 +217,6 @@ public class MainActivity extends AppCompatActivity {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             progressBar.setVisibility(View.GONE);
-            swipeRefresh.setRefreshing(false);
             CookieManager.getInstance().flush();
         }
 
@@ -232,7 +225,6 @@ public class MainActivity extends AppCompatActivity {
             super.onReceivedError(view, request, error);
             if (request.isForMainFrame()) {
                 progressBar.setVisibility(View.GONE);
-                swipeRefresh.setRefreshing(false);
                 if (!isNetworkAvailable()) {
                     showErrorLayout();
                 }

@@ -6,19 +6,12 @@
     android:background="@color/bg_dark"
     tools:context=".MainActivity">
 
-    <!-- Swipe Refresh Layout containing WebView -->
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-        android:id="@+id/swipe_refresh"
+    <!-- Main WebView Container (pull-to-refresh completely eliminated in APK) -->
+    <WebView
+        android:id="@+id/webview"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
-
-        <WebView
-            android:id="@+id/webview"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@color/bg_dark" />
-
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+        android:layout_height="match_parent"
+        android:background="@color/bg_dark" />
 
     <!-- Top Loading Progress Bar -->
     <ProgressBar

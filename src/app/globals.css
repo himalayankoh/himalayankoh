@@ -160,7 +160,11 @@ html {
 /* ── APK Pull-to-Refresh & Overscroll Protection ───────── */
 /* In the native APK, disable overscroll bouncing/reloading. In standard web browsers, keep standard behavior. */
 html.is-apk-app,
-body.is-apk-app {
+html.is-apk-app body,
+html.is-apk-app main,
+html.is-apk-app .admin-content,
+html.is-apk-app div,
+html.is-apk-app * {
   overscroll-behavior-y: none !important;
   overscroll-behavior: none !important;
 }

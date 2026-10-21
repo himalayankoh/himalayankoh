@@ -64,6 +64,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Site-level structured data — applies to every route, not just the homepage. */}
         <JsonLd data={organizationJsonLd()} />
         <JsonLd data={websiteJsonLd()} />
+        {/* Early APK / Standalone detection script to disable pull-to-refresh overscroll in native app only */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var isApk=(navigator.userAgent&&navigator.userAgent.indexOf('HimalayanKohAdminApp')!==-1)||(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||('HimalayanKohNative' in window)||(window.navigator&&window.navigator.standalone===true);if(isApk){document.documentElement.classList.add('is-apk-app');if(document.body){document.body.classList.add('is-apk-app');}}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body>
         <Providers>{children}</Providers>
