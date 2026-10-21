@@ -182,6 +182,16 @@ public class MainActivity extends AppCompatActivity {
             }
         }, "HimalayanKohNative");
 
+        // External browser download listener for APK/PDF and direct file downloads
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                startActivity(intent);
+            } catch (Exception e) {
+                // Silently ignore
+            }
+        });
+
         webView.setWebViewClient(new AdminWebViewClient());
         webView.setWebChromeClient(new AdminWebChromeClient());
     }
@@ -191,6 +201,18 @@ public class MainActivity extends AppCompatActivity {
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri uri = request.getUrl();
             String host = uri.getHost();
+            String path = uri.getPath();
+
+            // Downloadable files (APK, PDF, /downloads/, /download-apk) open externally in browser / system download manager
+            if (path != null && (path.endsWith(".apk") || path.endsWith(".pdf") || path.contains("download"))) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                    startActivity(intent);
+                    return true;
+                } catch (Exception e) {
+                    // Fallback to internal loading
+                }
+            }
 
             if (host != null && (host.equals("himalayankoh.com") || host.endsWith(".himalayankoh.com"))) {
                 // Stay inside the app

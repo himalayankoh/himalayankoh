@@ -2832,8 +2832,10 @@ const [open, setOpen] = useState<Record<string, boolean>>({
 
               <div className="space-y-2 pt-1">
                 <a
-                  href="/downloads/HimalayanKoh-Admin.apk"
+                  href="/api/download-apk"
                   download="HimalayanKoh-Admin.apk"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
                 >
                   <Download size={16} weight="bold" />

@@ -410,9 +410,11 @@ export function SmartMobileSideMenu({
       >
         {/* Download Android APK */}
         <a
-          href="/downloads/HimalayanKoh-Admin.apk"
+          href="/api/download-apk"
           download="HimalayanKoh-Admin.apk"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-all active:scale-[0.98] hover:bg-emerald-500/10"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-all active:scale-[0.98] hover:bg-emerald-500/10 cursor-pointer"
         >
           <div
             className="w-9 h-9 rounded-xl flex items-center justify-center text-emerald-300 shrink-0"

@@ -87,6 +87,23 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: '/downloads/:path*',
+        headers: [
+          {
+            key: 'Content-Disposition',
+            value: 'attachment; filename="HimalayanKoh-Admin.apk"',
+          },
+          {
+            key: 'Content-Type',
+            value: 'application/vnd.android.package-archive',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+        ],
+      },
+      {
         source: '/images/products/white-background/:path*',
         headers: [
           {
