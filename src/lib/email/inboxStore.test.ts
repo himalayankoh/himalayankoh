@@ -58,12 +58,13 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
   it('accurately reports the authorized mailbox identities and DNS infrastructure', async () => {
     const { mailboxes, infrastructure } = await getMailboxAndInfrastructureStatus();
 
-    expect(mailboxes).toHaveLength(5);
+    expect(mailboxes).toHaveLength(6);
     const salman = mailboxes.find((m) => m.address === 'salman@himalayankoh.com');
     const sales = mailboxes.find((m) => m.address === 'sales@himalayankoh.com');
     const support = mailboxes.find((m) => m.address === 'support@himalayankoh.com');
     const orders = mailboxes.find((m) => m.address === 'orders@himalayankoh.com');
     const marketing = mailboxes.find((m) => m.address === 'marketing@himalayankoh.com');
+    const ws = mailboxes.find((m) => m.address === 'ws@himalayankoh.com');
     const admin = mailboxes.find((m) => m.address === 'admin@himalayankoh.com');
 
     expect(salman).toBeDefined();
@@ -75,6 +76,8 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     expect(orders?.displayName).toBe('Himalayan Koh Orders & Fulfillment');
     expect(marketing).toBeDefined();
     expect(marketing?.displayName).toBe('Himalayan Koh Marketing');
+    expect(ws).toBeDefined();
+    expect(ws?.displayName).toBe('Himalayan Koh Wholesale Department');
     expect(admin).toBeDefined();
     expect(admin?.displayName).toBe('Himalayan Koh Administration');
 

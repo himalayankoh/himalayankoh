@@ -20,6 +20,7 @@ export type MailboxAddress =
   | 'support@himalayankoh.com'
   | 'orders@himalayankoh.com'
   | 'marketing@himalayankoh.com'
+  | 'ws@himalayankoh.com'
   | 'admin@himalayankoh.com';
 
 export type CorrespondenceType = 'business_correspondence' | 'transactional' | 'marketing';
@@ -33,6 +34,7 @@ export type InboxFilterFolder =
   | 'support'
   | 'orders'
   | 'marketing'
+  | 'ws'
   | 'admin'
   | 'unread'
   | 'sent'
@@ -128,7 +130,7 @@ export type MailboxStatusInfo = MailboxIdentity;
 
 export interface MailboxIdentity {
   address: MailboxAddress;
-  shortKey: 'salman' | 'sales' | 'support' | 'orders' | 'marketing' | 'admin';
+  shortKey: 'salman' | 'sales' | 'support' | 'orders' | 'marketing' | 'ws' | 'admin';
   label: string;
   displayName: string;
   role: string;
@@ -271,6 +273,22 @@ export const MAILBOX_DEFINITIONS: Record<
     dmarcStatus: 'pass',
     inboundStatus: 'active_mx_and_webhook',
   },
+  'ws@himalayankoh.com': {
+    address: 'ws@himalayankoh.com',
+    shortKey: 'ws',
+    label: 'Wholesale',
+    displayName: 'Himalayan Koh Wholesale Department',
+    role: 'B2B Wholesale Accounts, Bulk Pallet & Container Supply',
+    defaultSignature:
+      'Himalayan Koh Wholesale Department\nws@himalayankoh.com | https://himalayankoh.com/wholesale\n12620 FM 1960 W Ste A-4, Houston, TX 77065',
+    correspondenceType: 'business_correspondence',
+    mxStatus: 'pass',
+    mxHost: 'mx1..3-hosting.jellyfish.systems',
+    spfStatus: 'pass',
+    dkimStatus: 'pass',
+    dmarcStatus: 'pass',
+    inboundStatus: 'active_mx_and_webhook',
+  },
   'admin@himalayankoh.com': {
     address: 'admin@himalayankoh.com',
     shortKey: 'admin',
@@ -293,6 +311,7 @@ export const ALLOWED_MAILBOXES: MailboxAddress[] = [
   'support@himalayankoh.com',
   'orders@himalayankoh.com',
   'marketing@himalayankoh.com',
+  'ws@himalayankoh.com',
   'salman@himalayankoh.com',
   'admin@himalayankoh.com',
 ];
@@ -307,6 +326,7 @@ export function resolveMailboxAddress(raw?: string | null): MailboxAddress {
   if (clean === 'support' || clean === 'support@himalayankoh.com') return 'support@himalayankoh.com';
   if (clean === 'orders' || clean === 'orders@himalayankoh.com') return 'orders@himalayankoh.com';
   if (clean === 'marketing' || clean === 'marketing@himalayankoh.com') return 'marketing@himalayankoh.com';
+  if (clean === 'ws' || clean === 'ws@himalayankoh.com' || clean === 'wholesale' || clean === 'wholesale@himalayankoh.com') return 'ws@himalayankoh.com';
   if (clean === 'admin' || clean === 'admin@himalayankoh.com') return 'admin@himalayankoh.com';
   if (clean === 'sales' || clean === 'sales@himalayankoh.com') return 'sales@himalayankoh.com';
   return 'support@himalayankoh.com';

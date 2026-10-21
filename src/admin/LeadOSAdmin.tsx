@@ -608,7 +608,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
   const [batchBodyTemplate, setBatchBodyTemplate] = useState(
     'Hello {{businessName}} Team,\n\nWe\'d love to introduce Himalayan Koh, a Houston-based wholesale supplier and distributor of authentic Himalayan Pink Salt products.\n\nWe supply feed stores, farm & ranch retailers, livestock supply stores, and online resellers with premium salt licks and blocks at competitive wholesale prices.\n\nExclusive Retailer Welcome Offer:\nEnjoy 5% OFF your first trial order with code WELCOME5.\n\nExplore our products: https://himalayankoh.com\n\nInterested in adding Himalayan Koh products to your store? Simply reply to learn more about our wholesale pricing and retail partnership opportunities.\n\nBest regards,\nMarketing Department\nHimalayan Koh\nWholesale Supplier & Distributor\nEmail: marketing@himalayankoh.com\nPhone: (832) 224-6466\nWebsite: https://himalayankoh.com\n12620 FM 1960 W, Ste A-4\nHouston, TX 77065, USA\n\nTo unsubscribe from future marketing emails, reply with "Unsubscribe".'
   );
-  const [batchCategoryFilter, setBatchCategoryFilter] = useState<'all' | 'agriculture' | 'wellness' | 'retail'>('all');
+  const [batchCategoryFilter, setBatchCategoryFilter] = useState<'all' | 'wholesale' | 'agriculture' | 'wellness' | 'retail'>('all');
   const [batchSending, setBatchSending] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; success: number; failed: number } | null>(null);
   const [batchResultNotice, setBatchResultNotice] = useState<string | null>(null);
@@ -1208,7 +1208,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
   const [verifiedCouponCode, setVerifiedCouponCode] = useState('welcome5');
   const [verifiedCouponDiscount, setVerifiedCouponDiscount] = useState('5%');
   const [verifiedProductUrl, setVerifiedProductUrl] = useState('https://himalayankoh.com/wholesale');
-  const [officialSenderEmail] = useState('marketing@himalayankoh.com');
+  const [officialSenderEmail, setOfficialSenderEmail] = useState('ws@himalayankoh.com');
   const [recipientEmail, setRecipientEmail] = useState('');
   const [recipientName, setRecipientName] = useState('');
   const [recipientEmailSource, setRecipientEmailSource] = useState<'discovered_osm' | 'company_website' | 'manually_entered' | 'unverified'>('unverified');
@@ -2122,12 +2122,15 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     }
 
     // 2. Sender readiness
-    if (officialSenderEmail !== 'marketing@himalayankoh.com') {
-      findings.push('Sender is not the authorized marketing domain.');
+    const isAuthorizedSender =
+      officialSenderEmail === 'marketing@himalayankoh.com' ||
+      officialSenderEmail === 'ws@himalayankoh.com';
+    if (!isAuthorizedSender) {
+      findings.push('Sender is not an authorized outreach address (marketing@ or ws@).');
       status = 'BLOCKED';
       score -= 40;
     } else {
-      findings.push('Authorized sender identity (marketing@himalayankoh.com).');
+      findings.push(`Authorized sender identity (${officialSenderEmail}).`);
     }
 
     // 3. Product relevance
@@ -2219,10 +2222,12 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
     const mode = 'wholesale';
     setOutreachMode(mode);
+    const activeSender = 'ws@himalayankoh.com';
+    setOfficialSenderEmail(activeSender);
     const prepared = createOutreachMessage(lead, {
       mode,
       couponCode: verifiedCouponCode || 'welcome5',
-      senderEmail: officialSenderEmail,
+      senderEmail: activeSender,
     });
     setEmailSubject(prepared.subject);
     setEmailBody(prepared.message);
@@ -2240,12 +2245,14 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
   const handleSelectOutreachMode = (mode: 'retail' | 'wholesale' | 'private_label') => {
     setOutreachMode(mode);
+    const newSender = mode === 'retail' ? 'marketing@himalayankoh.com' : 'ws@himalayankoh.com';
+    setOfficialSenderEmail(newSender);
     markDraftEdited();
     if (!selectedDrawerLead) return;
     const prepared = createOutreachMessage(selectedDrawerLead, {
       mode,
       couponCode: verifiedCouponCode || 'welcome5',
-      senderEmail: officialSenderEmail,
+      senderEmail: newSender,
     });
     setEmailSubject(prepared.subject);
     setEmailBody(prepared.message);
@@ -6387,8 +6394,14 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                   {/* Template Picker */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">Campaign Outreach Template</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                       {[
+                        {
+                          id: 'wholesale' as const,
+                          name: 'Wholesale / Bulk Supply',
+                          subj: 'Direct Khewra Himalayan Salt Wholesale & Bulk Supply for {{businessName}}',
+                          body: 'Hello {{businessName}} Team,\n\nWe\'d love to introduce Himalayan Koh, direct Khewra salt range importers with a distribution hub located in Houston, Texas.\n\nWe supply wholesale distributors, bulk agricultural dealers, commercial ranches, and retail distributors with factory-direct pallet freight and container pricing on authentic Himalayan Pink Salt blocks, loose minerals, and feed salt.\n\nExplore our wholesale specifications & catalog: https://himalayankoh.com/wholesale\n\nIf you would like to review our wholesale pallet pricing, container schedules, or evaluate a product sample, simply reply to this email.\n\nBest regards,\nWholesale Department\nHimalayan Koh\nDirect Importers & Wholesale Distributors\nEmail: ws@himalayankoh.com\nPhone: (832) 224-6466\nWebsite: https://himalayankoh.com/wholesale\n12620 FM 1960 W, Ste A-4\nHouston, TX 77065, USA\n\nTo unsubscribe from future wholesale communications, reply with "Unsubscribe".',
+                        },
                         {
                           id: 'agriculture' as const,
                           name: 'Livestock Salt Licks',

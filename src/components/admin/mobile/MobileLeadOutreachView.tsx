@@ -1248,7 +1248,8 @@ export function MobileLeadOutreachView({
                 onChange={(e) => setSelectedMailbox(e.target.value as MailboxAddress)}
                 className="w-full text-xs font-medium rounded-xl p-2 bg-slate-800 border border-slate-700 text-slate-200 outline-none"
               >
-                <option value="marketing@himalayankoh.com">marketing@himalayankoh.com (Marketing & B2B)</option>
+                <option value="ws@himalayankoh.com">ws@himalayankoh.com (Wholesale Department)</option>
+                <option value="marketing@himalayankoh.com">marketing@himalayankoh.com (Marketing & Retail)</option>
                 <option value="orders@himalayankoh.com">orders@himalayankoh.com (Orders & Logistics)</option>
                 <option value="support@himalayankoh.com">support@himalayankoh.com (Customer Support)</option>
               </select>

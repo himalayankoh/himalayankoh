@@ -607,7 +607,8 @@ export function createOutreachMessage(
   options: OutreachMessageOptions = { mode: 'wholesale' }
 ) {
   const name = lead.research?.publicCompanyName || lead.businessName;
-  const sender = options.senderEmail || 'sales@himalayankoh.com';
+  const defaultSender = options.mode === 'retail' ? 'marketing@himalayankoh.com' : 'ws@himalayankoh.com';
+  const sender = options.senderEmail || defaultSender;
   const city = lead.city ? ` in ${lead.city}` : '';
   const coupon = options.couponCode || 'WELCOME5';
 
@@ -670,6 +671,6 @@ export function createOutreachMessage(
     isLowFit: false,
     fitLevel: rec.fitLevel,
     relevanceReason: rec.relevanceReason,
-    message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh while researching agricultural and feed distribution partners${city}.\n\nWe supply premium Himalayan pink salt blocks (2 lb & 30 lb) and 45 lb livestock feed mineral bags. You can review our wholesale line and commercial specifications here:\n👉 https://himalayankoh.com/wholesale\n\nWould this assortment be relevant to your purchasing catalog? We would be delighted to provide commercial tiered pricing, pallet logistics, and freight quotes.\n\nTo opt out of further communications, please reply with "unsubscribe".\n\nBest regards,\n\nHimalayan Koh Commercial Sales\n${sender}\nhttps://himalayankoh.com`,
+    message: `Hello ${name} Team,\n\nWe'd love to introduce Himalayan Koh, a Houston-based wholesale supplier and distributor of authentic Himalayan Pink Salt products.\n\nWe supply wholesale distributors, bulk agricultural dealers, commercial ranches, and livestock supply stores with premium salt licks, mineral blocks, and feed salt at competitive wholesale pricing.\n\nExplore our wholesale specifications & catalog: https://himalayankoh.com/wholesale\n\nInterested in wholesale pricing, pallet freight, or container quotes? Simply reply to this email to learn more.\n\nBest regards,\nWholesale Department\nHimalayan Koh\nWholesale Supplier & Distributor\nEmail: ${sender}\nPhone: (832) 224-6466\nWebsite: https://himalayankoh.com/wholesale\n12620 FM 1960 W, Ste A-4\nHouston, TX 77065, USA\n\nTo unsubscribe from future wholesale communications, reply with "Unsubscribe".`,
   };
 }

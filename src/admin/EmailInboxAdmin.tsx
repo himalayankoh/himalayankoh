@@ -1454,8 +1454,11 @@ export default function EmailInboxAdmin() {
                   onChange={(e) => setComposeMailbox(e.target.value as MailboxAddress)}
                   className="min-w-0 flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
                 >
+                  <option value="ws@himalayankoh.com">
+                    Wholesale Department &lt;ws@himalayankoh.com&gt;
+                  </option>
                   <option value="marketing@himalayankoh.com">
-                    Marketing &amp; B2B Wholesale &lt;marketing@himalayankoh.com&gt;
+                    Marketing &amp; Retail &lt;marketing@himalayankoh.com&gt;
                   </option>
                   <option value="orders@himalayankoh.com">
                     Orders &amp; Fulfillment &lt;orders@himalayankoh.com&gt;
