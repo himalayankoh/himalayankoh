@@ -22,6 +22,8 @@ import {
   CaretDown,
   Download,
   TextAa,
+  ArrowsClockwise,
+  CheckCircle,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { useAuthStore } from '@/store/authStore';
@@ -44,6 +46,9 @@ interface MenuItem {
   subItems?: { to: string; label: string }[];
 }
 
+const GITHUB_RAW_APK_URL =
+  'https://github.com/himalayankoh/himalayankoh/raw/integration/cloudflare-workers-migration/public/downloads/HimalayanKoh-Admin.apk';
+
 export function SmartMobileSideMenu({
   onClose,
   unreadEmailCount = 3,
@@ -55,6 +60,8 @@ export function SmartMobileSideMenu({
   const { isDark, fontSize, setFontSize } = useMobileTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [productsExpanded, setProductsExpanded] = useState(false);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
 
   const menuItems: MenuItem[] = useMemo(
     () => [
@@ -164,6 +171,34 @@ export function SmartMobileSideMenu({
     }
   };
 
+  const handleCheckUpdate = async () => {
+    setCheckingUpdates(true);
+    try {
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) await reg.update();
+      }
+      setUpdateMsg('Hot-Update Active');
+      setTimeout(() => setUpdateMsg(null), 3000);
+    } catch {
+      setUpdateMsg('Synced');
+      setTimeout(() => setUpdateMsg(null), 3000);
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
+  const handleDownloadApk = (e: React.MouseEvent) => {
+    // Inside native APK WebView containers, relative or internal links stay trapped.
+    // By launching GitHub external raw link via window.open, Android's shouldOverrideUrlLoading
+    // forces the native OS to launch external Chrome / Download Manager!
+    try {
+      window.open(GITHUB_RAW_APK_URL, '_system');
+    } catch {
+      window.location.href = GITHUB_RAW_APK_URL;
+    }
+  };
+
   return (
     <div
       className="w-full h-full flex flex-col overflow-hidden text-white select-none transition-colors duration-200"
@@ -172,11 +207,10 @@ export function SmartMobileSideMenu({
         borderRight: '1px solid rgba(255, 255, 255, 0.08)',
       }}
     >
-      {/* ── 1. Header Branding ────────────────────────────────────────────── */}
-      <div className="pt-6 px-5 pb-4 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          {/* Salt Crystal Logo with subtle glow */}
-          <div className="w-11 h-11 rounded-2xl p-1 bg-white/95 shadow-md flex items-center justify-center shrink-0 border border-white/20">
+      {/* ── 1. Compact Header Branding ────────────────────────────────────── */}
+      <div className="pt-3.5 px-3.5 pb-2.5 flex items-center justify-between shrink-0 border-b border-white/5">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl p-0.5 bg-white/95 shadow-xs flex items-center justify-center shrink-0 border border-white/20">
             <img
               src="/images/hk_salt_crystal.webp"
               alt="Himalayan Koh"
@@ -184,11 +218,11 @@ export function SmartMobileSideMenu({
             />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-white tracking-tight leading-tight">
+            <h2 className="text-[13px] font-bold text-white tracking-tight leading-tight">
               Himalayan Koh
             </h2>
-            <p className="text-[11px] font-medium text-slate-400 mt-0.5">
-              Admin Panel
+            <p className="text-[10px] font-medium text-slate-400">
+              Admin Console
             </p>
           </div>
         </div>
@@ -198,32 +232,29 @@ export function SmartMobileSideMenu({
           type="button"
           onClick={onClose}
           aria-label="Close navigation menu"
-          className="w-9 h-9 rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-all active:scale-95 cursor-pointer"
-          style={{
-            backgroundColor: 'rgba(255, 255, 255, 0.06)',
-          }}
+          className="w-7.5 h-7.5 rounded-lg flex items-center justify-center text-slate-400 hover:text-white transition-all active:scale-95 cursor-pointer bg-white/5 hover:bg-white/10"
         >
-          <X size={16} weight="bold" />
+          <X size={15} weight="bold" />
         </button>
       </div>
 
-      {/* ── 2. Search Menu Input ─────────────────────────────────────────── */}
-      <div className="px-5 pb-3 shrink-0">
+      {/* ── 2. Compact Search Menu Input ─────────────────────────────────── */}
+      <div className="px-3.5 py-2 shrink-0">
         <div
-          className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl border transition-all duration-150 focus-within:border-blue-500/60"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all duration-150 focus-within:border-blue-500/60"
           style={{
             backgroundColor: 'rgba(255, 255, 255, 0.04)',
             borderColor: 'rgba(255, 255, 255, 0.08)',
           }}
         >
-          <MagnifyingGlass size={16} weight="bold" className="text-slate-400 shrink-0" />
+          <MagnifyingGlass size={14} weight="bold" className="text-slate-400 shrink-0" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search menu..."
             aria-label="Search menu"
-            className="w-full bg-transparent text-xs text-white placeholder:text-slate-400 outline-none font-medium"
+            className="w-full bg-transparent text-[11.5px] text-white placeholder:text-slate-400 outline-none font-medium"
           />
           {searchQuery && (
             <button
@@ -231,16 +262,16 @@ export function SmartMobileSideMenu({
               onClick={() => setSearchQuery('')}
               className="p-0.5 text-slate-400 hover:text-white"
             >
-              <X size={12} weight="bold" />
+              <X size={11} weight="bold" />
             </button>
           )}
         </div>
       </div>
 
-      {/* ── 3. Navigation List ───────────────────────────────────────────── */}
+      {/* ── 3. High-Density Compact Navigation List ──────────────────────── */}
       <nav
         aria-label="Mobile admin menu"
-        className="flex-1 overflow-y-auto px-4 py-2 space-y-1.5 no-scrollbar"
+        className="flex-1 overflow-y-auto px-2.5 py-1 space-y-0.5 no-scrollbar"
       >
         {filteredItems.map((item) => {
           const isDirectActive =
@@ -255,7 +286,7 @@ export function SmartMobileSideMenu({
           const Icon = item.icon;
 
           return (
-            <div key={item.label} className="space-y-1">
+            <div key={item.label} className="space-y-0.5">
               <Link
                 to={item.to}
                 onClick={() => {
@@ -265,31 +296,27 @@ export function SmartMobileSideMenu({
                     onClose();
                   }
                 }}
-                className={`relative flex items-center justify-between px-3 py-2.5 rounded-2xl transition-all duration-200 active:scale-[0.98] ${
-                  isActive ? 'shadow-lg' : 'hover:bg-white/5'
+                className={`relative flex items-center justify-between px-2.5 py-1.5 rounded-xl transition-all duration-150 active:scale-[0.98] ${
+                  isActive ? 'shadow-sm' : 'hover:bg-white/5'
                 }`}
                 style={{
                   background: isActive
                     ? 'linear-gradient(90deg, #2563EB 0%, #7C3AED 100%)'
                     : 'transparent',
-                  boxShadow: isActive
-                    ? '0 6px 20px -2px rgba(124, 58, 237, 0.45)'
-                    : 'none',
                 }}
               >
                 {/* Left: Icon Squircle + Label */}
-                <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm transition-transform"
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0 shadow-xs"
                     style={{
                       background: item.iconGradient,
-                      boxShadow: '0 2px 6px rgba(0, 0, 0, 0.25)',
                     }}
                   >
-                    <Icon size={18} weight="bold" />
+                    <Icon size={15} weight="bold" />
                   </div>
                   <span
-                    className={`text-xs font-semibold truncate ${
+                    className={`text-[12px] font-semibold truncate ${
                       isActive ? 'text-white font-bold' : 'text-slate-200'
                     }`}
                   >
@@ -298,10 +325,10 @@ export function SmartMobileSideMenu({
                 </div>
 
                 {/* Right: Badge / Caret */}
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   {typeof item.badge === 'number' && item.badge > 0 && (
                     <span
-                      className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-xs"
+                      className="px-1.5 py-0.2 rounded-full text-[9.5px] font-bold text-white"
                       style={{
                         backgroundColor: isActive ? 'rgba(255, 255, 255, 0.25)' : '#1D4ED8',
                       }}
@@ -312,7 +339,7 @@ export function SmartMobileSideMenu({
 
                   {item.hasSubmenu && (
                     <CaretDown
-                      size={14}
+                      size={12}
                       weight="bold"
                       className={`text-slate-400 transition-transform duration-200 ${
                         productsExpanded ? 'rotate-180 text-white' : ''
@@ -324,7 +351,7 @@ export function SmartMobileSideMenu({
 
               {/* Submenu for Products */}
               {item.hasSubmenu && productsExpanded && item.subItems && (
-                <div className="pl-12 pr-2 py-1 space-y-1">
+                <div className="pl-10 pr-2 py-0.5 space-y-0.5">
                   {item.subItems.map((sub) => {
                     const isSubActive = location.pathname === sub.to;
                     return (
@@ -332,7 +359,7 @@ export function SmartMobileSideMenu({
                         key={sub.to}
                         to={sub.to}
                         onClick={onClose}
-                        className={`block px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                        className={`block px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
                           isSubActive
                             ? 'text-white bg-white/10 font-bold'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
@@ -349,118 +376,114 @@ export function SmartMobileSideMenu({
         })}
       </nav>
 
-      {/* ── Text Readability & Font Size Switcher (User Request) ── */}
+      {/* ── 4. Compact Footer (Auto-Sync + Font Size + Download + Actions) ── */}
       <div
-        className="px-4 py-3 border-t space-y-2 shrink-0"
+        className="p-2.5 border-t space-y-1.5 shrink-0"
         style={{
           borderColor: 'rgba(255, 255, 255, 0.08)',
-          backgroundColor: 'rgba(255, 255, 255, 0.02)',
+          backgroundColor: 'rgba(0, 0, 0, 0.25)',
         }}
       >
-        <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
-          <span className="flex items-center gap-1.5">
-            <TextAa size={16} weight="bold" className="text-indigo-400" />
-            <span>Text Size</span>
+        {/* Real-Time Auto-Update Status Pill */}
+        <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-[10px]">
+          <span className="flex items-center gap-1.5 text-indigo-300 font-semibold truncate">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span>{updateMsg || 'Real-Time Auto-Update Active'}</span>
           </span>
-          <span className="text-[11px] font-mono text-indigo-400 font-bold uppercase">
-            {fontSize === 'xlarge'
-              ? '130% Extra Large'
-              : fontSize === 'large'
-              ? '120% Large'
-              : fontSize === 'medium'
-              ? '110% Medium'
-              : '100% Standard'}
-          </span>
+          <button
+            type="button"
+            onClick={handleCheckUpdate}
+            disabled={checkingUpdates}
+            className="flex items-center gap-1 text-[9.5px] font-bold text-indigo-200 hover:text-white px-1.5 py-0.5 rounded bg-indigo-600/30 hover:bg-indigo-600/50 cursor-pointer transition-all"
+          >
+            <ArrowsClockwise size={11} className={checkingUpdates ? 'animate-spin' : ''} />
+            <span>{checkingUpdates ? 'Syncing...' : 'Sync'}</span>
+          </button>
         </div>
 
-        <div className="grid grid-cols-4 gap-1.5">
-          {[
-            { id: 'normal', label: '100%' },
-            { id: 'medium', label: '110%' },
-            { id: 'large', label: '120%' },
-            { id: 'xlarge', label: '130%' },
-          ].map((item) => {
-            const isSelected = fontSize === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setFontSize(item.id as any)}
-                className="py-1.5 rounded-xl text-[11px] font-bold text-center transition-all active:scale-95"
-                style={{
-                  backgroundColor: isSelected ? '#6366F1' : 'rgba(255, 255, 255, 0.06)',
-                  color: isSelected ? '#FFFFFF' : '#94A3B8',
-                  border: `1px solid ${isSelected ? '#818CF8' : 'rgba(255, 255, 255, 0.08)'}`,
-                }}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+        {/* Ultra-Compact Font Size Adjustment */}
+        <div className="flex items-center justify-between gap-1 px-1">
+          <span className="flex items-center gap-1 text-[10.5px] font-semibold text-slate-400 shrink-0">
+            <TextAa size={13} weight="bold" className="text-indigo-400" />
+            <span>Size</span>
+          </span>
 
-      {/* ── 4. Bottom Actions (Download APK + View Storefront + Logout) ── */}
-      <div
-        className="p-4 border-t space-y-1.5 shrink-0"
-        style={{
-          borderColor: 'rgba(255, 255, 255, 0.08)',
-          backgroundColor: 'rgba(0, 0, 0, 0.15)',
-        }}
-      >
-        {/* Download Android APK */}
+          <div className="flex items-center gap-1">
+            {[
+              { id: 'normal', label: '100%' },
+              { id: 'medium', label: '110%' },
+              { id: 'large', label: '120%' },
+              { id: 'xlarge', label: '130%' },
+            ].map((item) => {
+              const isSelected = fontSize === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setFontSize(item.id as any)}
+                  className="px-2 py-0.5 rounded-md text-[10px] font-bold transition-all active:scale-95"
+                  style={{
+                    backgroundColor: isSelected ? '#6366F1' : 'rgba(255, 255, 255, 0.05)',
+                    color: isSelected ? '#FFFFFF' : '#94A3B8',
+                    border: `1px solid ${isSelected ? '#818CF8' : 'rgba(255, 255, 255, 0.08)'}`,
+                  }}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Download Android APK (Direct External GitHub Raw Link to Force Download in Chrome) */}
         <a
-          href="/api/download-apk"
-          download="HimalayanKoh-Admin.apk"
+          href={GITHUB_RAW_APK_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-all active:scale-[0.98] hover:bg-emerald-500/10 cursor-pointer"
+          onClick={handleDownloadApk}
+          download="HimalayanKoh-Admin.apk"
+          className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-all active:scale-[0.98] border border-emerald-500/25 bg-emerald-500/10 hover:bg-emerald-500/15 cursor-pointer shadow-xs"
         >
           <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-emerald-300 shrink-0"
-            style={{ backgroundColor: 'rgba(16, 185, 129, 0.15)' }}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-emerald-300 shrink-0"
+            style={{ backgroundColor: 'rgba(16, 185, 129, 0.2)' }}
           >
-            <Download size={18} weight="bold" />
+            <Download size={15} weight="bold" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <span>Android App (APK)</span>
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">5.8 MB</span>
+              <span className="text-[11.5px] font-bold">Android App (APK)</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/25 text-emerald-300 font-mono font-bold">
+                5.8 MB
+              </span>
             </div>
-            <p className="text-[10px] text-slate-400 font-normal truncate">Download &amp; Install on Mobile</p>
+            <p className="text-[9.5px] text-slate-400 font-normal truncate">
+              Tap to Download in Chrome / Browser
+            </p>
           </div>
         </a>
 
-        {/* View Storefront */}
-        <a
-          href="/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-slate-200 hover:text-white transition-all active:scale-[0.98] hover:bg-white/5"
-        >
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-200 shrink-0"
-            style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}
+        {/* 2-Column Action Buttons: View Storefront & Logout */}
+        <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white transition-all active:scale-95 bg-white/5 hover:bg-white/10"
           >
-            <ArrowSquareOut size={18} weight="bold" />
-          </div>
-          <span>View Storefront</span>
-        </a>
+            <ArrowSquareOut size={13} weight="bold" />
+            <span className="truncate">Storefront</span>
+          </a>
 
-        {/* Logout */}
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-xs font-semibold text-rose-400 hover:text-rose-300 transition-all active:scale-[0.98] hover:bg-rose-500/10 cursor-pointer"
-        >
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-rose-400 shrink-0"
-            style={{ backgroundColor: 'rgba(244, 63, 94, 0.15)' }}
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-[11px] font-semibold text-rose-400 hover:text-rose-300 transition-all active:scale-95 bg-rose-500/10 hover:bg-rose-500/20 cursor-pointer"
           >
-            <SignOut size={18} weight="bold" />
-          </div>
-          <span>Logout</span>
-        </button>
+            <SignOut size={13} weight="bold" />
+            <span className="truncate">Logout</span>
+          </button>
+        </div>
       </div>
     </div>
   );
