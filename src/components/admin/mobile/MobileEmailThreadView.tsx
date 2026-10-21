@@ -141,33 +141,45 @@ function GmailMessageBodyRenderer({
   const rawText = msg.bodyText || msg.snippet || 'No message content.';
   const paragraphs = rawText.split(/\n\n+/);
 
+  const isOutbound = msg.direction === 'outbound';
+  const frameBorderColor = isOutbound
+    ? (isDark ? '#10B981' : '#059669')
+    : (isDark ? '#EF4444' : '#DC2626');
+  const frameBgColor = isDark
+    ? (isOutbound ? '#050F16' : '#14080B')
+    : (isOutbound ? '#F0FDF4' : '#FEF2F2');
+  const frameShadow = isDark
+    ? `0 0 16px ${isOutbound ? 'rgba(16, 185, 129, 0.18)' : 'rgba(239, 68, 68, 0.18)'}, inset 0 1px 1px rgba(255, 255, 255, 0.05)`
+    : `0 1px 4px ${isOutbound ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'}`;
+
   return (
     <div className="w-full space-y-2 select-text pt-1">
-      {/* ── Message Frame Header (Explicitly Identifies the Email Message Body) ──────── */}
+      {/* ── Message Frame Header (Explicitly Identifies the Email Message Body & Reply Direction) ──────── */}
       <div
-        className="flex items-center justify-between px-1 pb-1 pt-0.5 border-b"
+        className="flex items-center justify-between px-1 pb-1.5 pt-0.5 border-b"
         style={{
           borderColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
         }}
       >
-        <div className="flex items-center gap-1.5">
-          <ChatText
-            size={13}
-            weight="bold"
-            className={msg.direction === 'outbound' ? 'text-emerald-400' : 'text-blue-400'}
-          />
-          <span
-            className="text-[11px] font-bold tracking-wider uppercase"
-            style={{ color: isDark ? '#94A3B8' : '#64748B' }}
-          >
-            {msg.direction === 'outbound' ? 'Sent Message' : 'Message Body'}
-          </span>
+        <div
+          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black tracking-wide border shadow-xs ${
+            isOutbound
+              ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400'
+              : 'bg-rose-500/15 border-rose-500/40 text-rose-400'
+          }`}
+        >
+          {isOutbound ? (
+            <ArrowUUpRight size={13} weight="bold" />
+          ) : (
+            <ArrowUUpLeft size={13} weight="bold" />
+          )}
+          <span>{isOutbound ? 'Sent Reply' : 'Received Reply'}</span>
         </div>
 
         {/* View Mode Toggle Pill (Visible if rich HTML exists) */}
         {hasHtml ? (
           <div
-            className="inline-flex items-center p-0.5 rounded-full text-[10px] font-bold border transition-all"
+            className="inline-flex items-center p-0.5 rounded-full text-xs font-bold border transition-all"
             style={{
               backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#F1F5F9',
               borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0',
@@ -176,37 +188,37 @@ function GmailMessageBodyRenderer({
             <button
               type="button"
               onClick={() => setViewMode('html')}
-              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full transition-all cursor-pointer ${
                 activeMode === 'html'
                   ? 'bg-blue-600 text-white shadow-xs font-black'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Eye size={11} weight="bold" />
+              <Eye size={12} weight="bold" />
               <span>Rich View</span>
             </button>
             <button
               type="button"
               onClick={() => setViewMode('text')}
-              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full transition-all cursor-pointer ${
                 activeMode === 'text'
                   ? 'bg-blue-600 text-white shadow-xs font-black'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Code size={11} weight="bold" />
+              <Code size={12} weight="bold" />
               <span>Plain Text</span>
             </button>
           </div>
         ) : (
           <span
-            className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-md"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-md"
             style={{
               backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : '#F1F5F9',
               color: isDark ? '#94A3B8' : '#64748B',
             }}
           >
-            <FileText size={10} weight="bold" />
+            <FileText size={12} weight="bold" />
             <span>Plain Text</span>
           </span>
         )}
@@ -215,21 +227,19 @@ function GmailMessageBodyRenderer({
       {/* ── Mode 1: Rich HTML Canvas (Authentic Gmail Mobile Canvas) ──────── */}
       {activeMode === 'html' && (
         <div
-          className="rounded-2xl p-4 sm:p-5 shadow-sm border overflow-x-auto my-1 transition-all"
+          className="rounded-2xl p-4 sm:p-5 shadow-sm border-2 overflow-x-auto my-1.5 transition-all"
           style={{
-            backgroundColor: isDark ? '#060B16' : '#FFFFFF',
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.09)' : '#E2E8F0',
+            backgroundColor: frameBgColor,
+            borderColor: frameBorderColor,
+            boxShadow: frameShadow,
             color: isDark ? '#F1F5F9' : '#0F172A',
-            boxShadow: isDark
-              ? 'inset 0 1px 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.3)'
-              : '0 1px 3px rgba(0, 0, 0, 0.05)',
           }}
         >
           <style jsx>{`
             .gmail-html-body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              font-size: 14.5px;
-              line-height: 1.65;
+              font-size: 16px;
+              line-height: 1.7;
               color: ${isDark ? '#F1F5F9' : '#0F172A'};
               word-break: break-word;
             }
@@ -246,6 +256,14 @@ function GmailMessageBodyRenderer({
             .gmail-html-body b {
               color: ${isDark ? '#F1F5F9' : '#0F172A'};
             }
+            .gmail-html-body p {
+              font-size: 16px !important;
+              line-height: 1.7 !important;
+              margin-bottom: 0.95rem !important;
+            }
+            .gmail-html-body p:last-child {
+              margin-bottom: 0 !important;
+            }
             .gmail-html-body img {
               max-width: 100% !important;
               height: auto !important;
@@ -258,29 +276,39 @@ function GmailMessageBodyRenderer({
               max-width: 100% !important;
               border-collapse: collapse !important;
               margin: 14px 0 !important;
-              font-size: 13px !important;
+              font-size: 14px !important;
             }
             .gmail-html-body th, .gmail-html-body td {
-              padding: 8px 10px !important;
+              padding: 9px 12px !important;
               border: 1px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E8F0'} !important;
               color: ${isDark ? '#F1F5F9' : '#0F172A'} !important;
+              font-size: 14px !important;
             }
             .gmail-html-body a {
               color: ${isDark ? '#60A5FA' : '#2563EB'} !important;
               text-decoration: underline !important;
               font-weight: 500 !important;
             }
-            .gmail-html-body p {
-              margin-bottom: 0.85rem !important;
+            .gmail-html-body h1 {
+              font-size: 21px !important;
+              color: ${isDark ? '#FFFFFF' : '#0F172A'} !important;
+              font-weight: 800 !important;
+              margin-top: 1.1rem !important;
+              margin-bottom: 0.5rem !important;
             }
-            .gmail-html-body p:last-child {
-              margin-bottom: 0 !important;
-            }
-            .gmail-html-body h1, .gmail-html-body h2, .gmail-html-body h3, .gmail-html-body h4 {
+            .gmail-html-body h2 {
+              font-size: 18.5px !important;
               color: ${isDark ? '#FFFFFF' : '#0F172A'} !important;
               font-weight: 800 !important;
               margin-top: 1rem !important;
               margin-bottom: 0.5rem !important;
+            }
+            .gmail-html-body h3, .gmail-html-body h4 {
+              font-size: 17px !important;
+              color: ${isDark ? '#FFFFFF' : '#0F172A'} !important;
+              font-weight: 700 !important;
+              margin-top: 0.85rem !important;
+              margin-bottom: 0.4rem !important;
             }
             .gmail-html-body hr {
               border: 0 !important;
@@ -288,16 +316,18 @@ function GmailMessageBodyRenderer({
               margin: 18px 0 !important;
             }
             .gmail-html-body ul, .gmail-html-body ol {
-              padding-left: 1.25rem !important;
-              margin-bottom: 0.85rem !important;
+              padding-left: 1.35rem !important;
+              margin-bottom: 0.95rem !important;
             }
             .gmail-html-body li {
-              margin-bottom: 0.35rem !important;
+              font-size: 15.5px !important;
+              line-height: 1.65 !important;
+              margin-bottom: 0.4rem !important;
             }
             .gmail-html-body blockquote {
               border-left: 2px solid ${isDark ? 'rgba(96, 165, 250, 0.7)' : '#3B82F6'} !important;
-              padding-left: 0.75rem !important;
-              margin: 0.75rem 0 !important;
+              padding-left: 0.85rem !important;
+              margin: 0.85rem 0 !important;
               color: ${isDark ? '#94A3B8' : '#64748B'} !important;
               font-style: italic !important;
             }
@@ -314,25 +344,23 @@ function GmailMessageBodyRenderer({
       {/* ── Mode 2: Clean Plain Text Canvas (Authentic Gmail Mobile) ──────── */}
       {activeMode === 'text' && (
         <div
-          className="rounded-2xl p-4 sm:p-5 my-1 transition-all border shadow-sm font-sans"
+          className="rounded-2xl p-4 sm:p-5 my-1.5 transition-all border-2 shadow-sm font-sans"
           style={{
-            backgroundColor: isDark ? '#060B16' : '#FFFFFF',
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.09)' : '#E2E8F0',
+            backgroundColor: frameBgColor,
+            borderColor: frameBorderColor,
+            boxShadow: frameShadow,
             color: isDark ? '#F1F5F9' : '#0F172A',
-            boxShadow: isDark
-              ? 'inset 0 1px 1px rgba(255, 255, 255, 0.04), 0 2px 8px rgba(0, 0, 0, 0.3)'
-              : '0 1px 3px rgba(0, 0, 0, 0.05)',
           }}
         >
-          <div className="space-y-3.5 text-[14.5px] leading-relaxed select-text font-normal">
+          <div className="space-y-4 text-base sm:text-[16.5px] leading-[1.7] select-text font-normal">
             {paragraphs.map((paragraph, pIdx) => {
               const lines = paragraph.split('\n');
               return (
-                <div key={pIdx} className="space-y-1">
+                <div key={pIdx} className="space-y-1.5">
                   {lines.map((line, lIdx) => {
                     const trimmed = line.trim();
                     if (!trimmed) {
-                      return <div key={lIdx} className="h-1.5" />;
+                      return <div key={lIdx} className="h-2" />;
                     }
 
                     // Blockquote detection (lines starting with >)
@@ -340,7 +368,7 @@ function GmailMessageBodyRenderer({
                       return (
                         <blockquote
                           key={lIdx}
-                          className="border-l-2 border-slate-400/80 pl-3 py-0.5 my-1 italic text-slate-400 text-[13.5px]"
+                          className="border-l-2 border-slate-400/80 pl-3.5 py-1 my-1.5 italic text-slate-300 text-sm sm:text-[15px]"
                         >
                           {renderClickableText(trimmed.replace(/^>\s*/, ''))}
                         </blockquote>
@@ -350,7 +378,7 @@ function GmailMessageBodyRenderer({
                     // Bullet item detection (lines starting with •, -, *)
                     if (/^[•\-\*]\s/.test(trimmed)) {
                       return (
-                        <div key={lIdx} className="flex items-start gap-2.5 my-1 pl-1">
+                        <div key={lIdx} className="flex items-start gap-2.5 my-1.5 pl-1 text-base leading-[1.7]">
                           <span className="text-amber-500 font-bold shrink-0">&bull;</span>
                           <span className="flex-1">
                             {renderClickableText(trimmed.replace(/^[•\-\*]\s*/, ''))}
@@ -364,16 +392,29 @@ function GmailMessageBodyRenderer({
                       return (
                         <hr
                           key={lIdx}
-                          className="my-3 border-t"
+                          className="my-3.5 border-t"
                           style={{
-                            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : '#E2E8F0',
+                            borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : '#E2E8F0',
                           }}
                         />
                       );
                     }
 
+                    // Company signature line detection
+                    const isSignatureLine =
+                      trimmed.toLowerCase().includes('himalayankoh.com') ||
+                      trimmed.toLowerCase().includes('support@') ||
+                      trimmed.toLowerCase().includes('admin@');
+
                     return (
-                      <p key={lIdx} className="break-words">
+                      <p
+                        key={lIdx}
+                        className={`break-words ${
+                          isSignatureLine
+                            ? 'text-xs sm:text-[13px] text-slate-400 font-medium pt-1'
+                            : 'text-base sm:text-[16.5px] leading-[1.7]'
+                        }`}
+                      >
                         {renderClickableText(line)}
                       </p>
                     );
@@ -543,60 +584,95 @@ export function MobileEmailThreadView({
 
   const getSenderDisplay = (msg: InboxMessage) => {
     const isOutbound = msg.direction === 'outbound';
-    if (isOutbound) {
-      const fromEmail = (msg.from?.email || '').toLowerCase();
-      if (fromEmail.includes('orders')) {
-        return {
-          name: msg.from.name || 'Himalayan Koh Orders',
-          email: msg.from.email,
-          role: 'Orders & Fulfillment',
-          avatarInitial: 'O',
-          bg: '#F59E0B',
-        };
-      }
-      if (fromEmail.includes('marketing')) {
-        return {
-          name: msg.from.name || 'Himalayan Koh Marketing',
-          email: msg.from.email,
-          role: 'Livestock & B2B Wholesale',
-          avatarInitial: 'M',
-          bg: '#A855F7',
-        };
-      }
-      if (fromEmail.includes('support')) {
-        return {
-          name: msg.from.name || 'Himalayan Koh Support',
-          email: msg.from.email,
-          role: 'Customer Care',
-          avatarInitial: 'S',
-          bg: '#10B981',
-        };
-      }
-      if (fromEmail.includes('salman')) {
-        return {
-          name: msg.from.name || 'Salman Bashir',
-          email: msg.from.email,
-          role: 'Direct Executive',
-          avatarInitial: 'S',
-          bg: '#3B82F6',
-        };
-      }
+    const fromEmail = (msg.from?.email || '').toLowerCase();
+    const rawName = (msg.from?.name || '').trim();
+
+    // 1. Administration / Admin
+    if (
+      fromEmail.includes('admin') ||
+      /\badmin(?:istration)?\b/i.test(rawName)
+    ) {
       return {
-        name: msg.from.name || 'Himalayan Koh',
-        email: msg.from.email || 'info@himalayankoh.com',
-        role: 'Official Team',
-        avatarInitial: 'H',
-        bg: '#B45309',
+        name: 'Administration',
+        email: msg.from.email || 'admin@himalayankoh.com',
+        role: 'Admin',
+        avatarInitial: 'A',
+        bg: '#2563EB',
       };
     }
 
-    const cleanName = msg.from.name || msg.from.email.split('@')[0];
+    // 2. Customer Support / Support
+    if (
+      fromEmail.includes('support') ||
+      /\bsupport\b/i.test(rawName)
+    ) {
+      return {
+        name: 'Customer Support',
+        email: msg.from.email || 'support@himalayankoh.com',
+        role: 'Support',
+        avatarInitial: 'S',
+        bg: '#10B981',
+      };
+    }
+
+    // 3. Orders & Fulfillment
+    if (
+      fromEmail.includes('orders') ||
+      /\border(?:s)?\b/i.test(rawName)
+    ) {
+      return {
+        name: 'Orders',
+        email: msg.from.email || 'orders@himalayankoh.com',
+        role: 'Orders',
+        avatarInitial: 'O',
+        bg: '#F59E0B',
+      };
+    }
+
+    // 4. Marketing & Wholesale
+    if (
+      fromEmail.includes('marketing') ||
+      /\bmarketing\b/i.test(rawName)
+    ) {
+      return {
+        name: 'Marketing',
+        email: msg.from.email || 'marketing@himalayankoh.com',
+        role: 'Marketing',
+        avatarInitial: 'M',
+        bg: '#8B5CF6',
+      };
+    }
+
+    // 5. Executive / Salman
+    if (
+      fromEmail.includes('salman') ||
+      /\bsalman\b/i.test(rawName)
+    ) {
+      return {
+        name: 'Salman Bashir',
+        email: msg.from.email,
+        role: 'Executive',
+        avatarInitial: 'S',
+        bg: '#3B82F6',
+      };
+    }
+
+    // 6. Generic sender name cleaning: strip "Himalayan Koh" prefix or suffix
+    let cleanName = rawName
+      .replace(/^Himalayan\s+Koh\s+/i, '')
+      .replace(/\s+Himalayan\s+Koh$/i, '')
+      .trim();
+
+    if (!cleanName || cleanName.toLowerCase() === 'himalayan koh') {
+      cleanName = msg.from.email ? msg.from.email.split('@')[0] : (isOutbound ? 'Support' : 'Customer');
+    }
+
     return {
       name: cleanName,
       email: msg.from.email,
-      role: 'Inbound Customer',
-      avatarInitial: cleanName.charAt(0).toUpperCase(),
-      bg: '#0EA5E9',
+      role: isOutbound ? 'Staff' : 'Customer',
+      avatarInitial: cleanName.charAt(0).toUpperCase() || 'C',
+      bg: isOutbound ? '#10B981' : '#0EA5E9',
     };
   };
 
@@ -730,6 +806,7 @@ export function MobileEmailThreadView({
           const msgKey = msg.id || String(index);
           const isDetailsOpen = Boolean(expandedDetails[msgKey]);
           const senderInfo = getSenderDisplay(msg);
+          const isOutbound = msg.direction === 'outbound';
           const recipientStr =
             msg.to && msg.to.length > 0
               ? msg.to.map((t) => (t.name ? `${t.name} <${t.email}>` : t.email)).join(', ')
@@ -738,22 +815,25 @@ export function MobileEmailThreadView({
           return (
             <div
               key={msgKey}
-              className="rounded-3xl p-4 space-y-3 transition-all shadow-sm"
+              className="rounded-3xl p-4 sm:p-5 space-y-3.5 transition-all shadow-md"
               style={{
                 backgroundColor: isDark ? '#0D1424' : '#FFFFFF',
-                border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.08)' : '#E2E8F0'}`,
+                border: isDark
+                  ? `1px solid ${isOutbound ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`
+                  : `1px solid ${isOutbound ? 'rgba(16, 185, 129, 0.45)' : 'rgba(239, 68, 68, 0.45)'}`,
+                borderLeft: `5px solid ${isOutbound ? '#10B981' : '#EF4444'}`,
                 color: isDark ? '#FFFFFF' : '#0F172A',
               }}
             >
               {/* Sender Header Row (Matching Gmail Exactly) */}
-              <div className="flex items-start justify-between gap-2.5">
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   {/* Sender Avatar Circle */}
                   <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-sm"
+                    className="w-11 h-11 rounded-full flex items-center justify-center text-base font-black text-white shrink-0 shadow-md"
                     style={{
                       background: senderInfo.bg,
-                      border: '1.5px solid rgba(255, 255, 255, 0.2)',
+                      border: '2px solid rgba(255, 255, 255, 0.25)',
                     }}
                   >
                     {senderInfo.avatarInitial}
@@ -761,25 +841,35 @@ export function MobileEmailThreadView({
 
                   <div className="min-w-0">
                     <h3
-                      className="text-sm font-bold leading-tight truncate"
+                      className="text-[15.5px] font-bold leading-tight truncate flex items-center gap-2"
                       style={{ color: isDark ? '#FFFFFF' : '#0F172A' }}
                     >
-                      {senderInfo.name}
+                      <span>{senderInfo.name}</span>
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider shrink-0"
+                        style={{
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F1F5F9',
+                          color: senderInfo.bg,
+                          border: `1px solid ${senderInfo.bg}40`,
+                        }}
+                      >
+                        {senderInfo.role}
+                      </span>
                     </h3>
 
                     {/* Gmail "to me ᐯ" Expandable Button */}
                     <button
                       type="button"
                       onClick={() => toggleMessageDetails(msgKey)}
-                      className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-slate-200 mt-0.5 cursor-pointer active:scale-95"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-200 mt-1 cursor-pointer active:scale-95"
                     >
                       <span>
                         to {msg.direction === 'outbound' ? (msg.to?.[0]?.name || msg.to?.[0]?.email || 'recipient') : 'me'}
                       </span>
                       {isDetailsOpen ? (
-                        <CaretUp size={11} weight="bold" />
+                        <CaretUp size={12} weight="bold" />
                       ) : (
-                        <CaretDown size={11} weight="bold" />
+                        <CaretDown size={12} weight="bold" />
                       )}
                     </button>
                   </div>
@@ -787,7 +877,7 @@ export function MobileEmailThreadView({
 
                 {/* Date / Time */}
                 <span
-                  className="text-[11.5px] font-medium shrink-0 pt-0.5"
+                  className="text-xs font-medium shrink-0 pt-0.5"
                   style={{ color: isDark ? '#94A3B8' : '#64748B' }}
                 >
                   {formatShortTime(msg.createdAt)}
@@ -940,14 +1030,14 @@ export function MobileEmailThreadView({
         <button
           type="button"
           onClick={() => setComposerMode('reply')}
-          className="flex-1 max-w-[150px] flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-xs font-extrabold transition-all active:scale-95 shadow-md cursor-pointer"
+          className="flex-1 max-w-[160px] flex items-center justify-center gap-2 py-3 px-5 rounded-full text-sm font-black transition-all active:scale-95 shadow-md cursor-pointer"
           style={{
             backgroundColor: isDark ? '#1E293B' : '#E2E8F0',
             color: isDark ? '#FFFFFF' : '#0F172A',
-            border: `1.5px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1'}`,
+            border: `1.5px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : '#CBD5E1'}`,
           }}
         >
-          <ArrowUUpLeft size={16} weight="bold" />
+          <ArrowUUpLeft size={18} weight="bold" />
           <span>Reply</span>
         </button>
 
@@ -955,14 +1045,14 @@ export function MobileEmailThreadView({
         <button
           type="button"
           onClick={() => setComposerMode('forward')}
-          className="flex-1 max-w-[150px] flex items-center justify-center gap-2 py-2.5 px-4 rounded-full text-xs font-extrabold transition-all active:scale-95 shadow-md cursor-pointer"
+          className="flex-1 max-w-[160px] flex items-center justify-center gap-2 py-3 px-5 rounded-full text-sm font-black transition-all active:scale-95 shadow-md cursor-pointer"
           style={{
             backgroundColor: isDark ? '#1E293B' : '#E2E8F0',
             color: isDark ? '#FFFFFF' : '#0F172A',
-            border: `1.5px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : '#CBD5E1'}`,
+            border: `1.5px solid ${isDark ? 'rgba(255, 255, 255, 0.15)' : '#CBD5E1'}`,
           }}
         >
-          <ArrowUUpRight size={16} weight="bold" />
+          <ArrowUUpRight size={18} weight="bold" />
           <span>Forward</span>
         </button>
       </div>
