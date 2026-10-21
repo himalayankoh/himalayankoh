@@ -291,7 +291,7 @@ describe('quotes', () => {
       fx: [{ from: 'PKR', to: 'USD', rate: 0.0036, source: 'manual', retrievedAt: '2026-09-20T00:00:00.000Z' }],
       totals: { total: 24_291.4, perUnit: 24.2914, currency: 'USD' },
       sell_total: 31_000,
-      valid_until: '2026-10-20T00:00:00.000Z',
+      valid_until: '2027-10-20T00:00:00.000Z',
     });
 
     expect(quote.status).toBe('QUOTED');

@@ -15,6 +15,11 @@ import {
   Star,
   ArrowsClockwise,
   WarningCircle,
+  PaperPlaneRight,
+  FacebookLogo,
+  InstagramLogo,
+  Buildings,
+  Storefront,
 } from '@phosphor-icons/react';
 import type { SavedLeadRecord } from '@/lib/leados/types';
 import { useMobileTheme } from '@/context/MobileThemeContext';
@@ -31,6 +36,7 @@ interface MobileLeadsViewProps {
 }
 
 type FilterChip = 'all' | 'new' | 'contacted' | 'qualified' | 'converted';
+type ChannelFilter = 'all' | 'email' | 'phone' | 'facebook' | 'instagram' | 'wholesale' | 'retail';
 
 export function MobileLeadsView({
   leads,
@@ -46,6 +52,7 @@ export function MobileLeadsView({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeChip, setActiveChip] = useState<FilterChip>('all');
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('all');
   const [selectedLead, setSelectedLead] = useState<SavedLeadRecord | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -75,16 +82,61 @@ export function MobileLeadsView({
     };
   }, [leads]);
 
-  // Filter leads by chip and search query
+  // Compute outreach channel & commercial categorization counts
+  const channelCounts = useMemo(() => {
+    let email = 0;
+    let phone = 0;
+    let facebook = 0;
+    let instagram = 0;
+    let wholesale = 0;
+    let retail = 0;
+
+    for (const lead of leads) {
+      if (lead.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email.trim())) email++;
+      if (lead.phone && lead.phone.replace(/[^\d]/g, '').length >= 7) phone++;
+      if (lead.facebook || lead.research?.facebook) facebook++;
+      if (lead.instagram || lead.research?.instagram) instagram++;
+      const text = [lead.businessName, lead.category, lead.notes].filter(Boolean).join(' ').toLowerCase();
+      if (/wholesal|distribut|feed mill|elevator|bulk|co-op|cooperative/i.test(text)) wholesale++;
+      if (/retail|store|market|shop|tack/i.test(text)) retail++;
+    }
+
+    return { email, phone, facebook, instagram, wholesale, retail };
+  }, [leads]);
+
+  // Filter leads by chip, channel filter, and search query
   const filteredLeads = useMemo(() => {
     return leads.filter((lead) => {
-      // 1. Chip filter
+      // 1. Chip status filter
       if (activeChip !== 'all') {
         const s = (lead.status || 'new').toLowerCase();
         if (activeChip === 'new' && s !== 'new') return false;
         if (activeChip === 'contacted' && s !== 'contacted' && s !== 'in_progress') return false;
         if (activeChip === 'qualified' && s !== 'qualified' && s !== 'high_interest') return false;
         if (activeChip === 'converted' && s !== 'converted' && s !== 'customer') return false;
+      }
+
+      // 1b. Outreach Channel & Commercial Type Filter (User Request)
+      if (channelFilter !== 'all') {
+        if (channelFilter === 'email' && (!lead.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email.trim()))) {
+          return false;
+        }
+        if (channelFilter === 'phone' && (!lead.phone || lead.phone.replace(/[^\d]/g, '').length < 7)) {
+          return false;
+        }
+        if (channelFilter === 'facebook' && !lead.facebook && !lead.research?.facebook) {
+          return false;
+        }
+        if (channelFilter === 'instagram' && !lead.instagram && !lead.research?.instagram) {
+          return false;
+        }
+        const text = [lead.businessName, lead.category, lead.notes].filter(Boolean).join(' ').toLowerCase();
+        if (channelFilter === 'wholesale' && !/wholesal|distribut|feed mill|elevator|bulk|co-op|cooperative/i.test(text)) {
+          return false;
+        }
+        if (channelFilter === 'retail' && !/retail|store|market|shop|tack/i.test(text)) {
+          return false;
+        }
       }
 
       // 2. Search query filter
@@ -112,7 +164,7 @@ export function MobileLeadsView({
 
       return true;
     });
-  }, [leads, activeChip, searchQuery]);
+  }, [leads, activeChip, channelFilter, searchQuery]);
 
   // Format relative timestamp
   const formatTimeAgo = (dateStr?: string | null) => {
@@ -412,6 +464,36 @@ export function MobileLeadsView({
         })}
       </div>
 
+      {/* ── 3b. Outreach Channel & Type Filter Chips (User Request) ──────── */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+        {[
+          { id: 'all', label: `All (${leads.length})` },
+          { id: 'email', label: `📧 Email (${channelCounts.email})` },
+          { id: 'phone', label: `📞 Call (${channelCounts.phone})` },
+          { id: 'facebook', label: `📘 FB (${channelCounts.facebook})` },
+          { id: 'instagram', label: `📸 IG (${channelCounts.instagram})` },
+          { id: 'wholesale', label: `🏢 Wholesale (${channelCounts.wholesale})` },
+          { id: 'retail', label: `🏪 Retail (${channelCounts.retail})` },
+        ].map((item) => {
+          const isSelected = channelFilter === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setChannelFilter(item.id as ChannelFilter)}
+              className="px-2.5 py-1 rounded-xl text-[11px] font-bold shrink-0 transition-all active:scale-95 duration-150"
+              style={{
+                backgroundColor: isSelected ? 'rgba(99, 102, 241, 0.25)' : palette.cardElevatedBg,
+                color: isSelected ? '#A5B4FC' : palette.textSecondary,
+                border: `1px solid ${isSelected ? '#6366F1' : palette.cardBorder}`,
+              }}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── 4. Lead Cards List (Reference Image 1) ───────────────────────── */}
       <div className="space-y-3">
         {isLoading && leads.length === 0 ? (
@@ -516,6 +598,39 @@ export function MobileLeadsView({
                       </div>
                     )}
 
+                    {/* Micro Channel & Commercial Badges (User Request) */}
+                    <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                      {lead.email && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/25">
+                          <EnvelopeSimple size={10} weight="bold" /> Email
+                        </span>
+                      )}
+                      {lead.phone && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">
+                          <Phone size={10} weight="bold" /> Call
+                        </span>
+                      )}
+                      {(lead.facebook || lead.research?.facebook) && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/25">
+                          <FacebookLogo size={10} weight="bold" /> FB
+                        </span>
+                      )}
+                      {(lead.instagram || lead.research?.instagram) && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-pink-500/15 text-pink-400 border border-pink-500/25">
+                          <InstagramLogo size={10} weight="bold" /> IG
+                        </span>
+                      )}
+                      {/wholesal|distribut|bulk|feed mill/i.test([lead.businessName, lead.category].join(' ')) ? (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                          <Buildings size={10} weight="bold" /> Wholesale
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/25">
+                          <Storefront size={10} weight="bold" /> Retail
+                        </span>
+                      )}
+                    </div>
+
                     {/* Quick Action Icons Row */}
                     <div className="flex items-center gap-2 mt-3">
                       {lead.phone && (
@@ -564,17 +679,28 @@ export function MobileLeadsView({
                         </a>
                       )}
 
+                      {/* Direct Outreach Button */}
+                      <button
+                        type="button"
+                        onClick={() => onStartOutreach?.(lead)}
+                        className="text-[11px] font-extrabold px-3 py-1 rounded-full text-white shadow-sm flex items-center gap-1 active:scale-95 ml-auto"
+                        style={{ background: palette.accentGradient }}
+                      >
+                        <PaperPlaneRight size={11} weight="bold" />
+                        <span>Outreach</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => setSelectedLead(lead)}
-                        className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors ml-auto"
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors"
                         style={{
                           backgroundColor: palette.cardElevatedBg,
-                          color: palette.accentText,
+                          color: palette.textSecondary,
                           border: `1px solid ${palette.cardBorder}`,
                         }}
                       >
-                        View Details
+                        Details
                       </button>
                     </div>
                   </div>

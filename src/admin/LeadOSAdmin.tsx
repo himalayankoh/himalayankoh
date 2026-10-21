@@ -62,6 +62,7 @@ import type {
 import LeadIntelligencePanel from './LeadIntelligencePanel';
 import { LeadMobileCard } from '@/components/admin/LeadMobileCard';
 import { MobileLeadsView } from '@/components/admin/mobile/MobileLeadsView';
+import { MobileLeadOutreachView } from '@/components/admin/mobile/MobileLeadOutreachView';
 import {
   BUYER_CATEGORIES,
   PRODUCT_INTERESTS,
@@ -356,6 +357,9 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, [defaultTab]);
+
+  // Mobile Outreach Full Screen State
+  const [mobileOutreachLead, setMobileOutreachLead] = useState<SavedLeadRecord | null>(null);
 
   // Stats & Projects
   const [loadingStats, setLoadingStats] = useState(false);
@@ -3173,11 +3177,26 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
         leads={libraryLeads}
         onUpdateLeadStatus={handleUpdateLeadStatus}
         onDeleteLead={handleDeleteSavedLead}
-        onStartOutreach={startOutreachForLead}
+        onStartOutreach={(lead) => {
+          setMobileOutreachLead(lead);
+        }}
         isLoading={loadingLibrary}
         onRefresh={() => void loadLibrary()}
         error={libraryError}
       />
+
+      {/* Mobile-Only Full-Screen Lead Outreach View (User Request) */}
+      {mobileOutreachLead && (
+        <MobileLeadOutreachView
+          lead={mobileOutreachLead}
+          onBack={() => setMobileOutreachLead(null)}
+          onUpdateStatus={async (leadId, status) => {
+            await handleUpdateLeadStatus(leadId, status);
+            setMobileOutreachLead((prev) => (prev && prev.id === leadId ? { ...prev, status } : prev));
+          }}
+          onRefreshLead={() => void loadLibrary()}
+        />
+      )}
 
       {/* Desktop Interface (100% Preserved) */}
       <div className="hidden md:block leados-workspace min-w-0">
