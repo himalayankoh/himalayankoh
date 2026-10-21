@@ -604,9 +604,9 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
 
   // Batch Outreach Modal & Campaign state
   const [batchOutreachOpen, setBatchOutreachOpen] = useState(false);
-  const [batchSubject, setBatchSubject] = useState('Wholesale Himalayan Animal Mineral Salt Licks — Direct Bulk Supply');
+  const [batchSubject, setBatchSubject] = useState('Wholesale Himalayan Pink Salt Products for {{businessName}} — Direct Supply');
   const [batchBodyTemplate, setBatchBodyTemplate] = useState(
-    'Hi {{businessName}},\n\nI noticed {{businessName}} serves the {{city}} agricultural community. Himalayan Koh supplies premium 100% natural Himalayan pink rock salt licks with mineral-rich ropes, lick blocks, and bulk feed salt directly from the Khewra salt range.\n\nWould you like our wholesale catalog and volume pricing for {{city}} farm and livestock stores?\n\nBest regards,\nSalman Bashir\nFounder, Himalayan Koh\nsales@himalayankoh.com | https://himalayankoh.com'
+    'Hello {{businessName}} Team,\n\nWe\'d love to introduce Himalayan Koh, a Houston-based wholesale supplier and distributor of authentic Himalayan Pink Salt products.\n\nWe supply feed stores, farm & ranch retailers, livestock supply stores, and online resellers with premium salt licks and blocks at competitive wholesale prices.\n\nExclusive Retailer Welcome Offer:\nEnjoy 5% OFF your first trial order with code WELCOME5.\n\nExplore our products: https://himalayankoh.com\n\nInterested in adding Himalayan Koh products to your store? Simply reply to learn more about our wholesale pricing and retail partnership opportunities.\n\nBest regards,\nMarketing Department\nHimalayan Koh\nWholesale Supplier & Distributor\nEmail: marketing@himalayankoh.com\nPhone: (832) 224-6466\nWebsite: https://himalayankoh.com\n12620 FM 1960 W, Ste A-4\nHouston, TX 77065, USA\n\nTo unsubscribe from future marketing emails, reply with "Unsubscribe".'
   );
   const [batchCategoryFilter, setBatchCategoryFilter] = useState<'all' | 'agriculture' | 'wellness' | 'retail'>('all');
   const [batchSending, setBatchSending] = useState(false);
@@ -1208,7 +1208,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
   const [verifiedCouponCode, setVerifiedCouponCode] = useState('welcome5');
   const [verifiedCouponDiscount, setVerifiedCouponDiscount] = useState('5%');
   const [verifiedProductUrl, setVerifiedProductUrl] = useState('https://himalayankoh.com/wholesale');
-  const [officialSenderEmail] = useState('sales@himalayankoh.com');
+  const [officialSenderEmail] = useState('marketing@himalayankoh.com');
   const [recipientEmail, setRecipientEmail] = useState('');
   const [recipientName, setRecipientName] = useState('');
   const [recipientEmailSource, setRecipientEmailSource] = useState<'discovered_osm' | 'company_website' | 'manually_entered' | 'unverified'>('unverified');
@@ -2122,12 +2122,12 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
     }
 
     // 2. Sender readiness
-    if (officialSenderEmail !== 'sales@himalayankoh.com') {
-      findings.push('Sender is not the authorized sales domain.');
+    if (officialSenderEmail !== 'marketing@himalayankoh.com') {
+      findings.push('Sender is not the authorized marketing domain.');
       status = 'BLOCKED';
       score -= 40;
     } else {
-      findings.push('Authorized sender identity (sales@himalayankoh.com).');
+      findings.push('Authorized sender identity (marketing@himalayankoh.com).');
     }
 
     // 3. Product relevance
@@ -6392,20 +6392,20 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         {
                           id: 'agriculture' as const,
                           name: 'Livestock Salt Licks',
-                          subj: 'Wholesale Himalayan Animal Mineral Salt Licks — Direct Bulk Supply',
-                          body: 'Hi {{businessName}},\n\nI noticed {{businessName}} serves the {{city}} agricultural community. Himalayan Koh supplies premium 100% natural Himalayan pink rock salt licks with mineral-rich ropes, lick blocks, and bulk feed salt directly from the Khewra salt range.\n\nWould you like our wholesale catalog and volume pricing for {{city}} farm and livestock stores?\n\nBest regards,\nSalman Bashir\nFounder, Himalayan Koh\nsales@himalayankoh.com | https://himalayankoh.com',
+                          subj: 'Wholesale Himalayan Pink Salt Products for {{businessName}} — Direct Supply',
+                          body: 'Hello {{businessName}} Team,\n\nWe\'d love to introduce Himalayan Koh, a Houston-based wholesale supplier and distributor of authentic Himalayan Pink Salt products.\n\nWe supply feed stores, farm & ranch retailers, livestock supply stores, and online resellers with premium salt licks and blocks at competitive wholesale prices.\n\nExclusive Retailer Welcome Offer:\nEnjoy 5% OFF your first trial order with code WELCOME5.\n\nExplore our products: https://himalayankoh.com\n\nInterested in adding Himalayan Koh products to your store? Simply reply to learn more about our wholesale pricing and retail partnership opportunities.\n\nBest regards,\nMarketing Department\nHimalayan Koh\nWholesale Supplier & Distributor\nEmail: marketing@himalayankoh.com\nPhone: (832) 224-6466\nWebsite: https://himalayankoh.com\n12620 FM 1960 W, Ste A-4\nHouston, TX 77065, USA\n\nTo unsubscribe from future marketing emails, reply with "Unsubscribe".',
                         },
                         {
                           id: 'wellness' as const,
                           name: 'Wellness Bath Salts',
-                          subj: 'Direct Wholesale Pure Himalayan Bath Salt & Halotherapy Tiles',
-                          body: 'Hi {{businessName}},\n\nI am reaching out regarding {{businessName}} in {{city}}. Himalayan Koh imports certified pure food-grade and therapeutic pink Himalayan mineral salts, bath crystal chunks, and salt tiles direct from source.\n\nCould we send you our wholesale sample kit and pallet pricing?\n\nBest regards,\nSalman Bashir\nFounder, Himalayan Koh\nsales@himalayankoh.com | https://himalayankoh.com',
+                          subj: 'Direct Wholesale Pure Himalayan Bath Salt & Halotherapy Tiles for {{businessName}}',
+                          body: 'Hello {{businessName}} Team,\n\nWe\'d love to introduce Himalayan Koh, a Houston-based wholesale supplier and distributor of authentic Himalayan Pink Salt and wellness products.\n\nWe supply specialty retailers, spas, wellness shops, and online stores with certified therapeutic Himalayan pink bath crystals, salt tiles, and mineral lamps at competitive wholesale pricing.\n\nExclusive Retailer Welcome Offer:\nEnjoy 5% OFF your first trial order with code WELCOME5.\n\nExplore our catalog: https://himalayankoh.com\n\nBest regards,\nMarketing Department\nHimalayan Koh\nWholesale Supplier & Distributor\nEmail: marketing@himalayankoh.com\nPhone: (832) 224-6466\nWebsite: https://himalayankoh.com\n12620 FM 1960 W, Ste A-4\nHouston, TX 77065, USA\n\nTo unsubscribe from future marketing emails, reply with "Unsubscribe".',
                         },
                         {
                           id: 'retail' as const,
-                          name: 'General B2B Wholesale',
-                          subj: 'Direct B2B Supply of Himalayan Salt Products — Wholesale Catalog',
-                          body: 'Hi {{businessName}},\n\nWe provide retail, specialty, and feed stores in {{city}} with factory-direct pricing on genuine Himalayan pink salt products.\n\nWould you like a copy of our current wholesale pricing list?\n\nBest regards,\nSalman Bashir\nFounder, Himalayan Koh\nsales@himalayankoh.com | https://himalayankoh.com',
+                          name: 'General Retail Resellers',
+                          subj: 'Wholesale Himalayan Salt Distribution Inquiry for {{businessName}}',
+                          body: 'Hello {{businessName}} Team,\n\nWe\'d love to introduce Himalayan Koh, a Houston-based wholesale supplier and distributor of authentic Himalayan Pink Salt products.\n\nWe supply feed stores, farm & ranch retailers, livestock supply stores, and online resellers with premium salt licks and blocks at competitive wholesale prices.\n\nExclusive Retailer Welcome Offer:\nEnjoy 5% OFF your first trial order with code WELCOME5.\n\nExplore our products: https://himalayankoh.com\n\nInterested in adding Himalayan Koh products to your store? Simply reply to learn more about our wholesale pricing and retail partnership opportunities.\n\nBest regards,\nMarketing Department\nHimalayan Koh\nWholesale Supplier & Distributor\nEmail: marketing@himalayankoh.com\nPhone: (832) 224-6466\nWebsite: https://himalayankoh.com\n12620 FM 1960 W, Ste A-4\nHouston, TX 77065, USA\n\nTo unsubscribe from future marketing emails, reply with "Unsubscribe".',
                         },
                       ].map((tpl) => (
                         <button
@@ -6476,7 +6476,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                       />
                       <span className="text-slate-800 text-[11px] font-semibold">
-                        Owner Approval Confirmation: I authorize queueing these personalized B2B outreach messages to the selected verified business contacts. Sender will be <code className="font-mono bg-white px-1 py-0.5 rounded font-bold">sales@himalayankoh.com</code>.
+                        Owner Approval Confirmation: I authorize queueing these personalized B2B outreach messages to the selected verified business contacts. Sender will be <code className="font-mono bg-white px-1 py-0.5 rounded font-bold">marketing@himalayankoh.com</code>.
                       </span>
                     </label>
                   </div>
@@ -7832,7 +7832,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                         onClick={() => {
                           setBatchCategoryFilter(tpl.id);
                           setBatchSubject(tpl.subject);
-                          setBatchBodyTemplate(tpl.preview + '\n\nBest regards,\nSalman Bashir\nFounder, Himalayan Koh\nsales@himalayankoh.com | https://himalayankoh.com');
+                          setBatchBodyTemplate(tpl.preview + '\n\nBest regards,\nMarketing Department\nHimalayan Koh\nWholesale Supplier & Distributor\nEmail: marketing@himalayankoh.com\nPhone: (832) 224-6466\nWebsite: https://himalayankoh.com\n12620 FM 1960 W, Ste A-4\nHouston, TX 77065, USA\n\nTo unsubscribe from future marketing emails, reply with "Unsubscribe".');
                           setBatchOutreachOpen(true);
                         }}
                         className="w-full py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5"

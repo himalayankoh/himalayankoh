@@ -642,7 +642,7 @@ export function createOutreachMessage(
       isLowFit: false,
       fitLevel: rec.fitLevel,
       relevanceReason: rec.relevanceReason,
-      message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh. We noticed your storefront${city} and would love to introduce our hand-carved Himalayan Pink Salt licks and mineral products.\n\nTo welcome you as a new partner, please enjoy 5% off your first retail trial order with coupon code ${coupon} at checkout:\n👉 ${productUrl}\n\nOffer terms: Valid on single orders for verified retail store buyers. Cannot be combined with wholesale contracted volume pricing.\n\nIf you have any questions about our mineral products or would like a product sample, feel free to reply directly to this email.\n\nWarm regards,\n\nHimalayan Koh Sales Team\n${sender}\nhttps://himalayankoh.com`,
+      message: `Hello ${name} Team,\n\nWe'd love to introduce Himalayan Koh, a Houston-based wholesale supplier and distributor of authentic Himalayan Pink Salt products.\n\nWe supply feed stores, farm & ranch retailers, livestock supply stores, and online resellers with premium salt licks and blocks at competitive wholesale prices.\n\nExclusive Retailer Welcome Offer:\nEnjoy 5% OFF your first trial order with code ${coupon}.\n\nExplore our products: https://himalayankoh.com\n\nInterested in adding Himalayan Koh products to your store? Simply reply to learn more about our wholesale pricing and retail partnership opportunities.\n\nBest regards,\nMarketing Department\nHimalayan Koh\nWholesale Supplier & Distributor\nEmail: ${sender}\nPhone: (832) 224-6466\nWebsite: https://himalayankoh.com\n12620 FM 1960 W, Ste A-4\nHouston, TX 77065, USA\n\nTo unsubscribe from future marketing emails, reply with "Unsubscribe".`,
     };
   }
 
