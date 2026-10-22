@@ -130,6 +130,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Wholesale',
     g: 'linear-gradient(145deg,#8AA38F,#526F68)',
     dot: '#C98745',
+    // The two review desks are their own pages rather than tabs inside the
+    // workspace: a certificate decision and a price edit are different jobs, done by
+    // different people, and both need a URL that can be bookmarked and linked to.
+    subItems: [
+      { to: '/admin/wholesale/customers', label: 'Wholesale Customers' },
+      { to: '/admin/wholesale/products', label: 'Wholesale Products' },
+    ],
   },
   {
     to: '/admin/blog',

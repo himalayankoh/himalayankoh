@@ -306,6 +306,13 @@ export interface BuyerCatalogItem {
   };
   /** Minimum order quantity, in units. */
   moq: number;
+  /**
+   * Units the trade desk is offering against this product.
+   *
+   * Zero means "not set", and the buyer's screen says so rather than claiming none
+   * are available: an unset allocation is not a sold-out product.
+   */
+  availableUnits: number;
   leadTimeDays: number;
   /** The carton/pallet arithmetic a buyer plans with, already resolved. */
   packaging: {

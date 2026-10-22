@@ -16,6 +16,14 @@ interface SendEmailInput {
   attachments?: SendEmailAttachment[];
   from?: string;
   fromName?: string;
+  /**
+   * Where a reply should go, when that is not the sender address.
+   *
+   * A wholesale inquiry is sent *from* the wholesale mailbox and must be answered by
+   * the buyer, so the notification carries their address here rather than pretending
+   * to be from them — sending as the buyer would fail SPF/DKIM at the first hop.
+   */
+  replyTo?: string;
 }
 
 export function isEmailConfigured(): boolean {
@@ -42,6 +50,7 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
         filename: a.filename,
         content: a.content,
       })),
+      headers: input.replyTo ? { 'Reply-To': input.replyTo } : undefined,
     });
 
     if (!result.ok) {

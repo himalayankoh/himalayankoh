@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — Wholesale (B2B)
  * Description:       The wholesale side of Himalayan Koh: buyer applications and accounts, a wholesale product master with its own packaging/MOQ/cost fields, price tiers, suppliers and origins, container and cost profiles, freight rates, port charges, quotes and wholesale orders. Wholesale pricing is separate from the retail price WooCommerce owns — a change here never rewrites a storefront price. The Next.js app talks to the hk-wholesale/v1 namespace below; nothing in this plugin reads or writes a retail customer, cart or WooCommerce order.
- * Version:           1.2.1
+ * Version:           1.3.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -52,7 +52,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_WHOLESALE_VERSION', '1.2.1' );
+define( 'HK_WHOLESALE_VERSION', '1.3.0' );
 // Bumped when the schema array changes: `hk_wholesale_maybe_upgrade` re-runs dbDelta
 // only when this differs from what is stored, so an existing install picks up the new
 // columns on its next load instead of waiting for a deactivate/reactivate cycle.
@@ -61,7 +61,7 @@ define( 'HK_WHOLESALE_VERSION', '1.2.1' );
 // reserved word, and the unquoted CREATE TABLE was rejected in silence — which left the
 // quotations table missing on a real install while every read of it returned an empty
 // list rather than an error. v4 records *why* a table is missing; v3 verifies the work.
-define( 'HK_WHOLESALE_DB_VERSION', '7' );
+define( 'HK_WHOLESALE_DB_VERSION', '8' );
 
 /** The installed schema version, so a later release can add tables without re-activation. */
 const HK_WHOLESALE_DB_OPTION = 'hk_wholesale_db_version';
@@ -265,8 +265,48 @@ function hk_wholesale_schema() {
 				'account_id'          => 'int',
 				'decided_at'          => 'datetime',
 				'decided_by'          => 'string191',
+				// The U.S. business address. `billing_address` above is the free-text
+				// line imported from older applications; these are the fields the form
+				// now collects so a reviewer can compare them with the certificate
+				// without parsing prose.
+				'dba'                 => 'string191',
+				'address_line1'       => 'string191',
+				'address_line2'       => 'string191',
+				'city'                => 'string64',
+				'state'               => 'string32',
+				'zip'                 => 'string16',
+				'shipping_address'    => 'json',
+				// The resale certificate as submitted. `certificate_data` is the file
+				// itself, base64-encoded, and is NEVER returned by a list read: the
+				// console replaces it with a `has_certificate` flag and the download is
+				// an authenticated route that streams it with `no-store`.
+				'resale_state'        => 'string32',
+				'resale_number'       => 'string64',
+				'resale_type'         => 'string64',
+				'resale_holder'       => 'string191',
+				'resale_expires'      => 'string16',
+				'certificate_file_name' => 'string191',
+				'certificate_file_type' => 'string32',
+				'certificate_file_size' => 'int',
+				'certificate_data'    => 'text',
+				// The routing status the verification engine produced (never APPROVED),
+				// the checks it ran, and where a reviewer opens the authority's own page.
+				'certificate_status'  => 'string32',
+				'certificate_checks'  => 'json',
+				'certificate_official_url' => 'string191',
+				'certificate_reviewed_at'  => 'datetime',
+				'certificate_reviewed_by'  => 'string191',
+				'certificate_notes'   => 'text',
+				// The typed electronic signature and the date it was given. Stored as its
+				// own fact so a later recheck can say what the applicant actually signed
+				// instead of inferring it from the contact name.
+				'declaration_name'    => 'string191',
+				'declaration_at'      => 'string16',
+				// Email verification. The token is single-use: the verify route clears it.
+				'email_verified_at'   => 'datetime',
+				'email_verification_token' => 'string64',
 			),
-			'keys'    => array( 'KEY status (status)', 'KEY email (email)' ),
+			'keys'    => array( 'KEY status (status)', 'KEY email (email)', 'KEY certificate_status (certificate_status)' ),
 		),
 		// The wholesale master. `packaging` is JSON: see `hk_wholesale_packaging_fields()`.
 		'products'       => array(
@@ -282,6 +322,11 @@ function hk_wholesale_schema() {
 				'lead_time_days'      => 'int',
 				'net_unit_weight_kg'  => 'float',
 				'packaging'           => 'json',
+				// The wholesale allocation: how many units of this product the trade desk
+				// is willing to offer, independent of the retail stock number. It is a
+				// ceiling on an inquiry, not a second physical stock count — see
+				// docs/WHOLESALE.md, "Inventory".
+				'available_units'     => 'int',
 				'active'              => 'bool',
 				'notes'               => 'text',
 			),
@@ -927,7 +972,11 @@ function hk_wholesale_list_records( $request ) {
 	// wholesale order is looked up by the reference a person quotes in an email, and a
 	// revision history is read as one entity's audit rows. Both stay inside the
 	// prepared-statement path like every other filter.
-	foreach ( array( 'email', 'status', 'code', 'side', 'origin_port', 'destination_port', 'container_type', 'wholesale_sku', 'ref', 'entity', 'action' ) as $filter ) {
+	// `email_verification_token` is an admin-only lookup: the Next route that owns the
+	// confirmation link reads the application by the token in it, with the site's own
+	// administrator credential. Keeping the lookup here means this namespace needs no
+	// public endpoint at all.
+	foreach ( array( 'email', 'status', 'code', 'side', 'origin_port', 'destination_port', 'container_type', 'wholesale_sku', 'ref', 'entity', 'action', 'email_verification_token' ) as $filter ) {
 		$value = $request->get_param( $filter );
 		if ( null === $value || '' === $value ) {
 			continue;
@@ -1163,7 +1212,17 @@ function hk_wholesale_submit_application( $request ) {
 
 	$fields = hk_wholesale_filter_payload( 'applications', array_merge( $body, array( 'email' => $email ) ) );
 	$fields['status'] = 'PENDING';
-	unset( $fields['account_id'], $fields['decided_at'], $fields['decided_by'] );
+	// An applicant may not assert a decision, a verification or a review. `email_verified_at`
+	// and the certificate review fields are written only by the routes that own them.
+	unset(
+		$fields['account_id'],
+		$fields['decided_at'],
+		$fields['decided_by'],
+		$fields['email_verified_at'],
+		$fields['certificate_reviewed_at'],
+		$fields['certificate_reviewed_by'],
+		$fields['certificate_notes']
+	);
 	$fields['updated_at'] = current_time( 'mysql' );
 
 	if ( $existing ) {

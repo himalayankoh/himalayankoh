@@ -72,6 +72,14 @@ export interface WholesaleProduct {
   packaging: PackagingProfile;
   /** Minimum order quantity, in units. */
   moq: number;
+  /**
+   * How many units the trade desk offers, independent of retail stock.
+   *
+   * An allocation, not a second stock count: an inquiry never deducts it, and stock
+   * leaves the building only when a confirmed order ships through the existing retail
+   * inventory workflow.
+   */
+  availableUnits?: number;
   /** Ex-factory cost per unit, in `currency`. */
   exFactoryCost: number;
   currency: string;

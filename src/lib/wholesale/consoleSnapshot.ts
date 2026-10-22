@@ -281,7 +281,13 @@ export function wholesaleWorkspacePayload(sources: WholesaleWorkspaceSources): W
     origins: sources.origins,
     suppliers: sources.suppliers,
     portCharges: sources.portCharges,
-    applications: sources.applications,
+    // The certificate file itself is never part of a list read. One application can
+    // carry a 5 MB scan, and the console's review screen fetches a file only when a
+    // reviewer opens it. The flag is what tells the list there is something to open.
+    applications: sources.applications.map((row) => {
+      const { certificate_data: certificateData, ...rest } = row as Record<string, unknown>;
+      return { ...rest, has_certificate: Boolean(certificateData) };
+    }),
     accounts: sources.accounts,
     quotes: sources.quotes,
     orders: sources.orders,

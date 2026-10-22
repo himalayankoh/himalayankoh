@@ -338,6 +338,8 @@ export interface PortalCatalogItem {
   wholesaleSku: string;
   storefront: { productId: number | null; name: string | null; image: string | null; slug: string | null };
   moq: number;
+  /** Units the trade desk offers. Zero means no allocation was set. */
+  availableUnits: number;
   leadTimeDays: number;
   packaging: {
     unitsPerCarton: number;

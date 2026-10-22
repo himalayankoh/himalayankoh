@@ -20,6 +20,10 @@ import ScrollToTop from './ScrollToTop';
 const navLinks = [
   { label: 'Home', path: '/' },
   { label: 'Products', path: '/products' },
+  // The trade door. A wholesale buyer arrives from a supplier email or a trade
+  // search, not from the shop, so the one page that explains the programme is in the
+  // header on every screen and in the mobile drawer with the other destinations.
+  { label: 'Wholesale', path: '/wholesale' },
   // The guides were reachable only from inside the footer before this: the blog
   // exists, is indexed, and is linked from nothing in the header, so a visitor
   // (and a crawler walking the nav) never found it.
@@ -161,15 +165,21 @@ export default function Layout({ children }: LayoutProps) {
                   key={link.path}
                   to={link.path}
                   prefetch={false}
-                  aria-current={(pathname === link.path || (link.path === '/products' && pathname.startsWith('/products/'))) ? 'page' : undefined}
+                  aria-current={
+                    pathname === link.path ||
+                    (link.path === '/products' && pathname.startsWith('/products/')) ||
+                    (link.path === '/wholesale' && pathname.startsWith('/wholesale'))
+                      ? 'page'
+                      : undefined
+                  }
                   className={`relative px-3 py-2 text-[0.82rem] font-extrabold uppercase tracking-[0.035em] transition-colors rounded-lg ${
-                    pathname === link.path
+                    pathname === link.path || (link.path === '/wholesale' && pathname.startsWith('/wholesale'))
                       ? 'text-himalayan-dark'
                       : 'text-charcoal hover:text-himalayan-dark'
                   }`}
                 >
                   {link.label}
-                  {pathname === link.path && (
+                  {(pathname === link.path || (link.path === '/wholesale' && pathname.startsWith('/wholesale'))) && (
                     <motion.div
                       layoutId="navIndicator"
                       className="absolute bottom-0 left-3 right-3 h-0.5 bg-himalayan rounded-full"
