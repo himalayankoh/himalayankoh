@@ -172,7 +172,7 @@ export async function loadWholesaleData(): Promise<WholesaleData> {
   // single-record one.
   const long = { timeoutMs: WHOLESALE_AGGREGATE_TIMEOUT_MS };
   const [catalog, containers, costProfiles, freightRates] = await Promise.all([
-    readWholesaleCatalog({ activeOnly: true }),
+    readWholesaleCatalog({ activeOnly: true, timeoutMs: WHOLESALE_AGGREGATE_TIMEOUT_MS }),
     listWholesaleRecords('container_profiles', { limit: 100 }, long),
     listWholesaleRecords('cost_profiles', { limit: 200 }, long),
     listWholesaleRecords('freight_rates', { limit: 300, order: 'id' }, long),

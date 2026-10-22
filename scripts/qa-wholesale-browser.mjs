@@ -335,8 +335,10 @@ async function main() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      username: CONF.WORDPRESS_ADMIN_USER,
-      password: CONF.WORDPRESS_ADMIN_APP_PASSWORD,
+      // Env first: against the deployed staging Worker the console credential is the
+      // staging install's application password, not the developer's local one.
+      username: process.env.QA_WP_APP_USER || CONF.WORDPRESS_ADMIN_USER,
+      password: process.env.QA_WP_APP_PASSWORD || CONF.WORDPRESS_ADMIN_APP_PASSWORD,
     }),
   });
   const adminSession = await adminLogin.json();
