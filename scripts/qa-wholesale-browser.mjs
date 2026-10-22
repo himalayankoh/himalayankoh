@@ -21,6 +21,7 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -42,6 +43,31 @@ const CHROME_CANDIDATES = [
 ].filter(Boolean);
 
 const results = [];
+/** sha256 of every screenshot written in this run -> the file that first produced it. */
+const SHOT_HASHES = new Map();
+
+/*
+ * This script writes synthetic buyers, products and quotes through the app under test.
+ * Run against a local dev server, the app uses `.env.local`, and that file points at the
+ * LIVE WordPress backend - which is how test rows reached production once. Refuse the
+ * production hostname and an unconfirmed local server.
+ */
+{
+  const target = new URL(process.argv[2] || 'http://127.0.0.1:3100');
+  const isProd = /(^|\.)himalayankoh\.com$/i.test(target.hostname) && !/^preview\./i.test(target.hostname);
+  const isLocal = /^(127\.0\.0\.1|localhost|\[::1\])$/i.test(target.hostname);
+  if (isProd && process.env.QA_ALLOW_PRODUCTION !== 'yes-write-synthetic-data-to-production') {
+    console.error('Refusing to run: the target is the production hostname and this trial writes synthetic records.');
+    process.exit(2);
+  }
+  if (isLocal && !process.env.QA_STAGING_CONFIRMED) {
+    console.error(
+      'Refusing to run against a local dev server without QA_STAGING_CONFIRMED=1: the dev server reads .env.local, ' +
+        'whose WORDPRESS_BASE_URL is the production backend. Point .env.local at staging first, then set the flag.'
+    );
+    process.exit(2);
+  }
+}
 let failed = 0;
 
 function check(name, ok, detail = '') {
@@ -269,7 +295,17 @@ async function shot(cdp, file, width, height) {
     );
     const info = JSON.parse(metrics || '{}');
     const capture = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
-    writeFileSync(join(OUT, file), Buffer.from(capture.data, 'base64'));
+    const png = Buffer.from(capture.data, 'base64');
+    writeFileSync(join(OUT, file), png);
+    /* Two different screens must never produce the same bytes. Identical captures
+       mean the page did not change between the shots (a stale frame or a step that
+       did not happen), and a screenshot that proves nothing is a failed check. */
+    const digest = createHash('sha256').update(png).digest('hex');
+    const twin = SHOT_HASHES.get(digest);
+    SHOT_HASHES.set(digest, twin || file);
+    if (twin && twin !== file) {
+      check(`Screenshot ${file} shows a different state from ${twin}`, false, 'byte-identical capture - the page did not change');
+    }
     console.log(
       `  ${file} ${width}x${height} inner=${info.innerWidth} scroll=${info.scrollWidth} overflow=${
         info.scrollWidth > info.innerWidth ? 'YES' : 'no'
@@ -634,10 +670,14 @@ async function main() {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         await pause(1500);
         after = await cdp.evaluate('document.body.innerText').catch(() => after);
-        if (/approved|decision recorded/i.test(after)) break;
+        if (/application:\s*approved/i.test(after) || /decision recorded/i.test(after)) break;
       }
       check('Approve button is on the review screen', /clicked/.test(String(approved)), String(approved));
-      check('Approval is confirmed on screen', /approved|decision recorded/i.test(after), after.slice(0, 90).replace(/\s+/g, ' '));
+      /* The word "Approved" is also a filter tab on this screen, so matching it proves
+         nothing. The decision is confirmed only by the selected application's own
+         status badge turning from PENDING to APPROVED (or the console's own notice). */
+      const approvedOnScreen = /application:\s*approved/i.test(after) || /decision recorded/i.test(after);
+      check('Approval is confirmed on screen', approvedOnScreen, after.replace(/\s+/g, ' ').slice(0, 90));
       await shot(cdp, 'admin-wholesale-approved-1440.png', 1440, 950);
     }
 
