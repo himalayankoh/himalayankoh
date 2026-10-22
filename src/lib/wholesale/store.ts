@@ -324,10 +324,22 @@ export interface WholesaleCatalogResponse {
   tiers: WholesaleRow[];
 }
 
-/** The wholesale master and its tiers, in one read. */
-export async function readWholesaleCatalog(options: { activeOnly?: boolean } = {}): Promise<WholesaleCatalogResponse> {
+/**
+ * The wholesale master and its tiers, in one read.
+ *
+ * `timeoutMs` exists because this read is one of the four a pricing screen waits on
+ * together: on a slow cPanel host the four parallel reads congest, and the heavy
+ * `/catalog` query is the one that lands last. Leaving it at the single-record
+ * ceiling while its siblings get the aggregate one meant an inquiry could be
+ * refused with "timed out" on a host that was merely busy — a staging trial caught
+ * exactly that.
+ */
+export async function readWholesaleCatalog(
+  options: { activeOnly?: boolean; timeoutMs?: number } = {}
+): Promise<WholesaleCatalogResponse> {
   return wholesaleRequest<WholesaleCatalogResponse>('/catalog', {
     params: { active: options.activeOnly === false ? '0' : '1' },
+    timeoutMs: options.timeoutMs,
   });
 }
 

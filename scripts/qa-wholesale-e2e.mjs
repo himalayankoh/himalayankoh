@@ -35,7 +35,12 @@ import { deflateSync } from 'node:zlib';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const APP = (process.argv[2] || 'http://127.0.0.1:3100').replace(/\/+$/, '');
-const WP = 'https://wp.himalayankoh.com';
+/**
+ * The WordPress behind the app under test. Overridable because the deployed staging
+ * Worker is backed by the staging install, while local development is not — the trial
+ * must verify the store the app actually wrote to.
+ */
+const WP = (process.env.QA_WP_BASE || 'https://wp.himalayankoh.com').replace(/\/+$/, '');
 const OUT = join(ROOT, 'qa-wholesale');
 const JAR = join(mkdtempSync(join(tmpdir(), 'hk-qa-wp-')), 'cookies.txt');
 
@@ -104,8 +109,8 @@ async function wpLogin() {
 
   // The form session failed (the host's login gate, or a rotated password). Fall back
   // to the application password the app itself uses, and prove it can read the store.
-  const appUser = CONF.WORDPRESS_ADMIN_USER || user;
-  const appPassword = CONF.WORDPRESS_ADMIN_APP_PASSWORD || '';
+  const appUser = process.env.QA_WP_APP_USER || CONF.WORDPRESS_ADMIN_USER || user;
+  const appPassword = process.env.QA_WP_APP_PASSWORD || CONF.WORDPRESS_ADMIN_APP_PASSWORD || '';
   if (!appUser || !appPassword) {
     check('WordPress administrator session', false, `landed ${landed}`);
     return false;
@@ -478,7 +483,12 @@ async function main() {
   console.log(`\n== Trial C — admin review ==`);
   const adminLogin = await api('/api/auth/admin/login', {
     method: 'POST',
-    body: { username: CONF.WORDPRESS_ADMIN_USER, password: CONF.WORDPRESS_ADMIN_APP_PASSWORD },
+    // Env first: against the deployed staging Worker the console credential is the
+    // staging install's application password, not the developer's local one.
+    body: {
+      username: process.env.QA_WP_APP_USER || CONF.WORDPRESS_ADMIN_USER,
+      password: process.env.QA_WP_APP_PASSWORD || CONF.WORDPRESS_ADMIN_APP_PASSWORD,
+    },
   });
   check('Administrator console sign-in', adminLogin.status === 200 && Boolean(adminLogin.json?.token), `HTTP ${adminLogin.status}`);
   const adminToken = adminLogin.json?.token || '';
