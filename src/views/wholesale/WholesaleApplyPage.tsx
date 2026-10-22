@@ -233,6 +233,14 @@ export default function WholesaleApplyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          /*
+           * The form is a U.S. business application: the address, the state select and
+           * the certificate are all U.S.-shaped, so the country is not a field a person
+           * can get wrong — it is stated here. Without this line the route refused every
+           * browser submission with "Please complete: country", which the HTTP trial did
+           * not catch because it posted the field directly.
+           */
+          country: 'United States',
           state: form.state,
           resale: {
             ...resale,

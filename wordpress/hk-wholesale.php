@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — Wholesale (B2B)
  * Description:       The wholesale side of Himalayan Koh: buyer applications and accounts, a wholesale product master with its own packaging/MOQ/cost fields, price tiers, suppliers and origins, container and cost profiles, freight rates, port charges, quotes and wholesale orders. Wholesale pricing is separate from the retail price WooCommerce owns — a change here never rewrites a storefront price. The Next.js app talks to the hk-wholesale/v1 namespace below; nothing in this plugin reads or writes a retail customer, cart or WooCommerce order.
- * Version:           1.3.0
+ * Version:           1.3.2
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -52,7 +52,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_WHOLESALE_VERSION', '1.3.0' );
+define( 'HK_WHOLESALE_VERSION', '1.3.2' );
 // Bumped when the schema array changes: `hk_wholesale_maybe_upgrade` re-runs dbDelta
 // only when this differs from what is stored, so an existing install picks up the new
 // columns on its next load instead of waiting for a deactivate/reactivate cycle.
@@ -1380,7 +1380,51 @@ function hk_wholesale_decide_application( $request ) {
 			),
 			array( 'id' => $id )
 		);
-		hk_wholesale_audit( 'application_' . strtolower( $decision ), 'applications', $id, array( 'note' => $note ), $actor );
+		/*
+		 * A suspension or a rejection has to reach the buyer's *account*, not just the
+		 * application.
+		 *
+		 * The buyer routes authorise against `accounts.status` — the account is re-read on
+		 * every request, which is what makes a suspension immediate. An approval already
+		 * writes ACTIVE there; without the mirror below, "Suspend access" changed the
+		 * application screen and left an approved buyer's catalogue, prices and inquiry
+		 * access exactly as they were. `MORE_INFO_REQUIRED` is deliberately not mirrored:
+		 * a buyer asked for a document keeps their account, because the desk may be
+		 * asking an approved buyer for something routine.
+		 */
+		$account_suspended = false;
+		if ( in_array( $decision, array( 'SUSPENDED', 'REJECTED' ), true ) ) {
+			$linked_id = hk_wholesale_id( $application['account_id'] );
+			if ( ! $linked_id ) {
+				$linked = $wpdb->get_row( $wpdb->prepare( "SELECT id FROM {$accounts} WHERE email = %s ORDER BY id DESC LIMIT 1", $application['email'] ), ARRAY_A ); // phpcs:ignore WordPress.DB
+				$linked_id = $linked ? (int) $linked['id'] : 0;
+			}
+			if ( $linked_id ) {
+				$account_suspended = false !== $wpdb->update(
+					$accounts,
+					array(
+						'status'     => 'SUSPENDED',
+						'updated_at' => current_time( 'mysql' ),
+					),
+					array( 'id' => $linked_id )
+				);
+				if ( $account_suspended ) {
+					$application['account_id'] = $linked_id;
+				}
+			}
+		}
+
+		hk_wholesale_audit(
+			'application_' . strtolower( $decision ),
+			'applications',
+			$id,
+			array(
+				'note'              => $note,
+				'account_id'        => hk_wholesale_id( $application['account_id'] ),
+				'account_suspended' => $account_suspended,
+			),
+			$actor
+		);
 	}
 
 	$application = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$applications} WHERE id = %d", $id ), ARRAY_A ); // phpcs:ignore WordPress.DB
@@ -1388,8 +1432,11 @@ function hk_wholesale_decide_application( $request ) {
 	return rest_ensure_response(
 		array(
 			'application' => hk_wholesale_decode_row( 'applications', $application ),
-			'account'     => $account ? hk_wholesale_decode_row( 'accounts', $account ) : null,
-			'buyerUser'   => isset( $buyer_user ) ? $buyer_user : null,
+			'account'          => $account ? hk_wholesale_decode_row( 'accounts', $account ) : null,
+			'buyerUser'        => isset( $buyer_user ) ? $buyer_user : null,
+			// Whether the decision also reached the account row. The console shows this
+			// rather than assuming "suspended" means "cannot sign in".
+			'accountSuspended' => isset( $account_suspended ) ? (bool) $account_suspended : false,
 		)
 	);
 }
@@ -1712,6 +1759,35 @@ add_action(
 			)
 		);
 	}
+);
+
+/**
+ * Nothing in this namespace may be cached by anything in front of WordPress.
+ *
+ * The site answers REST behind Cloudflare, and a cached GET is indistinguishable
+ * from a fresh one to the app. That is not a performance question here: the email
+ * confirmation lookup is `?email_verification_token=…`, so a cached answer kept a
+ * single-use token usable — the second request saw the row as it was before the
+ * token was cleared — and a catalogue read could serve an allocation that had
+ * already changed. WordPress sends no cache headers of its own, so the namespace
+ * says so explicitly.
+ */
+add_filter(
+	'rest_post_dispatch',
+	function ( $response, $server, $request ) {
+		unset( $server );
+		if ( ! is_object( $request ) || 0 !== strpos( (string) $request->get_route(), '/hk-wholesale/v1' ) ) {
+			return $response;
+		}
+		if ( $response instanceof WP_REST_Response ) {
+			$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0, private' );
+			$response->header( 'Pragma', 'no-cache' );
+			$response->header( 'Expires', '0' );
+		}
+		return $response;
+	},
+	10,
+	3
 );
 
 // Activation creates/updates the tables; an upgrade on the next load does the same
