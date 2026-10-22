@@ -86,3 +86,7 @@ android/app/build/
 android/local.properties
 android/gradle/wrapper/gradle-wrapper.jar
 
+
+# Wholesale QA run output (ephemeral test data, not evidence)
+qa-wholesale/e2e-result.json
+qa-wholesale/browser-result.json

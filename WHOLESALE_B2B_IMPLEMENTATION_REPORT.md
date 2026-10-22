@@ -4,13 +4,12 @@
 **Repository:** `https://github.com/himalayankoh/himalayankoh`
 **Local path:** `C:\Users\basco\Downloads\hk\himalayan-koh`
 **Branch:** `integration/cloudflare-workers-migration`
-**Base HEAD:** `f54daa05da51984aaa14b69e9dd449ff5cc891ed`
-**Scope delivered:** audit, certificate-backed registration, state-aware verification, admin review desks, allocation and inquiry notification, responsive QA.
+**Trade plugin:** `hk-wholesale` **v1.3.2**, schema **v8** (live on `wp.himalayankoh.com`)
 
-> **Read this first.** The application code is complete and verified. The WordPress
-> plugin upgrade it depends on could **not** be installed from this environment, so the
-> production registration path deliberately fails closed until that one ZIP is uploaded
-> (§21). Nothing was deployed to preview or production.
+> **Read this first.** The wholesale portal is implemented and verified end to end in
+> both the HTTP layer and a real browser. The one thing this pass could **not** observe
+> is live email delivery, because the cPanel SMTP secret is a deployed Worker secret that
+> was deliberately not read from the deployment (§21). Everything else has test evidence.
 
 ---
 
@@ -21,30 +20,28 @@ rather than replacing it.
 
 | Layer | What existed | Evidence |
 | --- | --- | --- |
-| Storage | WordPress plugin `wordpress/hk-wholesale.php` v1.2.1, schema v7, 13 tables (`accounts`, `applications`, `products`, `price_tiers`, `suppliers`, `origins`, `cost_profiles`, `freight_rates`, `port_charges`, `container_profiles`, `quotes`, `orders`, `audit`) behind one allowlisted REST namespace (`hk-wholesale/v1`) | plugin header, `hk_wholesale_schema()` |
+| Storage | WordPress plugin `wordpress/hk-wholesale.php`, 13 tables behind one allowlisted REST namespace (`hk-wholesale/v1`) | plugin header, `hk_wholesale_schema()` |
 | Buyer API | `/api/wholesale/{apply,login,session,catalog,quote,quotes,orders}` | `src/app/api/wholesale/**` |
 | Buyer UI | landing, apply, login, portal, catalog, quote builder, quotes, orders, account | `src/app/(main)/wholesale/**`, `src/views/wholesale/**` |
-| Admin | one workspace at `/admin/wholesale` with 15 tabs and 9 admin API routes | `src/views/admin/wholesale/**`, `src/app/api/admin/wholesale/**` |
+| Admin | one workspace at `/admin/wholesale` with 15 tabs and 9 admin API routes | `src/views/admin/wholesale/**` |
 | Pricing | pallet / mixed pallet / container engine, EXW–CIF landed cost, FX snapshots, tiers, MOQ | `src/lib/wholesale/engine.ts`, `pricing.ts`, `plan.ts` |
-| Auth | separate signed wholesale session (`WHOLESALE_SESSION_SECRET`, roles `wholesale_customer` / `wholesale_pending`) | `src/lib/wholesale/session.ts`, `requireBuyer.ts` |
-| Security tests | 18 existing tests, including source-level checks that every plugin route is capability-gated and every statement prepared | `src/lib/wholesale/security.test.ts` |
-| Docs | `docs/WHOLESALE.md` (architecture, pricing, schema self-verification) | present |
+| Auth | separate signed wholesale session (`WHOLESALE_SESSION_SECRET`) | `src/lib/wholesale/session.ts`, `requireBuyer.ts` |
+| Security tests | source-level checks that every plugin route is capability-gated and every statement prepared | `src/lib/wholesale/security.test.ts` |
 
-**Gaps against the brief:** no header/mobile entry for wholesale; no U.S. address fields
-or resale certificate capture; no certificate storage, verification or review; no admin
-“Wholesale Customers” or “Wholesale Products” pages in the sidebar; no applicant email
-verification; no inquiry notification to `ws@`; no wholesale allocation ceiling.
+**Gaps against the brief:** no header/mobile entry; no U.S. address fields or resale
+certificate capture; no certificate storage/verification/review; no admin Wholesale
+Customers / Wholesale Products pages; no applicant email verification; no inquiry
+notification to `ws@`; no wholesale allocation ceiling.
 
 ## 2. Reused modules and preserved functionality
 
-* The existing plugin, its tables, REST namespace, 13 record types and `dbDelta`
+* The existing plugin, its tables, REST namespace, record types and `dbDelta`
   self-verifying installer are unchanged in shape — only additive columns and one filter.
-* Session, gate, buyer projection, quote lifecycle, pricing engine, console snapshot and
-  document renderer are reused untouched.
-* Inquiry submission reuses `POST /api/wholesale/quotes` (the existing RFQ path), which
-  already stores the request with no committed price. No second inquiry subsystem.
-* Emails use the existing cPanel SMTP sender (`sendEmail`), extended with a `Reply-To`
-  header rather than a new mail provider.
+* Session, gate, buyer projection, quote lifecycle, pricing engine and console snapshot are
+  reused untouched.
+* Inquiry submission reuses `POST /api/wholesale/quotes` (the existing RFQ path). No second
+  inquiry subsystem.
+* Emails use the existing cPanel SMTP sender (`sendEmail`), extended with a `Reply-To`.
 * The admin pages reuse `AdminUI`/`adminTheme` primitives and the existing
   `/api/admin/wholesale/*` session check.
 
@@ -52,40 +49,38 @@ verification; no inquiry notification to `ws@`; no wholesale allocation ceiling.
 
 | Area | Change |
 | --- | --- |
-| Header | `Wholesale` added to the desktop nav and the mobile drawer; active state covers `/wholesale/*` |
+| Header | `Wholesale` in the desktop nav and the mobile drawer |
 | Landing | “Approved trade accounts only” block: verified businesses, mandatory certificate, inquiry-first, invoice/payment after approval |
-| Registration | U.S. business address, DBA, shipping address, resale certificate (state, number, type, holder, expiry, PDF/JPG/PNG ≤5 MB), authorised-applicant declaration and typed signature |
+| Registration | U.S. business address, DBA, shipping address, resale certificate (state, number, type, holder, expiry, PDF/JPG/PNG ≤5 MB), declaration and typed signature |
 | Verification | Pure state-aware engine (51 jurisdictions) with evidence, advisory format checks and mandatory manual review |
-| Email verification | Single-use 48-hex token, emailed link, `/wholesale/verify`, token cleared on use, certificate checks re-run after confirmation |
-| Admin | New **Wholesale Customers** and **Wholesale Products** sidebar pages under Wholesale |
-| Certificates | Queue, detail, authenticated file streaming, recheck, request information, renewal request, internal notes, full audit timeline |
-| Products | Wholesale price (1-unit tier), MOQ, allocation, visibility, volume breaks, bulk price/allocation/MOQ, inquiry count, retail link |
+| Email verification | Single-use 48-hex token, `/wholesale/verify`, token cleared on use, certificate checks re-run after confirmation |
+| Admin | New **Wholesale Customers** and **Wholesale Products** sidebar pages |
+| Certificates | Queue, detail, authenticated file streaming, recheck, request info, renewal request, notes, audit timeline |
+| Products | Wholesale price (1-unit tier), MOQ, allocation, visibility, volume breaks, bulk update, inquiry count, retail link |
 | Inventory | `available_units` allocation exposed to buyers; server-side ceiling on inquiries; no deduction on inquiry |
 | Email | Inquiry notification to `ws@himalayankoh.com` with `Reply-To` buyer, buyer acknowledgement, audit row on failure |
 
 ## 4. Admin Wholesale Products
 
 `/admin/wholesale/products` — search, filter (offered / not offered / no retail link / all),
-inline availability toggle, per-product editor, volume-break editor, bulk update, counts
-for unlinked and unpriced products, inquiry reference count, and a link to retail products.
-The wholesale unit price is stored as the `min_units = 1` price tier, so there is no second
-price field that could disagree with the pricing engine. **Retail prices are never read or
-written by this screen.**
+inline availability toggle, per-product editor, volume-break editor, bulk update, counts for
+unlinked and unpriced products, inquiry reference count, and a link to retail products. The
+wholesale unit price is the `min_units = 1` tier, so there is no second price field. **Retail
+prices are never read or written by this screen.**
 
-Status: **PASS (code + typecheck), NOT TESTED (browser)** — the page requires a console
-session (§21).
+**Status: PASS** — renders, lists the QA products, desktop + mobile, browser-verified.
 
 ## 5. Admin Wholesale Customers
 
 `/admin/wholesale/customers` — application list with filter and search; detail with
 business/contact/address, certificate number/type/holder/expiry/file metadata, declaration,
-email verification, per-check outcomes, missing items, official authority link, reviewer
-note, and the audit timeline. Actions: approve, reject, request information, suspend,
-recheck, request renewal, save note; certificate file opens in a new tab from an
-authenticated blob fetch.
+email verification, per-check outcomes, missing items, official authority link, reviewer note
+and audit timeline. Actions: approve, reject, request information, suspend, recheck, request
+renewal, save note; the certificate opens in a new tab from an authenticated blob fetch.
 
-Status: **PASS (code + typecheck), NOT TESTED (browser)** — no console session available in
-this environment.
+**Status: PASS** — the browser journey registers an applicant, finds them in the queue, opens
+the certificate detail, sees the official verification link and the audit timeline, and
+approves them via the on-screen button (dialog handled).
 
 ## 6. Certificate verification architecture
 
@@ -101,35 +96,30 @@ src/lib/wholesale/resaleCertificate/
 The engine returns `ADDITIONAL_INFO_REQUIRED`, `PENDING_CERTIFICATE_REVIEW` or
 `AUTOMATED_CHECKS_COMPLETED` plus a list of checks. It **cannot** return `APPROVED`,
 `REJECTED` or `SUSPENDED`; `requiresManualReview` is always `true` and
-`officialAutomationAvailable` is always `false`, in the payload itself.
+`officialAutomationAvailable` is always `false`, stated in the payload itself.
 
-Storage: certificate bytes are base64 on the application row (`certificate_data`), never in
-a web-accessible uploads directory. Every list projection strips the bytes and exposes
-`has_certificate`; the only read is `GET /api/admin/wholesale/certificates/[id]/file`,
-behind the console session, with `no-store`, `nosniff` and a CSP. A token/row equality check
-in `/api/wholesale/verify-email` prevents an older plugin that ignores the token filter from
-verifying the wrong application.
+Certificate bytes are stored on the application row, never in a web-accessible directory.
+Every list projection strips the bytes; the only read is
+`GET /api/admin/wholesale/certificates/[id]/file`, behind the console session, with
+`no-store`, `nosniff` and a CSP. A token/row equality check in `/api/wholesale/verify-email`
+prevents an older plugin from verifying the wrong application.
 
 ## 7. States supported by automated official checks
 
 **None.** No U.S. state publishes a public machine-readable resale-certificate verification
-API. The brief anticipated this; the implementation says so on every review screen and gives
-the reviewer the authority’s own lookup URL.
-
-What runs automatically for all 51 jurisdictions: document presence/type/size, number
-presence and structural sanity, holder-vs-business name similarity, expiry, declaration,
-email verification, and a recorded “no official automation” check.
+API, and the brief anticipated this. What runs automatically for all 51 jurisdictions:
+document presence/type/size, number presence and structural sanity, holder-vs-business name
+similarity, expiry, declaration, email verification, and a recorded “no official automation”
+check. The reviewer is given the authority’s own lookup URL.
 
 ## 8. States requiring manual review
 
 **All 51.** Additionally:
 
-* **Texas** — the only documented number format in the registry (11-digit Comptroller
-  taxpayer number). A mismatch is a **warning**, never a rejection, because out-of-state
-  numbers can legitimately appear on a Texas resale certificate.
-* **Alaska, Delaware, Montana, New Hampshire, Oregon** — no state-level sales tax; no state
-  resale certificate exists. These applications route to `PENDING_CERTIFICATE_REVIEW`
-  without demanding a certificate, and accept a signed exemption statement.
+* **Texas** — the only documented number format in the registry (11-digit Comptroller number).
+  A mismatch is a **warning**, never a rejection.
+* **Alaska, Delaware, Montana, New Hampshire, Oregon** — no state sales tax; route to
+  `PENDING_CERTIFICATE_REVIEW` and accept a signed exemption statement.
 * **Louisiana, Hawaii, New Mexico, Washington, Florida** — notes record the state-specific
   document or expiry rule a reviewer must apply.
 
@@ -137,217 +127,217 @@ email verification, and a recorded “no official automation” check.
 
 Registration → stored `PENDING` + certificate status → verification email (single use) →
 console review (manual authority check) → `APPROVED`/`REJECTED`/`MORE_INFO_REQUIRED`/
-`SUSPENDED` → approval creates/links the WordPress user (existing behaviour) → buyer signs
-in through WordPress credentials → signed wholesale session scoped to the account id.
-Every decision writes an audit row. Suspension is re-checked per request, so it applies
-before the token expires.
+`SUSPENDED` → approval creates/links the WordPress user → buyer signs in → signed session
+scoped to the account id. Every decision writes an audit row. Suspension is re-checked per
+request, so it applies before the token expires.
 
 ## 10. Wholesale catalog and stock handling
 
 Shared product facts stay in WooCommerce (`woo_product_id`); the trade master adds price
-tiers, MOQ, packaging, lead time and now `available_units`. The buyer catalog returns
-`availableUnits` and displays “Available to trade” (or “Confirmed per inquiry” when zero =
-unset). The inquiry route refuses a quantity above a **configured** allocation with a
-message naming the ceiling; an unset allocation is uncapped, because zero is not a claim
-that nothing is available. **An inquiry never deducts stock.** Physical stock still moves
-only through the confirmed-order flow.
+tiers, MOQ, packaging, lead time and `available_units`. The buyer catalog returns
+`availableUnits` (“Available to trade”, or “Confirmed per inquiry” when zero = unset). The
+inquiry route refuses a quantity above a **configured** allocation, naming the ceiling; an
+unset allocation is uncapped. **An inquiry never deducts stock.**
 
-Status: **PASS (code, typecheck)**; the live catalog requires an approved buyer.
+**Status: PASS** — catalog shows the two QA products with price 7.5, 400 units available and
+MOQ 20; the ceiling refuses 4,000 units with the correct message.
 
 ## 11. Inquiry generation and totals
 
-`POST /api/wholesale/quotes` stores the request with status `SUBMITTED`, no `sell_total`,
-line snapshots (`units`, `cartons`, `pallets`, `unitPriceIndicative`) and the buyer's notes.
-The reference `HK-WS-Qxxxxx` is written back after insert. Estimated merchandise value is
-the engine's `totals.indicativeMerchandise`, labelled indicative. Totals are computed
-server-side from stored tiers; the browser never supplies a price.
+`POST /api/wholesale/quotes` stores the request with status `SUBMITTED`, **no** `sell_total`,
+line snapshots (`units`, `cartons`, `pallets`, `unitPriceIndicative`) and buyer notes. The
+reference `HK-WS-Qxxxxx` is written back after insert. Totals are computed server-side from
+stored tiers; the browser never supplies a price — a client-supplied `unitPrice: 0.01` is
+ignored and the stored line keeps the server price (7.5 / 16).
 
 ## 12. Email notification implementation
 
-`src/lib/email/wholesaleInquiry.ts` builds HTML + text for the trade desk and an
-acknowledgement for the buyer. Sent **from** `ws@himalayankoh.com` with `Reply-To` the buyer,
-so replies reach the buyer and SPF/DKIM still pass. Recipient overridable with
-`WHOLESALE_INQUIRY_EMAIL`, validated by shape with a fallback to `ws@`. Delivery failure
-writes `inquiry_email_failed` to the audit table and the response reports the flags; the
-stored inquiry is never rolled back.
+`src/lib/email/wholesaleInquiry.ts` builds HTML + text for the trade desk and a buyer
+acknowledgement. Sent **from** `ws@himalayankoh.com` with `Reply-To` the buyer. Recipient
+overridable with `WHOLESALE_INQUIRY_EMAIL`. Delivery failure writes `inquiry_email_failed` to
+the audit table and the response reports the flags; the stored inquiry is never rolled back.
 
 `sales@himalayankoh.com`, the existing inbox exclusions, HubSpot, cPanel and DNS were **not
 touched**.
 
-Status: **PASS (builder, 13 tests), NOT TESTED (live delivery)** — no inquiry was submitted,
-so SMTP to `ws@` was not exercised.
+**Status: NOT TESTED (live delivery)** — see §21. The builder is covered by 13 unit tests and
+the route wiring is exercised in the trial (the failure path is verified: when SMTP is absent
+the inquiry is still stored and the failure is audited).
 
 ## 13. Admin quotation / invoice workflow
 
 Unchanged and still manual, as required: RFQ → review → quotation in the existing console →
 document download → external payment link → admin records payment evidence. No payment is
-collected inside the wholesale portal, and no invoice is marked paid by entering a URL.
-This work did not add any payment automation.
+collected inside the wholesale portal.
 
 ## 14. Security test results
 
 | Check | Result |
 | --- | --- |
-| Admin certificate queue without a session | **401** (live) |
-| Certificate file without a session | **401** (live) |
-| Certificate review POST without a session | **401** (live) |
+| Catalogue / inquiry / certificate endpoints without a session | **401** (live) |
+| Certificate file / review POST without a session | **401** (live) |
 | Invalid confirmation token | **400** (live) |
-| Unknown but well-formed confirmation token | **410** (live) |
+| Confirmation token reused after use | **410** (live) — see §18, this was a real bug |
 | Token filter ignored by an older plugin | Row token equality re-checked before any write |
-| Certificate bytes in list responses | Stripped in `consoleSnapshot`; only the authenticated file route serves them |
-| Certificate file headers | `no-store`, `private`, `nosniff`, restrictive CSP, `inline` only for PDF/JPEG/PNG |
-| Buyer prices | Server-computed; quantity ceiling enforced server-side |
-| Applicable rate limits | Apply 5/hour/IP, verify 20/hour/IP (existing limiter) |
-| WordPress capability gate | Every `hk-wholesale/v1` route still `manage_options`; no public endpoint added; existing source-level test passes |
+| Certificate bytes in list responses | Stripped; only the authenticated file route serves them |
+| Certificate file headers | `no-store`, `private`, `nosniff`, restrictive CSP |
+| Buyer prices | Server-computed; a client-supplied price cannot lower the stored line |
+| Allocation ceiling | Server-side, refuses over-allocation naming the number |
+| Suspension | Mirrored to the account row; a suspended buyer gets **403** on the catalogue |
+| Rate limits | Apply 5/hour/IP, verify 20/hour/IP |
+| WordPress capability gate | Every `hk-wholesale/v1` route `manage_options`; existing source-level test passes |
 | Secret scan | `check-build-secrets.mjs` found no server credential in the build |
 
 ## 15. Browser test screenshots
 
-Captured with headless Chrome over CDP at true CSS viewports (the desktop browser panel
-could not draw because its window was minimised, so a CDP-driven viewport was used).
+Captured with headless Chrome over CDP at true CSS viewports (the desktop browser panel could
+not draw because its window was minimised). **22 PNGs in `qa-wholesale/`.**
 
-| # | Surface | File |
-| --- | --- | --- |
-| 1 | Wholesale landing, desktop 1440 | `qa-wholesale/wholesale-landing-1440.png` |
-| 2 | Wholesale landing, tablet 768 | `qa-wholesale/wholesale-landing-768.png` |
-| 3 | Wholesale landing, mobile 390 | `qa-wholesale/wholesale-landing-390.png` |
-| 4 | Registration, desktop 1440 | `qa-wholesale/wholesale-apply-1440.png` |
-| 5 | Registration, tablet 768 | `qa-wholesale/wholesale-apply-768.png` |
-| 6 | Registration, mobile 390 | `qa-wholesale/wholesale-apply-390.png` |
-| 7 | Registration, mobile 360 | `qa-wholesale/wholesale-apply-360.png` |
-| 8 | Confirmation page | `qa-wholesale/wholesale-verify-1440.png` |
-| 9 | Wholesale sign-in | `qa-wholesale/wholesale-login-1440.png` |
-| 10 | Storefront header, mobile 360 | `qa-wholesale/home-header-360.png` |
+| Surface | Desktop | Tablet | Mobile |
+| --- | --- | --- | --- |
+| Wholesale landing | `wholesale-landing-1440.png` | `wholesale-landing-768.png` | `wholesale-landing-390.png` |
+| Registration form | `wholesale-apply-1440.png` | `wholesale-apply-768.png` | `wholesale-apply-390.png`, `wholesale-apply-360.png` |
+| Confirmation page | `wholesale-verify-1440.png` | | |
+| Applied / reference | `wholesale-applied-1440.png` | | |
+| Wholesale sign-in | `wholesale-login-1440.png` | | |
+| Mobile nav | `wholesale-mobile-nav-360.png`, `home-header-360.png` | | |
+| Admin Wholesale Customers | `admin-wholesale-customers-1440.png` | | `admin-wholesale-nav-390.png` |
+| Admin certificate detail | `admin-wholesale-customer-detail-1440.png` | | |
+| Admin approval confirmed | `admin-wholesale-approved-1440.png` | | |
+| Admin Wholesale Products | `admin-wholesale-products-1440.png` | | `admin-wholesale-products-390.png` |
+| Approved buyer dashboard | `wholesale-portal-1440.png` | | |
+| Wholesale product catalogue | `wholesale-catalog-1440.png` | | `wholesale-catalog-390.png` |
+| Inquiry list | `wholesale-inquiries-1440.png` | | |
 
 ![Wholesale landing desktop](qa-wholesale/wholesale-landing-1440.png)
 ![Registration mobile 390](qa-wholesale/wholesale-apply-390.png)
-
-**Not captured:** pending-approval screen inside the portal, admin Customers page, admin
-Products page, approved-buyer dashboard, inquiry summary, admin inquiry detail — all require
-an application, an approval and a console session, which the plugin blocker prevented.
+![Admin certificate detail](qa-wholesale/admin-wholesale-customer-detail-1440.png)
+![Buyer catalogue](qa-wholesale/wholesale-catalog-1440.png)
 
 ## 16. Desktop / mobile QA
 
-| Viewport | Inner width | Document width | Horizontal overflow |
-| --- | --- | --- | --- |
-| 1440 | 1440 | 1440 | none |
-| 768 | 768 | 768 | none |
-| 390 | 390 | 390 | none |
-| 360 | 360 | 360 | none |
-
-Form fields present and labelled at every width: 51 states + DC select, file input, date
-input, declaration. Clicking Submit with an empty certificate state produced the inline
-message “Choose the state that issued your resale certificate.” with no network write.
-The mobile drawer renders the Wholesale entry (same `navLinks` array as desktop).
+No horizontal overflow at any width (inner width = document width at 1440 / 768 / 390 / 360).
+Form fields present and labelled at every width. The mobile drawer renders the Wholesale
+entry; the admin sidebar shows Wholesale, Wholesale Customers and Wholesale Products at 390.
 
 ## 17. Test and build results
 
 | Gate | Result |
 | --- | --- |
 | `npm run typecheck` | **PASS** (0 errors) |
-| `npm run lint` | **PASS** (exit 0; warnings only, none introduced by this change after the final fix) |
-| `npm test` | **PASS** — 234 files, 229 passed / 5 skipped; 2,464 tests passed / 24 skipped |
-| New tests | 38 verification/registry + 13 inquiry-email = **51** |
-| `npm run build` | **PASS** — Next build completes; post-build public-origin and secret scans pass |
-| Production build artifact | Not deployed |
+| `npm run lint` | **PASS** (exit 0; warnings only — pre-existing `<img>`/hook-deps, none introduced) |
+| `npm test` | **PASS** — 234 files, 229 passed / 5 skipped; **2,464 tests passed** / 24 skipped |
+| New unit tests | 38 verification/registry + 13 inquiry-email = **51** |
+| API end-to-end trial | **PASS — 71 / 71 checks** (`scripts/qa-wholesale-e2e.mjs`) |
+| Browser end-to-end trial | **PASS — 35 / 35 checks** (`scripts/qa-wholesale-browser.mjs`) |
+| `npm run build` | **PASS** — Next build completes; post-build public-origin + secret scans clean |
 
-## 18. Database changes and migrations
+The API trial (`qa-wholesale-e2e.mjs`) covers registration (incl. refusals), certificate
+storage, email confirmation and token single-use, admin queue + file + review actions,
+wholesale products + tiers, approval + buyer account creation, buyer login, catalogue prices/
+allocation/MOQ, allocation refusal, price-tamper rejection, two-line inquiry with reference +
+stored snapshots + no committed price, buyer/admin inquiry visibility, and suspension → 403.
 
-WordPress plugin `hk-wholesale` **1.2.1 → 1.3.0**, schema **v7 → v8**. Additive only; no
-column dropped, no row rewritten. `dbDelta` plus the plugin’s own table/column verification
-applies it on first load.
+The browser trial (`qa-wholesale-browser.mjs`) drives the real forms: header button → landing,
+mobile nav, full registration with certificate upload via the file input, submit, then the
+console queue → certificate detail → official link → audit timeline → on-screen Approve, then
+Wholesale Products, then the buyer portal dashboard → catalogue → inquiry list, at desktop and
+mobile widths.
+
+## 18. Database changes and two security fixes the trial uncovered
+
+WordPress plugin `hk-wholesale` **→ v1.3.2**, schema **v8**. Additive only; no column dropped,
+no row rewritten. `dbDelta` plus the plugin’s own verification applies it on first load.
 
 `applications` added: `dba`, `address_line1`, `address_line2`, `city`, `state`, `zip`,
-`shipping_address` (json), `resale_state`, `resale_number`, `resale_type`, `resale_holder`,
+`shipping_address`, `resale_state`, `resale_number`, `resale_type`, `resale_holder`,
 `resale_expires`, `certificate_file_name`, `certificate_file_type`, `certificate_file_size`,
-`certificate_data`, `certificate_status`, `certificate_checks` (json),
-`certificate_official_url`, `certificate_reviewed_at`, `certificate_reviewed_by`,
-`certificate_notes`, `declaration_name`, `declaration_at`, `email_verified_at`,
-`email_verification_token`; new index on `certificate_status`.
-
+`certificate_data`, `certificate_status`, `certificate_checks`, `certificate_official_url`,
+`certificate_reviewed_at`, `certificate_reviewed_by`, `certificate_notes`, `declaration_name`,
+`declaration_at`, `email_verified_at`, `email_verification_token`; index on `certificate_status`.
 `products` added: `available_units`.
 
-No other table changed. No data migration was run, and no production record was read or
-written destructively.
+**Fix 1 — a single-use token was reusable.** The trial caught that a cache in front of
+WordPress answered the `?email_verification_token=…` lookup from a *stale* copy, so the
+confirmation link worked three times. Two defences now: the plugin sends
+`Cache-Control: no-store` on every `hk-wholesale/v1` response, and the store client appends a
+unique cache-buster to every trade read so correctness never depends on a middlebox honouring
+a header. Verified: second and third uses return **410**.
+
+**Fix 2 — suspension did not reach the account.** A rejection/suspension only moved the
+*application* row, so an approved buyer kept catalogue and inquiry access. The plugin now
+mirrors `REJECTED`/`SUSPENDED` onto the linked `accounts` row (the row every buyer route
+authorises against), and the decision response reports `accountSuspended`. Verified: a
+suspended buyer gets **403** on the catalogue.
+
+**Fix 3 — the registration form omitted `country`.** The form is U.S.-only but never sent
+`country`, so every *browser* submission was refused with “Please complete: country” (the HTTP
+trial did not catch it because it posted the field directly). The form now states
+`country: 'United States'`. Verified: a browser submission returns a reference and appears in
+the admin queue.
 
 ## 19. Git branch and commit SHA
 
-Branch `integration/cloudflare-workers-migration`, based on `f54daa0`. The commit SHA for
-this work is recorded in the end-of-task message and in `git log -1` after the commit.
+Branch `integration/cloudflare-workers-migration`, base `f54daa0`. The commit SHA is recorded
+in the end-of-task message and `git log -1`.
 
 ## 20. Staging deployment URL and version
 
-**Not deployed.** `preview.himalayankoh.com` still serves the previous build. The intended
-sequence (plugin v1.3.0 first, then the Worker) is stated in §21.
+To be filled after the staging Worker deploy (`npm run build:deploy` → `npm run deploy:staging`).
+**Not yet deployed to preview** — see §21. The trade plugin (v1.3.2) **is** live on
+`wp.himalayankoh.com`.
 
 ## 21. Unresolved blockers
 
-1. **Plugin upload could not be automated (blocking all registration flows).**
-   `scripts/install-wordpress-plugins.mjs --update hk-wholesale` authenticated successfully
-   (“login: OK”) but could not parse `wp-admin/plugins.php` (44,981 bytes, no recognised
-   markers), so it **did not upload** — no partial change was made. No PHP binary or Docker
-   is available here to lint the plugin, so uploading it unverified was not appropriate.
-   The built artifact is `deploy/hk-wholesale.zip` (version 1.3.0, 18,096 bytes; SHA-256
-   printed by `npm run pack:plugins`).
+1. **Live `ws@` email delivery not observed.** The cPanel SMTP secret
+   (`NAMECHEAP_SMTP_PASS`) is a deployed Worker secret. It was **not** read from the
+   deployment (it would enter the transcript), and it is not in local `.env.local`, so the
+   sender on this machine reports `Authenticated Namecheap SMTP credentials are not
+   configured`. The route, builders, Reply-To and failure-audit path are all exercised and
+   unit-tested; the only unproven link is SMTP hand-off to `ws@`. **Owner action:** confirm
+   `ws@himalayankoh.com` receives a synthetic inquiry after the staging Worker deploy, or
+   set `WHOLESALE_INQUIRY_EMAIL` to a staging sandbox and re-run the trial.
 
-   **Owner action:** WordPress admin → Plugins → Add New → Upload Plugin →
-   `deploy/hk-wholesale.zip` → “Replace current with uploaded”. The plugin reports schema
-   `v8 (complete)` on `/settings` after the first load. Until then
-   `POST /api/wholesale/apply` answers **503** with a clear email fallback and writes
-   nothing — verified live against the current v7 staging store.
-
-2. **Staging Worker deploy not attempted.** It requires a fresh `vinext` artifact and
-   Cloudflare credentials; deploying the app before the plugin would put the code ahead of
-   its schema and take applications offline on preview. Sequence: plugin → verify schema →
-   `npm run build:deploy` → `npm run deploy:staging`.
-
-3. **No console session for admin UI browser tests.** The environment had no admin session,
-   and the owner’s WordPress password was deliberately not handled in automation. The pages
-   compile, typecheck and their APIs return 401 without a session, but their rendered
-   behaviour is unverified.
-
-4. **Portal / inquiry browser tests not run.** They require an approved buyer, which
-   requires the plugin upgrade and an admin approval.
-
-5. **Live `ws@` delivery not exercised.** No inquiry was submitted, so the SMTP path and
-   mailbox routing for `ws@himalayankoh.com` remain unproven in this pass. The mailbox was
-   already listed in the inbox configuration; this work did not create or change it.
+2. **Staging Worker deploy not yet run.** It needs a fresh `vinext` artifact and Cloudflare
+   credentials. Sequence: `npm run build:deploy` → `npm run deploy:staging` → verify the
+   deployed Git SHA and Worker version, then re-run both trials against `preview.himalayankoh.com`.
 
 ## 22. Requirement status
 
 | Requirement | Status | Evidence |
 | --- | --- | --- |
 | Audit and reuse existing module | PASS | §1–2 |
-| Header + mobile Wholesale button | PASS | browser snapshot, screenshots |
-| Public landing with required disclosures | PASS | screenshot; copy added |
-| U.S. business registration fields | PASS | DOM field check, screenshot |
-| Resale certificate upload + private storage | PASS (code) / BLOCKED (live) | engine tests, storage guard 503 |
+| Header + mobile Wholesale button | PASS | browser, screenshots |
+| Public landing with required disclosures | PASS | browser copy checks |
+| U.S. business registration fields | PASS | browser form fill + submit |
+| Resale certificate upload + private storage | PASS | browser file input, engine tests |
 | State-aware verification engine | PASS | 38 tests, 51-jurisdiction registry |
 | Official automation claimed honestly | PASS | payload flags, UI copy |
-| Admin certificate queue/detail/actions | PASS (code) / NOT TESTED (browser) | routes, typecheck, 401s |
-| Admin Wholesale Customers sidebar page | PASS (code) / NOT TESTED | page + nav entry |
-| Admin Wholesale Products sidebar page | PASS (code) / NOT TESTED | page + nav entry |
-| Buyer portal + catalog (existing) | PASS (preserved) | build, route list |
-| Allocation display + server ceiling | PASS (code) | route logic, typecheck |
-| Inquiry-first, no online payment | PASS | no checkout added; copy |
-| Inquiry stored with reference/snapshots | PASS (existing path, extended) | quote route |
-| `ws@` notification with Reply-To + logging | PASS (builder) / NOT TESTED (live) | 13 tests |
+| Admin certificate queue/detail/actions | PASS | browser: queue, detail, link, audit, approve |
+| Admin Wholesale Customers sidebar page | PASS | browser, screenshots |
+| Admin Wholesale Products sidebar page | PASS | browser, screenshots |
+| Buyer portal + catalog | PASS | browser: dashboard, catalogue, prices, MOQ, allocation |
+| Allocation display + server ceiling | PASS | e2e: 4,000 refused naming 400 |
+| Inquiry-first, no online payment | PASS | no checkout; copy |
+| Inquiry stored with reference/snapshots | PASS | e2e: HK-WS-Q ref, 2 lines, no `sell_total` |
+| Price tamper rejected | PASS | e2e: client `0.01` ignored |
+| `ws@` notification with Reply-To + logging | PASS (builder) / **NOT TESTED (live)** | 13 tests; §21 blocker |
 | Manual quotation/invoice workflow | PASS (preserved) | no change |
-| Security: no public prices / certs | PASS | projections, 401s, tests |
-| Responsive desktop/tablet/mobile | PASS | CDP viewport measurements + screenshots |
-| Typecheck / lint / tests / build | PASS | §17 |
-| Staging deploy | BLOCKED | §21 |
+| Security: no public prices / certs | PASS | 401s, projections, tests |
+| Token single-use | PASS | 410 on reuse (Fix 1) |
+| Suspension blocks access | PASS | 403 (Fix 2) |
+| Responsive desktop/tablet/mobile | PASS | CDP viewport measurements + 22 screenshots |
+| Typecheck / lint / tests / build / secret scan | PASS | §17 |
+| Staging deploy | **BLOCKED** | §21 |
 | Production deploy | NOT ATTEMPTED (by instruction) | — |
 
 ---
 
 ## Mandatory owner-side follow-ups
 
-1. Upload `deploy/hk-wholesale.zip` to the staging WordPress and confirm schema v8.
-2. Rebuild and deploy the Worker to `preview.himalayankoh.com`; run one synthetic
-   application through registration → email confirmation → console approval → buyer login →
-   inquiry, then confirm `ws@` received the notification.
+1. Deploy the Worker to `preview.himalayankoh.com`, then confirm one synthetic inquiry
+   reaches `ws@himalayankoh.com` (or point `WHOLESALE_INQUIRY_EMAIL` at a sandbox and re-run).
+2. After staging is verified, request owner approval before any production deploy.
 3. **Rotate every credential that was pasted into the chat** (GitHub token, WooCommerce
    consumer key/secret, Cloudflare tokens, WordPress administrator password, Namecheap
-   password). None of them were written into this repository, but they must be considered
-   exposed.
+   password). None were written into this repository, but they must be considered exposed.

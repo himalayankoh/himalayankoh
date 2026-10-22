@@ -121,9 +121,27 @@ async function wholesaleRequest<T>(
   } = {}
 ): Promise<T> {
   assertConfigured();
+  const method = options.method ?? 'GET';
+
+  /**
+   * Every trade read is unique in its URL, on purpose.
+   *
+   * A staging run proved why: the same `?email_verification_token=…` URL answered
+   * from a cache with the row as it was *before* the token was cleared, so a
+   * single-use confirmation link worked three times in a row. The plugin now sends
+   * `Cache-Control: no-store`, but nothing in this app should depend on every cache
+   * between it and WordPress honouring a header. A cache-busting parameter is the one
+   * defence that does not need the middlebox to cooperate, and the wholesale
+   * namespace is small enough that it costs nothing.
+   */
+  const params: Record<string, QueryValue> = { ...(options.params ?? {}) };
+  if (method === 'GET') {
+    params._hk_cb = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  }
+
   return wordpressRequest<T>(`${BASE}${path}`, {
-    method: options.method ?? 'GET',
-    params: options.params,
+    method,
+    params,
     body: options.body,
     credentials: requireWordPressCredentials(),
     timeoutMs: options.timeoutMs ?? WHOLESALE_READ_TIMEOUT_MS,
@@ -261,6 +279,12 @@ export interface WholesaleDecisionResult {
     role: string;
     message: string;
   } | null;
+  /**
+   * Set when a rejection or suspension also moved the buyer's account to SUSPENDED.
+   * That is the row the buyer routes authorise against, so without it "suspend" was
+   * a change to an application screen and nothing more.
+   */
+  accountSuspended?: boolean;
 }
 
 /** Approves/rejects an application and, on approval, creates the buyer's account. */

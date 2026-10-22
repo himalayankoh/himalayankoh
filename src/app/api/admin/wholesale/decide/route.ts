@@ -84,7 +84,18 @@ export async function POST(request: Request) {
       .then(() => true)
       .catch(() => false);
 
-    return NextResponse.json({ ...result, certificateStatus, certificateStatusRecorded });
+    /**
+     * `accountSuspended` comes from the plugin, which mirrors a rejection or a
+     * suspension onto the buyer's account row — the row every buyer route authorises
+     * against. It is returned so the console can say "cannot sign in any more" only
+     * when that is what happened, rather than inferring it from the decision.
+     */
+    return NextResponse.json({
+      ...result,
+      certificateStatus,
+      certificateStatusRecorded,
+      accountSuspended: Boolean(result.accountSuspended),
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'The decision could not be recorded.' },
