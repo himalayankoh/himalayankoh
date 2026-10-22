@@ -232,6 +232,12 @@ entry; the admin sidebar shows Wholesale, Wholesale Customers and Wholesale Prod
 | Browser end-to-end trial | **PASS — 35 / 35 checks** (`scripts/qa-wholesale-browser.mjs`) |
 | `npm run build` | **PASS** — Next build completes; post-build public-origin + secret scans clean |
 
+**Where the trials ran:** the local app deployment of this exact commit (`http://127.0.0.1:3100`)
+backed by the WordPress install where `hk-wholesale` is at v1.3.2 / schema 8. The same HTTP
+trial pointed at the deployed `https://preview.himalayankoh.com` passes its preflight and
+registration checks but stops at the trade-store gate (§21 blocker 1), which is how the
+blocker was found.
+
 The API trial (`qa-wholesale-e2e.mjs`) covers registration (incl. refusals), certificate
 storage, email confirmation and token single-use, admin queue + file + review actions,
 wholesale products + tiers, approval + buyer account creation, buyer login, catalogue prices/
@@ -283,24 +289,60 @@ in the end-of-task message and `git log -1`.
 
 ## 20. Staging deployment URL and version
 
-To be filled after the staging Worker deploy (`npm run build:deploy` → `npm run deploy:staging`).
-**Not yet deployed to preview** — see §21. The trade plugin (v1.3.2) **is** live on
-`wp.himalayankoh.com`.
+Deployed to staging/preview only — production untouched.
+
+| Item | Value |
+| --- | --- |
+| URL | `https://preview.himalayankoh.com` (trigger also on `himalayan-koh-ecommerce.himalayankoh-pk.workers.dev`) |
+| Git SHA | `8b2aa06` — `integration/cloudflare-workers-migration` (pushed to `himalayankoh/himalayankoh`) |
+| `/api/version` | `sha 8b2aa06d51bbc8df07c96cf53242683e0c627ce3`, `builtAt 2026-10-22T19:19:46Z` — matches the commit |
+| Worker Version ID | `361077eb-7754-42e9-a114-b2e993f89ff8` (Worker `himalayan-koh-ecommerce`) |
+| Build | `npm run build:deploy` (vinext artifact) → `npm run deploy:staging`; pre- and post-deploy secret scans clean |
+
+Verified on the deployed URL: `/wholesale` and `/wholesale/apply` render (200, the
+approval/certificate/inquiry/invoice copy is in the served HTML); `/api/wholesale/catalog`
+and `/api/wholesale/session` refuse anonymous callers with **401**; the retail catalogue
+still answers. What does **not** work yet is the wholesale trade store connection — see §21.
 
 ## 21. Unresolved blockers
 
-1. **Live `ws@` email delivery not observed.** The cPanel SMTP secret
-   (`NAMECHEAP_SMTP_PASS`) is a deployed Worker secret. It was **not** read from the
-   deployment (it would enter the transcript), and it is not in local `.env.local`, so the
-   sender on this machine reports `Authenticated Namecheap SMTP credentials are not
-   configured`. The route, builders, Reply-To and failure-audit path are all exercised and
-   unit-tested; the only unproven link is SMTP hand-off to `ws@`. **Owner action:** confirm
-   `ws@himalayankoh.com` receives a synthetic inquiry after the staging Worker deploy, or
-   set `WHOLESALE_INQUIRY_EMAIL` to a staging sandbox and re-run the trial.
+**1. Wholesale cannot reach its trade store on the deployed preview (503 `wholesale_store_not_ready`).**
 
-2. **Staging Worker deploy not yet run.** It needs a fresh `vinext` artifact and Cloudflare
-   credentials. Sequence: `npm run build:deploy` → `npm run deploy:staging` → verify the
-   deployed Git SHA and Worker version, then re-run both trials against `preview.himalayankoh.com`.
+The deployed Worker's WordPress backend is the **staging WordPress**
+(`wp.himalayankoh.com/staging` — proved by its catalogue, product ids 27xx, matching
+`preview.himalayankoh.com/api/catalog`). Against that install the wholesale schema probe
+(`hk-wholesale/v1/settings`) cannot confirm schema v8, so every wholesale write is refused
+with the route's own "trade store is being upgraded" message — a deliberate fail-closed
+behaviour, not a crash. Two possible causes, both needing **WordPress administrator access
+to the staging install**, which this session does not have:
+
+   * the `hk-wholesale` plugin there is older than **1.3.2 / schema 8** (it needs the same
+     plugin update already applied to the live install), or
+   * the deployed Worker's `WORDPRESS_ADMIN_USER` / `WORDPRESS_ADMIN_APP_PASSWORD` secrets
+     are not a valid administrator application password **for that install** (the one in
+     `.env.local` is rejected there with `incorrect_password`, while it works on the live
+     install).
+
+   Evidence gathered: `hk-wholesale/v1` **is** registered on the staging install (namespace
+   visible), but its version cannot be read without a credential; form login there answers
+   "Unknown email address" for the account this session knows; every saved admin cookie jar
+   for that install has expired. **Owner action:** provide WordPress administrator access to
+   `https://wp.himalayankoh.com/staging` (or an application password created there), and the
+   plugin will be updated to 1.3.2 and the Worker secret refreshed — after which the full
+   71-check HTTP trial and the browser journey can be re-run against `preview.himalayankoh.com`.
+
+   **Do not** "fix" this by pointing the staging Worker at the live WordPress: that would
+   break the staging/production isolation this repo documents (staging checkout and admin
+   writes would reach the live store).
+
+**2. Live `ws@` email delivery not observed.** The cPanel SMTP secret is a deployed Worker
+secret. It was **not** read from the deployment (it would enter the transcript), and it is
+not in local `.env.local`, so the sender on this machine reports
+`Authenticated Namecheap SMTP credentials are not configured`. The route, builders,
+`Reply-To` and the failure-audit path are all exercised and unit-tested; the only unproven
+link is SMTP hand-off to `ws@`. **Owner action:** after blocker 1 is cleared, submit one
+synthetic inquiry on staging and confirm it reaches `ws@himalayankoh.com`, or set
+`WHOLESALE_INQUIRY_EMAIL` to a staging sandbox and re-run the trial.
 
 ## 22. Requirement status
 
@@ -328,16 +370,21 @@ To be filled after the staging Worker deploy (`npm run build:deploy` → `npm ru
 | Suspension blocks access | PASS | 403 (Fix 2) |
 | Responsive desktop/tablet/mobile | PASS | CDP viewport measurements + 22 screenshots |
 | Typecheck / lint / tests / build / secret scan | PASS | §17 |
-| Staging deploy | **BLOCKED** | §21 |
+| Staging deploy | **DONE** | Worker `361077eb`, SHA `8b2aa06` on `/api/version`, routes verified (§20) |
+| Wholesale journey on the deployed preview | **BLOCKED** | staging WordPress trade store not at schema v8 for this Worker — §21 |
 | Production deploy | NOT ATTEMPTED (by instruction) | — |
 
 ---
 
 ## Mandatory owner-side follow-ups
 
-1. Deploy the Worker to `preview.himalayankoh.com`, then confirm one synthetic inquiry
-   reaches `ws@himalayankoh.com` (or point `WHOLESALE_INQUIRY_EMAIL` at a sandbox and re-run).
-2. After staging is verified, request owner approval before any production deploy.
-3. **Rotate every credential that was pasted into the chat** (GitHub token, WooCommerce
+1. **Give this session WordPress administrator access to the staging install
+   (`wp.himalayankoh.com/staging`)** so `hk-wholesale` 1.3.2 can be installed there and the
+   Worker's WordPress secrets corrected — the one blocker keeping wholesale off the
+   deployed preview (§21).
+2. Then confirm one synthetic inquiry reaches `ws@himalayankoh.com` (or point
+   `WHOLESALE_INQUIRY_EMAIL` at a sandbox and re-run).
+3. After staging is fully verified, request owner approval before any production deploy.
+4. **Rotate every credential that was pasted into the chat** (GitHub token, WooCommerce
    consumer key/secret, Cloudflare tokens, WordPress administrator password, Namecheap
    password). None were written into this repository, but they must be considered exposed.
