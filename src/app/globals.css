@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-mobile-theme="dark"], [data-mobile-theme="dark"] *, .dark, .dark *));
+
 /* Source Serif 4, SIL Open Font License. See /fonts/source-serif-4/OFL.txt.
  * Exact Google Fonts Latin subsets; source records in FONT-SOURCES.json. */
 @font-face {
@@ -717,23 +719,40 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
     background-color: #FFFFFF !important;
     border-color: #E2E8F0 !important;
     color: #0F172A !important;
-    box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.05) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
   }
 
-  [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-900,
+  [data-mobile-theme="light"] .hk-admin .admin-content .bg-slate-50,
+  [data-mobile-theme="light"] .hk-admin .admin-content .bg-slate-100 {
+    background-color: #F8FAFC !important;
+    border-color: #E2E8F0 !important;
+    color: #0F172A !important;
+  }
+
   [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-950,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-900,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-800,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-gray-950,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-gray-900,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-gray-800,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-zinc-900,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-neutral-900,
   [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#26211C\],
   [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#26211c\],
-  [data-mobile-theme="light"] .hk-admin .admin-content .text-charcoal {
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-charcoal,
+  .hk-admin[data-theme="light"] .admin-content .text-slate-900,
+  .hk-admin[data-theme="light"] .admin-content .text-slate-800 {
     color: #0F172A !important;
   }
 
   [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-700,
   [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-600,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-gray-700,
+  [data-mobile-theme="light"] .hk-admin .admin-content .text-gray-600,
   [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#6D6258\],
   [data-mobile-theme="light"] .hk-admin .admin-content .text-\[\#6d6258\],
   [data-mobile-theme="light"] .hk-admin .admin-content .text-charcoal-light {
-    color: #475569 !important;
+    color: #334155 !important;
   }
 
   [data-mobile-theme="light"] .hk-admin .admin-content .text-slate-500,

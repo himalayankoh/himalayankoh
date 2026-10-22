@@ -1269,6 +1269,73 @@ export function AOrders() {
     }
   };
 
+  // ── Single order trash / restore (instant 1-tap from card or row) ──
+  const singleOrderAction = async (orderId: number | string, action: 'trash' | 'restore') => {
+    const numId = Number(orderId);
+    if (!Number.isFinite(numId) || numId <= 0) return;
+    if (
+      action === 'trash' &&
+      !window.confirm(`Move order #${numId} to the trash?\n\nThey leave this list but are NOT destroyed. You can restore them anytime from the Trashed view.`)
+    ) {
+      return;
+    }
+
+    setOrderBusy(true);
+    try {
+      const token = getAccessToken();
+      const r = await fetch('/api/admin/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ action, ids: [numId] }),
+      });
+      const d = (await r.json().catch(() => ({}))) as {
+        error?: string;
+        changed?: number[];
+      };
+      if (!r.ok) throw new Error(d?.error || `The store refused the change (HTTP ${r.status}).`);
+
+      notify(action === 'trash' ? `Order #${numId} moved to trash.` : `Order #${numId} restored.`);
+      const strId = String(numId);
+      setStripeOrders((prev) => prev.filter((o) => String(o.id) !== strId));
+      setPicked((prev) => {
+        const next = new Set(prev);
+        next.delete(strId);
+        return next;
+      });
+      refreshOrders();
+    } catch (e) {
+      notify((e as Error).message || 'The order could not be changed.', 'error');
+    } finally {
+      setOrderBusy(false);
+    }
+  };
+
+  // ── Email customer with prefilled order details & invoice link ──
+  const emailCustomer = (o: StripeOrderRow) => {
+    const email = o.customer_email;
+    if (!email) {
+      notify('No customer email on record for this order.', 'error');
+      return;
+    }
+    const tr = tracking[o.id];
+    const subject = encodeURIComponent(`Himalayan Koh — Order #${o.order_number} Update`);
+    const body = encodeURIComponent(
+      `Hello ${o.customer_name || 'Valued Customer'},\n\n` +
+      `Thank you for ordering with Himalayan Koh!\n\n` +
+      `Order Number: #${o.order_number}\n` +
+      `Order Date: ${new Date(o.created_at).toLocaleDateString()}\n` +
+      `Status: ${String(o.status || 'Processing').toUpperCase()}\n` +
+      `Total: ${Number(o.total || 0).toFixed(2)}\n\n` +
+      (tr && tr.number ? `Tracking: ${tr.number} via ${tr.carrier}\n\n` : '') +
+      `If you have any questions about your delivery, please feel free to reply directly to this email.\n\n` +
+      `Best regards,\nHimalayan Koh Team\nhttps://himalayankoh.com\n(832) 224-6466`
+    );
+    window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+  };
+
   const togglePicked = (id: string) =>
     setPicked((current) => {
       const next = new Set(current);
@@ -1461,10 +1528,13 @@ export function AOrders() {
   };
 
   const orderActions = (o: StripeOrderRow) => (
-    <div className="flex flex-wrap gap-1.5">
-      <button onClick={(e) => { e.stopPropagation(); setInvoiceOrder(o); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold transition-colors"><Receipt size={12} /> Invoice</button>
-      <button onClick={(e) => { e.stopPropagation(); setLabelOrder(o); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-[10px] font-semibold transition-colors"><Printer size={12} /> Label</button>
-      <button onClick={(e) => { e.stopPropagation(); setExpanded(expanded === o.id ? null : o.id); }} className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-[10px] font-semibold text-gray-700 transition-colors">{expanded === o.id ? <CaretUp size={12} /> : <CaretDown size={12} />} Detail</button>
+    <div className="flex flex-wrap items-center gap-1.5">
+      <button onClick={(e) => { e.stopPropagation(); setInvoiceOrder(o); }} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold transition-all active:scale-95 shadow-xs"><Receipt size={12} weight="bold" /> Invoice</button>
+      <button onClick={(e) => { e.stopPropagation(); downloadInvoice(o); }} className="inline-flex items-center gap-1 px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-bold transition-all active:scale-95 shadow-xs" title="Download PDF Invoice"><FileText size={12} weight="bold" /> PDF</button>
+      <button onClick={(e) => { e.stopPropagation(); emailCustomer(o); }} className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-all active:scale-95 shadow-xs" title="Email customer"><EnvelopeSimple size={12} weight="bold" /> Email</button>
+      <button onClick={(e) => { e.stopPropagation(); setLabelOrder(o); }} className="inline-flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-lg text-[11px] font-bold transition-all active:scale-95 shadow-xs"><Printer size={12} weight="bold" /> Label</button>
+      <button onClick={(e) => { e.stopPropagation(); void singleOrderAction(o.id, 'trash'); }} className="p-1.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white dark:bg-rose-950/40 dark:text-rose-400 rounded-lg text-[11px] font-bold transition-all active:scale-95 border border-rose-200 dark:border-rose-900" title="Move to trash"><Trash size={12} weight="bold" /></button>
+      <button onClick={(e) => { e.stopPropagation(); setExpanded(expanded === o.id ? null : o.id); }} className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-[11px] font-bold text-slate-700 dark:text-slate-200 transition-all active:scale-95">{expanded === o.id ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />} Detail</button>
     </div>
   );
 
@@ -1787,8 +1857,8 @@ export function AOrders() {
             </table>
           </div>
 
-          {/* Mobile stacked cards (< md) — compact, readable, high-contrast, modern UI */}
-          <div className="md:hidden space-y-3 p-3 bg-slate-50/60 dark:bg-slate-950/40">
+          {/* Mobile stacked cards (< md) — compact, high-contrast in light & dark mode, full action suite */}
+          <div className="md:hidden space-y-3.5 p-3 bg-slate-100/70 dark:bg-slate-950/40">
             {visibleOrders.map(({ order: o, tr }) => {
               const itemsList = fmtItems(o.items);
               const isSelected = picked.has(o.id);
@@ -1797,15 +1867,15 @@ export function AOrders() {
               return (
                 <div
                   key={o.id}
-                  className={`rounded-2xl border transition-all duration-150 ${
+                  className={`rounded-2xl border transition-all duration-150 shadow-xs overflow-hidden ${
                     isSelected
-                      ? 'border-[#9a6f16] bg-[#fbf8f0] dark:bg-amber-950/20 dark:border-amber-500/40'
-                      : 'border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#131929] shadow-xs'
+                      ? 'border-[#9a6f16] bg-[#fbf8f0] dark:bg-amber-950/20 dark:border-amber-500/40 ring-2 ring-[#9a6f16]'
+                      : 'border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#131929]'
                   }`}
                 >
-                  {/* Card Header: Checkbox + Order # + Badges */}
-                  <div className="p-3.5 pb-2.5 flex items-start justify-between gap-2 border-b border-slate-100 dark:border-white/5">
-                    <div className="flex items-center gap-2 min-w-0">
+                  {/* Card Header: Checkbox + Order # + Badges + Date */}
+                  <div className="p-3.5 pb-2.5 flex items-start justify-between gap-2 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-transparent">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <input
                         type="checkbox"
                         aria-label={`Select order ${o.order_number}`}
@@ -1814,10 +1884,10 @@ export function AOrders() {
                         className="rounded border-slate-300 dark:border-slate-600 text-[#9a6f16] focus:ring-[#9a6f16] w-4 h-4 cursor-pointer"
                       />
                       <div className="min-w-0">
-                        <span className="font-mono text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">
-                          {o.order_number}
+                        <span className="font-mono text-sm font-black text-slate-950 dark:text-white tracking-tight">
+                          #{o.order_number}
                         </span>
-                        <p className="text-[10px] text-slate-400 dark:text-slate-400 leading-tight mt-0.5">
+                        <p className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
                           {new Date(o.created_at).toLocaleDateString(undefined, {
                             month: 'short',
                             day: 'numeric',
@@ -1830,48 +1900,48 @@ export function AOrders() {
 
                     <div className="flex items-center gap-1.5 shrink-0">
                       {orderBadges(o)}
-                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full capitalize ${statusColor(String(o.status || ''))}`}>
+                      <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full capitalize shadow-2xs ${statusColor(String(o.status || ''))}`}>
                         {String(o.status || 'pending')}
                       </span>
                     </div>
                   </div>
 
-                  {/* Card Body: Customer Email + Items Summary + Total */}
-                  <div className="p-3.5 space-y-2 text-xs">
+                  {/* Card Body: Customer Email (High Contrast) + Items Summary + Total */}
+                  <div className="p-3.5 space-y-2.5 text-xs">
                     {/* Customer */}
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-[11px] font-medium text-slate-400 dark:text-slate-400 shrink-0">Customer</span>
-                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate text-right">
+                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 shrink-0">Customer</span>
+                      <span className="text-xs font-extrabold text-slate-900 dark:text-white truncate text-right">
                         {o.customer_name ? `${o.customer_name} • ` : ''}{o.customer_email || 'No email recorded'}
                       </span>
                     </div>
 
                     {/* Items & Total row */}
-                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-white/5">
+                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
                       <div className="min-w-0">
-                        <span className="text-[11px] font-medium text-slate-400 dark:text-slate-400">Items: </span>
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">Items: </span>
+                        <span className="text-xs font-black text-slate-900 dark:text-white">
                           {itemsList.length} item{itemsList.length === 1 ? '' : 's'}
                         </span>
                         {itemsList.length > 0 && (
-                          <span className="text-[10px] text-slate-400 dark:text-slate-400 block truncate max-w-[200px]">
+                          <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 block truncate max-w-[210px] mt-0.5">
                             {itemsList[0].name}
                           </span>
                         )}
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-400 block">Total</span>
-                        <span className="text-base font-black text-slate-950 dark:text-white">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">Total</span>
+                        <span className="text-lg font-black text-slate-950 dark:text-white">
                           ${Number(o.total || 0).toFixed(2)}
                         </span>
                       </div>
                     </div>
 
-                    {/* Status Changer & Tracking */}
+                    {/* Status Changer & Tracking inline row */}
                     <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
                       <div>
-                        <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase block mb-1">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
                           Status
                         </label>
                         <select
@@ -1882,7 +1952,7 @@ export function AOrders() {
                             setStripeOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, status: s } : x)));
                             notify(`Order ${o.order_number} → ${s}`);
                           }}
-                          className={`w-full text-xs font-bold py-1 px-2 rounded-lg border-0 cursor-pointer capitalize ${statusColor(String(o.status || ''))}`}
+                          className={`w-full text-xs font-bold py-1.5 px-2 rounded-lg border-0 cursor-pointer capitalize shadow-2xs ${statusColor(String(o.status || ''))}`}
                         >
                           {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map((s) => (
                             <option key={s} value={s}>{s}</option>
@@ -1891,18 +1961,18 @@ export function AOrders() {
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase block mb-1">
+                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
                           Tracking
                         </label>
                         {tr && tr.number ? (
-                          <div className="flex items-center gap-1 min-w-0 bg-slate-100 dark:bg-slate-800 py-1 px-2 rounded-lg">
-                            <Truck size={13} className="text-blue-500 shrink-0" />
-                            <span className="font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate">
+                          <div className="flex items-center gap-1 min-w-0 bg-slate-100 dark:bg-slate-800 py-1.5 px-2 rounded-lg">
+                            <Truck size={13} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                            <span className="font-mono text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">
                               {tr.number}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-[11px] text-slate-400 dark:text-slate-500 italic block py-1">
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 italic block py-1.5 px-1">
                             Not assigned
                           </span>
                         )}
@@ -1910,25 +1980,53 @@ export function AOrders() {
                     </div>
                   </div>
 
-                  {/* Card Actions Footer */}
-                  <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-b-2xl border-t border-slate-100 dark:border-white/5 flex items-center justify-between gap-2">
+                  {/* Card Actions Footer: Invoice, PDF, Email, Trash & Details */}
+                  <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900/70 border-t border-slate-100 dark:border-white/5 flex items-center justify-between gap-1.5 flex-wrap">
                     {orderView === 'trash' ? (
-                      <span className="text-xs text-slate-400">Restore order to edit</span>
+                      <button
+                        type="button"
+                        onClick={() => void singleOrderAction(o.id, 'restore')}
+                        className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs active:scale-95 transition-all"
+                      >
+                        <ArrowClockwise size={13} weight="bold" /> Restore
+                      </button>
                     ) : (
-                      <div className="flex items-center gap-1.5 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setInvoiceOrder(o); }}
-                          className="flex-1 py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all active:scale-95 shadow-xs"
+                          className="py-1.5 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs active:scale-95 transition-all"
+                          title="View Full Invoice"
                         >
                           <Receipt size={13} weight="bold" /> Invoice
                         </button>
+
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); setLabelOrder(o); }}
-                          className="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all active:scale-95 shadow-xs"
+                          onClick={(e) => { e.stopPropagation(); downloadInvoice(o); }}
+                          className="py-1.5 px-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs active:scale-95 transition-all"
+                          title="Download PDF Invoice"
                         >
-                          <Printer size={13} weight="bold" /> Label
+                          <FileText size={13} weight="bold" /> PDF
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); emailCustomer(o); }}
+                          className="py-1.5 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs active:scale-95 transition-all"
+                          title="Email Customer Update"
+                        >
+                          <EnvelopeSimple size={13} weight="bold" /> Email
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void singleOrderAction(o.id, 'trash'); }}
+                          className="p-1.5 bg-rose-100 hover:bg-rose-600 text-rose-700 hover:text-white dark:bg-rose-950/40 dark:text-rose-400 rounded-xl text-xs font-bold border border-rose-200 dark:border-rose-900 flex items-center justify-center active:scale-95 transition-all"
+                          title="Move to Trash"
+                          aria-label="Move order to trash"
+                        >
+                          <Trash size={14} weight="bold" />
                         </button>
                       </div>
                     )}
@@ -1936,17 +2034,231 @@ export function AOrders() {
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setExpanded(isCardExpanded ? null : o.id); }}
-                      className="py-1.5 px-2.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/10 flex items-center gap-1 transition-all active:scale-95"
+                      className={`py-1.5 px-3 rounded-xl text-xs font-bold border transition-all active:scale-95 flex items-center gap-1 ${
+                        isCardExpanded
+                          ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900'
+                          : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-white/10 shadow-2xs'
+                      }`}
                     >
-                      <span>{isCardExpanded ? 'Less' : 'Details'}</span>
+                      <span>{isCardExpanded ? 'Close' : 'Details'}</span>
                       {isCardExpanded ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
                     </button>
                   </div>
 
-                  {/* Expandable Order Detail */}
+                  {/* Expandable Order Detail — Rich Structured Presentation */}
                   {isCardExpanded && (
-                    <div id={`order-detail-${o.id}`} className="p-3.5 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-950/50 rounded-b-2xl">
-                      {orderDetail(o, tr)}
+                    <div id={`order-detail-${o.id}`} className="p-3.5 sm:p-4 border-t border-slate-200/90 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/40 rounded-b-2xl space-y-3.5">
+                      {/* 1. Header Bar: Actions & Timestamps */}
+                      <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-slate-200/80 dark:border-white/10">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 dark:text-slate-300">Order #{o.order_number}</span>
+                          <span className="text-[10px] text-slate-500">· {new Date(o.created_at).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => downloadInvoice(o)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[11px] font-bold shadow-xs active:scale-95 transition-all"
+                            title="Download PDF Invoice"
+                          >
+                            <FileText size={12} weight="bold" /> Download PDF
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => emailCustomer(o)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold shadow-xs active:scale-95 transition-all"
+                            title="Email Customer Update"
+                          >
+                            <EnvelopeSimple size={12} weight="bold" /> Email
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 2. Items Breakdown */}
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider font-black text-slate-800 dark:text-slate-200 mb-1.5 flex items-center gap-1.5">
+                          <Package size={14} className="text-amber-600 dark:text-amber-400" />
+                          <span>Items Ordered ({itemsList.length})</span>
+                        </p>
+                        <div className="space-y-1.5">
+                          {itemsList.map((it, i) => (
+                            <div key={i} className="flex justify-between items-center gap-3 bg-white dark:bg-slate-800/90 rounded-xl border border-slate-200/80 dark:border-white/10 p-2.5 shadow-2xs">
+                              <div className="min-w-0">
+                                <p className="font-bold text-xs text-slate-900 dark:text-white break-words">{it.name}</p>
+                                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                                  Qty: <span className="font-extrabold text-slate-900 dark:text-slate-100">{it.qty}</span> · ${it.price.toFixed(2)} each
+                                </p>
+                              </div>
+                              <p className="font-black text-xs text-slate-900 dark:text-white shrink-0">
+                                ${(it.qty * it.price).toFixed(2)}
+                              </p>
+                            </div>
+                          ))}
+                          {itemsList.length === 0 && (
+                            <p className="text-xs text-slate-500 italic bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                              No items recorded.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 3. Delivery Address */}
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider font-black text-slate-800 dark:text-slate-200 mb-1.5 flex items-center gap-1.5">
+                          <MapPin size={14} className="text-emerald-600 dark:text-emerald-400" />
+                          <span>Delivery Address</span>
+                        </p>
+                        <div className="bg-white dark:bg-slate-800/90 rounded-xl border border-slate-200/80 dark:border-white/10 p-3 shadow-2xs space-y-2">
+                          {(o as { shipping_address?: { name?: string; line1?: string; city?: string; state?: string; zip?: string } | null }).shipping_address ? (
+                            <>
+                              <p className="text-xs font-bold text-slate-900 dark:text-white">
+                                {(o as { shipping_address: { name?: string } }).shipping_address.name || o.customer_name || 'Customer'}
+                              </p>
+                              <p className="text-xs font-medium text-slate-700 dark:text-slate-200 leading-relaxed">
+                                {(o as { shipping_address: { line1?: string } }).shipping_address.line1}
+                                {(o as { shipping_address: { city?: string } }).shipping_address.city ? `, ${(o as { shipping_address: { city?: string } }).shipping_address.city}` : ''}
+                                {(o as { shipping_address: { state?: string } }).shipping_address.state ? ` ${(o as { shipping_address: { state?: string } }).shipping_address.state}` : ''}
+                                {(o as { shipping_address: { zip?: string } }).shipping_address.zip ? ` ${(o as { shipping_address: { zip?: string } }).shipping_address.zip}` : ''}
+                              </p>
+                              <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-white/5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const addr = (o as { shipping_address?: { name?: string; line1?: string; city?: string; state?: string; zip?: string } }).shipping_address;
+                                    const text = `${addr?.name || ''}\n${addr?.line1 || ''}\n${addr?.city || ''}, ${addr?.state || ''} ${addr?.zip || ''}`;
+                                    navigator.clipboard.writeText(text);
+                                    notify('Shipping address copied to clipboard!');
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+                                >
+                                  <Clipboard size={12} weight="bold" /> Copy Address
+                                </button>
+                                <span className="text-slate-300 dark:text-slate-600">·</span>
+                                <a
+                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                                    `${(o as { shipping_address: { line1?: string } }).shipping_address.line1 || ''}, ${(o as { shipping_address: { city?: string } }).shipping_address.city || ''} ${(o as { shipping_address: { state?: string } }).shipping_address.state || ''} ${(o as { shipping_address: { zip?: string } }).shipping_address.zip || ''}`
+                                  )}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                                >
+                                  <ArrowSquareOut size={12} weight="bold" /> Open in Maps
+                                </a>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="text-xs text-slate-500 italic">No shipping address recorded on this order.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 4. Carrier Tracking Setup */}
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider font-black text-slate-800 dark:text-slate-200 mb-1.5 flex items-center gap-1.5">
+                          <Truck size={14} className="text-blue-600 dark:text-blue-400" />
+                          <span>Fulfillment &amp; Carrier Tracking</span>
+                        </p>
+                        <div className="bg-white dark:bg-slate-800/90 rounded-xl border border-slate-200/80 dark:border-white/10 p-3 shadow-2xs space-y-2">
+                          <div className="flex gap-2">
+                            <select
+                              value={(tr || tracking[o.id] || { carrier: 'USPS', number: '' }).carrier}
+                              onChange={(e) => saveTracking(o.id, { carrier: e.target.value, number: (tr || tracking[o.id] || { number: '' }).number })}
+                              className="text-xs font-bold border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg px-2.5 py-1.5"
+                            >
+                              <option>USPS</option>
+                              <option>UPS</option>
+                              <option>FedEx</option>
+                              <option>DHL</option>
+                              <option>Other</option>
+                            </select>
+                            <input
+                              value={(tr || tracking[o.id] || { number: '' }).number}
+                              onChange={(e) => saveTracking(o.id, { carrier: (tr || tracking[o.id] || { carrier: 'USPS' }).carrier, number: e.target.value })}
+                              placeholder="Enter tracking # (e.g. 9400…)"
+                              className="flex-1 min-w-0 text-xs border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg px-2.5 py-1.5 font-mono"
+                            />
+                          </div>
+                          {tr && tr.number && (
+                            <div className="pt-1 flex items-center justify-between gap-2 border-t border-slate-100 dark:border-white/5">
+                              <span className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100">{tr.number} ({tr.carrier})</span>
+                              <a
+                                href={
+                                  tr.carrier === 'USPS'
+                                    ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(tr.number)}`
+                                    : tr.carrier === 'UPS'
+                                    ? `https://www.ups.com/track?tracknum=${encodeURIComponent(tr.number)}`
+                                    : tr.carrier === 'FedEx'
+                                    ? `https://www.fedex.com/fedextrack/?trknbr=${encodeURIComponent(tr.number)}`
+                                    : `https://www.google.com/search?q=${encodeURIComponent(`${tr.carrier} tracking ${tr.number}`)}`
+                                }
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline text-xs font-bold"
+                              >
+                                Track on {tr.carrier} <ArrowSquareOut size={12} weight="bold" />
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 5. Payment & Financial Summary */}
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wider font-black text-slate-800 dark:text-slate-200 mb-1.5 flex items-center gap-1.5">
+                          <CurrencyDollar size={14} className="text-emerald-600 dark:text-emerald-400" />
+                          <span>Financial Summary</span>
+                        </p>
+                        <div className="bg-white dark:bg-slate-800/90 rounded-xl border border-slate-200/80 dark:border-white/10 p-3 shadow-2xs space-y-1.5 text-xs">
+                          <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400 font-medium">Subtotal</span><span className="font-bold text-slate-900 dark:text-white">${subtotalOf(o).toFixed(2)}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400 font-medium">Shipping</span><span className="font-bold text-slate-900 dark:text-white">${extrasFor(o).shipping.toFixed(2)}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400 font-medium">Tax</span><span className="font-bold text-slate-900 dark:text-white">${totalsOf(o).tax.toFixed(2)}</span></div>
+                          <div className="flex justify-between border-t border-slate-100 dark:border-white/10 pt-1.5 font-bold"><span className="text-slate-800 dark:text-slate-200">Total</span><span className="text-sm font-black text-emerald-600 dark:text-emerald-400">${totalsOf(o).grand.toFixed(2)} {o.currency || 'USD'}</span></div>
+                          {o.stripe_session_id && (
+                            <div className="flex items-center justify-between gap-2 pt-1 text-[11px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-white/5">
+                              <span>Stripe Session:</span>
+                              <span className="font-mono truncate max-w-[190px]">{o.stripe_session_id}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 6. Bottom Actions: Move to Trash / Restore + Full Invoice */}
+                      <div className="pt-2 flex items-center justify-between gap-2 flex-wrap">
+                        {orderView === 'trash' ? (
+                          <button
+                            type="button"
+                            onClick={() => void singleOrderAction(o.id, 'restore')}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs active:scale-95"
+                          >
+                            <ArrowClockwise size={13} weight="bold" /> Restore Order
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void singleOrderAction(o.id, 'trash')}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-600 border border-rose-200 dark:border-rose-900 text-rose-600 hover:text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+                          >
+                            <Trash size={13} weight="bold" /> Move to Trash
+                          </button>
+                        )}
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setLabelOrder(o)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all active:scale-95 shadow-xs"
+                          >
+                            <Printer size={13} weight="bold" /> Shipping Label
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInvoiceOrder(o)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95 shadow-xs"
+                          >
+                            <Receipt size={13} weight="bold" /> Full Invoice
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>

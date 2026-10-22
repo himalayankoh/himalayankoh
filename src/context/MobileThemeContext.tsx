@@ -48,6 +48,13 @@ export function MobileThemeProvider({ children }: { children: ReactNode }) {
       const storedTheme = localStorage.getItem(STORAGE_KEY);
       if (storedTheme === 'light' || storedTheme === 'dark') {
         setThemeState(storedTheme);
+        if (typeof document !== 'undefined') {
+          document.documentElement.classList.toggle('dark', storedTheme === 'dark');
+          document.body.classList.toggle('dark', storedTheme === 'dark');
+        }
+      } else if (typeof document !== 'undefined') {
+        document.documentElement.classList.add('dark');
+        document.body.classList.add('dark');
       }
       const storedFontSize = localStorage.getItem(FONT_SIZE_KEY);
       if (
@@ -124,6 +131,8 @@ export function MobileThemeProvider({ children }: { children: ReactNode }) {
     if (typeof document !== 'undefined') {
       document.documentElement.setAttribute('data-mobile-theme', theme);
       document.body.setAttribute('data-mobile-theme', theme);
+      document.documentElement.classList.toggle('dark', theme === 'dark');
+      document.body.classList.toggle('dark', theme === 'dark');
     }
   }, [theme]);
 
@@ -141,6 +150,8 @@ export function MobileThemeProvider({ children }: { children: ReactNode }) {
       if (typeof document !== 'undefined') {
         document.documentElement.setAttribute('data-mobile-theme', next);
         document.body.setAttribute('data-mobile-theme', next);
+        document.documentElement.classList.toggle('dark', next === 'dark');
+        document.body.classList.toggle('dark', next === 'dark');
       }
     } catch {
       // Silently fail if localStorage is restricted
