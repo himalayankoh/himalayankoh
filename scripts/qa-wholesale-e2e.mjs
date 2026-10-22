@@ -330,7 +330,16 @@ async function main() {
    * fail the positive one for no reason. Production is unaffected: Cloudflare's header
    * is preferred whenever it is present.
    */
-  const negativeHeaders = { 'cf-connecting-ip': `198.51.100.${1 + (Date.now() % 200)}`, 'x-real-ip': '198.51.100.7' };
+  /**
+   * Only on loopback. Through Cloudflare a forged `cf-connecting-ip` is itself
+   * refused: the edge blocks the request outright with a 403 HTML page before the
+   * app sees it, so the "refusal" checks would report a wall, not the route. The
+   * deployed environment simply shares the real caller's rate budget.
+   */
+  const loopback = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(APP);
+  const negativeHeaders = loopback
+    ? { 'cf-connecting-ip': `198.51.100.${1 + (Date.now() % 200)}`, 'x-real-ip': '198.51.100.7' }
+    : {};
 
   const noCertificate = await api('/api/wholesale/apply', {
     method: 'POST',
