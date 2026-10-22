@@ -636,11 +636,21 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
 
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-900,
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-950,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-gray-900,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-gray-950,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-gray-800,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-zinc-900,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-neutral-900,
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#26211C\],
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#26211c\],
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-charcoal,
   .hk-admin[data-theme="dark"] .admin-content .text-slate-900,
   .hk-admin[data-theme="dark"] .admin-content .text-slate-950,
+  .hk-admin[data-theme="dark"] .admin-content .text-gray-900,
+  .hk-admin[data-theme="dark"] .admin-content .text-gray-950,
+  .hk-admin[data-theme="dark"] .admin-content .text-gray-800,
+  .hk-admin[data-theme="dark"] .admin-content .text-zinc-900,
+  .hk-admin[data-theme="dark"] .admin-content .text-neutral-900,
   .hk-admin[data-theme="dark"] .admin-content .text-\[\#26211C\],
   .hk-admin[data-theme="dark"] .admin-content .text-\[\#26211c\],
   .hk-admin[data-theme="dark"] .admin-content .text-charcoal {
@@ -649,26 +659,34 @@ footer :where(section a) { min-height: 44px; display: inline-flex; align-items: 
 
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-700,
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-600,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-gray-700,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-gray-600,
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#6D6258\],
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#6d6258\],
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-charcoal-light,
   .hk-admin[data-theme="dark"] .admin-content .text-slate-700,
   .hk-admin[data-theme="dark"] .admin-content .text-slate-600,
+  .hk-admin[data-theme="dark"] .admin-content .text-gray-700,
+  .hk-admin[data-theme="dark"] .admin-content .text-gray-600,
   .hk-admin[data-theme="dark"] .admin-content .text-\[\#6D6258\],
   .hk-admin[data-theme="dark"] .admin-content .text-\[\#6d6258\],
   .hk-admin[data-theme="dark"] .admin-content .text-charcoal-light {
-    color: #94A3B8 !important;
+    color: #CBD5E1 !important;
   }
 
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-500,
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-slate-400,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-gray-500,
+  [data-mobile-theme="dark"] .hk-admin .admin-content .text-gray-400,
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#8e8276\],
   [data-mobile-theme="dark"] .hk-admin .admin-content .text-\[\#8E8276\],
   .hk-admin[data-theme="dark"] .admin-content .text-slate-500,
   .hk-admin[data-theme="dark"] .admin-content .text-slate-400,
+  .hk-admin[data-theme="dark"] .admin-content .text-gray-500,
+  .hk-admin[data-theme="dark"] .admin-content .text-gray-400,
   .hk-admin[data-theme="dark"] .admin-content .text-\[\#8e8276\],
   .hk-admin[data-theme="dark"] .admin-content .text-\[\#8E8276\] {
-    color: #64748B !important;
+    color: #94A3B8 !important;
   }
 
   /* Premium Mobile Light Mode */

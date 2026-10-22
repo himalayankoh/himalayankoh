@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { List, Sun, Moon, Bell, TextAa, X, Check } from '@phosphor-icons/react';
 import { useMobileTheme, type MobileFontSize } from '@/context/MobileThemeContext';
@@ -199,15 +200,15 @@ export function MobileAdminHeader({
         </button>
       </div>
 
-      {/* ── Font Size Control Bottom Sheet ─────────────────────────── */}
-      {showFontSizeModal && (
+      {/* ── Font Size Control Bottom Sheet (Rendered via Portal to escape header backdropFilter containing block) ── */}
+      {showFontSizeModal && typeof document !== 'undefined' && createPortal(
         <div
           data-testid="font-size-modal"
-          className="fixed inset-0 z-modal flex flex-col justify-end bg-black/65 backdrop-blur-xs animate-fadeIn"
+          className="fixed inset-0 z-[9999] flex flex-col justify-end bg-black/70 backdrop-blur-sm animate-fadeIn"
           onClick={() => setShowFontSizeModal(false)}
         >
           <div
-            className="rounded-t-3xl border-t p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+            className="rounded-t-3xl border-t p-5 space-y-4 max-h-[85vh] overflow-y-auto w-full max-w-lg mx-auto"
             onClick={(e) => e.stopPropagation()}
             style={{
               backgroundColor: palette.cardBg,
@@ -350,7 +351,8 @@ export function MobileAdminHeader({
               Apply &amp; Done
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </header>
   );

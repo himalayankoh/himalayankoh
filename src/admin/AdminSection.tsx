@@ -1469,59 +1469,59 @@ export function AOrders() {
   );
 
   const orderDetail = (o: StripeOrderRow, tr: { carrier: string; number: string } | null) => (
-    <div className="grid gap-4 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-3">
       {/* Items */}
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Items</p>
-        <div className="space-y-2">
+        <p className="text-[10px] uppercase tracking-wider font-bold text-gray-500 dark:text-slate-400 mb-1.5">Items</p>
+        <div className="space-y-1.5">
           {fmtItems(o.items).map((it, i) => (
-            <div key={i} className="flex justify-between gap-3 bg-white rounded-lg border p-2.5 text-xs">
+            <div key={i} className="flex justify-between gap-3 bg-white dark:bg-slate-800/80 rounded-xl border border-gray-100 dark:border-white/10 p-2.5 text-xs">
               <div className="min-w-0">
-                <p className="font-medium text-gray-800 break-words">{it.name}</p>
-                <p className="text-gray-400">Qty {it.qty} · ${it.price.toFixed(2)}</p>
+                <p className="font-semibold text-gray-900 dark:text-white break-words">{it.name}</p>
+                <p className="text-gray-500 dark:text-slate-400 text-[11px]">Qty {it.qty} · ${it.price.toFixed(2)}</p>
               </div>
-              <p className="font-semibold shrink-0">${(it.qty * it.price).toFixed(2)}</p>
+              <p className="font-bold text-gray-900 dark:text-white shrink-0">${(it.qty * it.price).toFixed(2)}</p>
             </div>
           ))}
-          {fmtItems(o.items).length === 0 && <p className="text-xs text-gray-300">No line items recorded.</p>}
+          {fmtItems(o.items).length === 0 && <p className="text-xs text-gray-400 italic">No line items recorded.</p>}
         </div>
       </div>
       {/* Shipping + tracking */}
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Shipping & Tracking</p>
+        <p className="text-[10px] uppercase tracking-wider font-bold text-gray-500 dark:text-slate-400 mb-1.5">Shipping &amp; Tracking</p>
         <div className="space-y-2">
-          <div className="bg-white rounded-lg border p-2.5 text-xs">
-            <p className="text-gray-400 mb-1 flex items-center gap-1"><MapPin size={12} /> Address</p>
-            <p className="text-gray-600 break-words">{(o as { shipping_address?: { name?: string; line1?: string; city?: string; state?: string; zip?: string } | null }).shipping_address ? `${(o as { shipping_address: { name?: string; line1?: string; city?: string; state?: string; zip?: string } }).shipping_address.name || ''} · ${(o as { shipping_address: { line1?: string; city?: string; state?: string; zip?: string } }).shipping_address.line1 || ''}, ${(o as { shipping_address: { city?: string; state?: string; zip?: string } }).shipping_address.city || ''} ${(o as { shipping_address: { state?: string; zip?: string } }).shipping_address.state || ''} ${(o as { shipping_address: { zip?: string } }).shipping_address.zip || ''}` : 'Not recorded'}</p>
+          <div className="bg-white dark:bg-slate-800/80 rounded-xl border border-gray-100 dark:border-white/10 p-2.5 text-xs">
+            <p className="text-gray-500 dark:text-slate-400 mb-1 flex items-center gap-1 font-semibold"><MapPin size={12} /> Address</p>
+            <p className="text-gray-700 dark:text-slate-200 break-words leading-relaxed">{(o as { shipping_address?: { name?: string; line1?: string; city?: string; state?: string; zip?: string } | null }).shipping_address ? `${(o as { shipping_address: { name?: string; line1?: string; city?: string; state?: string; zip?: string } }).shipping_address.name || ''} · ${(o as { shipping_address: { line1?: string; city?: string; state?: string; zip?: string } }).shipping_address.line1 || ''}, ${(o as { shipping_address: { city?: string; state?: string; zip?: string } }).shipping_address.city || ''} ${(o as { shipping_address: { state?: string; zip?: string } }).shipping_address.state || ''} ${(o as { shipping_address: { zip?: string } }).shipping_address.zip || ''}` : 'Not recorded'}</p>
           </div>
-          <div className="bg-white rounded-lg border p-2.5 text-xs space-y-2">
-            <p className="text-gray-400">Tracking number</p>
+          <div className="bg-white dark:bg-slate-800/80 rounded-xl border border-gray-100 dark:border-white/10 p-2.5 text-xs space-y-2">
+            <p className="text-gray-500 dark:text-slate-400 font-semibold">Tracking number</p>
             <div className="flex gap-1.5">
-              <select value={(tr || tracking[o.id] || { carrier: 'USPS', number: '' }).carrier} onChange={(e) => saveTracking(o.id, { carrier: e.target.value, number: (tr || tracking[o.id] || { number: '' }).number })} className="text-[11px] border border-gray-200 rounded px-1.5 py-1">
+              <select value={(tr || tracking[o.id] || { carrier: 'USPS', number: '' }).carrier} onChange={(e) => saveTracking(o.id, { carrier: e.target.value, number: (tr || tracking[o.id] || { number: '' }).number })} className="text-[11px] border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-2 py-1">
                 <option>USPS</option><option>UPS</option><option>FedEx</option><option>DHL</option><option>Other</option>
               </select>
-              <input value={(tr || tracking[o.id] || { number: '' }).number} onChange={(e) => saveTracking(o.id, { carrier: (tr || tracking[o.id] || { carrier: 'USPS' }).carrier, number: e.target.value })} placeholder="e.g. 9400…" className="flex-1 min-w-0 text-[11px] border border-gray-200 rounded px-2 py-1" />
+              <input value={(tr || tracking[o.id] || { number: '' }).number} onChange={(e) => saveTracking(o.id, { carrier: (tr || tracking[o.id] || { carrier: 'USPS' }).carrier, number: e.target.value })} placeholder="e.g. 9400…" className="flex-1 min-w-0 text-[11px] border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-lg px-2 py-1" />
             </div>
             {tr && tr.number && (
-              <a href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(tr.number)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 text-[11px] font-medium"><Truck size={12} /> Track on {tr.carrier} →</a>
+              <a href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(tr.number)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline text-[11px] font-semibold"><Truck size={12} /> Track on {tr.carrier} →</a>
             )}
           </div>
         </div>
       </div>
       {/* Payment */}
       <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Payment</p>
-        <div className="bg-white rounded-lg border p-2.5 text-xs space-y-1">
-          <div className="flex justify-between"><span className="text-gray-400">Subtotal</span><span>${subtotalOf(o).toFixed(2)}</span></div>
-          <div className="flex justify-between"><span className="text-gray-400">Shipping</span><span>${extrasFor(o).shipping.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span className="text-gray-400">Tax</span><span>${totalsOf(o).tax.toFixed(2)}</span></div>
-          <div className="flex justify-between border-t border-gray-100 pt-1"><span className="text-gray-400">Total</span><span className="font-semibold">${totalsOf(o).grand.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span className="text-gray-400">Currency</span><span>{o.currency || 'USD'}</span></div>
-          <div className="flex justify-between items-start gap-2"><span className="text-gray-400">Stripe</span><span className="font-mono text-[10px] text-gray-500 break-all">{o.stripe_session_id || '—'}</span></div>
+        <p className="text-[10px] uppercase tracking-wider font-bold text-gray-500 dark:text-slate-400 mb-1.5">Payment</p>
+        <div className="bg-white dark:bg-slate-800/80 rounded-xl border border-gray-100 dark:border-white/10 p-2.5 text-xs space-y-1">
+          <div className="flex justify-between"><span className="text-gray-500 dark:text-slate-400">Subtotal</span><span className="font-semibold text-gray-900 dark:text-white">${subtotalOf(o).toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500 dark:text-slate-400">Shipping</span><span className="font-semibold text-gray-900 dark:text-white">${extrasFor(o).shipping.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500 dark:text-slate-400">Tax</span><span className="font-semibold text-gray-900 dark:text-white">${totalsOf(o).tax.toFixed(2)}</span></div>
+          <div className="flex justify-between border-t border-gray-100 dark:border-white/10 pt-1"><span className="font-bold text-gray-700 dark:text-slate-200">Total</span><span className="font-black text-gray-900 dark:text-white">${totalsOf(o).grand.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500 dark:text-slate-400">Currency</span><span className="font-mono text-gray-700 dark:text-slate-300">{o.currency || 'USD'}</span></div>
+          <div className="flex justify-between items-start gap-2"><span className="text-gray-500 dark:text-slate-400">Stripe</span><span className="font-mono text-[10px] text-gray-500 dark:text-slate-400 break-all">{o.stripe_session_id || '—'}</span></div>
         </div>
         <div className="flex gap-1.5 mt-2">
-          <button onClick={() => setInvoiceOrder(o)} className="btn-glow flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"><Receipt size={14} /> Invoice</button>
-          <button onClick={() => setLabelOrder(o)} className="btn-glow flex-1 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"><Barcode size={14} /> Label</button>
+          <button onClick={() => setInvoiceOrder(o)} className="btn-glow flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs"><Receipt size={13} /> Invoice</button>
+          <button onClick={() => setLabelOrder(o)} className="btn-glow flex-1 py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs"><Barcode size={13} /> Label</button>
         </div>
       </div>
     </div>
@@ -1554,110 +1554,104 @@ export function AOrders() {
         </div>
       </div>
 
-      {/* KPI row — 4-across desktop, 2x2 tablet, single column mobile */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* KPI row — 2x2 grid on mobile & tablet, 4-across desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
         {[
-          { l: 'Total Orders', v: String(stats.total), icon: ShoppingCart, tint: 'bg-[#f6efdd] text-[#9a6f16]', sub: stats.total ? 'orders in the store, paid or not' : 'No orders yet' },
-          { l: 'Revenue', v: `$${stats.revenue.toFixed(2)}`, icon: CurrencyDollar, tint: 'bg-[#f6efdd] text-[#9a6f16]', sub: stats.total ? 'orders the store reports paid — see the basis below' : 'No order the store reports paid' },
-          { l: 'Needs Fulfilment', v: String(stats.pending), icon: Warning, tint: 'bg-amber-50 text-amber-600', sub: stats.pending ? 'awaiting fulfilment' : 'All fulfilled' },
-          { l: 'Shipped / Delivered', v: String(stats.shipped), icon: Truck, tint: 'bg-emerald-50 text-emerald-600', sub: stats.shipped ? 'on the way or delivered' : 'Nothing shipped yet' },
+          { l: 'Total Orders', v: String(stats.total), icon: ShoppingCart, tint: 'bg-[#f6efdd] text-[#9a6f16] dark:bg-amber-950/40 dark:text-amber-400', sub: stats.total ? 'all store orders' : 'No orders yet' },
+          { l: 'Revenue', v: `${stats.revenue.toFixed(2)}`, icon: CurrencyDollar, tint: 'bg-[#f6efdd] text-[#9a6f16] dark:bg-amber-950/40 dark:text-amber-400', sub: stats.total ? 'reported paid' : 'No paid orders' },
+          { l: 'Needs Fulfilment', v: String(stats.pending), icon: Warning, tint: 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400', sub: stats.pending ? 'awaiting fulfilment' : 'All fulfilled' },
+          { l: 'Shipped / Delivered', v: String(stats.shipped), icon: Truck, tint: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400', sub: stats.shipped ? 'on the way or done' : 'Nothing shipped yet' },
         ].map((k, i) => (
-          <div key={i} className="bg-white rounded-xl border border-gray-100 p-3.5 shadow-[0_1px_2px_rgba(27,31,39,0.04)]">
+          <div key={i} className="bg-white dark:bg-[#131929] rounded-xl border border-gray-100 dark:border-white/10 p-3 sm:p-3.5 shadow-xs transition-all">
             <div className="flex items-center justify-between">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${k.tint}`}><k.icon size={15} /></div>
+              <span className="text-[11px] font-semibold text-gray-500 dark:text-slate-300 truncate">{k.l}</span>
+              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 ${k.tint}`}><k.icon size={15} /></div>
             </div>
-            <p className="mt-2 text-xl font-bold text-gray-900 leading-none truncate">{k.v}</p>
-            <p className="text-[10px] font-medium text-gray-500 mt-1">{k.l}</p>
-            <p className="text-[9px] text-gray-400 mt-0.5 truncate">{k.sub}</p>
+            <p className="mt-1.5 text-lg sm:text-xl font-black text-gray-950 dark:text-white leading-none truncate">{k.v}</p>
+            <p className="text-[9px] text-gray-400 dark:text-slate-400 mt-1 truncate">{k.sub}</p>
           </div>
         ))}
       </div>
 
-      {/* What the money figure is made of.
-
-          Each bucket is labelled and none is added into another. The three ways an order
-          can be "paid" here are not interchangeable — a total that mixes paid-with-a-
-          provider-reference, paid-with-nothing-on-the-record and gateway-test-shaped is
-          exactly what must not be read as collected cash. Provider-level confirmation is
-          a separate check (docs/production/CUSTOMER-DATA-AUDIT-2026-10-11.md): nothing on
-          this screen contacts a gateway.
-
-          A missing payload says so instead of showing zeroes: an unknown revenue and a
-          revenue of zero are different claims. */}
-      {money ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(27,31,39,0.04)]">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-sm font-bold text-gray-900">What the money figure is made of</p>
-            <p className="text-[10px] text-gray-500">
-              every figure from the store&apos;s own order records
-            </p>
+      {/* Revenue Basis & ERP Sync Disclosure — collapsed on mobile to bring orders immediately into view */}
+      <details className="group rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-[#131929] shadow-xs overflow-hidden transition-all">
+        <summary className="flex items-center justify-between p-3.5 sm:p-4 cursor-pointer hover:bg-gray-50/70 dark:hover:bg-slate-800/50 transition-colors select-none">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-[#f6efdd] dark:bg-amber-950/40 text-[#9a6f16] dark:text-amber-400 flex items-center justify-center shrink-0">
+              <CloudArrowUp size={16} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white leading-tight">Revenue Breakdown &amp; ERP Sync</p>
+              <p className="text-[10px] text-gray-500 dark:text-slate-400 truncate">Payment evidence buckets, non-revenue orders &amp; Excel CSV</p>
+            </div>
           </div>
-          <p className="mt-1 text-[11px] text-gray-500">{money.revenueBasis ?? 'Basis not reported by this deployment.'}</p>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {[
-              { l: 'Store reports paid', b: money.paymentEvidence?.storePaid, tone: 'text-gray-900' },
-              { l: 'Carries a provider reference', b: money.paymentEvidence?.withProviderReference, tone: 'text-emerald-700' },
-              { l: 'Paid, no reference', b: money.paymentEvidence?.withoutProviderReference, tone: 'text-amber-700' },
-              { l: 'Gateway-test shaped', b: money.paymentEvidence?.testShaped, tone: 'text-amber-700' },
-              { l: 'Awaiting payment', b: money.paymentEvidence?.awaitingPayment, tone: 'text-gray-500' },
-              { l: 'Failed', b: money.paymentEvidence?.failed, tone: 'text-red-600' },
-            ].map((bucket) => (
-              <div key={bucket.l} className="rounded-lg border border-gray-100 bg-gray-50/60 px-2.5 py-2">
-                <p className={`text-sm font-bold ${bucket.tone}`}>
-                  {bucket.b ? `$${bucket.b.total.toFixed(2)}` : 'Not reported'}
-                </p>
-                <p className="text-[10px] font-medium text-gray-600">{bucket.l}</p>
-                <p className="text-[10px] text-gray-400">{bucket.b ? `${bucket.b.orders} order(s)` : '—'}</p>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                downloadCsv();
+              }}
+              className="btn-glow inline-flex items-center gap-1 px-2.5 py-1 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-slate-200 rounded-lg text-[11px] font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              <Download size={12} /> CSV
+            </button>
+            <CaretDown size={15} className="text-gray-400 group-open:rotate-180 transition-transform duration-200" />
+          </div>
+        </summary>
+        <div className="p-4 border-t border-gray-100 dark:border-white/10 space-y-4">
+          {money ? (
+            <div>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-xs font-bold text-gray-900 dark:text-white">Payment Evidence &amp; Buckets</p>
+                <p className="text-[10px] text-gray-500 dark:text-slate-400">every figure from the store&apos;s own order records</p>
               </div>
-            ))}
-          </div>
-          {money.paymentEvidence && money.paymentEvidence.testShaped.orders > 0 ? (
-            <p className="mt-3 text-[11px] text-amber-800">
-              {money.paymentEvidence.testShaped.orders} order(s) are shaped like gateway tests and the store counts
-              them as paid: they are excluded from the chart and from best sellers, and nothing has been moved or
-              deleted. Without them the store&apos;s paid total is
-              ${money.paymentEvidence.excludingTestShaped.toFixed(2)}.
-            </p>
-          ) : null}
-          {money.notCountedInRevenue && money.notCountedInRevenue.orders > 0 ? (
-            <p className="mt-2 text-[11px] text-gray-500">
-              Not counted as revenue in the last 30 days: {money.notCountedInRevenue.orders} order(s)
-              (${money.notCountedInRevenue.total.toFixed(2)}) —{' '}
-              {Object.entries(money.notCountedInRevenue.statuses)
-                .map(([status, count]) => `${count} ${status}`)
-                .join(', ')}
-              .
-            </p>
-          ) : null}
-          <p className="mt-2 text-[11px] text-gray-500">
-            A provider reference records that a reference was written onto the order; it is not confirmation the
-            money arrived. Provider-level confirmation, refunds and disputes are a separate check.
-          </p>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(27,31,39,0.04)]">
-          <p className="text-sm font-bold text-gray-900">What the money figure is made of</p>
-          <p className="mt-1 text-[11px] text-gray-500">
-            Not reported — the analytics read did not answer, so the basis of the revenue figure above is unknown
-            rather than empty. Refresh, or open Analytics.
-          </p>
-        </div>
-      )}
+              <p className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">{money.revenueBasis ?? 'Basis not reported by this deployment.'}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                {[
+                  { l: 'Store reports paid', b: money.paymentEvidence?.storePaid, tone: 'text-gray-900 dark:text-white' },
+                  { l: 'Carries reference', b: money.paymentEvidence?.withProviderReference, tone: 'text-emerald-700 dark:text-emerald-400' },
+                  { l: 'Paid, no reference', b: money.paymentEvidence?.withoutProviderReference, tone: 'text-amber-700 dark:text-amber-400' },
+                  { l: 'Gateway-test shaped', b: money.paymentEvidence?.testShaped, tone: 'text-amber-700 dark:text-amber-400' },
+                  { l: 'Awaiting payment', b: money.paymentEvidence?.awaitingPayment, tone: 'text-gray-500 dark:text-slate-400' },
+                  { l: 'Failed', b: money.paymentEvidence?.failed, tone: 'text-red-600 dark:text-red-400' },
+                ].map((bucket) => (
+                  <div key={bucket.l} className="rounded-lg border border-gray-100 dark:border-white/10 bg-gray-50/60 dark:bg-slate-800/40 px-2.5 py-2">
+                    <p className={`text-xs sm:text-sm font-bold ${bucket.tone}`}>
+                      {bucket.b ? `${bucket.b.total.toFixed(2)}` : 'Not reported'}
+                    </p>
+                    <p className="text-[10px] font-medium text-gray-600 dark:text-slate-300">{bucket.l}</p>
+                    <p className="text-[9px] text-gray-400 dark:text-slate-500">{bucket.b ? `${bucket.b.orders} order(s)` : '—'}</p>
+                  </div>
+                ))}
+              </div>
+              {money.paymentEvidence && money.paymentEvidence.testShaped.orders > 0 ? (
+                <p className="mt-3 text-[11px] text-amber-800 dark:text-amber-300">
+                  {money.paymentEvidence.testShaped.orders} order(s) are shaped like gateway tests and the store counts them as paid. Without them the store&apos;s paid total is ${money.paymentEvidence.excludingTestShaped.toFixed(2)}.
+                </p>
+              ) : null}
+              {money.notCountedInRevenue && money.notCountedInRevenue.orders > 0 ? (
+                <p className="mt-2 text-[11px] text-gray-500 dark:text-slate-400">
+                  Not counted as revenue in the last 30 days: {money.notCountedInRevenue.orders} order(s) (${money.notCountedInRevenue.total.toFixed(2)}) — {Object.entries(money.notCountedInRevenue.statuses).map(([status, count]) => `${count} ${status}`).join(', ')}.
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-500 dark:text-slate-400">Accounting analytics not reported.</p>
+          )}
 
-      {/* ERP Sync — Embani LLC. There is no server-side ERP endpoint in this
-          deployment, so this used to fetch a missing route on every mount and
-          offer Save/Test/Push buttons that could never succeed. It now states the
-          real position and keeps the CSV export, which is built in the browser. */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-[0_1px_2px_rgba(27,31,39,0.04)] flex items-start justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-[#f6efdd] flex items-center justify-center shrink-0"><CloudArrowUp size={15} className="text-[#9a6f16]" /></div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-gray-900 leading-tight">ERP Sync — Himalayan Koh</p>
-            <p className="text-[11px] text-gray-500">Not connected on this deployment — no server-side ERP endpoint is configured, so no order is pushed anywhere. Exporting the CSV and importing it into the ERP workbook still works.</p>
+          <div className="pt-3 border-t border-gray-100 dark:border-white/10 flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-gray-900 dark:text-white leading-tight">ERP Sync Status</p>
+              <p className="text-[10px] text-gray-500 dark:text-slate-400">Direct CSV export is available for manual or automated accounting import.</p>
+            </div>
+            <button onClick={downloadCsv} className="btn-glow inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-slate-200 rounded-lg text-xs font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors">
+              <Download size={13} /> Export CSV (Excel)
+            </button>
           </div>
         </div>
-        <button onClick={downloadCsv} className="btn-glow inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors"><Download size={13} /> Export CSV (Excel)</button>
-      </div>
+      </details>
 
       {/* Bulk actions for the view on screen */}
       {picked.size > 0 && (
@@ -1793,51 +1787,171 @@ export function AOrders() {
             </table>
           </div>
 
-          {/* Mobile stacked cards (< md) — order number/status top, customer/items/total middle, tracking + actions bottom */}
-          <div className="md:hidden divide-y divide-gray-100">
-            {visibleOrders.map(({ order: o, tr }) => (
-              <div key={o.id} className="p-4">
-                <div className="flex items-start justify-between gap-2 flex-wrap">
-                  <div className="min-w-0">
-                    <label className="flex items-center gap-1.5">
+          {/* Mobile stacked cards (< md) — compact, readable, high-contrast, modern UI */}
+          <div className="md:hidden space-y-3 p-3 bg-slate-50/60 dark:bg-slate-950/40">
+            {visibleOrders.map(({ order: o, tr }) => {
+              const itemsList = fmtItems(o.items);
+              const isSelected = picked.has(o.id);
+              const isCardExpanded = expanded === o.id;
+
+              return (
+                <div
+                  key={o.id}
+                  className={`rounded-2xl border transition-all duration-150 ${
+                    isSelected
+                      ? 'border-[#9a6f16] bg-[#fbf8f0] dark:bg-amber-950/20 dark:border-amber-500/40'
+                      : 'border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#131929] shadow-xs'
+                  }`}
+                >
+                  {/* Card Header: Checkbox + Order # + Badges */}
+                  <div className="p-3.5 pb-2.5 flex items-start justify-between gap-2 border-b border-slate-100 dark:border-white/5">
+                    <div className="flex items-center gap-2 min-w-0">
                       <input
                         type="checkbox"
                         aria-label={`Select order ${o.order_number}`}
-                        checked={picked.has(o.id)}
+                        checked={isSelected}
                         onChange={() => togglePicked(o.id)}
-                        className="rounded border-gray-300"
+                        className="rounded border-slate-300 dark:border-slate-600 text-[#9a6f16] focus:ring-[#9a6f16] w-4 h-4 cursor-pointer"
                       />
-                      <span className="font-mono text-xs font-semibold text-gray-800">{o.order_number}</span>
-                    </label>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{new Date(o.created_at).toLocaleString()}</p>
+                      <div className="min-w-0">
+                        <span className="font-mono text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">
+                          {o.order_number}
+                        </span>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-400 leading-tight mt-0.5">
+                          {new Date(o.created_at).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {orderBadges(o)}
+                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full capitalize ${statusColor(String(o.status || ''))}`}>
+                        {String(o.status || 'pending')}
+                      </span>
+                    </div>
                   </div>
-                  <div className="shrink-0">{orderBadges(o)}</div>
+
+                  {/* Card Body: Customer Email + Items Summary + Total */}
+                  <div className="p-3.5 space-y-2 text-xs">
+                    {/* Customer */}
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-[11px] font-medium text-slate-400 dark:text-slate-400 shrink-0">Customer</span>
+                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate text-right">
+                        {o.customer_name ? `${o.customer_name} • ` : ''}{o.customer_email || 'No email recorded'}
+                      </span>
+                    </div>
+
+                    {/* Items & Total row */}
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-white/5">
+                      <div className="min-w-0">
+                        <span className="text-[11px] font-medium text-slate-400 dark:text-slate-400">Items: </span>
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                          {itemsList.length} item{itemsList.length === 1 ? '' : 's'}
+                        </span>
+                        {itemsList.length > 0 && (
+                          <span className="text-[10px] text-slate-400 dark:text-slate-400 block truncate max-w-[200px]">
+                            {itemsList[0].name}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-400 block">Total</span>
+                        <span className="text-base font-black text-slate-950 dark:text-white">
+                          ${Number(o.total || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Status Changer & Tracking */}
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-white/5">
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase block mb-1">
+                          Status
+                        </label>
+                        <select
+                          value={String(o.status || '')}
+                          disabled={orderView === 'trash'}
+                          onChange={(e) => {
+                            const s = e.target.value;
+                            setStripeOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, status: s } : x)));
+                            notify(`Order ${o.order_number} → ${s}`);
+                          }}
+                          className={`w-full text-xs font-bold py-1 px-2 rounded-lg border-0 cursor-pointer capitalize ${statusColor(String(o.status || ''))}`}
+                        >
+                          {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 uppercase block mb-1">
+                          Tracking
+                        </label>
+                        {tr && tr.number ? (
+                          <div className="flex items-center gap-1 min-w-0 bg-slate-100 dark:bg-slate-800 py-1 px-2 rounded-lg">
+                            <Truck size={13} className="text-blue-500 shrink-0" />
+                            <span className="font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-200 truncate">
+                              {tr.number}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500 italic block py-1">
+                            Not assigned
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Actions Footer */}
+                  <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-b-2xl border-t border-slate-100 dark:border-white/5 flex items-center justify-between gap-2">
+                    {orderView === 'trash' ? (
+                      <span className="text-xs text-slate-400">Restore order to edit</span>
+                    ) : (
+                      <div className="flex items-center gap-1.5 flex-1">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setInvoiceOrder(o); }}
+                          className="flex-1 py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all active:scale-95 shadow-xs"
+                        >
+                          <Receipt size={13} weight="bold" /> Invoice
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setLabelOrder(o); }}
+                          className="flex-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all active:scale-95 shadow-xs"
+                        >
+                          <Printer size={13} weight="bold" /> Label
+                        </button>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setExpanded(isCardExpanded ? null : o.id); }}
+                      className="py-1.5 px-2.5 rounded-xl text-xs font-bold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/10 flex items-center gap-1 transition-all active:scale-95"
+                    >
+                      <span>{isCardExpanded ? 'Less' : 'Details'}</span>
+                      {isCardExpanded ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
+                    </button>
+                  </div>
+
+                  {/* Expandable Order Detail */}
+                  {isCardExpanded && (
+                    <div id={`order-detail-${o.id}`} className="p-3.5 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-950/50 rounded-b-2xl">
+                      {orderDetail(o, tr)}
+                    </div>
+                  )}
                 </div>
-                <div className="mt-3 space-y-1.5 text-xs">
-                  <div className="flex justify-between gap-2"><span className="text-gray-400 shrink-0">Customer</span><span className="text-gray-700 text-right break-words min-w-0">{o.customer_email || '—'}</span></div>
-                  <div className="flex justify-between gap-2"><span className="text-gray-400">Items</span><span className="text-gray-700">{fmtItems(o.items).length} item(s)</span></div>
-                  <div className="flex justify-between gap-2"><span className="text-gray-400">Total</span><span className="font-semibold text-gray-900">${Number(o.total || 0).toFixed(2)}</span></div>
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
-                    <span className="text-gray-400 shrink-0">Status</span>
-                    <select value={String(o.status || '')} disabled={orderView === 'trash'} onChange={(e) => { const s = e.target.value; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
-                      {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-gray-400 shrink-0">Tracking</span>
-                    {tr && tr.number ? (
-                      <span className="flex items-center gap-1 min-w-0"><Truck size={12} className="text-blue-500 shrink-0" /><span className="font-mono text-[10px] text-gray-700 truncate">{tr.number}</span></span>
-                    ) : <span className="text-xs text-gray-300">—</span>}
-                  </div>
-                </div>
-                <div className="mt-3">{orderView === 'trash' ? <span className="text-[10px] text-gray-400">Restore it to work on it</span> : orderActions(o)}</div>
-                {expanded === o.id && (
-                  <div id={`order-detail-${o.id}`} className="mt-3 rounded-lg border border-gray-100 bg-gray-50/60 p-3">
-                    {orderDetail(o, tr)}
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
