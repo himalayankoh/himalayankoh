@@ -232,6 +232,8 @@ function buildMimeMessage(input: {
   inReplyTo?: string;
   references?: string[];
   attachments?: EmailAttachment[];
+  /** Extra RFC 5322 headers, e.g. `Reply-To`. CR/LF are stripped from each value. */
+  headers?: Record<string, string>;
 }): string {
   const boundary = `====_hk_part_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_====`;
   const altBoundary = `====_hk_alt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_====`;
@@ -251,6 +253,12 @@ function buildMimeMessage(input: {
   }
   if (input.references && input.references.length > 0) {
     headers.push(`References: ${input.references.join(' ')}`);
+  }
+  for (const [name, value] of Object.entries(input.headers || {})) {
+    // A header value is one line. Anything else is header injection.
+    if (!/^[A-Za-z-]+$/.test(name)) continue;
+    const clean = String(value).replace(/[\r\n]+/g, ' ').trim();
+    if (clean) headers.push(`${name}: ${clean}`);
   }
 
   const hasAttachments = input.attachments && input.attachments.length > 0;
@@ -381,6 +389,7 @@ export async function sendCPanelEmail(input: CPanelEmailInput): Promise<CPanelEm
       bodyHtml,
       messageId,
       attachments: input.attachments,
+      headers: input.headers,
     });
 
     if (typeof process !== 'undefined' && process.versions && process.versions.node) {

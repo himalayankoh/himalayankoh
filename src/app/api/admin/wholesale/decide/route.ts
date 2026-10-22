@@ -15,7 +15,7 @@
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { wholesaleDisabled } from '@/lib/wholesale/gate';
-import { decideWholesaleApplication } from '@/lib/wholesale/store';
+import { decideWholesaleApplication, upsertWholesaleRecord } from '@/lib/wholesale/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,13 +46,45 @@ export async function POST(request: Request) {
   }
 
   try {
+    const actor = auth.admin.name || auth.admin.username || auth.admin.email;
     const result = await decideWholesaleApplication({
       applicationId,
       decision,
       note: body.note ? String(body.note).slice(0, 500) : '',
-      actor: auth.admin.name || auth.admin.username || auth.admin.email,
+      actor,
     });
-    return NextResponse.json(result);
+
+    /**
+     * The certificate's own status follows the decision, so the two screens cannot
+     * disagree about where an application stands. It is written *after* the decision
+     * succeeded and its failure is reported rather than thrown: the approval is the
+     * fact that matters, and a stale review status is a thing to fix, not a reason to
+     * tell the owner their decision did not happen.
+     */
+    const certificateStatus =
+      decision === 'APPROVED'
+        ? 'APPROVED'
+        : decision === 'REJECTED'
+          ? 'REJECTED'
+          : decision === 'SUSPENDED'
+            ? 'SUSPENDED'
+            : decision === 'MORE_INFO_REQUIRED'
+              ? 'ADDITIONAL_INFO_REQUIRED'
+              : 'PENDING_CERTIFICATE_REVIEW';
+
+    const certificateStatusRecorded = await upsertWholesaleRecord(
+      'applications',
+      {
+        certificate_status: certificateStatus,
+        certificate_reviewed_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        certificate_reviewed_by: actor,
+      },
+      { id: applicationId, actor }
+    )
+      .then(() => true)
+      .catch(() => false);
+
+    return NextResponse.json({ ...result, certificateStatus, certificateStatusRecorded });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'The decision could not be recorded.' },

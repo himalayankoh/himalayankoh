@@ -59,7 +59,10 @@ export function SmartMobileSideMenu({
   const { signOut } = useAuthStore();
   const { isDark, fontSize, setFontSize } = useMobileTheme();
   const [searchQuery, setSearchQuery] = useState('');
-  const [productsExpanded, setProductsExpanded] = useState(false);
+  // Which rail entry's submenu is open, by destination rather than by a shared
+  // boolean: Products and Wholesale both have submenus, and one flag made opening
+  // either of them expand both.
+  const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
 
@@ -115,6 +118,11 @@ export function SmartMobileSideMenu({
         label: 'Wholesale',
         icon: Truck,
         iconGradient: 'linear-gradient(135deg, #06B6D4 0%, #0891B2 100%)',
+        hasSubmenu: true,
+        subItems: [
+          { to: '/admin/wholesale/customers', label: 'Wholesale Customers' },
+          { to: '/admin/wholesale/products', label: 'Wholesale Products' },
+        ],
       },
       {
         to: '/admin/wholesale#quotes',
@@ -291,7 +299,7 @@ export function SmartMobileSideMenu({
                 to={item.to}
                 onClick={() => {
                   if (item.hasSubmenu) {
-                    setProductsExpanded(!productsExpanded);
+                    setExpandedMenu(expandedMenu === item.to ? null : item.to);
                   } else {
                     onClose();
                   }
@@ -342,7 +350,7 @@ export function SmartMobileSideMenu({
                       size={12}
                       weight="bold"
                       className={`text-slate-400 transition-transform duration-200 ${
-                        productsExpanded ? 'rotate-180 text-white' : ''
+                        expandedMenu === item.to ? 'rotate-180 text-white' : ''
                       }`}
                     />
                   )}
@@ -350,7 +358,7 @@ export function SmartMobileSideMenu({
               </Link>
 
               {/* Submenu for Products */}
-              {item.hasSubmenu && productsExpanded && item.subItems && (
+              {item.hasSubmenu && expandedMenu === item.to && item.subItems && (
                 <div className="pl-10 pr-2 py-0.5 space-y-0.5">
                   {item.subItems.map((sub) => {
                     const isSubActive = location.pathname === sub.to;

@@ -109,6 +109,7 @@ export async function GET(request: Request) {
           slug: storefront?.slug ?? null,
         },
         moq: product.moq,
+        availableUnits: product.availableUnits ?? 0,
         leadTimeDays: product.leadTimeDays,
         packaging,
         tiers,

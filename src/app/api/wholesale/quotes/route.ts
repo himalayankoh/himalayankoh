@@ -24,6 +24,8 @@ import { loadWholesaleData } from '@/lib/wholesale/pricing';
 import { buildBuyerPlan, parseLineRequests } from '@/lib/wholesale/plan';
 import { buyerQuoteView } from '@/lib/wholesale/buyerView';
 import { listWholesaleRecords, upsertWholesaleRecord } from '@/lib/wholesale/store';
+import { sendWholesaleInquiryEmails, wholesaleInquiryRecipient } from '@/lib/email/wholesaleInquiry';
+import { siteBaseUrl } from '@/lib/email/sendEmail';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,6 +92,33 @@ export async function POST(request: Request) {
       containers: body.containers ? Number(body.containers) : 1,
     });
 
+    /**
+     * The allocation is a ceiling, checked on the server.
+     *
+     * A product with no allocation configured (`available_units = 0`) is uncapped: an
+     * unset number is not a claim that nothing is available. Where a ceiling is set,
+     * the buyer's catalogue advertises it, and a request above it is refused with the
+     * number named rather than quietly reduced — a silently shrunk order is worse than
+     * a refusal, because the buyer would accept a quotation for something they did not
+     * ask for.
+     */
+    for (const line of plan.lines) {
+      const product = data.products.find((entry) => entry.rowId === line.productRowId);
+      const allocation = product?.availableUnits ?? 0;
+      if (allocation > 0 && line.units > allocation) {
+        return NextResponse.json(
+          {
+            error: `${line.name}: ${line.units.toLocaleString('en-US')} units requested, but ${allocation.toLocaleString(
+              'en-US'
+            )} are offered at this allocation. Reduce the quantity or ask your account manager about a larger volume.`,
+            productId: line.productRowId,
+            availableUnits: allocation,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const destinationCountry = text(body.destinationCountry) || gate.account.destinationCountry || '';
     const destinationPort = text(body.destinationPort) || gate.account.destinationPort || '';
 
@@ -143,8 +172,69 @@ export async function POST(request: Request) {
         { ref: `HK-WS-Q${String(id).padStart(5, '0')}` },
         { id, actor: gate.account.email }
       );
+      const quoteReference = `HK-WS-Q${String(id).padStart(5, '0')}`;
+
+      /**
+       * The trade desk is told about the inquiry *after* it is stored, so a mail
+       * failure cannot lose it. `estimatedMerchandise` is the indicative figure the
+       * buyer was shown — not a quotation — and every line carries the price it was
+       * shown at, because a later tier change must not rewrite this notification.
+       */
+      const currency = data.products[0]?.currency || 'USD';
+      const delivery = await sendWholesaleInquiryEmails({
+        reference: quoteReference,
+        buyer: {
+          businessName: gate.account.companyName,
+          contactName: gate.account.contactName,
+          email: gate.account.email,
+          phone: gate.account.phone ?? '',
+        },
+        lines: plan.lines.map((line) => ({
+          name: line.name,
+          sku: line.wholesaleSku,
+          units: line.units,
+          unitPrice: typeof line.unitPrice === 'number' && Number.isFinite(line.unitPrice) ? line.unitPrice : null,
+        })),
+        currency,
+        estimatedMerchandise:
+          typeof plan.totals.indicativeMerchandise === 'number' ? plan.totals.indicativeMerchandise : null,
+        shippingAddress: [gate.account.address, destinationCountry].filter(Boolean).join(', '),
+        destinationPort,
+        notes: text(body.notes, 500),
+        adminUrl: `${siteBaseUrl()}/admin/wholesale#quotes`,
+      });
+
+      if (!delivery.adminNotified) {
+        // Recorded, not thrown: the inquiry exists, and the console has to be able to
+        // show that the trade desk was not told.
+        await upsertWholesaleRecord(
+          'audit',
+          {
+            at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+            actor: 'wholesale-inquiry',
+            action: 'inquiry_email_failed',
+            entity: 'quotes',
+            entity_id: id,
+            detail: {
+              reference: quoteReference,
+              recipient: wholesaleInquiryRecipient(),
+              reason: delivery.error,
+            },
+          },
+          { actor: 'wholesale-inquiry' }
+        ).catch(() => undefined);
+      }
+
       return NextResponse.json(
-        { quote: buyerQuoteView(withRef), reference: `HK-WS-Q${String(id).padStart(5, '0')}`, reference_before: reference },
+        {
+          quote: buyerQuoteView(withRef),
+          reference: quoteReference,
+          reference_before: reference,
+          notification: {
+            tradeDeskNotified: delivery.adminNotified,
+            buyerAcknowledged: delivery.buyerAcknowledged,
+          },
+        },
         { status: 201 }
       );
     }

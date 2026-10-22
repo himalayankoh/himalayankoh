@@ -276,6 +276,14 @@ export default function PortalCatalogPanel({
                           <dd className="text-charcoal">{item.moq ? `${item.moq.toLocaleString('en-US')} units` : 'Per quotation'}</dd>
                         </div>
                         <div className="flex justify-between">
+                          <dt>Available to trade</dt>
+                          <dd className="text-charcoal">
+                            {item.availableUnits > 0
+                              ? `${item.availableUnits.toLocaleString('en-US')} units`
+                              : 'Confirmed per inquiry'}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between">
                           <dt>Lead time</dt>
                           <dd className="text-charcoal">{item.leadTimeDays ? `${item.leadTimeDays} days` : 'Confirmed per order'}</dd>
                         </div>

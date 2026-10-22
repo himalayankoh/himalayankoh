@@ -220,6 +220,7 @@ export function productFromRow(row: WholesaleRow): WholesaleProductRecord {
     packaging: packaging.profile,
     packagingDefaultsUsed: packaging.defaultsUsed,
     moq: num(row.moq),
+    availableUnits: num(row.available_units),
     exFactoryCost: num(row.ex_factory_cost),
     currency: text(row.currency, 'USD'),
     originId: intOrNull(row.origin_id) === null ? null : String(row.origin_id),

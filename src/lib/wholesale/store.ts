@@ -160,6 +160,14 @@ export interface WholesaleFilters {
   entity_id?: number;
   /** The dealer an order belongs to. */
   dealer_id?: number;
+  /**
+   * The single-use token in an applicant's confirmation email.
+   *
+   * Used by `/api/wholesale/verify-email` with this module's administrator
+   * credential — the token is looked up server-side, so the plugin needs no public
+   * endpoint and the wholesale namespace stays entirely behind `manage_options`.
+   */
+  email_verification_token?: string;
   quote_id?: number;
   active?: boolean;
   limit?: number;
