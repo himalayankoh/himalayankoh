@@ -40,7 +40,18 @@ const APP = (process.argv[2] || 'http://127.0.0.1:3100').replace(/\/+$/, '');
  * Worker is backed by the staging install, while local development is not — the trial
  * must verify the store the app actually wrote to.
  */
-const WP = (process.env.QA_WP_BASE || 'https://wp.himalayankoh.com').replace(/\/+$/, '');
+const WP = (process.env.QA_WP_BASE || '').replace(/\/+$/, '');
+/* No default: the old default was the LIVE WordPress backend, so a bare run wrote
+   synthetic applications, buyers and quotes into production. The trial now needs the
+   staging WordPress named outright, and refuses the live one without a spelled-out override. */
+if (!WP) {
+  console.error('QA_WP_BASE is required (the STAGING WordPress this trial may write synthetic data to).');
+  process.exit(2);
+}
+if (/^https?:\/\/wp\.himalayankoh\.com$/i.test(WP) && process.env.QA_ALLOW_PRODUCTION !== 'yes-write-synthetic-data-to-production') {
+  console.error('Refusing to run: QA_WP_BASE is the production WordPress backend.');
+  process.exit(2);
+}
 const OUT = join(ROOT, 'qa-wholesale');
 const JAR = join(mkdtempSync(join(tmpdir(), 'hk-qa-wp-')), 'cookies.txt');
 

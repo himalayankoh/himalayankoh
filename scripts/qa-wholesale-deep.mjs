@@ -153,6 +153,9 @@ async function update(resource, id, data) {
 
 async function wp(path, options = {}) {
   const base = (env.WORDPRESS_BASE_URL || '').replace(/\/+$/, '');
+  if (/^https?:\/\/(wp\.)?himalayankoh\.com$/i.test(base) && process.env.QA_ALLOW_PRODUCTION !== 'yes-write-synthetic-data-to-production') {
+    throw new Error('Refusing to run: WORDPRESS_BASE_URL is the production backend and this trial writes synthetic data.');
+  }
   const user = env.WORDPRESS_ADMIN_USER || '';
   const pass = (env.WORDPRESS_ADMIN_APP_PASSWORD || '').replace(/\s+/g, '');
   const response = await fetch(`${base}${path}`, {
