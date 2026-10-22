@@ -27,7 +27,14 @@ vi.mock('../backend/credentials', () => ({
   requireWooCredentials: () => undefined,
 }));
 
-import { HK_META, TRASH_STATUS_META, restoreWooOrders, trashWooOrders, type WooOrderLike } from './orders';
+import {
+  HK_META,
+  TRASH_STATUS_META,
+  appStatusFromWoo,
+  restoreWooOrders,
+  trashWooOrders,
+  type WooOrderLike,
+} from './orders';
 
 function order(overrides: Partial<WooOrderLike> = {}): WooOrderLike {
   return { id: 500, status: 'processing', meta_data: [], ...overrides };
@@ -108,9 +115,40 @@ describe('trashWooOrders', () => {
     expect(result.changed).toEqual([2]);
     expect(result.failed).toEqual([{ id: 1, error: 'store unavailable' }]);
   });
+
+  it('treats already-trashed response from store delete as successfully changed', async () => {
+    request
+      .mockResolvedValueOnce(order({ status: 'pending' })) // read
+      .mockResolvedValueOnce(order()) // bookmark write
+      .mockRejectedValueOnce(new Error('WordPress error woocommerce_rest_already_trashed: The shop_order has already been deleted.'));
+
+    const result = await trashWooOrders([500]);
+
+    expect(result.changed).toEqual([500]);
+    expect(result.failed).toEqual([]);
+  });
 });
 
 describe('restoreWooOrders', () => {
+  it('falls back to WordPress core _wp_trash_meta_status when _hk_status_before_trash is absent', async () => {
+    request
+      .mockResolvedValueOnce(
+        order({
+          status: 'trash',
+          meta_data: [{ id: 99, key: '_wp_trash_meta_status', value: 'wc-processing' }],
+        })
+      )
+      .mockResolvedValueOnce(order({ status: 'processing' }));
+
+    const result = await restoreWooOrders([500]);
+
+    expect(result.changed).toEqual([500]);
+    expect(result.failed).toEqual([]);
+    const put = request.mock.calls[1][1] as { method?: string; body: Record<string, unknown> };
+    expect(put.method).toBe('PUT');
+    expect(put.body.status).toBe('processing');
+  });
+
   it('puts a delivered order back to delivered — never pending', async () => {
     request
       .mockResolvedValueOnce(
@@ -178,5 +216,15 @@ describe('restoreWooOrders', () => {
     expect(blank.failed[0].error).toMatch(/no remembered status/i);
     expect(unknown.failed[0].error).toMatch(/no remembered status/i);
     expect(request).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('appStatusFromWoo with trashed orders', () => {
+  it('always yields cancelled when order status is trash, even if custom HK_META.status is present', () => {
+    const trashedOrder = order({
+      status: 'trash',
+      meta_data: [{ key: HK_META.status, value: 'shipped' }],
+    });
+    expect(appStatusFromWoo(trashedOrder)).toBe('cancelled');
   });
 });

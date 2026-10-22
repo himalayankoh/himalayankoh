@@ -1142,9 +1142,15 @@ export function AOrders() {
     // `/api/checkout?action=orders` — a route that no longer exists — so every
     // mount produced a 404 and an empty list.
     const url = orderView === 'trash'
-      ? '/api/admin/orders?limit=100&status=trash'
-      : '/api/admin/orders?limit=100';
-    return fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      ? `/api/admin/orders?limit=100&status=trash&_t=${Date.now()}`
+      : `/api/admin/orders?limit=100&_t=${Date.now()}`;
+    return fetch(url, {
+      cache: 'no-store',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
+    })
       .then(async (r) => {
         const d = (await r.json().catch(() => ({}))) as {
           orders?: AdminOrderRow[];
@@ -1261,7 +1267,7 @@ export function AOrders() {
       );
       if (failed[0]?.error) notify(failed[0].error, 'error');
       setPicked(new Set());
-      refreshOrders();
+      await loadOrders();
     } catch (e) {
       notify((e as Error).message || 'The orders could not be changed.', 'error');
     } finally {
@@ -1292,10 +1298,15 @@ export function AOrders() {
         body: JSON.stringify({ action, ids: [numId] }),
       });
       const d = (await r.json().catch(() => ({}))) as {
+        ok?: boolean;
         error?: string;
         changed?: number[];
+        failed?: Array<{ id: number; error: string }>;
       };
       if (!r.ok) throw new Error(d?.error || `The store refused the change (HTTP ${r.status}).`);
+      if (d.failed && d.failed.length > 0) {
+        throw new Error(d.failed[0]?.error || 'The store refused the change.');
+      }
 
       notify(action === 'trash' ? `Order #${numId} moved to trash.` : `Order #${numId} restored.`);
       const strId = String(numId);
@@ -1305,7 +1316,7 @@ export function AOrders() {
         next.delete(strId);
         return next;
       });
-      refreshOrders();
+      await loadOrders();
     } catch (e) {
       notify((e as Error).message || 'The order could not be changed.', 'error');
     } finally {
@@ -1830,16 +1841,36 @@ export function AOrders() {
                     <td className="px-6 py-3 text-xs text-gray-500 align-top">{fmtItems(o.items).length} item(s)</td>
                     <td className="px-6 py-3 font-semibold align-top">${Number(o.total || 0).toFixed(2)}</td>
                     <td className="px-6 py-3 align-top">
-                      <select value={String(o.status || '')} disabled={orderView === 'trash'} onChange={(e) => { const s = e.target.value; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
-                        {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
+                      {orderView === 'trash' ? (
+                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                          Trashed
+                        </span>
+                      ) : (
+                        <select value={String(o.status || '')} onChange={(e) => { const s = e.target.value; setStripeOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: s } : x)); notify(`Order ${o.order_number} → ${s}`); }} className={`text-xs font-semibold px-2 py-1 rounded-full border-0 capitalize cursor-pointer max-w-full ${statusColor(String(o.status || ''))}`}>
+                          {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      )}
                     </td>
                     <td className="px-6 py-3 align-top">
                       {tr && tr.number ? (
                         <div className="flex items-center gap-1.5 min-w-0"><Truck size={13} className="text-blue-500 shrink-0" /><div className="min-w-0"><p className="font-mono text-[10px] text-gray-700 truncate">{tr.number}</p><p className="text-[9px] text-gray-400 uppercase">{tr.carrier}</p></div></div>
                       ) : <span className="text-xs text-gray-300">—</span>}
                     </td>
-                    <td className="px-6 py-3 align-top">{orderView === 'trash' ? <span className="text-[10px] text-gray-400">Restore it to work on it</span> : orderActions(o)}</td>
+                    <td className="px-6 py-3 align-top">
+                      {orderView === 'trash' ? (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void singleOrderAction(o.id, 'restore'); }}
+                          disabled={orderBusy}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition-all active:scale-95 shadow-xs disabled:opacity-50"
+                          title="Restore order"
+                        >
+                          <ArrowClockwise size={12} weight="bold" /> Restore
+                        </button>
+                      ) : (
+                        orderActions(o)
+                      )}
+                    </td>
                   </tr>
                   {expanded === o.id && (
                     <tr id={`order-detail-${o.id}`} className="border-t bg-gray-50/60">
@@ -1900,9 +1931,15 @@ export function AOrders() {
 
                     <div className="flex items-center gap-1.5 shrink-0">
                       {orderBadges(o)}
-                      <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full capitalize shadow-2xs ${statusColor(String(o.status || ''))}`}>
-                        {String(o.status || 'pending')}
-                      </span>
+                      {orderView === 'trash' ? (
+                        <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full capitalize shadow-2xs bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                          Trashed
+                        </span>
+                      ) : (
+                        <span className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full capitalize shadow-2xs ${statusColor(String(o.status || ''))}`}>
+                          {String(o.status || 'pending')}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -1944,20 +1981,25 @@ export function AOrders() {
                         <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">
                           Status
                         </label>
-                        <select
-                          value={String(o.status || '')}
-                          disabled={orderView === 'trash'}
-                          onChange={(e) => {
-                            const s = e.target.value;
-                            setStripeOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, status: s } : x)));
-                            notify(`Order ${o.order_number} → ${s}`);
-                          }}
-                          className={`w-full text-xs font-bold py-1.5 px-2 rounded-lg border-0 cursor-pointer capitalize shadow-2xs ${statusColor(String(o.status || ''))}`}
-                        >
-                          {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
+                        {orderView === 'trash' ? (
+                          <div className="w-full text-xs font-bold py-1.5 px-2 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                            Trashed
+                          </div>
+                        ) : (
+                          <select
+                            value={String(o.status || '')}
+                            onChange={(e) => {
+                              const s = e.target.value;
+                              setStripeOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, status: s } : x)));
+                              notify(`Order ${o.order_number} → ${s}`);
+                            }}
+                            className={`w-full text-xs font-bold py-1.5 px-2 rounded-lg border-0 cursor-pointer capitalize shadow-2xs ${statusColor(String(o.status || ''))}`}
+                          >
+                            {['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'].map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        )}
                       </div>
 
                       <div>

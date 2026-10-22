@@ -95,12 +95,19 @@ export async function GET(request: Request) {
     const page = await listWooOrders({ status, search, page: pageNumber, perPage });
     const statsOrders = reusesPage ? page.orders : (await statsPromise!).orders;
 
-    return NextResponse.json({
-      orders: page.orders.map(orderWithItemsFromWoo),
-      count: page.total,
-      totalPages: page.totalPages,
-      stats: statsFromWooOrders(statsOrders),
-    });
+    return NextResponse.json(
+      {
+        orders: page.orders.map(orderWithItemsFromWoo),
+        count: page.total,
+        totalPages: page.totalPages,
+        stats: statsFromWooOrders(statsOrders),
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      }
+    );
   } catch (error) {
     const status = error instanceof WooOrderError ? error.status : 502;
     const message = error instanceof Error ? error.message : 'The orders could not be read.';

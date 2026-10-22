@@ -277,6 +277,9 @@ function addressToJson(address: WooOrderAddress | undefined, fallbackEmail?: str
 
 /** The app's status for a Woo order: its own meta first, Woo's status second. */
 export function appStatusFromWoo(order: WooOrderLike): AppOrderStatus {
+  if (String(order.status ?? '') === 'trash') {
+    return 'cancelled';
+  }
   const metaStatus = metaString(order, HK_META.status) as AppOrderStatus | null;
   if (metaStatus && metaStatus in APP_STATUS_TO_NATIVE) return metaStatus;
   return NATIVE_STATUS_TO_APP[String(order.status ?? '')] ?? 'pending';
@@ -730,10 +733,24 @@ async function readWooOrderForTrash(id: number): Promise<WooOrderLike> {
  */
 function readTrashBookmark(order: WooOrderLike): { id?: number; status: AppOrderStatus } | null {
   const row = (order.meta_data ?? []).find((entry) => entry?.key === TRASH_STATUS_META);
-  if (!row) return null;
-  const value = row.value == null ? '' : String(row.value).trim();
-  if (!value || !(value in APP_STATUS_TO_NATIVE)) return null;
-  return { id: typeof row.id === 'number' ? row.id : undefined, status: value as AppOrderStatus };
+  if (row) {
+    const value = row.value == null ? '' : String(row.value).trim();
+    if (value && value in APP_STATUS_TO_NATIVE) {
+      return { id: typeof row.id === 'number' ? row.id : undefined, status: value as AppOrderStatus };
+    }
+  }
+
+  // Fallback to WordPress core's native pre-trash status meta
+  const wpRow = (order.meta_data ?? []).find((entry) => entry?.key === '_wp_trash_meta_status');
+  if (wpRow) {
+    const rawVal = wpRow.value == null ? '' : String(wpRow.value).trim().replace(/^wc-/, '');
+    const mapped = NATIVE_STATUS_TO_APP[rawVal];
+    if (mapped) {
+      return { id: typeof wpRow.id === 'number' ? wpRow.id : undefined, status: mapped };
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -777,7 +794,12 @@ export async function trashWooOrders(ids: number[]): Promise<WooOrderBulkResult>
       await trashWooOrder(id);
       changed.push(id);
     } catch (error) {
-      failed.push({ id, error: error instanceof Error ? error.message : String(error) });
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes('woocommerce_rest_already_trashed') || msg.includes('already been deleted')) {
+        changed.push(id);
+      } else {
+        failed.push({ id, error: msg });
+      }
     }
   }
 
