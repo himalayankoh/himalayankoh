@@ -201,7 +201,8 @@ export function buyerQuoteView(row: Row, now: Date = new Date()): BuyerQuoteView
 
   const priced = status === 'QUOTED' || status === 'ACCEPTED' || status === 'CONVERTED_TO_ORDER';
   const sellTotal = priced ? numb(row.sell_total) : 0;
-  const perUnit = priced && units > 0 ? Math.round((sellTotal / units) * 10_000) / 10_000 : null;
+  // A mixed-SKU total is not a unit price for each distinct product.
+  const perUnit = priced && lines.length === 1 && units > 0 ? Math.round((sellTotal / units) * 10_000) / 10_000 : null;
 
   return {
     id: numb(row.id),
@@ -221,7 +222,7 @@ export function buyerQuoteView(row: Row, now: Date = new Date()): BuyerQuoteView
       cartons: numb(line.cartons),
       pallets: numb(line.pallets),
       unitPrice: priced ? perUnit : null,
-      lineTotal: priced ? Math.round(numb(line.units) * (perUnit ?? 0) * 100) / 100 : null,
+      lineTotal: priced && perUnit !== null ? Math.round(numb(line.units) * perUnit * 100) / 100 : null,
     })),
     totals: {
       units,

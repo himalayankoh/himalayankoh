@@ -134,6 +134,16 @@ describe('inquiry snapshots and external invoice links', () => {
     expect(view.estimatedTotal).toBe(18.14);
     expect(view.totals.quotedTotal).toBeNull();
   });
+  it('does not invent identical unit prices from a mixed-SKU final total', () => {
+    const view = buyerQuoteView({ ...STORED_QUOTE, sell_total: 23.04, lines: [
+      { name: '2 lb lick', units: 1, unitPriceIndicative: 9.07 },
+      { name: '6 lb lick', units: 1, unitPriceIndicative: 13.97 },
+    ] }, AT);
+    expect(view.totals.quotedTotal).toBe(23.04);
+    expect(view.totals.perUnit).toBeNull();
+    expect(view.lines.every((line) => line.unitPrice === null && line.lineTotal === null)).toBe(true);
+    expect(view.estimatedTotal).toBe(23.04);
+  });
   it('rejects unsafe URLs and hides payment links on unconfirmed inquiries', () => {
     const view = buyerQuoteView({ ...STORED_QUOTE, status: 'SUBMITTED', invoice_url: 'javascript:alert(1)', external_payment_url: 'https://pay.example.invalid' });
     expect(view.invoiceUrl).toBeNull(); expect(view.externalPaymentUrl).toBeNull();
