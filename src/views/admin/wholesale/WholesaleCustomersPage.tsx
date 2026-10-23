@@ -21,6 +21,7 @@ import {
   AdminChip,
   AdminField,
   AdminNotice,
+  AdminModal,
   AdminPageHeader,
   AdminPanel,
   AdminTable,
@@ -126,6 +127,7 @@ export default function WholesaleCustomersPage() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [note, setNote] = useState('');
+  const [pendingDecision, setPendingDecision] = useState<ApplicationDecision | null>(null);
   const [busy, setBusy] = useState('');
 
   const load = useCallback(async () => {
@@ -194,15 +196,10 @@ export default function WholesaleCustomersPage() {
     }
   }
 
-  async function runDecision(decision: ApplicationDecision) {
+  async function runDecision(decision: ApplicationDecision, confirmed = false) {
     if (!selected) return;
-    const labels: Record<ApplicationDecision, string> = {
-      APPROVED: 'Approve this wholesale buyer',
-      REJECTED: 'Reject this application',
-      MORE_INFO_REQUIRED: 'Mark this application as needing more information',
-      SUSPENDED: 'Suspend this wholesale account',
-    };
-    if (!window.confirm(`${labels[decision]}?\n\nThis is recorded in the audit trail.`)) return;
+    if (!confirmed) { setPendingDecision(decision); return; }
+    setPendingDecision(null);
     setBusy(decision);
     setError('');
     setNotice('');
@@ -607,6 +604,14 @@ export default function WholesaleCustomersPage() {
           </AdminPanel>
         )}
       </div>
+      {pendingDecision && selected ? <AdminModal title="Confirm buyer decision" onClose={() => setPendingDecision(null)} footer={<>
+        <AdminButton variant="secondary" onClick={() => setPendingDecision(null)}>Cancel</AdminButton>
+        <AdminButton onClick={() => void runDecision(pendingDecision, true)}>Confirm decision</AdminButton>
+      </>}>
+        <p className="text-sm text-admin-ink break-words">{selected.company} — {pendingDecision.replaceAll('_', ' ')}.</p>
+        <p className="mt-3 text-sm text-admin-muted">This updates wholesale access and records your identity and review note in the audit trail. It does not verify a government record or take payment.</p>
+        {note.trim() ? <p className="mt-3 text-sm whitespace-pre-wrap break-words">Review note: {note}</p> : null}
+      </AdminModal> : null}
     </div>
   );
 }

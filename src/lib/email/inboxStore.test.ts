@@ -311,4 +311,12 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     expect(personalOrVendorEmail.labels).not.toContain('LeadOS Prospect');
     expect(mockUpdateSavedLead).not.toHaveBeenCalled();
   });
+  it('shows actual wholesale messages and counts in the dedicated ws folder', async () => {
+    await recordInboundEmail({ messageId: '<internal-ws-folder@test.invalid>', mailbox: 'ws@himalayankoh.com', from: { email: 'owner@test.invalid' }, to: [{ email: 'ws@himalayankoh.com' }], subject: 'Internal inquiry', bodyText: 'A saved inquiry notification.' });
+    await recordInboundEmail({ messageId: '<internal-support-folder@test.invalid>', mailbox: 'support@himalayankoh.com', from: { email: 'other@test.invalid' }, to: [{ email: 'support@himalayankoh.com' }], subject: 'Unrelated support', bodyText: 'This belongs to Support.' });
+    const state = await listInboxState({ folder: 'ws', skipExternalSync: true });
+    expect(state.messages).toHaveLength(1); expect(state.messages[0].subject).toBe('Internal inquiry'); expect(state.counts.ws).toBe(1);
+    expect(state.mailboxes.some(m => m.address === 'sales@himalayankoh.com')).toBe(false);
+  });
+
 });

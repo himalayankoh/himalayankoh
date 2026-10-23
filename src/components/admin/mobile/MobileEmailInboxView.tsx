@@ -44,6 +44,7 @@ export type MobileMailboxFilter =
   | 'orders'
   | 'marketing'
   | 'support'
+  | 'ws'
   | 'salman'
   | 'admin'
   | 'leados';
@@ -70,6 +71,7 @@ export function MobileEmailInboxView({
   const [mailboxFilter, setMailboxFilter] = useState<MobileMailboxFilter>(() => {
     if (activeFolder === 'orders') return 'orders';
     if (activeFolder === 'marketing') return 'marketing';
+    if (activeFolder === 'ws') return 'ws';
     if (activeFolder === 'support') return 'support';
     if (activeFolder === 'salman') return 'salman';
     if (activeFolder === 'admin') return 'admin';
@@ -120,6 +122,7 @@ export function MobileEmailInboxView({
     } else {
       if (activeFolder === 'orders') setMailboxFilter('orders');
       else if (activeFolder === 'marketing') setMailboxFilter('marketing');
+      else if (activeFolder === 'ws') setMailboxFilter('ws');
       else if (activeFolder === 'support') setMailboxFilter('support');
       else if (activeFolder === 'salman') setMailboxFilter('salman');
       else if (activeFolder === 'admin') setMailboxFilter('admin');
@@ -135,6 +138,7 @@ export function MobileEmailInboxView({
     } else if (mode === 'inbox') {
       if (mailboxFilter === 'orders') onSelectFolder('orders');
       else if (mailboxFilter === 'marketing') onSelectFolder('marketing');
+      else if (mailboxFilter === 'ws') onSelectFolder('ws');
       else if (mailboxFilter === 'support') onSelectFolder('support');
       else if (mailboxFilter === 'salman') onSelectFolder('salman');
       else if (mailboxFilter === 'admin') onSelectFolder('admin');
@@ -154,6 +158,7 @@ export function MobileEmailInboxView({
       // In Inbox mode, query selected server mailbox
       if (mb === 'orders') onSelectFolder('orders');
       else if (mb === 'marketing') onSelectFolder('marketing');
+      else if (mb === 'ws') onSelectFolder('ws');
       else if (mb === 'support') onSelectFolder('support');
       else if (mb === 'salman') onSelectFolder('salman');
       else if (mb === 'admin') onSelectFolder('admin');
@@ -192,6 +197,7 @@ export function MobileEmailInboxView({
       if (mailboxFilter === 'marketing' && !mailbox.includes('marketing')) {
         return false;
       }
+      if (mailboxFilter === 'ws' && mailbox !== 'ws@himalayankoh.com') return false;
       if (mailboxFilter === 'support' && !mailbox.includes('support')) {
         return false;
       }
@@ -361,6 +367,8 @@ export function MobileEmailInboxView({
         return { name: 'orders@himalayankoh.com', icon: '🛒', tag: 'Orders' };
       case 'marketing':
         return { name: 'marketing@himalayankoh.com', icon: '📢', tag: 'Marketing' };
+      case 'ws':
+        return { name: 'ws@himalayankoh.com', icon: '@', tag: 'Wholesale' };
       case 'support':
         return { name: 'support@himalayankoh.com', icon: '💬', tag: 'Support' };
       case 'salman':
@@ -430,7 +438,9 @@ export function MobileEmailInboxView({
           type="button"
           onClick={() => {
             const defaultMailbox: MailboxAddress =
-              mailboxFilter === 'marketing'
+              mailboxFilter === 'ws'
+                ? 'ws@himalayankoh.com'
+                : mailboxFilter === 'marketing'
                 ? 'marketing@himalayankoh.com'
                 : mailboxFilter === 'orders'
                 ? 'orders@himalayankoh.com'
@@ -527,6 +537,7 @@ export function MobileEmailInboxView({
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
         {[
           { id: 'all' as MobileMailboxFilter, label: 'All Accounts', icon: '🌟' },
+          { id: 'ws' as MobileMailboxFilter, label: 'Wholesale', icon: '@', badge: counts?.wsUnread, badgeColor: 'bg-amber-500 text-white' },
           {
             id: 'orders' as MobileMailboxFilter,
             label: 'Orders',

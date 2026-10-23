@@ -1886,6 +1886,8 @@ export interface InboxFolderCounts {
   marketingUnread: number;
   admin: number;
   adminUnread: number;
+  ws?: number;
+  wsUnread?: number;
   unread: number;
   sent: number;
   drafts: number;
@@ -1910,6 +1912,8 @@ export function computeInboxCounts(messages: InboxMessage[]): InboxFolderCounts 
     marketingUnread: 0,
     admin: 0,
     adminUnread: 0,
+    ws: 0,
+    wsUnread: 0,
     unread: 0,
     sent: 0,
     drafts: 0,
@@ -1939,6 +1943,9 @@ export function computeInboxCounts(messages: InboxMessage[]): InboxFolderCounts 
       } else if (m.mailbox === 'marketing@himalayankoh.com') {
         counts.marketing++;
         if (m.unread) counts.marketingUnread++;
+      } else if (m.mailbox === 'ws@himalayankoh.com') {
+        counts.ws = (counts.ws ?? 0) + 1;
+        if (m.unread) counts.wsUnread = (counts.wsUnread ?? 0) + 1;
       } else if (m.mailbox === 'admin@himalayankoh.com') {
         counts.admin++;
         if (m.unread) counts.adminUnread++;
@@ -2080,6 +2087,8 @@ export async function listInboxState(options?: {
       if ((m.folder !== 'inbox' && m.folder !== 'sent') || m.mailbox !== 'orders@himalayankoh.com') return false;
     } else if (folder === 'marketing') {
       if ((m.folder !== 'inbox' && m.folder !== 'sent') || m.mailbox !== 'marketing@himalayankoh.com') return false;
+    } else if (folder === 'ws') {
+      if ((m.folder !== 'inbox' && m.folder !== 'sent') || m.mailbox !== 'ws@himalayankoh.com') return false;
     } else if (folder === 'admin') {
       if ((m.folder !== 'inbox' && m.folder !== 'sent') || m.mailbox !== 'admin@himalayankoh.com') return false;
     } else if (folder === 'unread') {

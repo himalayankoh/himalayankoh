@@ -566,6 +566,7 @@ export default function EmailInboxAdmin() {
       case 'salman': return 'Salman';
       case 'sales': return 'Sales & Wholesale';
       case 'support': return 'Support';
+      case 'ws': return 'Wholesale';
       case 'orders': return 'Orders & Fulfillment';
       case 'marketing': return 'Marketing & Campaigns';
       case 'admin': return 'Admin';
@@ -584,6 +585,7 @@ export default function EmailInboxAdmin() {
       <div className="p-4 border-b border-slate-800 hidden md:block">
         <button
           onClick={() => {
+            if (activeFolder === 'ws') setComposeMailbox('ws@himalayankoh.com');
             setIsComposeOpen(true);
             setComposeError(null);
             setComposeSuccess(null);
@@ -652,6 +654,25 @@ export default function EmailInboxAdmin() {
           {counts && counts.supportUnread > 0 && (
             <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
               {counts.supportUnread}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => selectFolder('ws')}
+          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-xs ${
+            activeFolder === 'ws'
+              ? 'bg-amber-500/15 text-amber-300 font-semibold'
+              : 'text-slate-300 hover:bg-slate-800/60'
+          }`}
+        >
+          <span className="flex items-center gap-2.5">
+            <ShieldCheck size={16} />
+            Wholesale
+          </span>
+          {counts && (counts.wsUnread ?? 0) > 0 && (
+            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-slate-950">
+              {counts.wsUnread}
             </span>
           )}
         </button>
