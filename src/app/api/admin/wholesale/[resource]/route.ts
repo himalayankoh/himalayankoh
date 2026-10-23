@@ -164,6 +164,14 @@ export async function POST(request: Request, context: { params: Promise<{ resour
     }
     data.payment_verification = { provider: proof.provider.trim().slice(0, 100), reference: proof.reference.trim().slice(0, 200), verifiedInProvider: true, verifiedAt: new Date().toISOString(), verifiedBy: auth.admin.email };
   }
+  if (resource === 'quotes' && String(data.status).toUpperCase() === 'QUOTED') {
+    const total = Number(data.sell_total);
+    const valid = typeof data.valid_until === 'string' ? data.valid_until : '';
+    const expiry = new Date(`${valid}T23:59:59Z`);
+    if (!Number.isFinite(total) || total <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(valid) || !Number.isFinite(expiry.getTime()) || expiry.getTime() < Date.now()) {
+      return NextResponse.json({ error: 'A final quotation requires a positive reviewed total and a current validity date.' }, { status: 400 });
+    }
+  }
   const statusError = statusProblem(resource, data);
   if (statusError) return NextResponse.json({ error: statusError }, { status: 400 });
 

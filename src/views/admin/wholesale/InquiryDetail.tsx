@@ -9,6 +9,8 @@ export default function InquiryDetail({ inquiry, audit, reload, close }: {
   const [note, setNote] = useState(text(inquiry.internal_notes));
   const [invoice, setInvoice] = useState(text(inquiry.invoice_url));
   const [payment, setPayment] = useState(text(inquiry.external_payment_url));
+  const [quotedTotal, setQuotedTotal] = useState(text(inquiry.sell_total));
+  const [validUntil, setValidUntil] = useState(text(inquiry.valid_until));
   const writer = useWriter();
   const id = Number(inquiry.id);
   const lines = Array.isArray(inquiry.lines) ? inquiry.lines as WholesaleRow[] : [];
@@ -32,6 +34,18 @@ export default function InquiryDetail({ inquiry, audit, reload, close }: {
         </div>)}
       </div>
       <p className="text-sm whitespace-pre-wrap">Buyer notes: {text(inquiry.notes, 'None')}</p>
+      <div className="rounded-xl border border-charcoal/10 p-4 space-y-3">
+        <h3 className="font-semibold text-sm">Final quotation</h3>
+        <p className="text-xs text-charcoal-light">After reviewing stock, shipping and taxes, enter the final total and validity. This records your quotation; it does not take payment or automatically email the buyer. Send the final invoice through the Wholesale mailbox after saving.</p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Final quoted total (USD)"><TextInput type="number" value={quotedTotal} onChange={setQuotedTotal} /></Field>
+          <Field label="Valid through"><TextInput type="date" value={validUntil} onChange={setValidUntil} /></Field>
+        </div>
+        <Button disabled={writer.saving} onClick={() => {
+          if (!window.confirm('Record this reviewed final quotation? Payment will remain unconfirmed.')) return;
+          void writer.run(async () => { await saveWholesaleRecord('quotes', { status: 'QUOTED', sell_total: Number(quotedTotal), valid_until: validUntil, revisionReason: 'Trade desk reviewed final quotation', internal_notes: note, invoice_url: invoice, external_payment_url: payment }, id); await reload(); }, 'Final quotation saved. Send the invoice from the Wholesale mailbox.');
+        }}>Record final quotation</Button>
+      </div>
       <Field label="Internal notes"><TextArea value={note} onChange={setNote} /></Field>
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="Final invoice URL (HTTPS)"><TextInput value={invoice} onChange={setInvoice} placeholder="https://…" /></Field>
@@ -42,7 +56,7 @@ export default function InquiryDetail({ inquiry, audit, reload, close }: {
         <Button onClick={() => void writer.run(async () => { await saveWholesaleRecord('quotes', { internal_notes: note, invoice_url: invoice, external_payment_url: payment }, id); await reload(); }, 'Inquiry notes and links saved.')}>Save inquiry details</Button>
         <Button onClick={() => {
           if (!window.confirm('Resend the stored inquiry notification to ws@himalayankoh.com and its buyer?')) return;
-          void writer.run(async () => { const result = await resendWholesaleInquiryNotification(id); if (!result.adminNotified) throw new Error(result.error || 'Mail transport did not accept the notification.'); await reload(); }, 'Mail transport accepted the notification. Inbox delivery still needs confirmation.');
+          void writer.run(async () => { const result = await resendWholesaleInquiryNotification(id); if (!result.adminNotified || !result.buyerAcknowledged) throw new Error(result.error || 'One or more notifications were not accepted. Check the activity log.'); await reload(); }, 'Mail transport accepted the notification. Inbox delivery still needs confirmation.');
         }}>Resend notification</Button>
       </div>
       <h3 className="font-semibold text-sm">Activity and notification history</h3>
