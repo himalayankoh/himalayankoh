@@ -24,6 +24,7 @@
  * Server-only: it holds the WordPress credential through `store.ts`.
  */
 
+import { quantityProblem } from './casePolicy';
 import {
   buildCostLines,
   buildMixedLoad,
@@ -244,6 +245,8 @@ export function calculateQuote(data: WholesaleData, input: QuoteInput): QuoteCal
       throw new WholesaleEngineError(`${product.name}: give either units or pallets, not both.`);
     }
     const units = line.pallets ? unitsFromPallets(product, line.pallets) : (line.units ?? 0);
+    const caseError = quantityProblem(product, units);
+    if (caseError) throw new WholesaleEngineError(caseError);
     return { line, product, units };
   });
 

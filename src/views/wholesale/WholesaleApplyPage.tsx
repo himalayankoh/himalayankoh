@@ -781,7 +781,7 @@ export default function WholesaleApplyPage() {
             <input type="checkbox" required checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} className="mt-1 h-4 w-4" />
             <span>I acknowledge the <Link href="/privacy" target="_blank" className="underline text-himalayan">Privacy Policy</Link> and the private storage of my application and certificate for review.</span>
           </label>
-          <p className="text-sm text-charcoal-light mb-6">After approval, new buyers receive a secure WordPress link to set their password. Existing customers keep their current password.</p>
+          <p className="text-sm text-charcoal-light mb-6">Wholesale requires at least four full cases of each selected product. Case quantities and availability are confirmed per SKU. After approval, new buyers receive a secure WordPress link to set their password. Existing customers keep their current password.</p>
 
           {/* ------------------------------- buying ------------------------------ */}
           <h2 className="font-serif text-xl font-semibold text-charcoal mb-5">What you buy</h2>

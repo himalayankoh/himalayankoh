@@ -24,6 +24,8 @@ import {
   AdminTableSkeleton,
   AdminTabs,
 } from '@/components/admin/AdminUI';
+import WholesaleInventoryPanel from './WholesaleInventoryPanel';
+import { readCasePolicy, packagingObject, casePolicyProblem } from '@/lib/wholesale/casePolicy';
 import { SELECT, TEXTAREA } from '@/components/admin/adminTheme';
 import {
   fetchWholesaleConsole,
@@ -40,15 +42,15 @@ import {
  * A wholesale product *references* a WooCommerce product (`woo_product_id`). Name, SKU,
  * imagery and description stay in the retail catalogue; this screen owns only what is
  * the trade desk's: the wholesale price, the minimum order, the allocation and whether
- * the product is offered at all. Nothing written here can move a retail price — the
+ * the product is offered at all. The separate stock editor uses the existing canonical inventory endpoint. No trade-price save can move a retail price — the
  * retail storefront never reads these tables.
  *
- * ## The wholesale price is the one-unit tier
+ * ## The wholesale price is the first volume tier
  *
  * The pricing engine reads volume breaks (`price_tiers`), and the price for a single
  * unit is the first break. Rather than invent a second price column that could
  * disagree with the engine, the "wholesale unit price" field on this screen edits the
- * `min_units = 1` break, and the volume breaks beside it are the same rows.
+ * base break at the full-case minimum, and the volume breaks beside it are the same rows.
  *
  * ## Allocation, not stock
  *
@@ -73,6 +75,9 @@ interface Draft {
   woo_product_id: string;
   woo_variation_id: string;
   moq: string;
+  case_units: string;
+  minimum_cases: string;
+  minimum_pieces: string;
   available_units: string;
   active: boolean;
   notes: string;
@@ -85,6 +90,9 @@ const EMPTY_DRAFT: Draft = {
   woo_product_id: '',
   woo_variation_id: '',
   moq: '',
+  case_units: '',
+  minimum_cases: '4',
+  minimum_pieces: '0',
   available_units: '',
   active: true,
   notes: '',
@@ -105,6 +113,7 @@ function money(value: number): string {
 }
 
 function draftFrom(row: WholesaleRow): Draft {
+  const policy = readCasePolicy(row.packaging);
   return {
     id: Number(row.id ?? 0) || null,
     name: text(row.name),
@@ -112,6 +121,9 @@ function draftFrom(row: WholesaleRow): Draft {
     woo_product_id: text(row.woo_product_id) === '0' ? '' : text(row.woo_product_id),
     woo_variation_id: num(row.woo_variation_id) ? String(num(row.woo_variation_id)) : '',
     moq: num(row.moq) ? String(num(row.moq)) : '',
+    case_units: policy?.unitsPerCase ? String(policy.unitsPerCase) : '',
+    minimum_cases: String(policy?.minimumCases ?? 4),
+    minimum_pieces: String(policy?.minimumPieces ?? 0),
     available_units: num(row.available_units) ? String(num(row.available_units)) : '',
     active: Boolean(Number(row.active ?? 0)),
     notes: text(row.notes),
@@ -176,7 +188,8 @@ export default function WholesaleProductsPage() {
     const next = draftFrom(selected);
     setDraft(next);
     const unit = tiers
-      .filter((tier) => Number(tier.product_id) === Number(selected.id) && num(tier.min_units) === 1)
+      .filter((tier) => Number(tier.product_id) === Number(selected.id))
+      .sort((a, b) => num(a.min_units) - num(b.min_units))
       .map((tier) => num(tier.unit_price))[0];
     setBasePrice(unit ? String(unit) : '');
   }, [selected, tiers]);
@@ -226,6 +239,13 @@ export default function WholesaleProductsPage() {
       setError('The wholesale product needs a name.');
       return;
     }
+    const packaging = { ...packagingObject(selected?.packaging), wholesaleCases: {
+      unitsPerCase: draft.case_units.trim() ? Number(draft.case_units) : null,
+      minimumCases: Number(draft.minimum_cases), minimumPieces: Number(draft.minimum_pieces),
+    } };
+    const policyError = casePolicyProblem(packaging);
+    if (policyError) { setError(policyError); return; }
+    const caseMinimum = readCasePolicy(packaging)?.minimumUnits ?? 0;
     setBusy('SAVE');
     setError('');
     setNotice('');
@@ -237,7 +257,8 @@ export default function WholesaleProductsPage() {
           wholesale_sku: draft.wholesale_sku.trim(),
           woo_product_id: Number(draft.woo_product_id) || 0,
           woo_variation_id: Number(draft.woo_variation_id) || 0,
-          moq: Number(draft.moq) || 0,
+          moq: caseMinimum,
+          packaging,
           available_units: Number(draft.available_units) || 0,
           active: draft.active ? 1 : 0,
           notes: draft.notes,
@@ -245,20 +266,18 @@ export default function WholesaleProductsPage() {
         draft.id ?? undefined
       );
 
-      // The one-unit break is the wholesale unit price. Written after the product, so a
+      // The base break is the wholesale unit price. Written after the product, so a
       // new product has an id for its tier to point at.
       const productId = Number(saved.id ?? draft.id ?? 0);
       const price = Number(basePrice);
       if (productId && Number.isFinite(price) && price > 0) {
-        const existing = tiers.find(
-          (tier) => Number(tier.product_id) === productId && num(tier.min_units) === 1
-        );
-        if (!existing || num(existing.unit_price) !== price) {
+        const existing = tiers.filter((tier) => Number(tier.product_id) === productId).sort((a, b) => num(a.min_units) - num(b.min_units))[0];
+        if (!existing || num(existing.unit_price) !== price || num(existing.min_units) !== Math.max(1, caseMinimum)) {
           await saveWholesaleRecord(
             'price_tiers',
             {
               product_id: productId,
-              min_units: 1,
+              min_units: Math.max(1, caseMinimum),
               unit_price: price,
               currency: text(saved.currency) || 'USD',
             },
@@ -297,8 +316,10 @@ export default function WholesaleProductsPage() {
     if (!selected) return;
     const minUnits = Number(newTier.minUnits);
     const unitPrice = Number(newTier.unitPrice);
-    if (!Number.isFinite(minUnits) || minUnits < 2) {
-      setError('A volume break starts at 2 units or more. The one-unit price is the field above.');
+    const policy = readCasePolicy(selected.packaging);
+    const baseMinimum = Math.max(1, num(selected.moq), policy?.minimumUnits ?? 0);
+    if (!Number.isSafeInteger(minUnits) || minUnits <= baseMinimum || (policy?.unitsPerCase && minUnits % policy.unitsPerCase !== 0)) {
+      setError('A volume break must exceed the base minimum and use full cases. Edit the base price in the product field above.');
       return;
     }
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
@@ -367,10 +388,12 @@ export default function WholesaleProductsPage() {
           );
         }
         if (price !== null) {
-          const existing = tiers.find((tier) => Number(tier.product_id) === id && num(tier.min_units) === 1);
+          const existing = tiers.filter((tier) => Number(tier.product_id) === id).sort((a, b) => num(a.min_units) - num(b.min_units))[0];
+          const product = products.find((row) => Number(row.id) === id);
+          const minimum = Math.max(1, num(product?.moq), readCasePolicy(product?.packaging)?.minimumUnits ?? 0);
           await saveWholesaleRecord(
             'price_tiers',
-            { product_id: id, min_units: 1, unit_price: price, currency: 'USD' },
+            { product_id: id, min_units: minimum, unit_price: price, currency: 'USD' },
             existing ? Number(existing.id) : undefined
           );
         }
@@ -626,7 +649,7 @@ export default function WholesaleProductsPage() {
                 <AdminField label="WooCommerce variation id" hint="Required for a variable product; leave empty for a simple product." htmlFor="wp-variation">
                   <AdminInput id="wp-variation" value={draft.woo_variation_id} onChange={(event) => setDraft({ ...draft, woo_variation_id: event.target.value })} inputMode="numeric" />
                 </AdminField>
-                <AdminField label="Wholesale unit price (USD)" hint="The price for one unit, stored as the 1-unit tier." htmlFor="wp-price">
+                <AdminField label="Wholesale unit price (USD)" hint="Price per piece, available only at the full-case minimum." htmlFor="wp-price">
                   <AdminInput
                     id="wp-price"
                     value={basePrice}
@@ -635,15 +658,17 @@ export default function WholesaleProductsPage() {
                     placeholder="0.00"
                   />
                 </AdminField>
-                <AdminField label="Minimum order quantity" htmlFor="wp-moq">
-                  <AdminInput
-                    id="wp-moq"
-                    value={draft.moq}
-                    onChange={(event) => setDraft({ ...draft, moq: event.target.value })}
-                    inputMode="numeric"
-                  />
+                <AdminField label="Pieces per full case" htmlFor="wp-case-units" hint="Use a confirmed pack count. Leave empty until confirmed.">
+                  <AdminInput id="wp-case-units" type="number" min={1} step={1} value={draft.case_units} onChange={(event) => setDraft({ ...draft, case_units: event.target.value })} placeholder="e.g. 6" />
                 </AdminField>
-                <AdminField label="Wholesale allocation (units)" hint="What the trade desk will offer, not a second stock count." htmlFor="wp-units">
+                <AdminField label="Minimum cases per product" htmlFor="wp-min-cases">
+                  <AdminInput id="wp-min-cases" type="number" min={4} step={1} value={draft.minimum_cases} onChange={(event) => setDraft({ ...draft, minimum_cases: event.target.value })} />
+                </AdminField>
+                <AdminField label="Additional minimum pieces" htmlFor="wp-min-pieces" hint="Optional extra floor. 0 means the full-case minimum alone applies.">
+                  <AdminInput id="wp-min-pieces" type="number" min={0} step={1} value={draft.minimum_pieces} onChange={(event) => setDraft({ ...draft, minimum_pieces: event.target.value })} />
+                </AdminField>
+                <p className="text-xs text-admin-muted sm:col-span-2">{draft.case_units && Number(draft.case_units) > 0 ? `Required order: ${readCasePolicy({ wholesaleCases: { unitsPerCase: Number(draft.case_units), minimumCases: Number(draft.minimum_cases), minimumPieces: Number(draft.minimum_pieces) } })?.minimumUnits} pieces, in full cases.` : 'Wholesale ordering stays unavailable until the case pack is confirmed.'}</p>
+                <AdminField label="Wholesale allocation (units)" hint="Trade allocation, capped by the physical stock below. 0 uses live stock. Keep enough for the minimum cases." htmlFor="wp-units">
                   <AdminInput
                     id="wp-units"
                     value={draft.available_units}
@@ -694,11 +719,13 @@ export default function WholesaleProductsPage() {
                     <Boxes size={12} className="inline mr-1" aria-hidden />
                     {inquiryCount(Number(selected.id))} inquiry line(s) reference this product.
                   </p>
-                  <p>Retail price, imagery and description stay in WooCommerce; nothing here writes to it.</p>
+                  <p>Wholesale pricing does not change retail prices. The separate physical-inventory control below updates the shared WooCommerce stock count.</p>
                 </div>
               ) : null}
             </div>
           </AdminPanel>
+
+          {selected && num(selected.woo_product_id) > 0 ? <WholesaleInventoryPanel key={`${selected.id}:${selected.woo_product_id}:${selected.woo_variation_id}`} productId={num(selected.woo_product_id)} variationId={num(selected.woo_variation_id)} sku={text(selected.wholesale_sku)} /> : null}
 
           {selected ? (
             <AdminPanel title="Volume breaks" description="Quantity pricing the buyer's catalogue applies.">
@@ -717,7 +744,7 @@ export default function WholesaleProductsPage() {
                           {money(num(tier.unit_price))} per unit{num(tier.min_units) === 1 ? ' — unit price' : ''}
                         </p>
                       </div>
-                      {num(tier.min_units) === 1 ? (
+                      {String(tier.id) === String(selectedTiers[0]?.id) ? (
                         <AdminChip tone="brand">Base</AdminChip>
                       ) : (
                         <button

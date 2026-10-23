@@ -58,8 +58,8 @@ function money(amount: number, currency: string): string {
 
 /** Shortest sensible quantity for a product: one carton, or the MOQ when it is higher. */
 function startingUnits(item: PortalCatalogItem): number {
-  const carton = 1;
-  return Math.max(item.moq || 0, carton);
+  const carton = item.casePolicy?.unitsPerCase ?? 1;
+  return Math.ceil(Math.max(item.moq || 0, item.casePolicy?.minimumUnits ?? 0, carton) / carton) * carton;
 }
 
 export default function PortalCatalogPanel({
@@ -103,6 +103,7 @@ export default function PortalCatalogPanel({
       onDraftChange(draft.filter((line) => line.productRowId !== item.id));
       return;
     }
+    if (item.casePolicy && (!item.casePolicy.unitsPerCase || item.availableUnits < startingUnits(item))) return;
     onDraftChange([
       ...draft,
       {
@@ -279,8 +280,8 @@ export default function PortalCatalogPanel({
 
                       <dl className="text-xs text-charcoal-light space-y-1 mt-auto">
                         <div className="flex justify-between">
-                          <dt>Minimum order</dt>
-                          <dd className="text-charcoal">{item.moq ? `${item.moq.toLocaleString('en-US')} units` : 'Per quotation'}</dd>
+                          <dt>Wholesale minimum</dt>
+                          <dd className="text-charcoal">{item.casePolicy ? (item.casePolicy.minimumUnits ? `${Math.ceil(item.casePolicy.minimumUnits / (item.casePolicy.unitsPerCase ?? 1))} cases / ${item.casePolicy.minimumUnits} pcs` : 'Confirm case pack') : item.moq ? `${item.moq.toLocaleString('en-US')} units` : 'Per quotation'}</dd>
                         </div>
                         <div className="flex justify-between">
                           <dt>Available to trade</dt>
@@ -305,6 +306,8 @@ export default function PortalCatalogPanel({
                         ) : null}
                       </dl>
 
+                      {item.casePolicy ? <p className="text-xs text-charcoal-light mt-2">{item.casePolicy.unitsPerCase ? `${item.casePolicy.unitsPerCase} pieces per case. Full cases only.` : 'Case quantity needs owner confirmation before wholesale ordering.'}</p> : null}
+                      {item.casePolicy?.minimumUnits && item.availableUnits < startingUnits(item) ? <p className="text-xs text-amber-800 mt-2">Not enough stock for the wholesale minimum. Contact the trade desk.</p> : null}
                       {item.estimateNote ? (
                         <p className="text-xs text-amber-700 mt-3 leading-relaxed">Packing measurements are pending confirmation. Load calculations use estimates.</p>
                       ) : null}
@@ -312,14 +315,15 @@ export default function PortalCatalogPanel({
                       <button
                         type="button"
                         onClick={() => addProduct(item)}
-                        className={`mt-4 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold transition-colors ${
+                        disabled={!selected && Boolean(item.casePolicy && (!item.casePolicy.unitsPerCase || item.availableUnits < startingUnits(item)))}
+                        className={`mt-4 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                           selected
                             ? 'bg-charcoal/5 text-charcoal hover:bg-charcoal/10'
                             : 'bg-himalayan text-white hover:bg-himalayan-dark'
                         }`}
                       >
                         <Plus className="w-4 h-4" />
-                        {selected ? 'Added — remove' : 'Add to quote'}
+                        {selected ? 'Added — remove' : item.casePolicy && !item.casePolicy.unitsPerCase ? 'Case pack unconfirmed' : item.casePolicy && item.availableUnits < startingUnits(item) ? 'Stock below minimum' : 'Add to quote'}
                       </button>
                     </div>
                   </div>
@@ -406,7 +410,9 @@ export default function PortalCatalogPanel({
 
                         <input
                           type="number"
-                          min={1}
+                          min={mode === 'pallets' ? 1 : item ? startingUnits(item) : 1}
+                          step={mode === 'pallets' ? 1 : item?.casePolicy?.unitsPerCase ?? 1}
+                          aria-label={`Quantity for ${line.wholesaleSku || line.name}`}
                           className={`${input} max-w-[9rem]`}
                           value={mode === 'pallets' ? line.pallets ?? '' : line.units ?? ''}
                           onChange={(event) => {

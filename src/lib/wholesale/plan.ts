@@ -21,6 +21,7 @@
  * Server-only (it reads stored products through `pricing.ts`).
  */
 
+import { quantityProblem } from './casePolicy';
 import { WholesaleEngineError, buildMixedLoad, containerFit, priceTierFor, unitsFromPallets } from './engine';
 import type { ContainerFit } from './engine';
 import type { QuoteLineRequest, WholesaleData } from './pricing';
@@ -151,7 +152,9 @@ export function buildBuyerPlan(
       throw new WholesaleEngineError(`${product.name}: give either units or pallets, not both.`);
     }
     const units = line.pallets ? unitsFromPallets(product, line.pallets) : (line.units ?? 0);
-    if ((product.availableUnits ?? 0) > 0 && units > product.availableUnits!) {
+    const caseError = quantityProblem(product, units);
+    if (caseError) throw new WholesaleEngineError(caseError);
+    if ((product.casePolicy || (product.availableUnits ?? 0) > 0) && units > (product.availableUnits ?? 0)) {
       throw new WholesaleEngineError(`${product.name}: requested quantity exceeds the available allocation of ${product.availableUnits}.`);
     }
     return { line, product, units };

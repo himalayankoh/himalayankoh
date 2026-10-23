@@ -22,6 +22,7 @@
  */
 
 import type { QuoteConfidence } from './types';
+import type { WholesaleCasePolicy } from './casePolicy';
 
 /** The storage key, named so it is obviously not the retail or admin session. */
 export const WHOLESALE_SESSION_STORAGE_KEY = 'hk_wholesale_session';
@@ -333,6 +334,7 @@ export interface PortalBuyerResponse {
 }
 
 export interface PortalCatalogItem {
+  casePolicy?: WholesaleCasePolicy | null;
   id: number;
   name: string;
   wholesaleSku: string;

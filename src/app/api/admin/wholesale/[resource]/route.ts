@@ -24,10 +24,11 @@
  * nobody can find.
  */
 
+import { packagingObject, readCasePolicy, casePolicyProblem } from '@/lib/wholesale/casePolicy';
 import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { wholesaleDisabled } from '@/lib/wholesale/gate';
-import { deleteWholesaleRecord, isWholesaleResource, listWholesaleRecords, upsertWholesaleRecord } from '@/lib/wholesale/store';
+import { deleteWholesaleRecord, getWholesaleRecord, isWholesaleResource, listWholesaleRecords, upsertWholesaleRecord } from '@/lib/wholesale/store';
 import { recordQuoteRevision } from '@/lib/wholesale/revisionLog';
 
 export const dynamic = 'force-dynamic';
@@ -148,6 +149,21 @@ export async function POST(request: Request, context: { params: Promise<{ resour
   const data = body.data;
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     return NextResponse.json({ error: 'A field set is required.' }, { status: 400 });
+  }
+
+  if (resource === 'products') {
+    try {
+      const previous = body.id ? await getWholesaleRecord('products', Number(body.id)) : null;
+      const packaging = { ...packagingObject(previous?.packaging), ...packagingObject(data.packaging) };
+      if (!packaging.wholesaleCases) packaging.wholesaleCases = { unitsPerCase: null, minimumCases: 4, minimumPieces: 0 };
+      const problem = casePolicyProblem(packaging);
+      if (problem) return NextResponse.json({ error: problem }, { status: 400 });
+      const policy = readCasePolicy(packaging);
+      data.packaging = packaging;
+      data.moq = Math.max(Number(data.moq ?? previous?.moq) || 0, policy?.minimumUnits ?? 0);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'The product case policy could not be read.' }, { status: 502 });
+    }
   }
 
   for (const key of ['invoice_url', 'external_payment_url']) {

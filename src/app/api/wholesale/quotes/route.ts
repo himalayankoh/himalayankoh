@@ -154,6 +154,8 @@ export async function POST(request: Request) {
           wholesaleSku: line.wholesaleSku,
           units: line.units,
           cartons: line.cartons,
+          casePackUnits: data.products.find((product) => product.rowId === line.productRowId)?.casePolicy?.unitsPerCase ?? null,
+          minimumCasesAtRequest: data.products.find((product) => product.rowId === line.productRowId)?.casePolicy?.minimumCases ?? null,
           pallets: line.pallets,
           unitPriceIndicative: line.unitPrice,
           lineSubtotalIndicative: line.lineValue,

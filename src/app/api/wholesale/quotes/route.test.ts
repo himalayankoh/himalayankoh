@@ -49,3 +49,23 @@ describe('buyer inquiry boundary integration', () => {
   expect(listWholesaleRecords).toHaveBeenCalledWith('quotes', { account_id: 7, limit: 200 });
  });
 });
+
+
+describe('full cases cannot be bypassed at inquiry submission', () => {
+ it('rejects small, partial and unconfirmed cases without persisting or sending mail', async () => {
+  const data = await loadWholesaleData();
+  const product = data.products[0];
+  for (const [pack, units] of [[6, 18], [6, 25], [0, 100]]) {
+   vi.mocked(loadWholesaleData).mockResolvedValue({ ...data, products: [{ ...product, moq: 0, availableUnits: 100, casePolicy: { unitsPerCase: pack || null, minimumCases: 4, minimumPieces: 0, minimumUnits: pack ? pack * 4 : null } }] });
+   expect((await POST(req({ ...body, lines: [{ productRowId: 1, units }] }))).status).toBe(400);
+  }
+  expect(upsertWholesaleRecord).not.toHaveBeenCalled();
+  expect(sendWholesaleInquiryEmails).not.toHaveBeenCalled();
+ });
+ it('snapshots confirmed cases and genuine variation ids from the server', async () => {
+  const data = await loadWholesaleData();
+  vi.mocked(loadWholesaleData).mockResolvedValue({ ...data, products: [{ ...data.products[0], availableUnits: 100, packaging: { ...data.products[0].packaging, cartonQty: 6 }, casePolicy: { unitsPerCase: 6, minimumCases: 4, minimumPieces: 0, minimumUnits: 24 } }] });
+  expect((await POST(req({ ...body, lines: [{ productRowId: 1, units: 24, casePackUnits: 1, wooVariationId: 999 }] }))).status).toBe(201);
+  expect(vi.mocked(upsertWholesaleRecord).mock.calls[0][1].lines).toEqual(expect.arrayContaining([expect.objectContaining({ units: 24, casePackUnits: 6, minimumCasesAtRequest: 4, wooVariationId: 2560 })]));
+ });
+});

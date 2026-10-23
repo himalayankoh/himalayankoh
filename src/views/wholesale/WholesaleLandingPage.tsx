@@ -103,8 +103,8 @@ export default function WholesaleLandingPage() {
                 Himalayan pink salt, by the pallet and the container.
               </h1>
               <p className="text-white/75 text-base md:text-lg leading-relaxed max-w-2xl mb-6">
-                We supply retailers, distributors and importers from the salt range at Khewra. Buy from a single
-                pallet up to a full container, in one grade or a mixed load, priced on the Incoterm that suits you.
+                We supply retailers, distributors and importers from the salt range at Khewra. Wholesale starts at four
+                full cases per selected product. Case quantities, availability and freight are confirmed per SKU.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Link

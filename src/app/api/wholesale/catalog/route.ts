@@ -77,7 +77,7 @@ export async function GET(request: Request) {
       const tiers = data.tiers
         .filter((tier) => tier.productId === product.id)
         .sort((a, b) => a.minUnits - b.minUnits)
-        .map((tier) => ({ minUnits: tier.minUnits, unitPrice: tier.unitPrice, currency: tier.currency }));
+        .map((tier) => ({ minUnits: Math.max(tier.minUnits, product.moq, product.casePolicy?.minimumUnits ?? 0), unitPrice: tier.unitPrice, currency: tier.currency }));
 
       let packaging: BuyerCatalogItem['packaging'] = null;
       try {
@@ -99,6 +99,7 @@ export async function GET(request: Request) {
       const storefront = product.wooProductId ? facts.get(product.wooProductId) ?? null : null;
 
       return {
+        casePolicy: product.casePolicy,
         id: product.rowId,
         name: product.name || storefront?.name || `Wholesale product ${product.rowId}`,
         wholesaleSku: product.wholesaleSku,
@@ -108,7 +109,7 @@ export async function GET(request: Request) {
           image: product.canonical?.image || storefront?.image || null,
           slug: product.canonical?.slug || storefront?.slug || null,
         },
-        moq: product.moq,
+        moq: Math.max(product.moq, product.casePolicy?.minimumUnits ?? 0),
         availableUnits: product.availableUnits ?? 0,
         leadTimeDays: product.leadTimeDays,
         packaging,

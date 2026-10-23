@@ -27,6 +27,7 @@
  * write can address the same row it read.
  */
 
+import { readCasePolicy, type WholesaleCasePolicy } from './casePolicy';
 import type {
   ApplicationStatus,
   BusinessType,
@@ -205,6 +206,7 @@ export interface WholesaleProductRecord extends WholesaleProduct {
   /** The plugin's own row id — what a write addresses. */
   rowId: number;
   wooVariationId: number | null;
+  casePolicy?: WholesaleCasePolicy | null;
   canonical: { image?: string; slug?: string; description?: string; stock?: number | null } | null;
   packagingDefaultsUsed: string[];
   createdAt: string;
@@ -213,11 +215,14 @@ export interface WholesaleProductRecord extends WholesaleProduct {
 
 export function productFromRow(row: WholesaleRow): WholesaleProductRecord {
   const packaging = packagingFromJson(row.packaging);
+  const casePolicy = readCasePolicy(row.packaging);
+  if (casePolicy?.unitsPerCase) packaging.profile.cartonQty = casePolicy.unitsPerCase;
   return {
     rowId: num(row.id),
     id: String(row.id ?? ''),
     wooProductId: intOrNull(row.woo_product_id),
     wooVariationId: intOrNull(row.woo_variation_id),
+    casePolicy,
     canonical: row.canonical && typeof row.canonical === 'object' ? row.canonical as WholesaleProductRecord['canonical'] : null,
     name: text(row.name),
     wholesaleSku: text(row.wholesale_sku),

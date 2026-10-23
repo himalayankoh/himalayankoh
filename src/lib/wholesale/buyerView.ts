@@ -25,6 +25,7 @@
  * Pure and isomorphic — no credentials, no I/O — so a test can pin every state.
  */
 
+import type { WholesaleCasePolicy } from './casePolicy';
 import { isQuoteExpired } from './quoteLifecycle';
 import type { QuoteConfidence, QuoteStatus } from './types';
 
@@ -308,6 +309,7 @@ export function buyerOrderView(row: Row): BuyerOrderView {
 
 /** One page of the buyer-facing wholesale catalog. */
 export interface BuyerCatalogItem {
+  casePolicy?: WholesaleCasePolicy | null;
   id: number;
   name: string;
   wholesaleSku: string;

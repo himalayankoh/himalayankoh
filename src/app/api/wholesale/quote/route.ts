@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : 'The plan could not be calculated.';
     // A bad line or an unknown product is the buyer's mistake to fix, so it is a 400;
     // anything else is the backend failing to answer.
-    const status = /give either units or pallets|must be greater than zero|at least one product|whole wholesale product id|at most \d+ product lines/i.test(
+    const status = /wholesale requires at least|order full cases|wholesale case pack needs confirmation|exceeds the available allocation|give either units or pallets|must be greater than zero|at least one product|whole wholesale product id|at most \d+ product lines/i.test(
       message
     )
       ? 400

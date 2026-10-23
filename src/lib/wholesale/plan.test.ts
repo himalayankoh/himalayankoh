@@ -129,3 +129,21 @@ describe('inquiry quantity boundaries', () => {
     expect(() => buildBuyerPlan(data, { lines: [{ productRowId: 1, units: 11 }] })).toThrow(/allocation of 10/);
   });
 });
+
+
+describe('confirmed wholesale case rules at the server boundary', () => {
+  const cases = (pack: number, available = 100) => ({ ...DATA, products: [{ ...DATA.products[0], moq: 0, availableUnits: available, packaging: { ...PACKAGING, cartonQty: pack }, casePolicy: { unitsPerCase: pack, minimumCases: 4, minimumPieces: 0, minimumUnits: pack * 4 } }] });
+  it('rejects small and partial-case requests before computing a price', () => {
+    expect(() => buildBuyerPlan(cases(6), { lines: [{ productRowId: 1, units: 18 }] })).toThrow(/24 pieces/);
+    expect(() => buildBuyerPlan(cases(6), { lines: [{ productRowId: 1, units: 25 }] })).toThrow(/full cases of 6/);
+    expect(() => buildBuyerPlan(cases(4), { lines: [{ productRowId: 1, units: 12 }] })).toThrow(/16 pieces/);
+  });
+  it('allows four genuine cases without requiring every catalogue product', () => {
+    expect(buildBuyerPlan(cases(6), { lines: [{ productRowId: 1, units: 24 }] }).lines[0].cartons).toBe(4);
+    expect(buildBuyerPlan(cases(4), { lines: [{ productRowId: 1, units: 16 }] }).lines[0].cartons).toBe(4);
+  });
+  it('never increases stock to meet the new minimum', () => {
+    expect(() => buildBuyerPlan(cases(6, 10), { lines: [{ productRowId: 1, units: 24 }] })).toThrow(/allocation of 10/);
+    expect(() => buildBuyerPlan(cases(6, 0), { lines: [{ productRowId: 1, units: 24 }] })).toThrow(/allocation of 0/);
+  });
+});
