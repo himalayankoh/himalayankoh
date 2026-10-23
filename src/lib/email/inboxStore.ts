@@ -716,15 +716,7 @@ async function writeStoredMessages(messages: InboxMessage[]): Promise<void> {
 export async function syncImapMailboxes(
   targetMailbox?: MailboxAddress
 ): Promise<{ ok: boolean; syncedCount: number; error?: string }> {
-  const mailboxesToSync: MailboxAddress[] = targetMailbox
-    ? [targetMailbox]
-    : [
-        'support@himalayankoh.com',
-        'orders@himalayankoh.com',
-        'marketing@himalayankoh.com',
-        'salman@himalayankoh.com',
-        'admin@himalayankoh.com',
-      ];
+  const mailboxesToSync: MailboxAddress[] = targetMailbox ? [targetMailbox] : [...ALLOWED_MAILBOXES];
 
   let totalSynced = 0;
   // A mailbox that could not be read is reported, not silently reported as "0 new".
