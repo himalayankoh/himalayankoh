@@ -25,6 +25,7 @@ import {
   AdminTabs,
 } from '@/components/admin/AdminUI';
 import WholesaleInventoryPanel from './WholesaleInventoryPanel';
+import { boxCount, pricePerBox } from '@/lib/wholesale/boxes';
 import { readCasePolicy, packagingObject, casePolicyProblem } from '@/lib/wholesale/casePolicy';
 import { SELECT, TEXTAREA } from '@/components/admin/adminTheme';
 import {
@@ -649,7 +650,7 @@ export default function WholesaleProductsPage() {
                 <AdminField label="WooCommerce variation id" hint="Required for a variable product; leave empty for a simple product." htmlFor="wp-variation">
                   <AdminInput id="wp-variation" value={draft.woo_variation_id} onChange={(event) => setDraft({ ...draft, woo_variation_id: event.target.value })} inputMode="numeric" />
                 </AdminField>
-                <AdminField label="Wholesale unit price (USD)" hint="Price per piece, available only at the full-case minimum." htmlFor="wp-price">
+                <AdminField label="Wholesale piece price (USD)" hint="Stored per piece. The box price is shown below; retail prices are unchanged." htmlFor="wp-price">
                   <AdminInput
                     id="wp-price"
                     value={basePrice}
@@ -658,17 +659,24 @@ export default function WholesaleProductsPage() {
                     placeholder="0.00"
                   />
                 </AdminField>
-                <AdminField label="Pieces per full case" htmlFor="wp-case-units" hint="Use a confirmed pack count. Leave empty until confirmed.">
+                <AdminField label="Pieces per box" htmlFor="wp-case-units" hint="Use a confirmed pack count. Leave empty until confirmed.">
                   <AdminInput id="wp-case-units" type="number" min={1} step={1} value={draft.case_units} onChange={(event) => setDraft({ ...draft, case_units: event.target.value })} placeholder="e.g. 6" />
                 </AdminField>
-                <AdminField label="Minimum cases per product" htmlFor="wp-min-cases">
+                <AdminField label="Minimum boxes per product" htmlFor="wp-min-cases">
                   <AdminInput id="wp-min-cases" type="number" min={4} step={1} value={draft.minimum_cases} onChange={(event) => setDraft({ ...draft, minimum_cases: event.target.value })} />
                 </AdminField>
-                <AdminField label="Additional minimum pieces" htmlFor="wp-min-pieces" hint="Optional extra floor. 0 means the full-case minimum alone applies.">
+                <AdminField label="Additional minimum pieces (optional)" htmlFor="wp-min-pieces" hint="0 means only the minimum number of boxes applies.">
                   <AdminInput id="wp-min-pieces" type="number" min={0} step={1} value={draft.minimum_pieces} onChange={(event) => setDraft({ ...draft, minimum_pieces: event.target.value })} />
                 </AdminField>
-                <p className="text-xs text-admin-muted sm:col-span-2">{draft.case_units && Number(draft.case_units) > 0 ? `Required order: ${readCasePolicy({ wholesaleCases: { unitsPerCase: Number(draft.case_units), minimumCases: Number(draft.minimum_cases), minimumPieces: Number(draft.minimum_pieces) } })?.minimumUnits} pieces, in full cases.` : 'Wholesale ordering stays unavailable until the case pack is confirmed.'}</p>
-                <AdminField label="Wholesale allocation (units)" hint="Trade allocation, capped by the physical stock below. 0 uses live stock. Keep enough for the minimum cases." htmlFor="wp-units">
+                <div className="rounded-xl bg-admin-canvas p-3 text-sm text-admin-ink sm:col-span-2 space-y-1">
+                  {Number(draft.case_units) > 0 ? <>
+                    <p className="font-semibold">1 box = {draft.case_units} {Number(draft.case_units) === 1 ? 'piece' : 'pieces'}</p>
+                    <p>{money(pricePerBox(Number(basePrice) || 0, Number(draft.case_units)))} per box · {money(Number(basePrice) || 0)} per piece</p>
+                    <p>Minimum {boxCount(readCasePolicy({ wholesaleCases: { unitsPerCase: Number(draft.case_units), minimumCases: Number(draft.minimum_cases), minimumPieces: Number(draft.minimum_pieces) } })?.minimumUnits ?? 0, Number(draft.case_units))} full boxes per selected product for wholesale pricing.</p>
+                  </> : <p>Confirm pieces per box before offering wholesale orders.</p>}
+                  <p className="text-xs text-admin-muted">Wholesale programme: 30% below retail at 4+ boxes per selected product. Confirm your saved prices when making changes.</p>
+                </div>
+                <AdminField label="Wholesale allocation (pieces)" hint="This cap is in pieces, not boxes. 0 uses live stock. The buyer sees only full boxes available." htmlFor="wp-units">
                   <AdminInput
                     id="wp-units"
                     value={draft.available_units}
@@ -725,7 +733,7 @@ export default function WholesaleProductsPage() {
             </div>
           </AdminPanel>
 
-          {selected && num(selected.woo_product_id) > 0 ? <WholesaleInventoryPanel key={`${selected.id}:${selected.woo_product_id}:${selected.woo_variation_id}`} productId={num(selected.woo_product_id)} variationId={num(selected.woo_variation_id)} sku={text(selected.wholesale_sku)} /> : null}
+          {selected && num(selected.woo_product_id) > 0 ? <WholesaleInventoryPanel key={`${selected.id}:${selected.woo_product_id}:${selected.woo_variation_id}`} productId={num(selected.woo_product_id)} variationId={num(selected.woo_variation_id)} sku={text(selected.wholesale_sku)} piecesPerBox={readCasePolicy(selected.packaging)?.unitsPerCase ?? null} /> : null}
 
           {selected ? (
             <AdminPanel title="Volume breaks" description="Quantity pricing the buyer's catalogue applies.">

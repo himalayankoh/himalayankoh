@@ -21,6 +21,7 @@ import {
   type PortalPlan,
   type PortalQuote,
 } from '@/lib/wholesale/portalClient';
+import { boxCount, piecesFromBoxes, pricePerBox } from '@/lib/wholesale/boxes';
 import type { BuyerFacts, DraftLine, PortalTab } from './WholesalePortalPage';
 
 /**
@@ -35,10 +36,10 @@ import type { BuyerFacts, DraftLine, PortalTab } from './WholesalePortalPage';
  * panel says so, next to the number, rather than letting a buyer assume a delivered
  * price.
  *
- * ## Units or pallets, never both
+ * ## Boxes or pallets, never both
  *
- * A buyer thinking in pallets and a buyer thinking in units are both right, so each
- * line takes either — with the engine converting pallets to units through the
+ * A buyer enters full boxes or pallets. Boxes convert to pieces before API submission; each
+ * line stores pieces or pallets — with the engine converting pallets through the
  * product's own packaging, and the button pair making the choice explicit. The API
  * refuses a line that supplies both, so a slip in this component cannot change the
  * math silently.
@@ -213,7 +214,7 @@ export default function PortalCatalogPanel({
             <div>
               <h2 className="font-serif text-2xl font-bold text-charcoal">Wholesale catalog</h2>
               <p className="text-charcoal-light mt-1">
-                {items.length} product{items.length === 1 ? '' : 's'} · prices are per unit at the volume break shown
+                {items.length} product{items.length === 1 ? '' : 's'} · order full boxes; each box contains the pieces shown below
               </p>
             </div>
             {draft.length ? (
@@ -227,6 +228,10 @@ export default function PortalCatalogPanel({
             ) : null}
           </div>
 
+          <div className="mb-5 rounded-2xl border border-himalayan/20 bg-himalayan/5 p-4 text-sm text-charcoal">
+            <p className="font-semibold">30% wholesale pricing · minimum 4 full boxes per selected product</p>
+            <p className="mt-1 text-charcoal-light">2 lb: 6 pieces per box. 6 lb: 4 pieces per box. 30 lb: 1 piece per box. Buy at least 4 boxes of each product you choose. Freight and taxes are separate.</p>
+          </div>
           {catalog === null ? (
             <div className="flex items-center gap-3 text-charcoal-light py-16 justify-center">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -244,6 +249,8 @@ export default function PortalCatalogPanel({
             <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
               {items.map((item) => {
                 const selected = draft.some((line) => line.productRowId === item.id);
+                const pack = item.casePolicy?.unitsPerCase;
+                const minimumBoxes = pack ? boxCount(startingUnits(item), pack) : null;
                 return (
                   <div key={item.id} className="bg-white rounded-2xl border border-charcoal/8 overflow-hidden flex flex-col">
                     <div className="h-40 bg-warm-white overflow-hidden">
@@ -262,33 +269,26 @@ export default function PortalCatalogPanel({
                         <p className="text-xs text-charcoal-light font-mono mb-3">{item.wholesaleSku}</p>
                       ) : null}
 
-                      {item.tiers.length ? (
+                      {pack && item.tiers.length ? (
                         <ul className="text-sm text-charcoal-light space-y-1 mb-3">
-                          {item.tiers.slice(0, 4).map((tier) => (
-                            <li key={tier.minUnits} className="flex items-center gap-2">
+                          {item.tiers.slice(0, 4).map((tier, index) => (
+                            <li key={`${tier.minUnits}-${index}`} className="flex flex-wrap items-center gap-2">
                               <BadgePercent className="w-3.5 h-3.5 text-himalayan" />
-                              <span>
-                                {tier.minUnits.toLocaleString('en-US')}+ units ·{' '}
-                                <span className="text-charcoal font-medium">{money(tier.unitPrice, tier.currency)}</span>
-                              </span>
+                              <span><strong className="text-charcoal">{money(pricePerBox(tier.unitPrice, pack), tier.currency)} / box</strong> · {boxCount(tier.minUnits, pack)}+ boxes</span>
                             </li>
                           ))}
                         </ul>
-                      ) : (
-                        <p className="text-sm text-charcoal-light mb-3">Price on request for this product.</p>
-                      )}
+                      ) : <p className="text-sm text-charcoal-light mb-3">Box price available after the pack size is confirmed.</p>}
 
                       <dl className="text-xs text-charcoal-light space-y-1 mt-auto">
                         <div className="flex justify-between">
                           <dt>Wholesale minimum</dt>
-                          <dd className="text-charcoal">{item.casePolicy ? (item.casePolicy.minimumUnits ? `${Math.ceil(item.casePolicy.minimumUnits / (item.casePolicy.unitsPerCase ?? 1))} cases / ${item.casePolicy.minimumUnits} pcs` : 'Confirm case pack') : item.moq ? `${item.moq.toLocaleString('en-US')} units` : 'Per quotation'}</dd>
+                          <dd className="text-charcoal">{pack ? `${minimumBoxes} boxes (${startingUnits(item)} pieces)` : 'Confirm box size'}</dd>
                         </div>
                         <div className="flex justify-between">
                           <dt>Available to trade</dt>
                           <dd className="text-charcoal">
-                            {item.availableUnits > 0
-                              ? `${item.availableUnits.toLocaleString('en-US')} units`
-                              : 'Confirmed per inquiry'}
+                            {pack ? `${Math.floor(item.availableUnits / pack)} full boxes` : `${item.availableUnits} pieces; box size pending`}
                           </dd>
                         </div>
                         <div className="flex justify-between">
@@ -306,7 +306,7 @@ export default function PortalCatalogPanel({
                         ) : null}
                       </dl>
 
-                      {item.casePolicy ? <p className="text-xs text-charcoal-light mt-2">{item.casePolicy.unitsPerCase ? `${item.casePolicy.unitsPerCase} pieces per case. Full cases only.` : 'Case quantity needs owner confirmation before wholesale ordering.'}</p> : null}
+                      <p className="text-sm font-medium text-charcoal mt-2">{pack ? `1 box = ${pack} ${pack === 1 ? 'piece' : 'pieces'}. Full boxes only.` : 'Pieces per box need owner confirmation before wholesale ordering.'}</p>
                       {item.casePolicy?.minimumUnits && item.availableUnits < startingUnits(item) ? <p className="text-xs text-amber-800 mt-2">Not enough stock for the wholesale minimum. Contact the trade desk.</p> : null}
                       {item.estimateNote ? (
                         <p className="text-xs text-amber-700 mt-3 leading-relaxed">Packing measurements are pending confirmation. Load calculations use estimates.</p>
@@ -323,7 +323,7 @@ export default function PortalCatalogPanel({
                         }`}
                       >
                         <Plus className="w-4 h-4" />
-                        {selected ? 'Added — remove' : item.casePolicy && !item.casePolicy.unitsPerCase ? 'Case pack unconfirmed' : item.casePolicy && item.availableUnits < startingUnits(item) ? 'Stock below minimum' : 'Add to quote'}
+                        {selected ? 'Added — remove' : item.casePolicy && !item.casePolicy.unitsPerCase ? 'Box size unconfirmed' : item.casePolicy && item.availableUnits < startingUnits(item) ? 'Stock below minimum' : 'Add to quote'}
                       </button>
                     </div>
                   </div>
@@ -339,7 +339,7 @@ export default function PortalCatalogPanel({
           <div className="bg-white rounded-3xl border border-charcoal/8 p-6 md:p-7">
             <h2 className="font-serif text-xl font-semibold text-charcoal mb-1">Your quote</h2>
             <p className="text-charcoal-light text-sm mb-6">
-              Set a quantity in units or pallets for each line, then calculate the load.
+              Enter full boxes for each product. The total pieces are shown automatically. Pallets remain available for larger orders.
             </p>
 
             {draft.length === 0 ? (
@@ -355,7 +355,9 @@ export default function PortalCatalogPanel({
                 {draft.map((line) => {
                   const item = byId.get(line.productRowId);
                   const perPallet = item?.packaging?.unitsPerPallet ?? 0;
-                  const mode = line.pallets !== undefined ? 'pallets' : 'units';
+                  const pack = item?.casePolicy?.unitsPerCase;
+                  const minimumBoxes = pack && item ? boxCount(startingUnits(item), pack) : 4;
+                  const mode = line.pallets !== undefined ? 'pallets' : 'boxes';
                   return (
                     <div key={line.productRowId} className="rounded-2xl border border-charcoal/10 p-4">
                       <div className="flex items-start justify-between gap-3 mb-3">
@@ -381,15 +383,15 @@ export default function PortalCatalogPanel({
                             type="button"
                             onClick={() =>
                               updateLine(line.productRowId, {
-                                units: line.units ?? (perPallet || 1),
+                                units: line.units ?? (line.pallets ? line.pallets * perPallet : item ? startingUnits(item) : 0),
                                 pallets: undefined,
                               })
                             }
                             className={`px-3.5 py-1.5 text-xs font-semibold ${
-                              mode === 'units' ? 'bg-himalayan text-white' : 'text-charcoal-light'
+                              mode === 'boxes' ? 'bg-himalayan text-white' : 'text-charcoal-light'
                             }`}
                           >
-                            Units
+                            Boxes
                           </button>
                           <button
                             type="button"
@@ -410,23 +412,26 @@ export default function PortalCatalogPanel({
 
                         <input
                           type="number"
-                          min={mode === 'pallets' ? 1 : item ? startingUnits(item) : 1}
-                          step={mode === 'pallets' ? 1 : item?.casePolicy?.unitsPerCase ?? 1}
-                          aria-label={`Quantity for ${line.wholesaleSku || line.name}`}
+                          min={mode === 'pallets' ? 1 : minimumBoxes}
+                          step={1}
+                          aria-label={`${mode === 'boxes' ? 'Boxes' : 'Pallets'} for ${line.wholesaleSku || line.name}`}
                           className={`${input} max-w-[9rem]`}
-                          value={mode === 'pallets' ? line.pallets ?? '' : line.units ?? ''}
+                          disabled={mode === 'boxes' && !pack}
+                          value={mode === 'pallets' ? line.pallets ?? '' : pack && line.units !== undefined ? line.units / pack : ''}
                           onChange={(event) => {
-                            const value = Math.max(1, Math.trunc(Number(event.target.value) || 0));
-                            updateLine(
-                              line.productRowId,
-                              mode === 'pallets' ? { pallets: value } : { units: value }
-                            );
+                            const value = Number(event.target.value);
+                            if (!Number.isSafeInteger(value) || value < 0) { setPlanError('Enter a whole number of boxes or pallets.'); return; }
+                            if (mode === 'boxes' && !pack) { setPlanError('Confirm the box size before ordering.'); return; }
+                            try {
+                              updateLine(line.productRowId, mode === 'pallets' ? { pallets: value } : { units: piecesFromBoxes(value, pack!) });
+                              setPlanError('');
+                            } catch (error) { setPlanError(error instanceof Error ? error.message : 'Invalid box quantity.'); }
                           }}
                         />
 
                         {item ? (
                           <span className="text-xs text-charcoal-light">
-                            {item.tiers.length ? `From ${money(item.fromUnitPrice ?? 0, item.currency)}/unit at volume` : 'Price on request'}
+                            {pack ? `1 box = ${pack} ${pack === 1 ? 'piece' : 'pieces'} · ${mode === 'pallets' ? (line.pallets ?? 0) * perPallet : line.units ?? 0} pieces total. Minimum ${minimumBoxes} boxes.` : 'Confirm pieces per box before ordering.'}
                           </span>
                         ) : null}
                       </div>
@@ -471,24 +476,25 @@ export default function PortalCatalogPanel({
                     <thead>
                       <tr className="text-charcoal-light text-xs uppercase tracking-wider">
                         <th className="text-left font-medium pb-2 px-2">Product</th>
-                        <th className="text-right font-medium pb-2 px-2">Unit price</th><th className="text-right font-medium pb-2 px-2">Subtotal</th><th className="text-right font-medium pb-2 px-2">Units</th>
-                        <th className="text-right font-medium pb-2 px-2">Cartons</th>
+                        <th className="text-right font-medium pb-2 px-2">Box price</th><th className="text-right font-medium pb-2 px-2">Subtotal</th><th className="text-right font-medium pb-2 px-2">Pieces</th>
+                        <th className="text-right font-medium pb-2 px-2">Boxes</th>
                         <th className="text-right font-medium pb-2 px-2">Pallets</th>
                         <th className="text-right font-medium pb-2 px-2">Net kg</th>
                         <th className="text-right font-medium pb-2 px-2">CBM</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {plan.lines.map((line) => (
-                        <tr key={line.productRowId} className="border-t border-charcoal/8">
+                      {plan.lines.map((line) => {
+                        const pack = byId.get(line.productRowId)?.casePolicy?.unitsPerCase;
+                        return <tr key={line.productRowId} className="border-t border-charcoal/8">
                           <td className="py-2 px-2 text-charcoal">{line.name}</td>
-                          <td className="py-2 px-2 text-right text-charcoal">{line.unitPrice === null ? 'Unpriced' : money(line.unitPrice, currency)}</td><td className="py-2 px-2 text-right text-charcoal">{line.lineValue === null ? '—' : money(line.lineValue, currency)}</td><td className="py-2 px-2 text-right text-charcoal">{line.units.toLocaleString('en-US')}</td>
+                          <td className="py-2 px-2 text-right text-charcoal">{line.unitPrice === null ? 'Unpriced' : pack ? money(pricePerBox(line.unitPrice, pack), currency) : 'Box size pending'}</td><td className="py-2 px-2 text-right text-charcoal">{line.lineValue === null ? '—' : money(line.lineValue, currency)}</td><td className="py-2 px-2 text-right text-charcoal">{line.units.toLocaleString('en-US')}</td>
                           <td className="py-2 px-2 text-right text-charcoal">{line.cartons.toLocaleString('en-US')}</td>
                           <td className="py-2 px-2 text-right text-charcoal">{line.pallets}</td>
                           <td className="py-2 px-2 text-right text-charcoal">{line.netWeightKg.toLocaleString('en-US')}</td>
                           <td className="py-2 px-2 text-right text-charcoal">{line.cbm.toFixed(3)}</td>
-                        </tr>
-                      ))}
+                        </tr>;
+                      })}
                       <tr className="border-t-2 border-charcoal/15 font-semibold">
                         <td className="py-2 px-2 text-charcoal">Total</td><td /><td className="py-2 px-2 text-right">{plan.totals.indicativeMerchandise === null ? 'Unpriced' : money(plan.totals.indicativeMerchandise, currency)}</td>
                         <td className="py-2 px-2 text-right text-charcoal">{plan.totals.units.toLocaleString('en-US')}</td>

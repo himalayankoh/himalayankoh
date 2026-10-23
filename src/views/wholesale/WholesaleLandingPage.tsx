@@ -100,11 +100,11 @@ export default function WholesaleLandingPage() {
                 Wholesale &amp; Trade
               </span>
               <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-white leading-[1.08] mb-4">
-                Himalayan pink salt, by the pallet and the container.
+                Himalayan pink salt, by the box.
               </h1>
               <p className="text-white/75 text-base md:text-lg leading-relaxed max-w-2xl mb-6">
                 We supply retailers, distributors and importers from the salt range at Khewra. Wholesale starts at four
-                full cases per selected product. Case quantities, availability and freight are confirmed per SKU.
+                full boxes per selected product for 30% wholesale pricing. 2 lb: 6 pieces per box. 6 lb: 4 pieces per box. 30 lb: 1 piece per box. Availability and freight are confirmed per SKU.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Link
