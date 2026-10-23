@@ -105,6 +105,8 @@ const PUBLIC_BY_INTENT = [
   /^VITE_SUPABASE_URL$/,
   /^VITE_SUPABASE_ANON_KEY$/,
   /^SHIPPO_FROM_/,
+  // Public mail-host configuration and mailbox identity are not credentials. Passwords remain scanned.
+  /^WHOLESALE_(?:(?:SMTP|IMAP)_(?:HOST|PORT|USER)|FROM_EMAIL|INQUIRY_EMAIL)$/,
   /_MODEL$/,
 ];
 
