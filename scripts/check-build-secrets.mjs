@@ -115,7 +115,7 @@ function collectSecrets() {
     const env = parseEnvFile(join(ROOT, file));
     for (const [name, value] of Object.entries(env)) {
       if (PUBLIC_BY_INTENT.some((pattern) => pattern.test(name))) continue;
-      if (!value || value.length < MIN_SECRET_LENGTH) continue;
+      if (!value || value.length < (/^WHOLESALE_.*(?:PASS|SECRET|TOKEN)$/.test(name) ? 8 : MIN_SECRET_LENGTH)) continue;
       if (NOT_A_SECRET.test(value)) continue;
       values.set(value, name);
     }

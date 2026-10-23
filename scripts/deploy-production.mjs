@@ -26,10 +26,8 @@
  *
  * What this deliberately cannot do:
  *
- *   - It cannot attach `himalayankoh.com` or `www.himalayankoh.com`. The guard
- *     refuses any route or custom domain, so the only reachable address after this
- *     deploy is the Worker's `*.workers.dev` name. Attaching the domain is a
- *     separate, owner-approved step (see docs/PRODUCTION-CUTOVER-PLAN.md).
+ *   - It does not manage routes or custom domains. The apex and www already route
+ *     to this Worker; updating its script preserves those separately managed routes.
  *   - It cannot touch the staging Worker: the name is asserted to be the production
  *     one, and the read-back fails if that name does not exist in the account.
  *   - It cannot set a secret. Secrets are set once with `wrangler secret put` and
@@ -94,7 +92,7 @@ const env = {
 };
 
 process.stdout.write(
-  `\n[deploy:production] Deploying ${built.name} (no domain attached)\n` +
+  `\n[deploy:production] Updating ${built.name} (existing routes preserved)\n` +
     `[deploy:production] Cloudflare credentials from ${credentials.source}\n`,
 );
 
@@ -124,7 +122,7 @@ const checkSecrets = spawnSync('node', ['scripts/check-build-secrets.mjs'], { cw
 if (checkSecrets.status !== 0) fail('Post-deploy secret scan failed.', checkSecrets.status ?? 1);
 
 process.stdout.write(
-  `\n[deploy:production] ${built.name} is deployed and reachable only at its workers.dev name.\n` +
+  `\n[deploy:production] ${built.name} was updated; its existing production routes remain in place.\n` +
     `No DNS record was created and no custom domain was attached — himalayankoh.com is still WordPress.\n`,
 );
 

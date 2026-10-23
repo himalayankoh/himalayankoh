@@ -71,6 +71,7 @@ interface Draft {
   name: string;
   wholesale_sku: string;
   woo_product_id: string;
+  woo_variation_id: string;
   moq: string;
   available_units: string;
   active: boolean;
@@ -82,6 +83,7 @@ const EMPTY_DRAFT: Draft = {
   name: '',
   wholesale_sku: '',
   woo_product_id: '',
+  woo_variation_id: '',
   moq: '',
   available_units: '',
   active: true,
@@ -108,6 +110,7 @@ function draftFrom(row: WholesaleRow): Draft {
     name: text(row.name),
     wholesale_sku: text(row.wholesale_sku),
     woo_product_id: text(row.woo_product_id) === '0' ? '' : text(row.woo_product_id),
+    woo_variation_id: num(row.woo_variation_id) ? String(num(row.woo_variation_id)) : '',
     moq: num(row.moq) ? String(num(row.moq)) : '',
     available_units: num(row.available_units) ? String(num(row.available_units)) : '',
     active: Boolean(Number(row.active ?? 0)),
@@ -233,6 +236,7 @@ export default function WholesaleProductsPage() {
           name: draft.name.trim(),
           wholesale_sku: draft.wholesale_sku.trim(),
           woo_product_id: Number(draft.woo_product_id) || 0,
+          woo_variation_id: Number(draft.woo_variation_id) || 0,
           moq: Number(draft.moq) || 0,
           available_units: Number(draft.available_units) || 0,
           active: draft.active ? 1 : 0,
@@ -618,6 +622,9 @@ export default function WholesaleProductsPage() {
                     inputMode="numeric"
                     placeholder="e.g. 2487"
                   />
+                </AdminField>
+                <AdminField label="WooCommerce variation id" hint="Required for a variable product; leave empty for a simple product." htmlFor="wp-variation">
+                  <AdminInput id="wp-variation" value={draft.woo_variation_id} onChange={(event) => setDraft({ ...draft, woo_variation_id: event.target.value })} inputMode="numeric" />
                 </AdminField>
                 <AdminField label="Wholesale unit price (USD)" hint="The price for one unit, stored as the 1-unit tier." htmlFor="wp-price">
                   <AdminInput

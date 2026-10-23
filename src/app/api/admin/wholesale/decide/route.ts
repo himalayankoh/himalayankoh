@@ -13,9 +13,10 @@
  */
 
 import { NextResponse } from 'next/server';
+import { approvalProblem } from '@/lib/wholesale/applicationPolicy';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { wholesaleDisabled } from '@/lib/wholesale/gate';
-import { decideWholesaleApplication, upsertWholesaleRecord } from '@/lib/wholesale/store';
+import { decideWholesaleApplication, getWholesaleRecord, upsertWholesaleRecord } from '@/lib/wholesale/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +47,11 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (decision === 'APPROVED') {
+      const application = await getWholesaleRecord('applications', applicationId);
+      const problem = approvalProblem(application);
+      if (problem) return NextResponse.json({ error: problem }, { status: 409 });
+    }
     const actor = auth.admin.name || auth.admin.username || auth.admin.email;
     const result = await decideWholesaleApplication({
       applicationId,
@@ -90,6 +96,11 @@ export async function POST(request: Request) {
      * against. It is returned so the console can say "cannot sign in any more" only
      * when that is what happened, rather than inferring it from the decision.
      */
+    const persisted = await getWholesaleRecord('applications', applicationId);
+    if (String(persisted.status).toUpperCase() !== decision) {
+      return NextResponse.json({ error: 'The requested decision was not confirmed by the database. Refresh the application before retrying.' }, { status: 502 });
+    }
+
     return NextResponse.json({
       ...result,
       certificateStatus,

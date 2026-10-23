@@ -112,10 +112,10 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Package }> = [
   { id: 'audit', label: 'Audit trail', icon: History },
 ];
 
-export default function AdminWholesaleWorkspace() {
+export default function AdminWholesaleWorkspace({ initialTab = 'overview' }: { initialTab?: Tab }) {
   const [workspace, setWorkspace] = useState<WholesaleWorkspace | null>(null);
   const [overview, setOverview] = useState<WholesaleOverview | null>(null);
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [focusQuoteId, setFocusQuoteId] = useState<number | null>(null);
@@ -311,7 +311,7 @@ export default function AdminWholesaleWorkspace() {
       ) : null}
 
       {tab === 'quotes' ? (
-        <QuotesPanel
+        <QuotesPanel audit={workspace.audit}
           quotes={workspace.quotes}
           accounts={workspace.accounts}
           vocabulary={{ quoteStatuses: workspace.vocabulary.quoteStatuses }}

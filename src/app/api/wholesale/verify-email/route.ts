@@ -14,11 +14,11 @@
  */
 
 import { NextResponse } from 'next/server';
+import { WordPressApiError } from '@/lib/backend/wordpress';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { wholesaleDisabled } from '@/lib/wholesale/gate';
 import {
-  getWholesaleRecord,
-  listWholesaleRecords,
+  confirmWholesaleEmail,
   upsertWholesaleRecord,
 } from '@/lib/wholesale/store';
 import { applicationReference, recheckStoredApplication } from '@/lib/wholesale/certificateReview';
@@ -51,56 +51,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
 
+  if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Invalid confirmation request.' }, { status: 400 });
   const token = typeof body.token === 'string' ? body.token.trim() : '';
   if (token.length < 20 || token.length > 64 || !/^[a-f0-9]+$/i.test(token)) {
     return NextResponse.json({ error: 'That confirmation link is not valid.' }, { status: 400 });
   }
 
   try {
-    const rows = await listWholesaleRecords('applications', { email_verification_token: token, limit: 5 });
-
-    /**
-     * The token is compared again here, against the row the plugin returned.
-     *
-     * The filter is the fast path, but the plugin on the site may be an older build
-     * that does not know that filter yet — it would ignore the parameter and return
-     * the first application. Writing to that row would verify a stranger's email, so
-     * the token must match the row before anything is changed. This is the check that
-     * makes a plugin/deployment version skew harmless instead of dangerous.
-     */
-    const row = rows.find((entry) => {
-      const stored = typeof entry.email_verification_token === 'string' ? entry.email_verification_token : '';
-      return stored.length > 0 && stored === token;
-    });
-
-    if (!row) {
-      return NextResponse.json(
-        {
-          error:
-            'This confirmation link has already been used or has expired. If your email is not confirmed yet, apply again or contact the wholesale team.',
-        },
-        { status: 410 }
-      );
-    }
-
-    const id = Number(row.id ?? 0);
-    if (!id) {
-      return NextResponse.json({ error: 'That confirmation link is not valid.' }, { status: 400 });
-    }
-
+    const updated = await confirmWholesaleEmail(token);
+    const id = Number(updated.id);
     const now = new Date();
     const stamp = now.toISOString().slice(0, 19).replace('T', ' ');
     const actor = 'applicant-email-verification';
 
-    await upsertWholesaleRecord(
-      'applications',
-      { email_verified_at: stamp, email_verification_token: '' },
-      { id, actor }
-    );
-
     // Re-run the evidence now that the address is proven, so the console cannot show
     // "pending email verification" on a row whose email was just confirmed.
-    const updated = await getWholesaleRecord('applications', id);
     const { verification, write } = recheckStoredApplication(updated, actor, now);
     await upsertWholesaleRecord('applications', { ...write } as Record<string, unknown>, { id, actor });
 
@@ -132,7 +97,7 @@ export async function POST(request: Request) {
             ? `The link could not be confirmed: ${error.message}`
             : 'The link could not be confirmed.',
       },
-      { status: 502 }
+      { status: error instanceof WordPressApiError && error.status === 410 ? 410 : 502 }
     );
   }
 }

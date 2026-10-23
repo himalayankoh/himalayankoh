@@ -44,6 +44,10 @@ function orNull(value: unknown): string | null {
   return text === '' ? null : text;
 }
 
+function safeHttps(value: unknown): string | null {
+  try { const url = new URL(str(value)); return url.protocol === 'https:' ? url.toString() : null; } catch { return null; }
+}
+
 function numb(value: unknown, fallback = 0): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const parsed = Number(str(value));
@@ -166,6 +170,9 @@ export interface BuyerQuoteView {
   };
   /** True while nobody has priced the RFQ yet. */
   awaitingQuotation: boolean;
+  estimatedTotal: number | null;
+  invoiceUrl: string | null;
+  externalPaymentUrl: string | null;
   validUntil: string | null;
   submittedAt: string | null;
   createdAt: string;
@@ -225,6 +232,10 @@ export function buyerQuoteView(row: Row, now: Date = new Date()): BuyerQuoteView
       perUnit,
     },
     awaitingQuotation: !priced,
+    estimatedTotal: lines.length && lines.every((line) => typeof line.unitPriceIndicative === 'number')
+      ? Math.round(lines.reduce((sum, line) => sum + numb(line.units) * numb(line.unitPriceIndicative), 0) * 100) / 100 : null,
+    invoiceUrl: safeHttps(row.invoice_url),
+    externalPaymentUrl: priced && confidence === 'CONFIRMED' ? safeHttps(row.external_payment_url) : null,
     validUntil,
     submittedAt: orNull(row.submitted_at),
     createdAt: str(row.created_at),

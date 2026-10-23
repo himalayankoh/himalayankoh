@@ -26,12 +26,13 @@ interface SendEmailInput {
   replyTo?: string;
 }
 
-export function isEmailConfigured(): boolean {
-  return isCPanelConfigured();
+export function isEmailConfigured(senderEmail?: string): boolean {
+  return isCPanelConfigured(senderEmail);
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<boolean> {
-  if (!isEmailConfigured()) {
+  const requestedSender = input.from?.match(/<([^>]+)>/)?.[1] || input.from;
+  if (requestedSender !== 'ws@himalayankoh.com' && !isEmailConfigured(requestedSender)) {
     console.warn('[sendEmail] Email sending aborted: Authenticated Namecheap SMTP credentials are not configured.');
     return false;
   }

@@ -28,6 +28,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { applicationPolicyProblem } from '@/lib/wholesale/applicationPolicy';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { sendEmail, siteBaseUrl } from '@/lib/email/sendEmail';
 import { wholesaleDisabled } from '@/lib/wholesale/gate';
@@ -181,7 +182,7 @@ function verificationToken(): string {
 /** The verification email body. Plain, and it says what happens next. */
 function verificationEmailHtml(reference: string, company: string, link: string): string {
   return [
-    `<p>Hello ${company},</p>`,
+    `<p>Hello ${company.replace(/[&<>"']/g, (char) => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char] || char))},</p>`,
     `<p>Thank you for applying for a Himalayan Koh wholesale account. Your reference is <strong>${reference}</strong>.</p>`,
     `<p>Please confirm this is your business email address by opening the link below. It can be used once.</p>`,
     `<p><a href="${link}">Confirm my business email</a></p>`,
@@ -200,7 +201,7 @@ function verificationEmailHtml(reference: string, company: string, link: string)
  * it succeeded. The route therefore refuses to write until the store reports the
  * schema it needs.
  */
-const REQUIRED_DB_VERSION = 8;
+const REQUIRED_DB_VERSION = 9;
 
 /** One schema probe a minute, however many applications arrive. */
 let schemaProbe: { checkedAt: number; ready: boolean } | null = null;
@@ -210,7 +211,7 @@ async function wholesaleSchemaReady(): Promise<boolean> {
 
   const settings = await readWholesalePluginSettings({ timeoutMs: 20_000 }).catch(() => null);
   const installed = Number(settings?.installed_db_version ?? settings?.db_version ?? 0);
-  const ready = Boolean(settings) && Number.isFinite(installed) && installed >= REQUIRED_DB_VERSION;
+  const ready = Boolean(settings) && Number.isFinite(installed) && installed >= REQUIRED_DB_VERSION && !settings?.schema_error && !(settings?.missing_tables?.length);
   schemaProbe = { checkedAt: Date.now(), ready };
   return ready;
 }
@@ -244,6 +245,10 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: 'An application object is required.' }, { status: 400 });
+  const policyProblem = applicationPolicyProblem(body);
+  if (policyProblem) return NextResponse.json({ error: policyProblem }, { status: 400 });
 
   const payload: Record<string, string> = {};
   for (const name of APPLICANT_FIELDS) {
@@ -303,9 +308,9 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (payload.state.toUpperCase() !== state.code) {
+  if (!stateAuthority(payload.state)) {
     return NextResponse.json(
-      { error: 'The business address state and the certificate state must be the same.' },
+      { error: 'Choose a valid U.S. business address state.' },
       { status: 400 }
     );
   }
@@ -358,7 +363,7 @@ export async function POST(request: Request) {
   try {
     const result = await submitWholesaleApplication({
       ...payload,
-      state: state.code,
+      state: payload.state.toUpperCase(),
       resale_state: state.code,
       resale_number: certificateInput.number,
       resale_type: certificateInput.type,
@@ -428,7 +433,7 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : 'The application could not be submitted.';
     // The plugin's own refusal (an email that already holds an approved account)
     // is a real answer for the applicant, so it is passed on rather than flattened.
-    const status = /already holds an approved wholesale account/i.test(message) ? 409 : 502;
+    const status = /already holds an approved wholesale account|application already exists/i.test(message) ? 409 : 502;
     return NextResponse.json({ error: message }, { status });
   }
 }

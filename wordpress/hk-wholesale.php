@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — Wholesale (B2B)
  * Description:       The wholesale side of Himalayan Koh: buyer applications and accounts, a wholesale product master with its own packaging/MOQ/cost fields, price tiers, suppliers and origins, container and cost profiles, freight rates, port charges, quotes and wholesale orders. Wholesale pricing is separate from the retail price WooCommerce owns — a change here never rewrites a storefront price. The Next.js app talks to the hk-wholesale/v1 namespace below; nothing in this plugin reads or writes a retail customer, cart or WooCommerce order.
- * Version:           1.3.2
+ * Version:           1.4.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -52,7 +52,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'HK_WHOLESALE_VERSION', '1.3.2' );
+define( 'HK_WHOLESALE_VERSION', '1.4.0' );
 // Bumped when the schema array changes: `hk_wholesale_maybe_upgrade` re-runs dbDelta
 // only when this differs from what is stored, so an existing install picks up the new
 // columns on its next load instead of waiting for a deactivate/reactivate cycle.
@@ -61,7 +61,7 @@ define( 'HK_WHOLESALE_VERSION', '1.3.2' );
 // reserved word, and the unquoted CREATE TABLE was rejected in silence — which left the
 // quotations table missing on a real install while every read of it returned an empty
 // list rather than an error. v4 records *why* a table is missing; v3 verifies the work.
-define( 'HK_WHOLESALE_DB_VERSION', '8' );
+define( 'HK_WHOLESALE_DB_VERSION', '9' );
 
 /** The installed schema version, so a later release can add tables without re-activation. */
 const HK_WHOLESALE_DB_OPTION = 'hk_wholesale_db_version';
@@ -174,7 +174,7 @@ function hk_wholesale_ensure_buyer_user( $email, $contact_name = '', $company = 
 		'userId'  => (int) $user_id,
 		'role'    => HK_WHOLESALE_BUYER_ROLE,
 		'message' => $emailed
-			? 'A WordPress sign-in account was created with the wholesale buyer role, and the set-password email was sent to ' . $email . '.'
+			? 'A WordPress sign-in account was created with the wholesale buyer role, and a set-password email was requested for ' . $email . '.'
 			: 'A WordPress sign-in account was created with the wholesale buyer role, but the set-password email could not be requested — the buyer needs a password reset from the site.',
 	);
 }
@@ -312,6 +312,7 @@ function hk_wholesale_schema() {
 		'products'       => array(
 			'columns' => array(
 				'woo_product_id'      => 'int',
+                'woo_variation_id'    => 'int',
 				'wholesale_sku'       => 'string191',
 				'name'                => 'string191',
 				'moq'                 => 'int',
@@ -447,6 +448,12 @@ function hk_wholesale_schema() {
 				'incoterm'              => 'string8',
 				'destination_country'   => 'string64',
 				'destination_port'      => 'string32',
+                'shipping_address'     => 'json',
+                'buyer_contact'        => 'json',
+                'request_key'          => 'string64',
+                'invoice_url'          => 'text',
+                'external_payment_url' => 'text',
+                'internal_notes'       => 'text',
 				'container_profile_id'  => 'int',
 				'containers'            => 'int',
 				'currency'              => 'string8',
@@ -482,6 +489,7 @@ function hk_wholesale_schema() {
 				'payment_terms'       => 'json',
 				'sell_total'          => 'float',
 				'paid_amount'         => 'float',
+                'payment_verification' => 'json',
 				'quote_ref'           => 'string32',
 				// Whether the account itself is the dealer, or a trade customer the dealer
 				// introduced. Zero means "no dealer" — the order is Himalayan Koh's own.
@@ -1079,10 +1087,46 @@ function hk_wholesale_upsert_record( $request ) {
 	$table  = hk_wholesale_table( $resource );
 	$now    = current_time( 'mysql' );
 	$fields = hk_wholesale_filter_payload( $resource, $data );
+    // Serialize identical inquiry requests; a retry returns the original saved record.
+    if ( 'quotes' === $resource && ! $id && ! empty( $fields['request_key'] ) ) {
+        $account_id = isset( $fields['account_id'] ) ? (int) $fields['account_id'] : 0;
+        $lock_name = 'hk-ws-' . md5( $table . ':' . $account_id . ':' . $fields['request_key'] );
+        $locked = $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, 3)', $lock_name ) );
+        if ( '1' !== (string) $locked ) return new WP_Error( 'hk_wholesale_busy', 'This inquiry is already being submitted. Retry with the same reference.', array( 'status' => 409 ) );
+        register_shutdown_function( function () use ( $wpdb, $lock_name ) {
+            $wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+        } );
+        $duplicate = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE account_id = %d AND request_key = %s LIMIT 1", $account_id, $fields['request_key'] ), ARRAY_A );
+        if ( $duplicate ) {
+            $record = hk_wholesale_decode_row( 'quotes', $duplicate );
+            $record['_deduplicated'] = true;
+            return rest_ensure_response( array( 'record' => $record ) );
+        }
+    }
+
 
 	if ( ! $fields ) {
 		return new WP_Error( 'hk_wholesale_empty_payload', 'No writable field was supplied.', array( 'status' => 400 ) );
 	}
+
+    if ( 'products' === $resource ) {
+        $stored = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ), ARRAY_A ) : array();
+        $candidate = array_merge( (array) $stored, $fields );
+        if ( ! empty( $candidate['active'] ) ) {
+            $facts = hk_wholesale_canonical_product( $candidate );
+            if ( ! $facts ) return new WP_Error( 'hk_wholesale_product_link', 'Choose a published canonical product and its exact variation before offering it wholesale.', array( 'status' => 400 ) );
+            $fields['name'] = $facts['name'];
+            $fields['wholesale_sku'] = $facts['sku'];
+            $fields['net_unit_weight_kg'] = $facts['weightKg'];
+            $allocation = isset( $candidate['available_units'] ) ? (int) $candidate['available_units'] : 0;
+            if ( $allocation < 0 || ( null !== $facts['stock'] && $allocation > $facts['stock'] ) ) return new WP_Error( 'hk_wholesale_allocation', 'Allocation must be non-negative and cannot exceed current WooCommerce stock.', array( 'status' => 400 ) );
+        }
+    }
+    if ( 'price_tiers' === $resource ) {
+        foreach ( array( 'min_units', 'unit_price' ) as $key ) {
+            if ( isset( $fields[ $key ] ) && (float) $fields[ $key ] <= 0 ) return new WP_Error( 'hk_wholesale_price', 'Wholesale quantities and prices must be positive.', array( 'status' => 400 ) );
+        }
+    }
 
 	$formats = array();
 	$types   = hk_wholesale_schema()[ $resource ]['columns'];
@@ -1102,7 +1146,7 @@ function hk_wholesale_upsert_record( $request ) {
 			$formats[] = hk_wholesale_format( $types[ $name ] );
 		}
 
-		$wpdb->update( $table, $fields, array( 'id' => $id ), $formats, array( '%d' ) );
+        if ( false === $wpdb->update( $table, $fields, array( 'id' => $id ), $formats, array( '%d' ) ) ) return new WP_Error( 'hk_wholesale_write_failed', 'The update could not be stored.', array( 'status' => 500 ) );
 
 		// A quote's own history is the point of a quote: record both what changed
 		// and that it changed, so an override is visible after the fact.
@@ -1170,10 +1214,8 @@ function hk_wholesale_application_statuses() {
 /**
  * Submits a wholesale application.
  *
- * Idempotent for the same email: a second submission while one is still pending
- * updates that application instead of stacking a duplicate a reviewer would read
- * twice. An email that already holds an active account is refused, because the
- * answer there is "sign in", not "apply again".
+ * A duplicate is refused instead of overwriting another applicant's documents.
+ * Updates and renewals are handled by the authenticated wholesale team.
  */
 function hk_wholesale_submit_application( $request ) {
 	global $wpdb;
@@ -1210,6 +1252,11 @@ function hk_wholesale_submit_application( $request ) {
 	$applications = hk_wholesale_table( 'applications' );
 	$existing     = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$applications} WHERE email = %s ORDER BY id DESC LIMIT 1", $email ) ); // phpcs:ignore WordPress.DB
 
+	if ( $existing ) {
+        return new WP_Error( 'hk_wholesale_duplicate_application', 'An application already exists for this email. Contact the wholesale team to update your documents.', array( 'status' => 409 ) );
+    }
+    $business_match = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$applications} WHERE LOWER(TRIM(company)) = %s AND zip = %s LIMIT 1", strtolower( trim( (string) $body['company'] ) ), isset( $body['zip'] ) ? (string) $body['zip'] : '' ) );
+    if ( $business_match ) return new WP_Error( 'hk_wholesale_duplicate_business', 'An application already exists for this business and address. Contact the wholesale team.', array( 'status' => 409 ) );
 	$fields = hk_wholesale_filter_payload( 'applications', array_merge( $body, array( 'email' => $email ) ) );
 	$fields['status'] = 'PENDING';
 	// An applicant may not assert a decision, a verification or a review. `email_verified_at`
@@ -1299,6 +1346,12 @@ function hk_wholesale_decide_application( $request ) {
 	$buyer_user = null;
 
 	if ( 'APPROVED' === $decision ) {
+        if ( empty( $application['email_verified_at'] ) || empty( $application['declaration_name'] ) ) {
+            return new WP_Error( 'hk_wholesale_unverified_applicant', 'Verify the business email and signed declaration before approval.', array( 'status' => 409 ) );
+        }
+        if ( ! empty( $application['resale_expires'] ) && strtotime( $application['resale_expires'] . ' 23:59:59 UTC' ) < time() ) {
+            return new WP_Error( 'hk_wholesale_expired_certificate', 'Request an updated certificate before approval.', array( 'status' => 409 ) );
+        }
 		$existing = hk_wholesale_id( $application['account_id'] )
 			? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$accounts} WHERE id = %d", hk_wholesale_id( $application['account_id'] ) ), ARRAY_A ) // phpcs:ignore WordPress.DB
 			: null;
@@ -1306,6 +1359,9 @@ function hk_wholesale_decide_application( $request ) {
 		if ( ! $existing ) {
 			$existing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$accounts} WHERE email = %s LIMIT 1", $application['email'] ), ARRAY_A ); // phpcs:ignore WordPress.DB
 		}
+
+		$buyer_user = hk_wholesale_ensure_buyer_user( $application['email'], $application['contact_name'], $application['company'] );
+        if ( empty( $buyer_user['userId'] ) ) return new WP_Error( 'hk_wholesale_login_unavailable', 'Approval was not completed: buyer sign-in provisioning failed.', array( 'status' => 502 ) );
 
 		$account_fields = array(
 			'company'             => $application['company'],
@@ -1315,15 +1371,17 @@ function hk_wholesale_decide_application( $request ) {
 			'country'             => $application['country'],
 			'website'             => $application['website'],
 			'business_type'       => $application['business_type'],
+            'billing_address' => implode( ', ', array_filter( array( $application['address_line1'], $application['address_line2'], $application['city'], $application['state'], $application['zip'], $application['country'] ) ) ),
 			'destination_country' => $application['destination_country'],
 			'destination_port'    => $application['destination_port'],
+            'wp_user_id' => (int) $buyer_user['userId'],
 			'status'              => 'ACTIVE',
 			'approved_at'         => current_time( 'mysql' ),
 			'updated_at'          => current_time( 'mysql' ),
 		);
 
 		if ( $existing ) {
-			$wpdb->update( $accounts, $account_fields, array( 'id' => (int) $existing['id'] ) );
+			if ( false === $wpdb->update( $accounts, $account_fields, array( 'id' => (int) $existing['id'] ) ) ) return new WP_Error( 'hk_wholesale_write_failed', 'The account could not be updated.', array( 'status' => 500 ) );
 			$account_id = (int) $existing['id'];
 		} else {
 			$account_fields['ref']        = hk_wholesale_reference( 'B', $id );
@@ -1340,7 +1398,7 @@ function hk_wholesale_decide_application( $request ) {
 			return new WP_Error( 'hk_wholesale_write_failed', 'The account could not be created.', array( 'status' => 500 ) );
 		}
 
-		$wpdb->update(
+		$approval_written = $wpdb->update(
 			$applications,
 			array(
 				'status'     => 'APPROVED',
@@ -1352,15 +1410,9 @@ function hk_wholesale_decide_application( $request ) {
 			array( 'id' => $id )
 		);
 
+        if ( false === $approval_written ) return new WP_Error( 'hk_wholesale_write_failed', 'The approval could not be saved. Buyer access remains blocked until the application is approved.', array( 'status' => 500 ) );
 		$account = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$accounts} WHERE id = %d", $account_id ), ARRAY_A ); // phpcs:ignore WordPress.DB
 
-		// An approved buyer with no WordPress user has nowhere to sign in, so approval
-		// creates one (see `hk_wholesale_ensure_buyer_user`) and reports what it did.
-		$buyer_user = hk_wholesale_ensure_buyer_user(
-			isset( $account['email'] ) ? $account['email'] : '',
-			isset( $account['contact_name'] ) ? $account['contact_name'] : '',
-			isset( $account['company'] ) ? $account['company'] : ''
-		);
 
 		hk_wholesale_audit(
 			'application_approved',
@@ -1441,6 +1493,22 @@ function hk_wholesale_decide_application( $request ) {
 	);
 }
 
+/** Consume one unexpired confirmation token using a conditional database write. */
+function hk_wholesale_confirm_email( $request ) {
+    global $wpdb;
+    $body = $request->get_json_params();
+    $token = is_array( $body ) && isset( $body['token'] ) ? (string) $body['token'] : '';
+    if ( ! preg_match( '/^[a-f0-9]{20,64}$/i', $token ) ) return new WP_Error( 'hk_wholesale_invalid_token', 'Invalid confirmation link.', array( 'status' => 400 ) );
+    $table = hk_wholesale_table( 'applications' );
+    $row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE email_verification_token = %s LIMIT 1", $token ), ARRAY_A );
+    if ( ! $row || empty( $row['created_at'] ) || strtotime( $row['created_at'] . ' UTC' ) < time() - 48 * HOUR_IN_SECONDS ) return new WP_Error( 'hk_wholesale_expired_token', 'This confirmation link was used or expired. Contact the wholesale team.', array( 'status' => 410 ) );
+    $changed = $wpdb->query( $wpdb->prepare( "UPDATE {$table} SET email_verified_at = %s, email_verification_token = '', updated_at = %s WHERE id = %d AND email_verification_token = %s", current_time( 'mysql' ), current_time( 'mysql' ), $row['id'], $token ) );
+    if ( 1 !== (int) $changed ) return new WP_Error( 'hk_wholesale_used_token', 'This confirmation link was used or expired.', array( 'status' => 410 ) );
+    $row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $row['id'] ), ARRAY_A );
+    hk_wholesale_audit( 'application_email_verified', 'applications', $row['id'], array(), 'applicant-email-verification' );
+    return rest_ensure_response( array( 'record' => hk_wholesale_decode_row( 'applications', $row ) ) );
+}
+
 /**
  * The wholesale access a signed-in shopper has, by email.
  *
@@ -1486,6 +1554,31 @@ function hk_wholesale_access( $request ) {
  * storefront uses — one source for the shop's facts, one for the wholesale facts,
  * and the app joins them on `woo_product_id` rather than this plugin guessing.
  */
+/** Canonical product facts; no WooCommerce write is performed. */
+function hk_wholesale_canonical_product( $row ) {
+    if ( ! function_exists( 'wc_get_product' ) ) return null;
+    $parent = wc_get_product( isset( $row['woo_product_id'] ) ? (int) $row['woo_product_id'] : 0 );
+    if ( ! $parent || 'publish' !== $parent->get_status() ) return null;
+    $variation_id = isset( $row['woo_variation_id'] ) ? (int) $row['woo_variation_id'] : 0;
+    $product = $variation_id ? wc_get_product( $variation_id ) : $parent;
+    if ( ! $product || 'publish' !== $product->get_status() ) return null;
+    if ( $variation_id && (int) $product->get_parent_id() !== (int) $parent->get_id() ) return null;
+    if ( ! $variation_id && $parent->is_type( 'variable' ) ) return null;
+    $stock_owner = wc_get_product( $product->get_stock_managed_by_id() );
+    $quantity = $stock_owner && $stock_owner->managing_stock() ? $stock_owner->get_stock_quantity() : null;
+    $image_id = $product->get_image_id() ?: $parent->get_image_id();
+    return array(
+        'productId' => $parent->get_id(), 'variationId' => $variation_id,
+        'name' => $product->get_name(), 'sku' => $product->get_sku(),
+        'description' => $product->get_description() ?: $parent->get_description(),
+        'image' => $image_id ? wp_get_attachment_url( $image_id ) : null,
+        'slug' => $parent->get_slug(), 'weightKg' => (float) wc_get_weight( $product->get_weight(), 'kg' ),
+        'dimensions' => $product->get_dimensions( false ),
+        'stock' => null === $quantity ? null : max( 0, (int) $quantity ),
+        'inStock' => $product->is_in_stock(), 'stockOwnerId' => $stock_owner ? $stock_owner->get_id() : null,
+    );
+}
+
 function hk_wholesale_catalog( $request ) {
 	global $wpdb;
 
@@ -1500,7 +1593,20 @@ function hk_wholesale_catalog( $request ) {
 
 	$items = array();
 	foreach ( (array) $rows as $row ) {
-		$items[] = hk_wholesale_decode_row( 'products', $row );
+        $facts = hk_wholesale_canonical_product( $row );
+        if ( $only_active && ( ! $facts || ! $facts['inStock'] ) ) continue;
+        $item = hk_wholesale_decode_row( 'products', $row );
+        $item['canonical'] = $facts;
+        if ( $facts ) {
+            $item['name'] = $facts['name'];
+            $item['wholesale_sku'] = $facts['sku'];
+            $item['net_unit_weight_kg'] = $facts['weightKg'];
+            if ( null !== $facts['stock'] ) {
+                $allocation = (int) $item['available_units'];
+                $item['available_units'] = $allocation > 0 ? min( $allocation, $facts['stock'] ) : $facts['stock'];
+            }
+        }
+        $items[] = $item;
 	}
 
 	$tier_items = array();
@@ -1707,6 +1813,8 @@ add_action(
 				'permission_callback' => $manage,
 			)
 		);
+
+        register_rest_route( 'hk-wholesale/v1', '/confirm-email', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => 'hk_wholesale_confirm_email', 'permission_callback' => $manage ) );
 
 		register_rest_route(
 			'hk-wholesale/v1',

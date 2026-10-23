@@ -76,5 +76,16 @@ export async function requireActiveBuyer(request: Request): Promise<BuyerGate> {
     return { ok: false, response: NextResponse.json({ error: SUSPENDED, accountStatus: account.rawStatus }, { status: 403 }) };
   }
 
+  try {
+    const applications = await listWholesaleRecords('applications', { account_id: verified.buyer.accountId, limit: 10 });
+    const approved = applications.find((row) => String(row.status).toUpperCase() === 'APPROVED');
+    const expiry = approved?.resale_expires ? new Date(`${approved.resale_expires}T23:59:59Z`).getTime() : null;
+    if (!approved || !approved.email_verified_at || ['REVERIFICATION_REQUIRED', 'EXPIRED', 'SUSPENDED', 'REJECTED'].includes(String(approved.certificate_status)) || (expiry !== null && expiry < Date.now())) {
+      return { ok: false, response: NextResponse.json({ error: 'Wholesale access requires an approved application, verified email and current certificate. Contact the wholesale team.' }, { status: 403 }) };
+    }
+  } catch {
+    return { ok: false, response: NextResponse.json({ error: 'Certificate status could not be verified. Try again shortly.' }, { status: 503 }) };
+  }
+
   return { ok: true, buyer: verified.buyer, account };
 }

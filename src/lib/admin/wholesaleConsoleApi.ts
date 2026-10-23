@@ -508,3 +508,8 @@ export async function saveWholesaleProfit(body: {
 }): Promise<{ order: WholesaleRow; breakdown: WholesaleProfitBreakdown }> {
   return send<{ order: WholesaleRow; breakdown: WholesaleProfitBreakdown }>('/api/admin/wholesale/profit', body);
 }
+
+/** Owner-controlled notification retry. Server reloads the original inquiry snapshots. */
+export async function resendWholesaleInquiryNotification(inquiryId: number) {
+  return send<{ adminNotified: boolean; buyerAcknowledged: boolean; error?: string }>('/api/admin/wholesale/inquiry-email', { inquiryId, confirm: true });
+}

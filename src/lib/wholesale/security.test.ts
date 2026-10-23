@@ -302,9 +302,9 @@ describe('the WordPress side, checked as source', () => {
     expect(PLUGIN).not.toMatch(/'permission_callback'\s*=>\s*'__return_true'/);
   });
 
-  it('never touches a WooCommerce product, customer or retail order', () => {
+  it('never writes a WooCommerce product, customer or retail order', () => {
     // The isolation promise, in source: no WooCommerce read/write of any kind.
-    expect(PLUGIN).not.toMatch(/wc_get_product|wc_get_order|\$wpdb->prefix\s*\.\s*'posts'/);
+    expect(PLUGIN).not.toMatch(/wc_update_product|wc_create_order|update_post_meta|wc_update_product_stock|\$wpdb->prefix\s*\.\s*'posts'/);
     expect(PLUGIN).not.toMatch(/'shop_order'|'_customer_user'/);
   });
 });

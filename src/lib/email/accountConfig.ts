@@ -17,6 +17,7 @@ import { siteSettingsApi } from '@/lib/wordpress/siteContent';
 import { base64UrlDecode, base64UrlEncode } from '@/lib/auth/sessionToken';
 
 export type MailboxEmail =
+  | 'ws@himalayankoh.com'
   | 'sales@himalayankoh.com'
   | 'support@himalayankoh.com'
   | 'orders@himalayankoh.com'
@@ -25,6 +26,7 @@ export type MailboxEmail =
   | 'admin@himalayankoh.com';
 
 export const SUPPORTED_MAILBOXES: MailboxEmail[] = [
+  'ws@himalayankoh.com',
   'support@himalayankoh.com',
   'orders@himalayankoh.com',
   'marketing@himalayankoh.com',
@@ -36,6 +38,10 @@ export const MAILBOX_METADATA: Record<
   MailboxEmail,
   { label: string; displayName: string; role: string; defaultSignature: string }
 > = {
+  'ws@himalayankoh.com': {
+    label: 'Wholesale', displayName: 'Himalayan Koh Wholesale', role: 'Wholesale applications & inquiries',
+    defaultSignature: 'Himalayan Koh Wholesale\nws@himalayankoh.com | https://himalayankoh.com/wholesale',
+  },
   'sales@himalayankoh.com': {
     label: 'Sales',
     displayName: 'Himalayan Koh Commercial Sales',
@@ -291,24 +297,25 @@ function resolveAccountWithSettings(
   const key = cleanKey(mailbox);
   const upperKey = key.toUpperCase();
 
-  const envSmtpUser =
+  const wholesale = mailbox === 'ws@himalayankoh.com';
+  const envSmtpUser = wholesale ? (process.env.WHOLESALE_SMTP_USER || mailbox) :
     process.env[`SMTP_USER_${upperKey}`] ||
     process.env[`NAMECHEAP_SMTP_USER_${upperKey}`] ||
     process.env.NAMECHEAP_SMTP_USER ||
     process.env.SMTP_USER;
 
-  const envSmtpPass =
+  const envSmtpPass = wholesale ? process.env.WHOLESALE_SMTP_PASS :
     process.env[`SMTP_PASS_${upperKey}`] ||
     process.env[`NAMECHEAP_SMTP_PASS_${upperKey}`] ||
     process.env.NAMECHEAP_SMTP_PASS ||
     process.env.SMTP_PASS;
 
-  const envImapUser =
+  const envImapUser = wholesale ? mailbox :
     process.env[`IMAP_USER_${upperKey}`] ||
     process.env.NAMECHEAP_IMAP_USER ||
     envSmtpUser;
 
-  const envImapPass =
+  const envImapPass = wholesale ? (process.env.WHOLESALE_IMAP_PASS || process.env.WHOLESALE_SMTP_PASS) :
     process.env[`IMAP_PASS_${upperKey}`] ||
     process.env.NAMECHEAP_IMAP_PASS ||
     envSmtpPass;
@@ -324,23 +331,23 @@ function resolveAccountWithSettings(
   const imapPass = dbImapPass || envImapPass || smtpPass;
 
   const smtpHost =
-    settings['smtp_host'] ||
+    (wholesale ? process.env.WHOLESALE_SMTP_HOST : '') || settings['smtp_host'] ||
     process.env.NAMECHEAP_SMTP_HOST ||
     DEFAULT_HOST;
 
   const smtpPort = Number(
-    settings['smtp_port'] ||
+    (wholesale ? process.env.WHOLESALE_SMTP_PORT : '') || settings['smtp_port'] ||
     process.env.NAMECHEAP_SMTP_PORT ||
     DEFAULT_SMTP_PORT
   );
 
   const imapHost =
-    settings['imap_host'] ||
+    (wholesale ? process.env.WHOLESALE_IMAP_HOST : '') || settings['imap_host'] ||
     process.env.NAMECHEAP_IMAP_HOST ||
     DEFAULT_HOST;
 
   const imapPort = Number(
-    settings['imap_port'] ||
+    (wholesale ? process.env.WHOLESALE_IMAP_PORT : '') || settings['imap_port'] ||
     process.env.NAMECHEAP_IMAP_PORT ||
     DEFAULT_IMAP_PORT
   );

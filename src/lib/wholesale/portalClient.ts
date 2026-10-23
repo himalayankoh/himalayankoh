@@ -421,6 +421,9 @@ export interface PortalQuote {
   lines: Array<{ name: string; wholesaleSku: string; units: number; cartons: number; pallets: number; unitPrice: number | null; lineTotal: number | null }>;
   totals: { units: number; cartons: number; pallets: number; netWeightKg: number; quotedTotal: number | null; perUnit: number | null };
   awaitingQuotation: boolean;
+  estimatedTotal: number | null;
+  invoiceUrl: string | null;
+  externalPaymentUrl: string | null;
   validUntil: string | null;
   submittedAt: string | null;
   createdAt: string;

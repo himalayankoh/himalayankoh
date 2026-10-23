@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import InquiryDetail from './InquiryDetail';
 import { Check, Download, FileText, Percent, Printer, Send, Truck, UserCheck, UserX, X } from 'lucide-react';
 import {
   convertWholesaleQuote,
@@ -482,12 +483,14 @@ const PAYMENT_TERM_LABELS = [
 
 export function QuotesPanel({
   quotes,
+  audit = [],
   accounts,
   vocabulary,
   reload,
   onPrice,
 }: {
   quotes: WholesaleRow[];
+  audit?: WholesaleRow[];
   accounts: WholesaleRow[];
   vocabulary: { quoteStatuses: string[] };
   reload: () => Promise<void> | void;
@@ -495,6 +498,9 @@ export function QuotesPanel({
   onPrice: (quoteId: number) => void;
 }) {
   const writer = useWriter();
+  const [inquiryId, setInquiryId] = useState<number | null>(null);
+  const [query, setQuery] = useState('');
+  const inquiry = quotes.find((row) => Number(row.id) === inquiryId);
   const [converting, setConverting] = useState<WholesaleRow | null>(null);
   const [terms, setTerms] = useState({ label: PAYMENT_TERM_LABELS[1], depositPct: '30', notes: '' });
 
@@ -563,6 +569,8 @@ export function QuotesPanel({
           {writer.error ? <Notice kind="error">{writer.error}</Notice> : null}
           {writer.saved ? <Notice kind="success">{writer.saved}</Notice> : null}
 
+          <Field label="Search inquiries"><TextInput value={query} onChange={setQuery} placeholder="Reference, business, SKU or status" /></Field>
+          {inquiry && <InquiryDetail key={inquiryId} inquiry={inquiry} audit={audit} reload={reload} close={() => setInquiryId(null)} />}
           <DataTable
             columns={[
               { key: 'ref', label: 'Reference', render: (row) => (
@@ -614,6 +622,7 @@ export function QuotesPanel({
                 const status = text(row.status);
                 return (
                   <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                    {id ? <Button onClick={() => setInquiryId(id)}>Details</Button> : null}
                     {id ? (
                       <button
                         type="button"
@@ -700,7 +709,7 @@ export function QuotesPanel({
                 );
               } },
             ]}
-            rows={quotes}
+            rows={quotes.filter((row) => !query || [row.ref, row.status, accountName(row.account_id), JSON.stringify(row.lines)].join(' ').toLowerCase().includes(query.toLowerCase()))}
             rowKey={(row, index) => String(rowId(row) ?? `quote-${index}`)}
             empty="No quotations yet."
           />
@@ -894,7 +903,11 @@ export function OrdersPanel({
                       writer.setError('That is not a number.');
                       return;
                     }
-                    void update(row, { paid_amount: parsed }, 'Payment recorded.');
+                    const provider = window.prompt('Payment provider (verify the transaction in its dashboard first):');
+                    if (!provider?.trim()) return;
+                    const reference = window.prompt('Verified provider transaction reference:');
+                    if (!reference?.trim() || !window.confirm('I checked this transaction and amount in the actual provider dashboard. A buyer statement or payment URL is not proof. Record this verified amount?')) return;
+                    void update(row, { paid_amount: parsed, payment_verification: { provider, reference, verifiedInProvider: true } }, 'Verified external payment recorded.');
                   }}
                   className="px-2.5 py-1 rounded-full border border-charcoal/15 text-xs font-semibold text-charcoal hover:bg-charcoal/5"
                 >

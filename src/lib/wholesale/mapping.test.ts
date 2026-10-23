@@ -32,7 +32,7 @@ const PLUGIN = join(process.cwd(), 'wordpress', 'hk-wholesale.php');
 describe('plugin contract', () => {
   it('exposes exactly the record types the app asks for', () => {
     const source = readFileSync(PLUGIN, 'utf8');
-    const resources = [...source.matchAll(/^\t\t'([a-z_]+)'\s+=> array\(\n\t\t\t'columns'/gm)].map(
+    const resources = [...source.matchAll(/^\t\t'([a-z_]+)'\s+=> array\(\r?\n\t\t\t'columns'/gm)].map(
       (match) => match[1]
     );
 

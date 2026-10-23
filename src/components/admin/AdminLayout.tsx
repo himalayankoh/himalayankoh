@@ -136,6 +136,7 @@ export const NAV_ITEMS: NavItem[] = [
     subItems: [
       { to: '/admin/wholesale/customers', label: 'Wholesale Customers' },
       { to: '/admin/wholesale/products', label: 'Wholesale Products' },
+          { to: '/admin/wholesale/inquiries', label: 'Wholesale Inquiries' },
     ],
   },
   {

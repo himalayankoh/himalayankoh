@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
@@ -58,7 +58,7 @@ function money(amount: number, currency: string): string {
 
 /** Shortest sensible quantity for a product: one carton, or the MOQ when it is higher. */
 function startingUnits(item: PortalCatalogItem): number {
-  const carton = item.packaging?.unitsPerCarton ?? 1;
+  const carton = 1;
   return Math.max(item.moq || 0, carton);
 }
 
@@ -85,6 +85,8 @@ export default function PortalCatalogPanel({
   const [destinationPort, setDestinationPort] = useState(buyer?.destinationPort ?? '');
   const [incoterm, setIncoterm] = useState('FOB');
   const [notes, setNotes] = useState('');
+  const [shippingAddress, setShippingAddress] = useState('');
+  const requestKey = useRef<{ key: string; fingerprint: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitted, setSubmitted] = useState<{ reference: string } | null>(null);
@@ -107,7 +109,7 @@ export default function PortalCatalogPanel({
         productRowId: item.id,
         name: item.name,
         wholesaleSku: item.wholesaleSku,
-        units: item.packaging ? Math.max(startingUnits(item), item.packaging.unitsPerPallet) : startingUnits(item),
+        units: startingUnits(item),
       },
     ]);
     setPlan(null);
@@ -143,6 +145,9 @@ export default function PortalCatalogPanel({
   }
 
   async function submitRequest() {
+    if (!shippingAddress.trim()) { setSubmitError('Enter the shipping address for this inquiry.'); return; }
+    const fingerprint = JSON.stringify({ draft, shippingAddress, destinationCountry, destinationPort, incoterm, notes });
+    if (requestKey.current?.fingerprint !== fingerprint) requestKey.current = { key: crypto.randomUUID(), fingerprint };
     setSubmitting(true);
     setSubmitError('');
     try {
@@ -150,6 +155,8 @@ export default function PortalCatalogPanel({
         method: 'POST',
         body: {
           lines: draft,
+          requestKey: requestKey.current.key,
+          shippingAddress,
           incoterm,
           destinationCountry,
           destinationPort,
@@ -458,7 +465,7 @@ export default function PortalCatalogPanel({
                     <thead>
                       <tr className="text-charcoal-light text-xs uppercase tracking-wider">
                         <th className="text-left font-medium pb-2 px-2">Product</th>
-                        <th className="text-right font-medium pb-2 px-2">Units</th>
+                        <th className="text-right font-medium pb-2 px-2">Unit price</th><th className="text-right font-medium pb-2 px-2">Subtotal</th><th className="text-right font-medium pb-2 px-2">Units</th>
                         <th className="text-right font-medium pb-2 px-2">Cartons</th>
                         <th className="text-right font-medium pb-2 px-2">Pallets</th>
                         <th className="text-right font-medium pb-2 px-2">Net kg</th>
@@ -469,7 +476,7 @@ export default function PortalCatalogPanel({
                       {plan.lines.map((line) => (
                         <tr key={line.productRowId} className="border-t border-charcoal/8">
                           <td className="py-2 px-2 text-charcoal">{line.name}</td>
-                          <td className="py-2 px-2 text-right text-charcoal">{line.units.toLocaleString('en-US')}</td>
+                          <td className="py-2 px-2 text-right text-charcoal">{line.unitPrice === null ? 'Unpriced' : money(line.unitPrice, currency)}</td><td className="py-2 px-2 text-right text-charcoal">{line.lineValue === null ? '—' : money(line.lineValue, currency)}</td><td className="py-2 px-2 text-right text-charcoal">{line.units.toLocaleString('en-US')}</td>
                           <td className="py-2 px-2 text-right text-charcoal">{line.cartons.toLocaleString('en-US')}</td>
                           <td className="py-2 px-2 text-right text-charcoal">{line.pallets}</td>
                           <td className="py-2 px-2 text-right text-charcoal">{line.netWeightKg.toLocaleString('en-US')}</td>
@@ -477,7 +484,7 @@ export default function PortalCatalogPanel({
                         </tr>
                       ))}
                       <tr className="border-t-2 border-charcoal/15 font-semibold">
-                        <td className="py-2 px-2 text-charcoal">Total</td>
+                        <td className="py-2 px-2 text-charcoal">Total</td><td /><td className="py-2 px-2 text-right">{plan.totals.indicativeMerchandise === null ? 'Unpriced' : money(plan.totals.indicativeMerchandise, currency)}</td>
                         <td className="py-2 px-2 text-right text-charcoal">{plan.totals.units.toLocaleString('en-US')}</td>
                         <td className="py-2 px-2 text-right text-charcoal">{plan.totals.cartons.toLocaleString('en-US')}</td>
                         <td className="py-2 px-2 text-right text-charcoal">{plan.totals.pallets}</td>
@@ -581,6 +588,8 @@ export default function PortalCatalogPanel({
                 </div>
               </div>
 
+              <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="wholesale-shipping">Shipping address</label>
+              <textarea id="wholesale-shipping" required rows={3} className={`${input} mb-4`} value={shippingAddress} onChange={(event) => setShippingAddress(event.target.value)} placeholder="Street, city, state, ZIP code and country" />
               <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="notes">
                 Notes for our team
               </label>
@@ -610,8 +619,7 @@ export default function PortalCatalogPanel({
                 {submitting ? 'Sendingâ€¦' : 'Send request for quotation'}
               </button>
               <p className="text-xs text-charcoal-light mt-3 leading-relaxed">
-                Sending a request does not commit you to anything. We confirm freight and issue a firm quotation, which
-                you accept when you are ready.
+                Final shipping, applicable taxes, availability and payment terms will be confirmed after our team reviews your inquiry. No payment is taken.
               </p>
             </div>
           </div>

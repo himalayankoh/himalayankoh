@@ -150,6 +150,20 @@ export async function POST(request: Request, context: { params: Promise<{ resour
     return NextResponse.json({ error: 'A field set is required.' }, { status: 400 });
   }
 
+  for (const key of ['invoice_url', 'external_payment_url']) {
+    if (data[key]) {
+      try { if (new URL(String(data[key])).protocol !== 'https:') throw new Error(); }
+      catch { return NextResponse.json({ error: `${key.replaceAll('_', ' ')} must be a valid HTTPS URL.` }, { status: 400 }); }
+    }
+  }
+  if (resource === 'orders' && Object.hasOwn(data, 'paid_amount')) {
+    const proof = data.payment_verification as Record<string, unknown> | undefined;
+    if (!Number.isFinite(Number(data.paid_amount)) || Number(data.paid_amount) < 0 || !proof || proof.verifiedInProvider !== true ||
+        typeof proof.provider !== 'string' || !proof.provider.trim() || typeof proof.reference !== 'string' || proof.reference.trim().length < 4) {
+      return NextResponse.json({ error: 'Verify the payment in the actual provider dashboard and supply its provider and transaction reference before recording an amount.' }, { status: 400 });
+    }
+    data.payment_verification = { provider: proof.provider.trim().slice(0, 100), reference: proof.reference.trim().slice(0, 200), verifiedInProvider: true, verifiedAt: new Date().toISOString(), verifiedBy: auth.admin.email };
+  }
   const statusError = statusProblem(resource, data);
   if (statusError) return NextResponse.json({ error: statusError }, { status: 400 });
 

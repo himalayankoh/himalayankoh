@@ -145,6 +145,11 @@ function QuoteCard({ quote, onAccepted }: { quote: PortalQuote; onAccepted?: (qu
       {open ? (
         <div className="border-t border-charcoal/8 p-5 bg-warm-white/40">
           <p className="text-sm text-charcoal-light leading-relaxed mb-4">{quote.confidenceNote}</p>
+          {quote.estimatedTotal !== null && quote.awaitingQuotation ? <p className="text-sm mb-4">Estimated merchandise: <strong>{money(quote.estimatedTotal, quote.currency)}</strong>. Final shipping, applicable taxes, availability and payment terms will be confirmed after review.</p> : null}
+          <div className="flex flex-wrap gap-3 mb-4">
+            {quote.invoiceUrl ? <a href={quote.invoiceUrl} target="_blank" rel="noopener noreferrer" className="text-himalayan underline">View invoice</a> : null}
+            {quote.externalPaymentUrl ? <a href={quote.externalPaymentUrl} target="_blank" rel="noopener noreferrer" className="text-himalayan underline">Open approved external payment link</a> : null}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 mb-4">
             {quote.status === 'QUOTED' && quote.confidence === 'CONFIRMED' ? (

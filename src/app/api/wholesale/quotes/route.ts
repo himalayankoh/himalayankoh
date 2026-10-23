@@ -67,6 +67,11 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: 'Invalid inquiry body.' }, { status: 400 });
+    const requestKey = text(body.requestKey, 64);
+    if (!/^[a-zA-Z0-9-]{16,64}$/.test(requestKey)) return NextResponse.json({ error: 'A valid submission reference is required. Reload the inquiry form.' }, { status: 400 });
+    const shipping = text(body.shippingAddress, 1000);
+    if (!shipping) return NextResponse.json({ error: 'Enter the shipping address for this inquiry.' }, { status: 400 });
     const existing = await listWholesaleRecords('quotes', { account_id: gate.buyer.accountId, limit: 200 });
     const open = existing.filter((row) =>
       ['SUBMITTED', 'UNDER_REVIEW'].includes(String(row.status ?? '').toUpperCase())
@@ -119,6 +124,8 @@ export async function POST(request: Request) {
       }
     }
 
+    if (plan.totals.hasUnpricedLines) return NextResponse.json({ error: 'One or more products have no wholesale price at this quantity. Update the selection or contact the trade desk.' }, { status: 400 });
+
     const destinationCountry = text(body.destinationCountry) || gate.account.destinationCountry || '';
     const destinationPort = text(body.destinationPort) || gate.account.destinationPort || '';
 
@@ -126,6 +133,9 @@ export async function POST(request: Request) {
       'quotes',
       {
         account_id: gate.buyer.accountId,
+        request_key: requestKey,
+        shipping_address: { address: shipping, country: text(body.destinationCountry) },
+        buyer_contact: { business: gate.account.companyName, name: gate.account.contactName, email: gate.account.email, phone: gate.account.phone || '' },
         status: 'SUBMITTED',
         incoterm,
         destination_country: destinationCountry,
@@ -146,6 +156,9 @@ export async function POST(request: Request) {
           cartons: line.cartons,
           pallets: line.pallets,
           unitPriceIndicative: line.unitPrice,
+          lineSubtotalIndicative: line.lineValue,
+          wooProductId: data.products.find((product) => product.rowId === line.productRowId)?.wooProductId,
+          wooVariationId: data.products.find((product) => product.rowId === line.productRowId)?.wooVariationId,
         })),
         assumptions: [
           ...plan.assumptions,
@@ -154,6 +167,7 @@ export async function POST(request: Request) {
             ? 'No tier price is configured for at least one product in this request.'
             : `Indicative goods value at the prices shown: ${plan.totals.indicativeMerchandise} ${data.products[0]?.currency || 'USD'}.`,
         ],
+        totals: { estimatedMerchandise: plan.totals.indicativeMerchandise, currency: data.products[0]?.currency || 'USD' },
         notes: text(body.notes, 500),
         created_by: 'wholesale-buyer',
         submitted_at: new Date().toISOString(),
@@ -163,6 +177,9 @@ export async function POST(request: Request) {
 
     const reference = String((saved as { ref?: string }).ref ?? '');
     const id = Number((saved as { id?: number }).id ?? 0);
+    if (id && saved._deduplicated === true) {
+      return NextResponse.json({ quote: buyerQuoteView({ ...saved, ref: `HK-WS-Q${String(id).padStart(5, '0')}` }), reference: `HK-WS-Q${String(id).padStart(5, '0')}`, duplicate: true }, { status: 200 });
+    }
 
     // The reference is derived from the row id, so it is written back once the id
     // exists — a buyer needs something to quote in an email that is not a database id.
@@ -198,13 +215,13 @@ export async function POST(request: Request) {
         currency,
         estimatedMerchandise:
           typeof plan.totals.indicativeMerchandise === 'number' ? plan.totals.indicativeMerchandise : null,
-        shippingAddress: [gate.account.address, destinationCountry].filter(Boolean).join(', '),
+        shippingAddress: shipping,
         destinationPort,
         notes: text(body.notes, 500),
-        adminUrl: `${siteBaseUrl()}/admin/wholesale#quotes`,
+        adminUrl: `${siteBaseUrl()}/admin/wholesale/inquiries`,
       });
 
-      if (!delivery.adminNotified) {
+      {
         // Recorded, not thrown: the inquiry exists, and the console has to be able to
         // show that the trade desk was not told.
         await upsertWholesaleRecord(
@@ -212,13 +229,15 @@ export async function POST(request: Request) {
           {
             at: new Date().toISOString().slice(0, 19).replace('T', ' '),
             actor: 'wholesale-inquiry',
-            action: 'inquiry_email_failed',
+            action: delivery.adminNotified && delivery.buyerAcknowledged ? 'inquiry_email_accepted' : 'inquiry_email_failed',
             entity: 'quotes',
             entity_id: id,
             detail: {
               reference: quoteReference,
               recipient: wholesaleInquiryRecipient(),
-              reason: delivery.error,
+              reason: delivery.error || (delivery.buyerAcknowledged ? '' : 'Buyer acknowledgement was not accepted by the mail transport.'),
+              adminNotified: delivery.adminNotified,
+              buyerAcknowledged: delivery.buyerAcknowledged,
             },
           },
           { actor: 'wholesale-inquiry' }

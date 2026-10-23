@@ -100,7 +100,7 @@ describe('buyer load plan', () => {
     });
     expect(plan.lines).toHaveLength(2);
     expect(plan.totals.units).toBe(1_500);
-    expect(plan.totals.indicativeMerchandise).toBe(16_400);
+    expect(plan.totals.indicativeMerchandise).toBeNull();
     expect(plan.totals.hasUnpricedLines).toBe(true);
     expect(plan.totals.netWeightKg).toBeGreaterThan(0);
     expect(plan.fit.limitingFactor).not.toBe('NONE');
@@ -113,5 +113,19 @@ describe('buyer load plan', () => {
 
   it('refuses an unknown product rather than skipping the line', () => {
     expect(() => buildBuyerPlan(DATA, { lines: [{ productRowId: 99, units: 10 }] })).toThrow(/No active wholesale product/);
+  });
+});
+
+
+describe('inquiry quantity boundaries', () => {
+  it('rejects duplicate product lines instead of bypassing allocation and tier rules', () => {
+    expect(() => parseLineRequests([{ productRowId: 1, units: 6 }, { productRowId: 1, units: 6 }])).toThrow(/single line/);
+  });
+  it.each([1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])('rejects non-whole or unsafe quantities: %s', (units) => {
+    expect(() => parseLineRequests([{ productRowId: 1, units }])).toThrow();
+  });
+  it('uses allocation as a server-side ceiling on the calculation too', () => {
+    const data = { ...DATA, products: DATA.products.map((p) => ({ ...p, availableUnits: 10 })) };
+    expect(() => buildBuyerPlan(data, { lines: [{ productRowId: 1, units: 11 }] })).toThrow(/allocation of 10/);
   });
 });

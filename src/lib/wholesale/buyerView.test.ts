@@ -126,3 +126,21 @@ describe('orders', () => {
     expect(view.pallets).toBe(5);
   });
 });
+
+
+describe('inquiry snapshots and external invoice links', () => {
+  it('preserves estimated merchandise without turning it into a confirmed quotation', () => {
+    const view = buyerQuoteView({ ...STORED_QUOTE, status: 'SUBMITTED', lines: [{ name: 'Salt', units: 2, unitPriceIndicative: 9.07 }] });
+    expect(view.estimatedTotal).toBe(18.14);
+    expect(view.totals.quotedTotal).toBeNull();
+  });
+  it('rejects unsafe URLs and hides payment links on unconfirmed inquiries', () => {
+    const view = buyerQuoteView({ ...STORED_QUOTE, status: 'SUBMITTED', invoice_url: 'javascript:alert(1)', external_payment_url: 'https://pay.example.invalid' });
+    expect(view.invoiceUrl).toBeNull(); expect(view.externalPaymentUrl).toBeNull();
+  });
+  it('exposes only a confirmed HTTPS invoice/payment link, never internal notes', () => {
+    const view = buyerQuoteView({ ...STORED_QUOTE, invoice_url: 'https://example.invalid/invoice', external_payment_url: 'https://pay.example.invalid/', internal_notes: 'Private desk note' }, AT);
+    expect(view.invoiceUrl).toContain('/invoice'); expect(view.externalPaymentUrl).toContain('pay.example.invalid');
+    expect(JSON.stringify(view)).not.toContain('Private desk note');
+  });
+});

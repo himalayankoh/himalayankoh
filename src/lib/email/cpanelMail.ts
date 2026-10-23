@@ -52,7 +52,10 @@ export interface CPanelEmailResult {
   timestamp: string;
 }
 
+export const WHOLESALE_MAILBOX = 'ws@himalayankoh.com';
+
 export const AUTHORIZED_SENDERS = [
+  WHOLESALE_MAILBOX,
   'sales@himalayankoh.com',
   'support@himalayankoh.com',
   'orders@himalayankoh.com',
@@ -67,6 +70,11 @@ export const SENDER_PROFILES: Record<
   AuthorizedSender,
   { name: string; email: AuthorizedSender; title: string }
 > = {
+  'ws@himalayankoh.com': {
+    name: 'Himalayan Koh Wholesale',
+    email: 'ws@himalayankoh.com',
+    title: 'Wholesale Department',
+  },
   'sales@himalayankoh.com': {
     name: 'Himalayan Koh Commercial Sales',
     email: 'sales@himalayankoh.com',
@@ -141,7 +149,8 @@ export async function resolveCPanelCredentialsAsync(senderEmail?: string): Promi
     if (SUPPORTED_MAILBOXES.includes(norm as MailboxEmail)) {
       try {
         const stored = await getEmailAccount(norm as MailboxEmail);
-        if (stored && stored.smtpPass && stored.smtpUser) {
+        if (stored && stored.smtpPass && stored.smtpUser &&
+            (norm !== WHOLESALE_MAILBOX || (stored.smtpUser.trim().toLowerCase() === WHOLESALE_MAILBOX && stored.smtpPort === 465))) {
           return {
             host: stored.smtpHost || host,
             port: stored.smtpPort || port,
@@ -158,6 +167,15 @@ export async function resolveCPanelCredentialsAsync(senderEmail?: string): Promi
 }
 
 export function resolveCPanelCredentials(senderEmail?: string): CPanelCredentials | null {
+  // Wholesale must never borrow Sales or another mailbox's credentials.
+  if (senderEmail?.trim().toLowerCase() === WHOLESALE_MAILBOX) {
+    const user = (process.env.WHOLESALE_SMTP_USER || '').trim().toLowerCase();
+    const pass = process.env.WHOLESALE_SMTP_PASS || '';
+    const port = Number(process.env.WHOLESALE_SMTP_PORT || 465);
+    if (user !== WHOLESALE_MAILBOX || !pass || port !== 465) return null;
+    return { host: process.env.WHOLESALE_SMTP_HOST || 'premium164.web-hosting.com', port, user, pass };
+  }
+
   const host = process.env.NAMECHEAP_SMTP_HOST || 'premium164.web-hosting.com';
   const port = Number(process.env.NAMECHEAP_SMTP_PORT || 465);
 

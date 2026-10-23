@@ -44,12 +44,16 @@ export function parseLineRequests(value: unknown): QuoteLineRequest[] {
     throw new WholesaleEngineError(`A quote may carry at most ${MAX_LINES} product lines.`);
   }
 
+  const seen = new Set<number>();
   return value.map((entry, index) => {
     const row = (entry && typeof entry === 'object' ? entry : {}) as Record<string, unknown>;
-    const productRowId = Math.trunc(Number(row.productRowId ?? row.product_id ?? 0));
-    if (!Number.isFinite(productRowId) || productRowId <= 0) {
+    const productRowId = Number(row.productRowId ?? row.product_id ?? 0);
+    if (!Number.isSafeInteger(productRowId) || productRowId <= 0) {
       throw new WholesaleEngineError(`Line ${index + 1}: a whole wholesale product id is required.`);
     }
+
+    if (seen.has(productRowId)) throw new WholesaleEngineError('Combine each product into a single line before submitting.');
+    seen.add(productRowId);
 
     const units = row.units === undefined || row.units === null || row.units === '' ? undefined : Number(row.units);
     const pallets = row.pallets === undefined || row.pallets === null || row.pallets === '' ? undefined : Number(row.pallets);
@@ -57,11 +61,11 @@ export function parseLineRequests(value: unknown): QuoteLineRequest[] {
     if (units === undefined && pallets === undefined) {
       throw new WholesaleEngineError(`Line ${index + 1}: give a unit quantity or a number of pallets.`);
     }
-    if (units !== undefined && (!Number.isFinite(units) || units <= 0)) {
-      throw new WholesaleEngineError(`Line ${index + 1}: the unit quantity must be greater than zero.`);
+    if (units !== undefined && (!Number.isSafeInteger(units) || units <= 0)) {
+      throw new WholesaleEngineError(`Line ${index + 1}: the unit quantity must be a whole number greater than zero.`);
     }
-    if (pallets !== undefined && (!Number.isFinite(pallets) || pallets <= 0)) {
-      throw new WholesaleEngineError(`Line ${index + 1}: the pallet count must be greater than zero.`);
+    if (pallets !== undefined && (!Number.isSafeInteger(pallets) || pallets <= 0)) {
+      throw new WholesaleEngineError(`Line ${index + 1}: the pallet count must be a whole number greater than zero.`);
     }
 
     return {
@@ -147,6 +151,9 @@ export function buildBuyerPlan(
       throw new WholesaleEngineError(`${product.name}: give either units or pallets, not both.`);
     }
     const units = line.pallets ? unitsFromPallets(product, line.pallets) : (line.units ?? 0);
+    if ((product.availableUnits ?? 0) > 0 && units > product.availableUnits!) {
+      throw new WholesaleEngineError(`${product.name}: requested quantity exceeds the available allocation of ${product.availableUnits}.`);
+    }
     return { line, product, units };
   });
 
@@ -191,7 +198,7 @@ export function buildBuyerPlan(
   });
 
   const priced = lines.filter((line) => line.lineValue !== null);
-  const indicativeMerchandise = priced.length
+  const indicativeMerchandise = priced.length === lines.length
     ? Math.round(priced.reduce((total, line) => total + (line.lineValue ?? 0), 0) * 100) / 100
     : null;
 

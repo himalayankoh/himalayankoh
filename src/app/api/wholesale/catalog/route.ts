@@ -73,7 +73,7 @@ export async function GET(request: Request) {
       data.products.map((product) => product.wooProductId).filter((id): id is number => typeof id === 'number' && id > 0)
     );
 
-    const items: BuyerCatalogItem[] = data.products.map((product) => {
+    const items: BuyerCatalogItem[] = data.products.filter((product) => data.tiers.some((tier) => tier.productId === product.id && tier.unitPrice > 0)).map((product) => {
       const tiers = data.tiers
         .filter((tier) => tier.productId === product.id)
         .sort((a, b) => a.minUnits - b.minUnits)
@@ -105,8 +105,8 @@ export async function GET(request: Request) {
         storefront: {
           productId: product.wooProductId,
           name: storefront?.name ?? null,
-          image: storefront?.image ?? null,
-          slug: storefront?.slug ?? null,
+          image: product.canonical?.image || storefront?.image || null,
+          slug: product.canonical?.slug || storefront?.slug || null,
         },
         moq: product.moq,
         availableUnits: product.availableUnits ?? 0,

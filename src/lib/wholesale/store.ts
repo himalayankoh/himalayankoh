@@ -408,3 +408,9 @@ export async function readWholesalePluginSettings(
 ): Promise<WholesalePluginSettings> {
   return wholesaleRequest<WholesalePluginSettings>('/settings', { timeoutMs: options.timeoutMs });
 }
+
+/** Atomic, single-use email confirmation; the plugin also enforces 48-hour expiry. */
+export async function confirmWholesaleEmail(token: string): Promise<WholesaleRow> {
+  const result = await wholesaleRequest<{ record: WholesaleRow }>('/confirm-email', { method: 'POST', body: { token } });
+  return result.record;
+}

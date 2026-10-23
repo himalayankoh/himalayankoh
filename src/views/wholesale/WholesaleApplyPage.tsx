@@ -145,6 +145,7 @@ export default function WholesaleApplyPage() {
   const [file, setFile] = useState<File | null>(null);
   const [signedName, setSignedName] = useState('');
   const [accepted, setAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [shippingDifferent, setShippingDifferent] = useState(false);
   const [shipping, setShipping] = useState({ line1: '', line2: '', city: '', state: '', zip: '' });
   const [submitting, setSubmitting] = useState(false);
@@ -241,6 +242,7 @@ export default function WholesaleApplyPage() {
            * not catch because it posted the field directly.
            */
           country: 'United States',
+          privacyAccepted,
           state: form.state,
           resale: {
             ...resale,
@@ -774,6 +776,12 @@ export default function WholesaleApplyPage() {
               </p>
             </div>
           </div>
+
+          <label className="flex items-start gap-3 mb-8 text-sm text-charcoal">
+            <input type="checkbox" required checked={privacyAccepted} onChange={(event) => setPrivacyAccepted(event.target.checked)} className="mt-1 h-4 w-4" />
+            <span>I acknowledge the <Link href="/privacy" target="_blank" className="underline text-himalayan">Privacy Policy</Link> and the private storage of my application and certificate for review.</span>
+          </label>
+          <p className="text-sm text-charcoal-light mb-6">After approval, new buyers receive a secure WordPress link to set their password. Existing customers keep their current password.</p>
 
           {/* ------------------------------- buying ------------------------------ */}
           <h2 className="font-serif text-xl font-semibold text-charcoal mb-5">What you buy</h2>

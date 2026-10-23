@@ -51,9 +51,9 @@ const GITHUB_RAW_APK_URL =
 
 export function SmartMobileSideMenu({
   onClose,
-  unreadEmailCount = 3,
-  leadsCount = 12,
-  quotesCount = 5,
+  unreadEmailCount = 0,
+  leadsCount = 0,
+  quotesCount = 0,
 }: SmartMobileSideMenuProps) {
   const location = useLocation();
   const { signOut } = useAuthStore();
@@ -122,10 +122,11 @@ export function SmartMobileSideMenu({
         subItems: [
           { to: '/admin/wholesale/customers', label: 'Wholesale Customers' },
           { to: '/admin/wholesale/products', label: 'Wholesale Products' },
+          { to: '/admin/wholesale/inquiries', label: 'Wholesale Inquiries' },
         ],
       },
       {
-        to: '/admin/wholesale#quotes',
+        to: '/admin/wholesale/inquiries',
         label: 'Quotes & Inquiries',
         icon: Tag,
         iconGradient: 'linear-gradient(135deg, #F43F5E 0%, #BE123C 100%)',

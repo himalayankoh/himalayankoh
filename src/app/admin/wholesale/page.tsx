@@ -1,3 +1,2 @@
-'use client';
-
-export { default } from '@/views/admin/wholesale/AdminWholesaleWorkspace';
+import AdminWholesaleWorkspace from '@/views/admin/wholesale/AdminWholesaleWorkspace';
+export default function WholesalePage() { return <AdminWholesaleWorkspace />; }

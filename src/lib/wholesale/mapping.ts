@@ -204,6 +204,8 @@ export function packagingToJson(profile: PackagingProfile): Record<string, numbe
 export interface WholesaleProductRecord extends WholesaleProduct {
   /** The plugin's own row id — what a write addresses. */
   rowId: number;
+  wooVariationId: number | null;
+  canonical: { image?: string; slug?: string; description?: string; stock?: number | null } | null;
   packagingDefaultsUsed: string[];
   createdAt: string;
   updatedAt: string;
@@ -215,6 +217,8 @@ export function productFromRow(row: WholesaleRow): WholesaleProductRecord {
     rowId: num(row.id),
     id: String(row.id ?? ''),
     wooProductId: intOrNull(row.woo_product_id),
+    wooVariationId: intOrNull(row.woo_variation_id),
+    canonical: row.canonical && typeof row.canonical === 'object' ? row.canonical as WholesaleProductRecord['canonical'] : null,
     name: text(row.name),
     wholesaleSku: text(row.wholesale_sku),
     packaging: packaging.profile,
