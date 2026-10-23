@@ -476,7 +476,7 @@ export default function PortalCatalogPanel({
                       {plan.lines.map((line) => (
                         <tr key={line.productRowId} className="border-t border-charcoal/8">
                           <td className="py-2 px-2 text-charcoal">{line.name}</td>
-                          <td className="py-2 px-2 text-right text-charcoal">{line.unitPrice === null ? 'Unpriced' : money(line.unitPrice, currency)}</td><td className="py-2 px-2 text-right text-charcoal">{line.lineValue === null ? '—' : money(line.lineValue, currency)}</td><td className="py-2 px-2 text-right text-charcoal">{line.units.toLocaleString('en-US')}</td>
+                          <td className="py-2 px-2 text-right text-charcoal">{line.unitPrice === null ? 'Unpriced' : money(line.unitPrice, currency)}</td><td className="py-2 px-2 text-right text-charcoal">{line.lineValue === null ? 'â€”' : money(line.lineValue, currency)}</td><td className="py-2 px-2 text-right text-charcoal">{line.units.toLocaleString('en-US')}</td>
                           <td className="py-2 px-2 text-right text-charcoal">{line.cartons.toLocaleString('en-US')}</td>
                           <td className="py-2 px-2 text-right text-charcoal">{line.pallets}</td>
                           <td className="py-2 px-2 text-right text-charcoal">{line.netWeightKg.toLocaleString('en-US')}</td>
