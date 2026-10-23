@@ -294,7 +294,7 @@ export default function PortalCatalogPanel({
                           <dt>Lead time</dt>
                           <dd className="text-charcoal">{item.leadTimeDays ? `${item.leadTimeDays} days` : 'Confirmed per order'}</dd>
                         </div>
-                        {item.packaging ? (
+                        {item.packaging && !item.estimateNote ? (
                           <div className="flex justify-between">
                             <dt>Pallet</dt>
                             <dd className="text-charcoal">
@@ -306,7 +306,7 @@ export default function PortalCatalogPanel({
                       </dl>
 
                       {item.estimateNote ? (
-                        <p className="text-xs text-amber-700 mt-3 leading-relaxed">{item.estimateNote}</p>
+                        <p className="text-xs text-amber-700 mt-3 leading-relaxed">Packing measurements are pending confirmation. Load calculations use estimates.</p>
                       ) : null}
 
                       <button

@@ -55,6 +55,27 @@ describe('Admin Email Inbox Store & Threading Engine', () => {
     mockLeadosRequest.mockResolvedValue({ items: [] });
   });
 
+  it('refreshes persisted mailbox data written by another Worker isolate', async () => {
+    const clock = vi.spyOn(Date, 'now');
+    const at = Date.now();
+    try {
+      clock.mockReturnValue(at);
+      resetInboxMemoryCacheForTests();
+      await listInboxState({ folder: 'ws', skipExternalSync: true });
+      const remoteMessage = {
+        id: 'remote-ws', messageId: '<remote-ws@example.test>', mailbox: 'ws@himalayankoh.com',
+        direction: 'inbound', folder: 'inbox', subject: 'Remote inquiry', bodyText: 'New inquiry',
+        from: { email: 'ws@himalayankoh.com' }, to: [{ email: 'ws@himalayankoh.com' }],
+        createdAt: new Date(at).toISOString(), updatedAt: new Date(at).toISOString(), read: false,
+      };
+      mockGetSetting.mockResolvedValue(JSON.stringify([remoteMessage]));
+      clock.mockReturnValue(at + 15_001);
+      const result = await listInboxState({ folder: 'ws', skipExternalSync: true });
+      expect(result.messages.some((message) => message.id === 'remote-ws')).toBe(true);
+      expect(mockGetSetting).toHaveBeenCalledWith('email_inbox', 'messages_json', { fresh: true });
+    } finally { clock.mockRestore(); }
+  });
+
   it('accurately reports the authorized mailbox identities and DNS infrastructure', async () => {
     const { mailboxes, infrastructure } = await getMailboxAndInfrastructureStatus();
 

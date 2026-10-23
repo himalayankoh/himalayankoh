@@ -74,8 +74,8 @@ export function toSettingReadFailure(error: unknown): SettingReadFailure {
   };
 }
 
-export async function getSetting(category: string, key: string): Promise<string | null> {
-  return (await getSettingWithStatus(category, key)).value;
+export async function getSetting(category: string, key: string, options: { fresh?: boolean } = {}): Promise<string | null> {
+  return (await getSettingWithStatus(category, key, options)).value;
 }
 
 /**

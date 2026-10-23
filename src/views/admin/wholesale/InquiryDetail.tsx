@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { AdminModal, AdminButton } from '@/components/admin/AdminUI';
 import { saveWholesaleRecord, resendWholesaleInquiryNotification, type WholesaleRow } from '@/lib/admin/wholesaleConsoleApi';
 import { Button, Field, Notice, Panel, TextArea, TextInput, text, useWriter } from './ui';
 
@@ -12,6 +13,7 @@ export default function InquiryDetail({ inquiry, audit, reload, close }: {
   const [quotedTotal, setQuotedTotal] = useState(text(inquiry.sell_total));
   const [validUntil, setValidUntil] = useState(text(inquiry.valid_until));
   const writer = useWriter();
+  const [confirmation, setConfirmation] = useState<'quote' | 'resend' | null>(null);
   const id = Number(inquiry.id);
   const lines = Array.isArray(inquiry.lines) ? inquiry.lines as WholesaleRow[] : [];
   const contact = inquiry.buyer_contact as WholesaleRow | null;
@@ -42,8 +44,7 @@ export default function InquiryDetail({ inquiry, audit, reload, close }: {
           <Field label="Valid through"><TextInput type="date" value={validUntil} onChange={setValidUntil} /></Field>
         </div>
         <Button disabled={writer.saving} onClick={() => {
-          if (!window.confirm('Record this reviewed final quotation? Payment will remain unconfirmed.')) return;
-          void writer.run(async () => { await saveWholesaleRecord('quotes', { status: 'QUOTED', sell_total: Number(quotedTotal), valid_until: validUntil, revisionReason: 'Trade desk reviewed final quotation', internal_notes: note, invoice_url: invoice, external_payment_url: payment }, id); await reload(); }, 'Final quotation saved. Send the invoice from the Wholesale mailbox.');
+          setConfirmation('quote');
         }}>Record final quotation</Button>
       </div>
       <Field label="Internal notes"><TextArea value={note} onChange={setNote} /></Field>
@@ -55,10 +56,20 @@ export default function InquiryDetail({ inquiry, audit, reload, close }: {
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => void writer.run(async () => { await saveWholesaleRecord('quotes', { internal_notes: note, invoice_url: invoice, external_payment_url: payment }, id); await reload(); }, 'Inquiry notes and links saved.')}>Save inquiry details</Button>
         <Button onClick={() => {
-          if (!window.confirm('Resend the stored inquiry notification to ws@himalayankoh.com and its buyer?')) return;
-          void writer.run(async () => { const result = await resendWholesaleInquiryNotification(id); if (!result.adminNotified || !result.buyerAcknowledged) throw new Error(result.error || 'One or more notifications were not accepted. Check the activity log.'); await reload(); }, 'Mail transport accepted the notification. Inbox delivery still needs confirmation.');
+          setConfirmation('resend');
         }}>Resend notification</Button>
       </div>
+      {confirmation ? <AdminModal title={confirmation === 'quote' ? 'Confirm final quotation' : 'Confirm notification resend'} onClose={() => setConfirmation(null)} footer={<>
+        <AdminButton variant="secondary" onClick={() => setConfirmation(null)}>Cancel</AdminButton>
+        <AdminButton onClick={() => {
+          const action = confirmation; setConfirmation(null);
+          if (action === 'quote') {
+            void writer.run(async () => { await saveWholesaleRecord('quotes', { status: 'QUOTED', sell_total: Number(quotedTotal), valid_until: validUntil, revisionReason: 'Trade desk reviewed final quotation', internal_notes: note, invoice_url: invoice, external_payment_url: payment }, id); await reload(); }, 'Final quotation saved. Send the invoice from the Wholesale mailbox.');
+          } else {
+            void writer.run(async () => { const result = await resendWholesaleInquiryNotification(id); if (!result.adminNotified || !result.buyerAcknowledged) throw new Error(result.error || 'One or more notifications were not accepted. Check the activity log.'); await reload(); }, 'Mail transport accepted the notification. Inbox delivery still needs confirmation.');
+          }
+        }}>Confirm action</AdminButton>
+      </>}><p className="text-sm break-words">{confirmation === 'quote' ? `Record ${quotedTotal} USD as the reviewed final quotation for ${text(inquiry.ref)}? No payment is taken or confirmed.` : `Resend ${text(inquiry.ref)} to ws@himalayankoh.com and its buyer?`}</p></AdminModal> : null}
       <h3 className="font-semibold text-sm">Activity and notification history</h3>
       {events.length ? <ul className="space-y-2 text-xs">{events.map((event, index) => <li key={index} className="border-l-2 border-himalayan/30 pl-3 break-words">{text(event.at || event.created_at)} · {text(event.action).replaceAll('_', ' ')} · {text(event.actor)}</li>)}</ul> : <p className="text-xs text-charcoal-light">No events in the currently loaded audit window. Delivery has not been verified.</p>}
     </div>

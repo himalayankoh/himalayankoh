@@ -336,11 +336,15 @@ const SETTINGS_CATEGORY = 'email_inbox';
 const SETTINGS_KEY = 'messages_json';
 
 let memoryMessagesCache: InboxMessage[] | null = null;
+let memoryMessagesReadAt = 0;
+// Worker isolates do not share memory: re-read persisted mail after a short window.
+const MESSAGES_CACHE_TTL_MS = 15_000;
 let lastExternalSyncAt = 0;
 const EXTERNAL_SYNC_TTL_MS = 20_000;
 
 export function resetInboxMemoryCacheForTests(): void {
   memoryMessagesCache = [];
+  memoryMessagesReadAt = Date.now();
   lastExternalSyncAt = Date.now();
 }
 
@@ -638,7 +642,7 @@ export async function deleteSingleMessage(id: string): Promise<void> {
 }
 
 async function readStoredMessages(): Promise<InboxMessage[]> {
-  if (memoryMessagesCache !== null) {
+  if (memoryMessagesCache !== null && Date.now() - memoryMessagesReadAt < MESSAGES_CACHE_TTL_MS) {
     return [...memoryMessagesCache];
   }
 
@@ -664,7 +668,7 @@ async function readStoredMessages(): Promise<InboxMessage[]> {
     storefrontRequest<{ items: StoredAdminRecord[] }>('/admin-records', {
       params: { table: RECORD_TABLE, limit: 2000 },
     }),
-    getSetting(SETTINGS_CATEGORY, SETTINGS_KEY),
+    getSetting(SETTINGS_CATEGORY, SETTINGS_KEY, { fresh: true }),
   ]);
 
   if (adminRecordsResult.status === 'fulfilled' && adminRecordsResult.value?.items && Array.isArray(adminRecordsResult.value.items)) {
@@ -692,6 +696,7 @@ async function readStoredMessages(): Promise<InboxMessage[]> {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
   memoryMessagesCache = merged;
+  memoryMessagesReadAt = Date.now();
   return [...merged];
 }
 
@@ -700,6 +705,7 @@ async function writeStoredMessages(messages: InboxMessage[]): Promise<void> {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   memoryMessagesCache = sorted;
+  memoryMessagesReadAt = Date.now();
 
   try {
     await upsertSettings(SETTINGS_CATEGORY, {

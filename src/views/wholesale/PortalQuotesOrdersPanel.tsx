@@ -117,7 +117,7 @@ function QuoteCard({ quote, onAccepted }: { quote: PortalQuote; onAccepted?: (qu
           </div>
           <p className="text-sm text-charcoal-light">
             {quote.totals.units.toLocaleString('en-US')} units · {quote.totals.pallets} pallet
-            {quote.totals.pallets === 1 ? '' : 's'} · {quote.totals.netWeightKg.toLocaleString('en-US')} kg
+            {quote.totals.pallets === 1 ? '' : 's'}{quote.awaitingQuotation ? ' (estimate)' : ''} · {quote.totals.netWeightKg > 0 ? `${quote.totals.netWeightKg.toLocaleString('en-US')} kg` : 'Weight pending confirmation'}
             {quote.destinationCountry ? ` · ${quote.destinationCountry}` : ''}
           </p>
         </div>
