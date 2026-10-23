@@ -124,3 +124,19 @@ admin/buyer/inquiry flows on the new code: NOT TESTED (not deployed).
 Git: `integration/cloudflare-workers-migration`, base `6a6c640`; commit SHA recorded in the final message.
 Worker version/deployment ID: unchanged â€” `himalayan-koh-ecommerce-prod` deployment `6a56a5c8-1362-4ff2-bd24-32ca3f288b00`.
 
+
+## Addendum — recovery pass 2 (2026-10-22 night)
+
+| Task | Status | Evidence |
+| --- | --- | --- |
+| 1. Re-verify production QA cleanup | PASS | Fresh cache-busted reads of `wp.himalayankoh.com`: applications 0, accounts 0, products 0, price_tiers 0, quotes 0, orders 0; WordPress users 7 (0 with role `hk_wholesale_buyer`); the plugin audit table holds 127 `delete` rows with snapshots. Backup JSON still on disk (accounts, applications, audit, container_profiles, origins, price_tiers, products, quotes). No further record was deleted. |
+| 2. Staging test access | BLOCKED | No staging-only WordPress application credential is configured anywhere reachable (process env has only Cloudflare vars; `.env.local` holds the production one). Not requested in chat, production credential not reused. |
+| 3. ws@ SMTP sender + Worker secrets | BLOCKED | Secret names read from Cloudflare for BOTH Workers: neither has `SMTP_*`/`NAMECHEAP_SMTP_*`, `WHOLESALE_INQUIRY_EMAIL` or `WHOLESALE_FROM_EMAIL`. There is no authorised sender to verify and nothing to configure without its credential. sales@/HubSpot untouched. |
+| 4. Admin sidebar overlap | NOT REPRODUCED, no code change | On the live admin (`/admin`, 1440x900, fresh load, read-only) the content starts at x=240 beside the 240px rail, in both plain and `captureBeyondViewport` captures; no overlap. `AdminLayout.tsx` differs from `f54daa0` only by the Wholesale sub-menu items. The overlap appeared only in the earlier trial's captures of the new wholesale pages; reproducing those needs the new build, and the local dev server (`vinext dev`) failed to start (miniflare ECONNRESET; port 3001 is occupied by another app). Cause remains unknown. |
+| 5-8. Staging trials, unique screenshots, full gates, DB backup, rollback | BLOCKED / NOT RUN | Depend on 2 and 3. Full DB dump still not taken (no DB/cPanel access used). |
+| 9-10. Production deploy and live checks | NOT DONE | Release gates (email delivery, fresh staging trial, full DB backup) fail. Worker `himalayan-koh-ecommerce-prod` unchanged: deployment `6a56a5c8-1362-4ff2-bd24-32ca3f288b00`; live build `d1780bb`. |
+
+Production launch did NOT happen. Exact blockers, smallest next actions:
+1. Owner stores a staging-only WordPress application password as `QA_WP_APP_USER`/`QA_WP_APP_PASSWORD` plus `QA_WP_BASE=https://wp.himalayankoh.com/staging` in the shell or a gitignored file.
+2. Owner provides the ws@ SMTP credential (set with `wrangler secret put` on the production and staging Workers: `NAMECHEAP_SMTP_USER/PASS/HOST/PORT`, `WHOLESALE_FROM_EMAIL`, `WHOLESALE_INQUIRY_EMAIL`).
+3. Owner confirms a database backup (cPanel/Namecheap) exists before `npm run deploy:production`.
