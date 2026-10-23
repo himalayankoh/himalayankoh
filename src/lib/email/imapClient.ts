@@ -569,6 +569,30 @@ export function parseRawRfc822Email(raw: string, targetMailbox: string): ParsedI
   };
 }
 
+/** Read IMAP literals by their byte lengths; FLAGS/UID ordering is server-defined. */
+export function readImapFetchResponse(response: Buffer, tag = 'A003'): { status: string | null; messages: string[] } {
+  const messages: string[] = [];
+  let offset = 0;
+  while (offset < response.length) {
+    const lineEnd = response.indexOf('\r\n', offset);
+    if (lineEnd < 0) break;
+    const line = response.subarray(offset, lineEnd).toString('ascii');
+    const literal = /^\*\s+\d+\s+FETCH\s+\([^\r\n]*?(?:RFC822|BODY\[\])\s+\{(\d+)\}\s*$/i.exec(line);
+    if (literal) {
+      const start = lineEnd + 2;
+      const end = start + Number(literal[1]);
+      if (!Number.isSafeInteger(end) || end > response.length) return { status: null, messages: [] };
+      messages.push(response.subarray(start, end).toString('utf8'));
+      offset = end;
+      continue;
+    }
+    const completion = new RegExp(`^${tag} (OK|NO|BAD)(?: |$)`, 'i').exec(line);
+    if (completion) return { status: completion[1].toUpperCase(), messages };
+    offset = lineEnd + 2;
+  }
+  return { status: null, messages: [] };
+}
+
 /**
  * Fetch recent incoming messages via IMAP TLS from premium164.web-hosting.com:993
  */
@@ -600,7 +624,7 @@ export async function fetchRecentImapEmails(options: {
   return new Promise((resolve) => {
     let timer: NodeJS.Timeout | null = null;
     let finished = false;
-    let buffer = '';
+    let buffer = Buffer.alloc(0);
     let step = 'await_greeting';
     let existsCount = 0;
     const rawMessages: string[] = [];
@@ -630,35 +654,35 @@ export async function fetchRecentImapEmails(options: {
       }
     );
 
-    socket.setEncoding('utf8');
 
-    socket.on('data', (chunk: string) => {
-      buffer += chunk;
+    socket.on('data', (chunk: Buffer) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      const protocol = buffer.toString('latin1');
 
       if (step === 'await_greeting') {
-        if (buffer.includes('* OK')) {
-          buffer = '';
+        if (protocol.includes('* OK')) {
+          buffer = Buffer.alloc(0);
           step = 'login_sent';
           const safeUser = options.user.replace(/["\\]/g, '\\$&');
           const safePass = options.pass.replace(/["\\]/g, '\\$&');
           socket.write(`A001 LOGIN "${safeUser}" "${safePass}"\r\n`);
         }
       } else if (step === 'login_sent') {
-        if (buffer.includes('A001 OK')) {
-          buffer = '';
+        if (protocol.includes('A001 OK')) {
+          buffer = Buffer.alloc(0);
           step = 'select_sent';
-          socket.write(`A002 SELECT "${folder}"\r\n`);
-        } else if (buffer.includes('A001 NO') || buffer.includes('A001 BAD')) {
-          const errLine = buffer.split('\r\n').find((l) => l.startsWith('A001')) || buffer.trim();
+          socket.write(`A002 EXAMINE "${folder}"\r\n`);
+        } else if (protocol.includes('A001 NO') || protocol.includes('A001 BAD')) {
+          const errLine = protocol.split('\r\n').find((l) => l.startsWith('A001')) || protocol.trim();
           done({ ok: false, count: 0, messages: [], error: `IMAP login failed: ${errLine}` });
         }
       } else if (step === 'select_sent') {
-        if (buffer.includes('A002 OK')) {
-          const existsMatch = buffer.match(/\*\s+(\d+)\s+EXISTS/i);
+        if (protocol.includes('A002 OK')) {
+          const existsMatch = protocol.match(/\*\s+(\d+)\s+EXISTS/i);
           if (existsMatch) {
             existsCount = parseInt(existsMatch[1], 10);
           }
-          buffer = '';
+          buffer = Buffer.alloc(0);
 
           if (existsCount <= 0) {
             socket.write('A004 LOGOUT\r\n');
@@ -669,22 +693,15 @@ export async function fetchRecentImapEmails(options: {
           const start = Math.max(1, existsCount - limit + 1);
           const end = existsCount;
           step = 'fetch_sent';
-          socket.write(`A003 FETCH ${start}:${end} (RFC822)\r\n`);
-        } else if (buffer.includes('A002 NO') || buffer.includes('A002 BAD')) {
+          socket.write(`A003 FETCH ${start}:${end} (BODY.PEEK[])\r\n`);
+        } else if (protocol.includes('A002 NO') || protocol.includes('A002 BAD')) {
           done({ ok: false, count: 0, messages: [], error: `IMAP select "${folder}" failed` });
         }
       } else if (step === 'fetch_sent') {
-        if (buffer.includes('A003 OK')) {
+        const fetched = readImapFetchResponse(buffer);
+        if (fetched.status === 'OK') {
           socket.write('A004 LOGOUT\r\n');
-
-          // Split messages by '* <seq> FETCH (RFC822 {'
-          const parts = buffer.split(/\*\s+\d+\s+FETCH\s+\(RFC822\s+\{\d+\}\r?\n/i);
-          for (let i = 1; i < parts.length; i++) {
-            const raw = parts[i];
-            const endIdx = raw.lastIndexOf(')\r\n');
-            const cleanContent = endIdx !== -1 ? raw.slice(0, endIdx) : raw;
-            rawMessages.push(cleanContent);
-          }
+          rawMessages.push(...fetched.messages);
 
           const parsed = rawMessages
             .map((r) => {
@@ -709,7 +726,7 @@ export async function fetchRecentImapEmails(options: {
             return;
           }
           done({ ok: true, count: parsed.length, messages: parsed });
-        } else if (buffer.includes('A003 NO') || buffer.includes('A003 BAD')) {
+        } else if (fetched.status === 'NO' || fetched.status === 'BAD') {
           done({ ok: false, count: 0, messages: [], error: 'IMAP fetch command failed' });
         }
       }

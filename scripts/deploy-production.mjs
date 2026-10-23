@@ -123,7 +123,7 @@ if (checkSecrets.status !== 0) fail('Post-deploy secret scan failed.', checkSecr
 
 process.stdout.write(
   `\n[deploy:production] ${built.name} was updated; its existing production routes remain in place.\n` +
-    `No DNS record was created and no custom domain was attached — himalayankoh.com is still WordPress.\n`,
+    `No DNS record was created and no custom domain was attached; existing production routes remain in place.\n`,
 );
 
 /**

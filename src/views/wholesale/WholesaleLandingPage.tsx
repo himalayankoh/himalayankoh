@@ -43,7 +43,7 @@ const PILLARS = [
   {
     icon: Boxes,
     title: 'Mixed containers',
-    body: 'Fine, coarse, crystal, slabs, licks and bath grades in one box. The loading plan shows cartons, pallets, kilos and CBM per product.',
+    body: 'Select available livestock and edible-salt products from the approved catalogue. The plan shows estimated cartons, pallets, kilos and CBM per product.',
   },
   {
     icon: Layers,
@@ -131,7 +131,7 @@ export default function WholesaleLandingPage() {
               <ul className="space-y-4 text-white/80 text-sm leading-relaxed">
                 <li className="flex gap-3">
                   <Scale className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" />
-                  <span>Cartons, pallets and container loads calculated from the real packaging profile, not a rule of thumb.</span>
+                  <span>Carton, pallet and container estimates use the configured packing profile. Missing measurements are identified for review.</span>
                 </li>
                 <li className="flex gap-3">
                   <Truck className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" />
