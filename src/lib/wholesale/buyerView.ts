@@ -170,6 +170,7 @@ export interface BuyerQuoteView {
   };
   /** True while nobody has priced the RFQ yet. */
   awaitingQuotation: boolean;
+  packingEstimated: boolean;
   estimatedTotal: number | null;
   invoiceUrl: string | null;
   externalPaymentUrl: string | null;
@@ -233,6 +234,7 @@ export function buyerQuoteView(row: Row, now: Date = new Date()): BuyerQuoteView
       perUnit,
     },
     awaitingQuotation: !priced,
+    packingEstimated: Array.isArray(row.assumptions) && row.assumptions.some((note) => typeof note === 'string' && /default packaging/i.test(note)),
     estimatedTotal: lines.length && lines.every((line) => typeof line.unitPriceIndicative === 'number')
       ? Math.round(lines.reduce((sum, line) => sum + numb(line.units) * numb(line.unitPriceIndicative), 0) * 100) / 100 : null,
     invoiceUrl: safeHttps(row.invoice_url),

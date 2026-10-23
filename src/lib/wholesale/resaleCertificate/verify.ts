@@ -615,7 +615,7 @@ function officialAutomationCheck(): CertificateCheck {
     label: 'Official authority check',
     outcome: 'not_run',
     detail:
-      'No U.S. state offers a public machine-readable resale-certificate verification API. The reviewer opens the authority’s own lookup from this screen and records the result.',
+      'This storefront does not perform automated official permit verification. The reviewer opens the authority’s own lookup from this screen and records the result.',
   };
 }
 

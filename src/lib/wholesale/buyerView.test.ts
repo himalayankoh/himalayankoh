@@ -144,6 +144,12 @@ describe('inquiry snapshots and external invoice links', () => {
     expect(view.lines.every((line) => line.unitPrice === null && line.lineTotal === null)).toBe(true);
     expect(view.estimatedTotal).toBe(23.04);
   });
+  it('keeps default packing labelled as estimated after a final price is recorded', () => {
+    const view = buyerQuoteView({ ...STORED_QUOTE, assumptions: ['Salt: pallet math uses default packaging for cartonQty.'] }, AT);
+    expect(view.confidence).toBe('CONFIRMED');
+    expect(view.packingEstimated).toBe(true);
+    expect(buyerQuoteView(STORED_QUOTE, AT).packingEstimated).toBe(false);
+  });
   it('rejects unsafe URLs and hides payment links on unconfirmed inquiries', () => {
     const view = buyerQuoteView({ ...STORED_QUOTE, status: 'SUBMITTED', invoice_url: 'javascript:alert(1)', external_payment_url: 'https://pay.example.invalid' });
     expect(view.invoiceUrl).toBeNull(); expect(view.externalPaymentUrl).toBeNull();

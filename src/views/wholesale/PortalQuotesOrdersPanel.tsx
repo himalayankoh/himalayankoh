@@ -117,7 +117,7 @@ function QuoteCard({ quote, onAccepted }: { quote: PortalQuote; onAccepted?: (qu
           </div>
           <p className="text-sm text-charcoal-light">
             {quote.totals.units.toLocaleString('en-US')} units · {quote.totals.pallets} pallet
-            {quote.totals.pallets === 1 ? '' : 's'}{quote.awaitingQuotation ? ' (estimate)' : ''} · {quote.totals.netWeightKg > 0 ? `${quote.totals.netWeightKg.toLocaleString('en-US')} kg` : 'Weight pending confirmation'}
+            {quote.totals.pallets === 1 ? '' : 's'}{quote.packingEstimated ? ' (estimate)' : ''} · {quote.totals.netWeightKg > 0 ? `${quote.totals.netWeightKg.toLocaleString('en-US')} kg` : 'Weight pending confirmation'}
             {quote.destinationCountry ? ` · ${quote.destinationCountry}` : ''}
           </p>
         </div>
@@ -145,6 +145,7 @@ function QuoteCard({ quote, onAccepted }: { quote: PortalQuote; onAccepted?: (qu
       {open ? (
         <div className="border-t border-charcoal/8 p-5 bg-warm-white/40">
           <p className="text-sm text-charcoal-light leading-relaxed mb-4">{quote.confidenceNote}</p>
+          {quote.packingEstimated ? <p className="text-sm text-amber-800 mb-4">Carton and pallet figures are planning estimates. Packing measurements and freight still need confirmation.</p> : null}
           {quote.estimatedTotal !== null && quote.awaitingQuotation ? <p className="text-sm mb-4">Estimated merchandise: <strong>{money(quote.estimatedTotal, quote.currency)}</strong>. Final shipping, applicable taxes, availability and payment terms will be confirmed after review.</p> : null}
           <div className="flex flex-wrap gap-3 mb-4">
             {quote.invoiceUrl ? <a href={quote.invoiceUrl} target="_blank" rel="noopener noreferrer" className="text-himalayan underline">View invoice</a> : null}

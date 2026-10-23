@@ -48,7 +48,7 @@ const PILLARS = [
   {
     icon: Layers,
     title: 'Pallets and part loads',
-    body: 'Buy a pallet count rather than a container. Packing is configured per product, so the pallet math is the factory’s, not an assumption.',
+    body: 'Request a pallet count rather than a full container. We confirm product packing measurements before committing to a load plan.',
   },
   {
     icon: Globe2,
