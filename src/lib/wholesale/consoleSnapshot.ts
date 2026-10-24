@@ -139,10 +139,34 @@ export interface WholesaleWorkspaceSources {
 }
 
 /**
+ * Runs async factory functions with a concurrency ceiling.
+ *
+ * Upstream WordPress (cPanel / Apache / PHP-FPM) has limited concurrent worker processes.
+ * Firing 14-16 simultaneous requests causes worker queueing, connection exhaustion,
+ * and 45s gateway timeouts. Bounding concurrency to 2 processes requests smoothly
+ * without saturating PHP workers.
+ */
+async function pooledAll(tasks: Array<() => Promise<unknown>>, concurrency = 2): Promise<unknown[]> {
+  const results = new Array<unknown>(tasks.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < tasks.length) {
+      const index = nextIndex++;
+      results[index] = await tasks[index]();
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+/**
  * Reads every store the console shows — once each.
  *
- * Fourteen reads leave at the same moment rather than in a queue, because they are
- * independent tables and a waterfall here would be thirteen round trips deep.
+ * Fourteen reads are pooled with a concurrency ceiling rather than bursting all at once,
+ * protecting the host's worker pool while still completing well within the aggregate timeout.
  */
 export async function readWholesaleWorkspaceSources(): Promise<WholesaleWorkspaceSources> {
   const [
@@ -161,23 +185,39 @@ export async function readWholesaleWorkspaceSources(): Promise<WholesaleWorkspac
     audit,
     plugin,
     freightProvider,
-  ] = await Promise.all([
-    listWholesaleRecords('products', { limit: 500 }, AGGREGATE),
-    listWholesaleRecords('price_tiers', { limit: 500 }, AGGREGATE),
-    listWholesaleRecords('container_profiles', { limit: 100 }, AGGREGATE),
-    listWholesaleRecords('cost_profiles', { limit: 200 }, AGGREGATE),
-    listWholesaleRecords('freight_rates', { limit: 300, order: 'id' }, AGGREGATE),
-    listWholesaleRecords('origins', { limit: 100 }, AGGREGATE),
-    listWholesaleRecords('suppliers', { limit: 200 }, AGGREGATE),
-    listWholesaleRecords('port_charges', { limit: 300 }, AGGREGATE),
-    listWholesaleRecords('applications', { limit: 200 }, AGGREGATE),
-    listWholesaleRecords('accounts', { limit: 200 }, AGGREGATE),
-    listWholesaleRecords('quotes', { limit: 200 }, AGGREGATE),
-    listWholesaleRecords('orders', { limit: 200 }, AGGREGATE),
-    listWholesaleRecords('audit', { limit: 100, order: 'id' }, AGGREGATE),
-    readWholesalePluginSettings(AGGREGATE).catch(() => null),
-    freightProviderStatus().catch(() => null),
-  ]);
+  ] = (await pooledAll([
+    () => listWholesaleRecords('products', { limit: 500 }, AGGREGATE),
+    () => listWholesaleRecords('price_tiers', { limit: 500 }, AGGREGATE),
+    () => listWholesaleRecords('container_profiles', { limit: 100 }, AGGREGATE),
+    () => listWholesaleRecords('cost_profiles', { limit: 200 }, AGGREGATE),
+    () => listWholesaleRecords('freight_rates', { limit: 300, order: 'id' }, AGGREGATE),
+    () => listWholesaleRecords('origins', { limit: 100 }, AGGREGATE),
+    () => listWholesaleRecords('suppliers', { limit: 200 }, AGGREGATE),
+    () => listWholesaleRecords('port_charges', { limit: 300 }, AGGREGATE),
+    () => listWholesaleRecords('applications', { limit: 200 }, AGGREGATE),
+    () => listWholesaleRecords('accounts', { limit: 200 }, AGGREGATE),
+    () => listWholesaleRecords('quotes', { limit: 200 }, AGGREGATE),
+    () => listWholesaleRecords('orders', { limit: 200 }, AGGREGATE),
+    () => listWholesaleRecords('audit', { limit: 100, order: 'id' }, AGGREGATE),
+    () => readWholesalePluginSettings(AGGREGATE).catch(() => null),
+    () => freightProviderStatus().catch(() => null),
+  ], 2)) as [
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesaleRow[],
+    WholesalePluginSettings | null,
+    FreightProviderStatus | null,
+  ];
 
   return {
     products,
@@ -347,10 +387,8 @@ export async function readWholesaleConsole(): Promise<{
   workspace: WholesaleWorkspacePayload;
   overview: WholesaleOverviewPayload;
 }> {
-  const [sources, overview] = await Promise.all([
-    readWholesaleWorkspaceSources(),
-    readWholesaleOverview(AGGREGATE),
-  ]);
+  const sources = await readWholesaleWorkspaceSources();
+  const overview = await readWholesaleOverview(AGGREGATE);
 
   return {
     workspace: wholesaleWorkspacePayload(sources),

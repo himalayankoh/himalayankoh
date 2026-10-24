@@ -230,7 +230,7 @@ export default function PortalCatalogPanel({
 
           <div className="mb-5 rounded-2xl border border-himalayan/20 bg-himalayan/5 p-4 text-sm text-charcoal">
             <p className="font-semibold">30% wholesale pricing · minimum 4 full boxes per selected product</p>
-            <p className="mt-1 text-charcoal-light">2 lb: 6 pieces per box. 6 lb: 4 pieces per box. 30 lb: 1 piece per box. Buy at least 4 boxes of each product you choose. Freight and taxes are separate.</p>
+            <p className="mt-1 text-charcoal-light">2 lb Lick Salt: 6 pieces per box. 6 lb Lick Salt: 4 pieces per box. 30 lb Rock Salt: 1 piece per box. Buy at least 4 boxes of each product you choose. Freight and taxes are separate.</p>
           </div>
           {catalog === null ? (
             <div className="flex items-center gap-3 text-charcoal-light py-16 justify-center">
