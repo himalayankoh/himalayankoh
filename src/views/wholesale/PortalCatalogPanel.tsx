@@ -82,7 +82,7 @@ export default function PortalCatalogPanel({
   const [planError, setPlanError] = useState('');
   const [calculating, setCalculating] = useState(false);
 
-  const [destinationCountry, setDestinationCountry] = useState(buyer?.destinationCountry ?? '');
+  const [destinationCountry, setDestinationCountry] = useState(buyer?.destinationCountry || 'United States');
   const [destinationPort, setDestinationPort] = useState(buyer?.destinationPort ?? '');
   const [incoterm, setIncoterm] = useState('FOB');
   const [notes, setNotes] = useState('');
@@ -558,10 +558,10 @@ export default function PortalCatalogPanel({
             ) : null}
 
             <div className="bg-white rounded-3xl border border-charcoal/8 p-6">
-              <h2 className="font-serif text-lg font-semibold text-charcoal mb-4">Request a quotation</h2>
+              <h2 className="font-serif text-lg font-semibold text-charcoal mb-4">Request a Wholesale Quotation</h2>
 
               <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="incoterm">
-                Price basis
+                Delivery Method
               </label>
               <select
                 id="incoterm"
@@ -569,49 +569,44 @@ export default function PortalCatalogPanel({
                 value={incoterm}
                 onChange={(event) => setIncoterm(event.target.value)}
               >
-                <option value="EXW">EXW — ex works</option>
-                <option value="FOB">FOB — free on board</option>
-                <option value="CFR">CFR — cost and freight</option>
-                <option value="CIF">CIF — cost, insurance and freight</option>
+                <option value="FOB">Standard Freight Delivery (Houston, TX to your address)</option>
+                <option value="EXW">Warehouse Pickup (Houston, TX Warehouse)</option>
               </select>
 
-              <div className="grid sm:grid-cols-2 gap-3 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="dc">
-                    Destination country
-                  </label>
-                  <input
-                    id="dc"
-                    className={input}
-                    value={destinationCountry}
-                    onChange={(event) => setDestinationCountry(event.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="dp">
-                    Destination port
-                  </label>
-                  <input
-                    id="dp"
-                    className={input}
-                    value={destinationPort}
-                    onChange={(event) => setDestinationPort(event.target.value)}
-                  />
-                </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="dc">
+                  Destination Country
+                </label>
+                <input
+                  id="dc"
+                  className={input}
+                  value={destinationCountry || 'United States'}
+                  onChange={(event) => setDestinationCountry(event.target.value)}
+                />
               </div>
 
-              <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="wholesale-shipping">Shipping address</label>
-              <textarea id="wholesale-shipping" required rows={3} className={`${input} mb-4`} value={shippingAddress} onChange={(event) => setShippingAddress(event.target.value)} placeholder="Street, city, state, ZIP code and country" />
+              <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="wholesale-shipping">
+                U.S. Delivery Address
+              </label>
+              <textarea
+                id="wholesale-shipping"
+                required
+                rows={3}
+                className={`${input} mb-4`}
+                value={shippingAddress}
+                onChange={(event) => setShippingAddress(event.target.value)}
+                placeholder="Business Name, Street Address, Suite/Unit, City, State, ZIP code"
+              />
               <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="notes">
-                Notes for our team
+                Delivery Instructions & Notes
               </label>
               <textarea
                 id="notes"
-                rows={3}
+                rows={2}
                 className={`${input} mb-4`}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                placeholder="Packing, labelling, delivery window, anything else…"
+                placeholder="Dock access, liftgate needed, delivery window, or any special requests…"
               />
 
               {submitError ? (
