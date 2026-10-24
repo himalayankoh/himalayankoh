@@ -65,8 +65,8 @@ export default function WholesaleLandingPage() {
               <div className="space-y-3">
                 <div className="bg-white/[0.05] border border-white/10 rounded-2xl p-4 flex items-center justify-between">
                   <div>
-                    <h3 className="text-white font-semibold text-base">2 lb Pouch</h3>
-                    <p className="text-white/60 text-xs mt-0.5">Retail Stand-up Pouch</p>
+                    <h3 className="text-white font-semibold text-base">2 lb Lick Salt</h3>
+                    <p className="text-white/60 text-xs mt-0.5">Animal Salt Lick with Rope</p>
                   </div>
                   <div className="text-right">
                     <span className="text-himalayan font-bold text-sm block">6 pieces / box</span>
@@ -76,8 +76,8 @@ export default function WholesaleLandingPage() {
 
                 <div className="bg-white/[0.05] border border-white/10 rounded-2xl p-4 flex items-center justify-between">
                   <div>
-                    <h3 className="text-white font-semibold text-base">6 lb Tub</h3>
-                    <p className="text-white/60 text-xs mt-0.5">Family / Kitchen Size</p>
+                    <h3 className="text-white font-semibold text-base">6 lb Lick Salt</h3>
+                    <p className="text-white/60 text-xs mt-0.5">Animal Salt Lick with Rope</p>
                   </div>
                   <div className="text-right">
                     <span className="text-himalayan font-bold text-sm block">4 pieces / box</span>
@@ -87,8 +87,8 @@ export default function WholesaleLandingPage() {
 
                 <div className="bg-white/[0.05] border border-white/10 rounded-2xl p-4 flex items-center justify-between">
                   <div>
-                    <h3 className="text-white font-semibold text-base">30 lb Bulk</h3>
-                    <p className="text-white/60 text-xs mt-0.5">Commercial Bag / Box</p>
+                    <h3 className="text-white font-semibold text-base">30 lb Rock Salt</h3>
+                    <p className="text-white/60 text-xs mt-0.5">Commercial Bag / Cattle Block</p>
                   </div>
                   <div className="text-right">
                     <span className="text-himalayan font-bold text-sm block">1 piece / box</span>
