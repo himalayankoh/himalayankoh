@@ -2,114 +2,41 @@ import Link from 'next/link';
 import {
   ArrowRight,
   Boxes,
-  Container,
+  CheckCircle2,
   FileText,
-  Globe2,
   Handshake,
-  Layers,
   Package,
-  Scale,
   ShieldCheck,
-  Truck,
 } from 'lucide-react';
 
 /**
- * The wholesale front door.
- *
- * ## What this page may and may not claim
- *
- * It describes a real business — Himalayan pink salt bought by the pallet and the
- * container — so it states things the business can stand behind: the origin, the ways
- * you can buy (pallet, part-container, FCL), that pricing is per volume break, and
- * that freight is confirmed per quotation. It does not print a freight rate, a
- * delivery time to a port it has not quoted, or a "from $X" figure that no supplier
- * has given. A buyer landing here must not be able to read a number the business has
- * not actually offered.
- *
- * ## Why the auth path is stated twice
- *
- * Existing wholesale customers have a sign-in; new ones apply. Putting both in the
- * header and again before the process list is deliberate: the most common failure on
- * a B2B landing page is an existing customer filling in the application form because
- * that is the only button they found.
+ * The wholesale front door (simplified).
+ * Focuses on case-pack / box wholesale ordering for retailers and distributors.
  */
-
-const PILLARS = [
-  {
-    icon: Container,
-    title: 'Full container loads',
-    body: '20ft, 40ft and 40ft high cube, loaded to the weight or the volume limit — whichever binds first, stated on the quotation.',
-  },
-  {
-    icon: Boxes,
-    title: 'Mixed containers',
-    body: 'Select available livestock and edible-salt products from the approved catalogue. The plan shows estimated cartons, pallets, kilos and CBM per product.',
-  },
-  {
-    icon: Layers,
-    title: 'Pallets and part loads',
-    body: 'Request a pallet count rather than a full container. We confirm product packing measurements before committing to a load plan.',
-  },
-  {
-    icon: Globe2,
-    title: 'Origin to destination port',
-    body: 'Priced on EXW, FOB, CFR or CIF basis, with the charges each basis includes written out line by line.',
-  },
-];
-
-const PROCESS = [
-  {
-    step: '01',
-    title: 'Apply for an account',
-    body: 'Tell us who you are, where you sell, and roughly what volume you move. It takes a few minutes.',
-  },
-  {
-    step: '02',
-    title: 'We review it',
-    body: 'A person at Himalayan Koh reads every application. We may ask one or two questions before we approve.',
-  },
-  {
-    step: '03',
-    title: 'Sign in to the portal',
-    body: 'Approved buyers get tier pricing, the wholesale catalog, container planning and their own quotations.',
-  },
-  {
-    step: '04',
-    title: 'Build a quotation',
-    body: 'Mix products, set quantities, pick a destination. We confirm freight and issue a firm quotation you can accept.',
-  },
-];
-
-const TERMS = [
-  'Volume price breaks are shown per product — the break applies to the quantity, not to the order history.',
-  'Freight, insurance, port charges and duty are confirmed on each quotation. An estimate is always labelled as an estimate.',
-  'Quotations carry a validity date. Once it passes, the quotation is marked expired rather than quietly re-priced.',
-  'Packing is per the factory’s carton and pallet profile, and the loading plan states which figures were used.',
-];
-
 export default function WholesaleLandingPage() {
   return (
     <div className="min-h-screen bg-warm-white">
-      <section className="relative overflow-hidden bg-gradient-to-br from-charcoal via-charcoal to-charcoal-light py-10 md:py-14">
+      {/* Hero Section */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-charcoal via-charcoal to-charcoal-light py-12 md:py-16">
         <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(circle_at_20%_20%,white,transparent_45%)]" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-8 items-center">
+          <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-12 items-center">
             <div>
               <span className="inline-flex items-center gap-2 px-4 py-1.5 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-widest uppercase rounded-full mb-3">
                 <Handshake className="w-3.5 h-3.5" />
                 Wholesale &amp; Trade
               </span>
-              <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-white leading-[1.08] mb-4">
+              <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-white leading-[1.1] mb-4">
                 Himalayan pink salt, by the box.
               </h1>
-              <p className="text-white/75 text-base md:text-lg leading-relaxed max-w-2xl mb-6">
-                We supply retailers, distributors and importers from the salt range at Khewra. Wholesale starts at four
-                full boxes per selected product for 30% wholesale pricing. 2 lb: 6 pieces per box. 6 lb: 4 pieces per box. 30 lb: 1 piece per box. Availability and freight are confirmed per SKU.
+              <p className="text-white/80 text-base md:text-lg leading-relaxed max-w-xl mb-6">
+                Direct wholesale supply for verified retailers, grocery stores, and distributors. 
+                Enjoy 30% wholesale pricing with a 4-box minimum per SKU.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Link
                   href="/wholesale/apply"
-                  className="inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-himalayan text-white rounded-full font-semibold hover:bg-himalayan-dark transition-colors"
+                  className="inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-himalayan text-white rounded-full font-semibold hover:bg-himalayan-dark transition-colors shadow-md"
                 >
                   Apply for a wholesale account
                   <ArrowRight className="w-4 h-4" />
@@ -121,149 +48,161 @@ export default function WholesaleLandingPage() {
                   Wholesale customer sign-in
                 </Link>
               </div>
-              <p className="text-white/45 text-sm mt-5">
-                Already approved? Sign in for tier pricing and your own quotations.
+              <p className="text-white/50 text-sm mt-4">
+                Already approved? Sign in to view pricing and submit inquiries.
               </p>
             </div>
 
-            <div className="bg-white/[0.06] border border-white/12 rounded-3xl p-7 backdrop-blur">
-              <h2 className="font-serif text-2xl font-semibold text-white mb-5">What you can plan on</h2>
-              <ul className="space-y-4 text-white/80 text-sm leading-relaxed">
-                <li className="flex gap-3">
-                  <Scale className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" />
-                  <span>Carton, pallet and container estimates use the configured packing profile. Missing measurements are identified for review.</span>
-                </li>
-                <li className="flex gap-3">
-                  <Truck className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" />
-                  <span>Ocean freight quoted per lane and container type, with the rate’s source and validity shown.</span>
-                </li>
-                <li className="flex gap-3">
-                  <FileText className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" />
-                  <span>Every quotation is a snapshot: the prices, freight and exchange rate stay as they were quoted.</span>
-                </li>
-                <li className="flex gap-3">
-                  <ShieldCheck className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" />
-                  <span>One account, your own quotations and orders — visible only to you and to us.</span>
-                </li>
-              </ul>
+            {/* Visual Box Specifications Card */}
+            <div className="bg-white/[0.07] border border-white/12 rounded-3xl p-6 sm:p-8 backdrop-blur">
+              <div className="flex items-center gap-2 mb-4 text-himalayan font-semibold text-sm uppercase tracking-wider">
+                <Boxes className="w-4 h-4" />
+                <span>Standard Case Packs</span>
+              </div>
+              <h2 className="font-serif text-2xl font-bold text-white mb-4">
+                Wholesale Pack Sizes
+              </h2>
+              <div className="space-y-3">
+                <div className="bg-white/[0.05] border border-white/10 rounded-2xl p-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-semibold text-base">2 lb Pouch</h3>
+                    <p className="text-white/60 text-xs mt-0.5">Retail Stand-up Pouch</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-himalayan font-bold text-sm block">6 pieces / box</span>
+                    <span className="text-white/40 text-xs">Min. 4 boxes (24 pcs)</span>
+                  </div>
+                </div>
+
+                <div className="bg-white/[0.05] border border-white/10 rounded-2xl p-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-semibold text-base">6 lb Tub</h3>
+                    <p className="text-white/60 text-xs mt-0.5">Family / Kitchen Size</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-himalayan font-bold text-sm block">4 pieces / box</span>
+                    <span className="text-white/40 text-xs">Min. 4 boxes (16 pcs)</span>
+                  </div>
+                </div>
+
+                <div className="bg-white/[0.05] border border-white/10 rounded-2xl p-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-white font-semibold text-base">30 lb Bulk</h3>
+                    <p className="text-white/60 text-xs mt-0.5">Commercial Bag / Box</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-himalayan font-bold text-sm block">1 piece / box</span>
+                    <span className="text-white/40 text-xs">Min. 4 boxes (4 pcs)</span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-white/60 text-xs mt-4 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-himalayan shrink-0" />
+                30% wholesale discount automatically calculated on portal.
+              </p>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-10 md:py-14">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {PILLARS.map((pillar) => (
-            <div key={pillar.title} className="bg-white rounded-2xl border border-charcoal/8 p-6 shadow-sm">
-              <div className="w-11 h-11 rounded-xl bg-himalayan/10 flex items-center justify-center mb-4">
-                <pillar.icon className="w-5 h-5 text-himalayan" />
-              </div>
-              <h3 className="font-semibold text-charcoal mb-2">{pillar.title}</h3>
-              <p className="text-sm text-charcoal-light leading-relaxed">{pillar.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="bg-white border-y border-charcoal/8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 md:py-14">
-          <h2 className="font-serif text-3xl md:text-4xl font-bold text-charcoal mb-3">How a wholesale order works</h2>
-          <p className="text-charcoal-light mb-6 max-w-3xl">
-            Four steps, and a person at Himalayan Koh on every one of them.
+      {/* 3 Simple Steps */}
+      <section className="py-12 md:py-16 max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="text-center max-w-2xl mx-auto mb-10">
+          <h2 className="font-serif text-3xl font-bold text-charcoal mb-2">How wholesale ordering works</h2>
+          <p className="text-charcoal-light text-sm md:text-base">
+            Simple, streamlined ordering for verified retailers in three easy steps.
           </p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {PROCESS.map((entry) => (
-              <div key={entry.step} className="relative pl-5 border-l-2 border-himalayan/25">
-                <span className="font-serif text-3xl font-bold text-himalayan/30">{entry.step}</span>
-                <h3 className="font-semibold text-charcoal mt-2 mb-2">{entry.title}</h3>
-                <p className="text-sm text-charcoal-light leading-relaxed">{entry.body}</p>
-              </div>
-            ))}
-          </div>
         </div>
-      </section>
 
-      {/* What approval actually requires. Stated before the CTA so a buyer knows
-          whether they can qualify before starting a form — and so nobody reads the
-          catalog as an open checkout. */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 pt-10 md:pt-14">
-        <div className="rounded-3xl border border-himalayan/20 bg-himalayan-lighter/40 p-6 md:p-8">
-          <h2 className="font-serif text-2xl md:text-3xl font-bold text-charcoal mb-2">Approved trade accounts only</h2>
-          <p className="text-charcoal-light mb-6 max-w-3xl">
-            Himalayan Koh supplies verified retailers, distributors and resellers. Wholesale prices are not public:
-            they are activated for a business after its application and resale certificate have been reviewed.
-          </p>
-          <div className="grid gap-5 md:grid-cols-3">
-            <div className="flex gap-3">
-              <ShieldCheck className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" aria-hidden />
-              <div>
-                <h3 className="font-semibold text-charcoal mb-1">Business verification is mandatory</h3>
-                <p className="text-sm text-charcoal-light leading-relaxed">
-                  Every application includes a state resale certificate. We compare it with the business details and
-                  confirm it with the issuing state&apos;s own records before an account is approved.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <FileText className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" aria-hidden />
-              <div>
-                <h3 className="font-semibold text-charcoal mb-1">Orders begin as inquiries</h3>
-                <p className="text-sm text-charcoal-light leading-relaxed">
-                  You select products and quantities and send an inquiry. Nothing is charged online, and stock is not
-                  reserved by submitting an inquiry.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-3">
-              <Handshake className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" aria-hidden />
-              <div>
-                <h3 className="font-semibold text-charcoal mb-1">Invoice and payment terms follow approval</h3>
-                <p className="text-sm text-charcoal-light leading-relaxed">
-                  Our team confirms availability, shipping and taxes, then sends an invoice with payment instructions.
-                  Payment is made against that invoice, never inside the portal.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-10 md:py-14">
-        <div className="grid lg:grid-cols-2 gap-8">
-          <div>
-            <h2 className="font-serif text-3xl md:text-4xl font-bold text-charcoal mb-6">How we price</h2>
-            <ul className="space-y-4">
-              {TERMS.map((term) => (
-                <li key={term} className="flex gap-3 text-charcoal-light leading-relaxed">
-                  <Package className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" />
-                  <span>{term}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="bg-charcoal rounded-3xl p-8 md:p-10 text-white">
-            <h2 className="font-serif text-2xl md:text-3xl font-bold mb-4">Open a wholesale account</h2>
-            <p className="text-white/70 leading-relaxed mb-7">
-              Apply with your business details, U.S. business address and state resale certificate. Applications and
-              certificates are reviewed by hand — we approve buyers we can actually supply, so we will ask questions if
-              something is unclear.
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="bg-white rounded-2xl border border-charcoal/8 p-6 shadow-sm">
+            <span className="font-serif text-3xl font-bold text-himalayan/40">01</span>
+            <h3 className="font-semibold text-charcoal text-lg mt-2 mb-2">Apply for an account</h3>
+            <p className="text-sm text-charcoal-light leading-relaxed">
+              Submit your U.S. business details and state resale certificate in a few minutes.
             </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Link
-                href="/wholesale/apply"
-                className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-himalayan text-white rounded-full font-semibold hover:bg-himalayan-dark transition-colors"
-              >
-                Apply for a wholesale account
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-              <Link
-                href="/wholesale/login"
-                className="inline-flex items-center justify-center px-6 py-3 border border-white/20 rounded-full font-semibold hover:bg-white/10 transition-colors"
-              >
-                Sign in
-              </Link>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-charcoal/8 p-6 shadow-sm">
+            <span className="font-serif text-3xl font-bold text-himalayan/40">02</span>
+            <h3 className="font-semibold text-charcoal text-lg mt-2 mb-2">Quick review</h3>
+            <p className="text-sm text-charcoal-light leading-relaxed">
+              Our trade team verifies your resale certificate and activates your wholesale portal access.
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-charcoal/8 p-6 shadow-sm">
+            <span className="font-serif text-3xl font-bold text-himalayan/40">03</span>
+            <h3 className="font-semibold text-charcoal text-lg mt-2 mb-2">Order by the box</h3>
+            <p className="text-sm text-charcoal-light leading-relaxed">
+              Sign in to view wholesale rates, select full boxes, and submit your order inquiries directly.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Trade Requirements / Rules */}
+      <section className="bg-white border-y border-charcoal/8 py-10 md:py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="rounded-2xl border border-himalayan/20 bg-himalayan-lighter/30 p-6 md:p-8">
+            <h2 className="font-serif text-2xl font-bold text-charcoal mb-2">Approved trade accounts only</h2>
+            <p className="text-charcoal-light text-sm mb-6 max-w-3xl">
+              Himalayan Koh supplies verified businesses and resellers. Wholesale prices are confidential and visible once approved.
+            </p>
+            <div className="grid gap-6 md:grid-cols-3">
+              <div className="flex gap-3">
+                <ShieldCheck className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-charcoal text-sm mb-1">Business verification is mandatory</h3>
+                  <p className="text-xs text-charcoal-light leading-relaxed">
+                    Every account requires a state resale certificate, reviewed and verified before activation.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <FileText className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-charcoal text-sm mb-1">Orders begin as inquiries</h3>
+                  <p className="text-xs text-charcoal-light leading-relaxed">
+                    Select your products and box counts. Nothing is charged online when submitting an inquiry.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <Package className="w-5 h-5 text-himalayan flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-charcoal text-sm mb-1">Invoice and payment terms</h3>
+                  <p className="text-xs text-charcoal-light leading-relaxed">
+                    We confirm stock and freight, then issue an invoice for payment outside the portal.
+                  </p>
+                </div>
+              </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Bottom CTA */}
+      <section className="py-12 md:py-16 max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="bg-charcoal rounded-3xl p-8 md:p-10 text-white text-center max-w-3xl mx-auto">
+          <h2 className="font-serif text-2xl md:text-3xl font-bold mb-3">Open a wholesale account</h2>
+          <p className="text-white/70 text-sm md:text-base leading-relaxed mb-6 max-w-xl mx-auto">
+            Ready to stock Himalayan Koh salt? Apply with your business information and resale certificate today.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href="/wholesale/apply"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-himalayan text-white rounded-full font-semibold hover:bg-himalayan-dark transition-colors"
+            >
+              Apply for a wholesale account
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link
+              href="/wholesale/login"
+              className="inline-flex items-center justify-center px-6 py-3 border border-white/20 rounded-full font-semibold hover:bg-white/10 transition-colors"
+            >
+              Wholesale customer sign-in
+            </Link>
           </div>
         </div>
       </section>

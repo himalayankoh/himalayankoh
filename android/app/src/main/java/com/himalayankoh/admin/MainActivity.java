@@ -52,7 +52,7 @@ import java.util.Locale;
 public class MainActivity extends AppCompatActivity {
 
     public static final String ADMIN_URL = "https://himalayankoh.com/admin";
-    private static final String APP_USER_AGENT_TAG = " HimalayanKohAdminApp/1.0.0";
+    private static final String APP_USER_AGENT_TAG = " HimalayanKohAdminApp/1.0.1";
 
     private WebView webView;
     private ProgressBar progressBar;
