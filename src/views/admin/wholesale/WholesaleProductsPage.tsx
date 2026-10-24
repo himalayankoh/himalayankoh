@@ -1,9 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import {
   Boxes,
+  CheckCircle2,
+  Edit3,
   ExternalLink,
+  Layers,
   Package,
   Plus,
   RefreshCw,
@@ -17,9 +21,11 @@ import {
   AdminChip,
   AdminField,
   AdminInput,
+  AdminModal,
   AdminNotice,
   AdminPageHeader,
   AdminPanel,
+  AdminStatTile,
   AdminTable,
   AdminTableSkeleton,
   AdminTabs,
@@ -35,38 +41,12 @@ import {
   type WholesaleRow,
 } from '@/lib/admin/wholesaleConsoleApi';
 
-/**
- * Wholesale Products — the trade master, over the retail catalogue.
- *
- * ## One catalogue, two prices
- *
- * A wholesale product *references* a WooCommerce product (`woo_product_id`). Name, SKU,
- * imagery and description stay in the retail catalogue; this screen owns only what is
- * the trade desk's: the wholesale price, the minimum order, the allocation and whether
- * the product is offered at all. The separate stock editor uses the existing canonical inventory endpoint. No trade-price save can move a retail price — the
- * retail storefront never reads these tables.
- *
- * ## The wholesale price is the first volume tier
- *
- * The pricing engine reads volume breaks (`price_tiers`), and the price for a single
- * unit is the first break. Rather than invent a second price column that could
- * disagree with the engine, the "wholesale unit price" field on this screen edits the
- * base break at the full-case minimum, and the volume breaks beside it are the same rows.
- *
- * ## Allocation, not stock
- *
- * `available_units` is how many units the trade desk is willing to offer, not a second
- * physical stock count. An inquiry never deducts it — stock leaves the building when a
- * confirmed order ships, which is the existing retail inventory workflow.
- */
-
-type Filter = 'active' | 'inactive' | 'unlinked' | 'all';
+type Filter = 'all' | 'active' | 'inactive';
 
 const FILTERS: Array<{ id: Filter; label: string }> = [
+  { id: 'all', label: 'All Products' },
   { id: 'active', label: 'Offered' },
-  { id: 'inactive', label: 'Not offered' },
-  { id: 'unlinked', label: 'No retail link' },
-  { id: 'all', label: 'All products' },
+  { id: 'inactive', label: 'Hidden' },
 ];
 
 interface Draft {
@@ -134,14 +114,14 @@ function draftFrom(row: WholesaleRow): Draft {
 export default function WholesaleProductsPage() {
   const [products, setProducts] = useState<WholesaleRow[]>([]);
   const [tiers, setTiers] = useState<WholesaleRow[]>([]);
-  const [quotes, setQuotes] = useState<WholesaleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [filter, setFilter] = useState<Filter>('active');
+  const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [basePrice, setBasePrice] = useState('');
   const [newTier, setNewTier] = useState({ minUnits: '', unitPrice: '' });
@@ -155,7 +135,6 @@ export default function WholesaleProductsPage() {
       const { workspace } = await fetchWholesaleConsole();
       setProducts(workspace.products);
       setTiers(workspace.tiers);
-      setQuotes(workspace.quotes);
       setSelectedId((current) => {
         if (current && workspace.products.some((row) => Number(row.id) === current)) return current;
         return workspace.products[0] ? Number(workspace.products[0].id) : null;
@@ -184,43 +163,26 @@ export default function WholesaleProductsPage() {
       .sort((left, right) => num(left.min_units) - num(right.min_units));
   }, [tiers, selected]);
 
-  useEffect(() => {
-    if (!selected) return;
-    const next = draftFrom(selected);
-    setDraft(next);
-    const unit = tiers
-      .filter((tier) => Number(tier.product_id) === Number(selected.id))
-      .sort((a, b) => num(a.min_units) - num(b.min_units))
-      .map((tier) => num(tier.unit_price))[0];
-    setBasePrice(unit ? String(unit) : '');
-  }, [selected, tiers]);
+  const activeCount = useMemo(
+    () => products.filter((row) => Number(row.active ?? 0)).length,
+    [products]
+  );
 
-  const inquiryCount = useCallback(
-    (productId: number) =>
-      quotes.filter((quote) => {
-        const raw = quote.lines;
-        let lines: unknown[] = Array.isArray(raw) ? raw : [];
-        if (!lines.length && typeof raw === 'string') {
-          try {
-            const parsed = JSON.parse(raw) as unknown;
-            lines = Array.isArray(parsed) ? parsed : [];
-          } catch {
-            lines = [];
-          }
-        }
-        return lines.some((line) => Number((line as Record<string, unknown>)?.productId) === productId);
+  const configuredPackCount = useMemo(
+    () =>
+      products.filter((row) => {
+        const policy = readCasePolicy(row.packaging);
+        return Boolean(policy?.unitsPerCase && policy.unitsPerCase > 0);
       }).length,
-    [quotes]
+    [products]
   );
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return products.filter((row) => {
       const active = Boolean(Number(row.active ?? 0));
-      const linked = num(row.woo_product_id) > 0;
       if (filter === 'active' && !active) return false;
       if (filter === 'inactive' && active) return false;
-      if (filter === 'unlinked' && linked) return false;
       if (!needle) return true;
       return [text(row.name), text(row.wholesale_sku), text(row.woo_product_id)].join(' ').toLowerCase().includes(needle);
     });
@@ -235,17 +197,45 @@ export default function WholesaleProductsPage() {
     return lowest ? num(lowest.unit_price) : 0;
   }
 
+  function openNew() {
+    setSelectedId(null);
+    setDraft(EMPTY_DRAFT);
+    setBasePrice('');
+    setError('');
+    setIsDrawerOpen(true);
+  }
+
+  function openEdit(row: WholesaleRow) {
+    const id = Number(row.id);
+    setSelectedId(id);
+    setDraft(draftFrom(row));
+    const unit = tiers
+      .filter((tier) => Number(tier.product_id) === id)
+      .sort((a, b) => num(a.min_units) - num(b.min_units))
+      .map((tier) => num(tier.unit_price))[0];
+    setBasePrice(unit ? String(unit) : '');
+    setError('');
+    setIsDrawerOpen(true);
+  }
+
   async function saveProduct() {
     if (!draft.name.trim()) {
       setError('The wholesale product needs a name.');
       return;
     }
-    const packaging = { ...packagingObject(selected?.packaging), wholesaleCases: {
-      unitsPerCase: draft.case_units.trim() ? Number(draft.case_units) : null,
-      minimumCases: Number(draft.minimum_cases), minimumPieces: Number(draft.minimum_pieces),
-    } };
+    const packaging = {
+      ...packagingObject(selected?.packaging),
+      wholesaleCases: {
+        unitsPerCase: draft.case_units.trim() ? Number(draft.case_units) : null,
+        minimumCases: Number(draft.minimum_cases),
+        minimumPieces: Number(draft.minimum_pieces),
+      },
+    };
     const policyError = casePolicyProblem(packaging);
-    if (policyError) { setError(policyError); return; }
+    if (policyError) {
+      setError(policyError);
+      return;
+    }
     const caseMinimum = readCasePolicy(packaging)?.minimumUnits ?? 0;
     setBusy('SAVE');
     setError('');
@@ -267,12 +257,12 @@ export default function WholesaleProductsPage() {
         draft.id ?? undefined
       );
 
-      // The base break is the wholesale unit price. Written after the product, so a
-      // new product has an id for its tier to point at.
       const productId = Number(saved.id ?? draft.id ?? 0);
       const price = Number(basePrice);
       if (productId && Number.isFinite(price) && price > 0) {
-        const existing = tiers.filter((tier) => Number(tier.product_id) === productId).sort((a, b) => num(a.min_units) - num(b.min_units))[0];
+        const existing = tiers
+          .filter((tier) => Number(tier.product_id) === productId)
+          .sort((a, b) => num(a.min_units) - num(b.min_units))[0];
         if (!existing || num(existing.unit_price) !== price || num(existing.min_units) !== Math.max(1, caseMinimum)) {
           await saveWholesaleRecord(
             'price_tiers',
@@ -287,8 +277,9 @@ export default function WholesaleProductsPage() {
         }
       }
 
-      setNotice('The wholesale product was saved.');
+      setNotice('The wholesale product was saved successfully.');
       setSelectedId(productId);
+      setIsDrawerOpen(false);
       await load();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'The product could not be saved.');
@@ -305,7 +296,7 @@ export default function WholesaleProductsPage() {
     try {
       await saveWholesaleRecord('products', { active: Number(row.active ?? 0) ? 0 : 1 }, id);
       await load();
-      setNotice('Wholesale availability changed. Retail prices are untouched.');
+      setNotice('Wholesale availability updated.');
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : 'The product could not be updated.');
     } finally {
@@ -320,7 +311,7 @@ export default function WholesaleProductsPage() {
     const policy = readCasePolicy(selected.packaging);
     const baseMinimum = Math.max(1, num(selected.moq), policy?.minimumUnits ?? 0);
     if (!Number.isSafeInteger(minUnits) || minUnits <= baseMinimum || (policy?.unitsPerCase && minUnits % policy.unitsPerCase !== 0)) {
-      setError('A volume break must exceed the base minimum and use full cases. Edit the base price in the product field above.');
+      setError('A volume break must exceed the base minimum and use full cases.');
       return;
     }
     if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
@@ -408,31 +399,23 @@ export default function WholesaleProductsPage() {
     setBusy('');
     setNotice(
       failed
-        ? `${checked.length - failed} product(s) updated; ${failed} could not be saved. The list shows the stored values.`
-        : `${checked.length} product(s) updated.`
+        ? `${checked.length - failed} product(s) updated; ${failed} could not be saved.`
+        : `${checked.length} product(s) updated successfully.`
     );
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <AdminPageHeader
         eyebrow="Wholesale"
         title="Wholesale Products"
-        description="The trade desk's price, minimum order and allocation, over the existing retail catalogue. Retail prices are never read from or written by this screen."
+        description="Manage B2B trade pricing, case pack sizes, and dealer allocations across your catalog."
         actions={
           <div className="flex flex-wrap gap-2">
             <AdminButton variant="secondary" icon={RefreshCw} onClick={() => void load()} disabled={loading}>
-              {loading ? 'Reading…' : 'Refresh'}
+              {loading ? 'Refreshing…' : 'Refresh'}
             </AdminButton>
-            <AdminButton
-              variant="primary"
-              icon={Plus}
-              onClick={() => {
-                setSelectedId(null);
-                setDraft(EMPTY_DRAFT);
-                setBasePrice('');
-              }}
-            >
+            <AdminButton variant="primary" icon={Plus} onClick={openNew}>
               New wholesale product
             </AdminButton>
           </div>
@@ -440,57 +423,82 @@ export default function WholesaleProductsPage() {
       />
 
       {error ? (
-        <AdminNotice tone="danger" title="That did not work">
+        <AdminNotice tone="danger" title="Notice">
           {error}
         </AdminNotice>
       ) : null}
       {notice ? (
-        <AdminNotice tone="info" title="Saved">
+        <AdminNotice tone="info" title="Success">
           {notice}
         </AdminNotice>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <AdminPanel title="Products">
-          <p className="text-2xl font-semibold text-admin-ink">{products.length}</p>
-          <p className="text-xs text-admin-muted">{products.filter((row) => Number(row.active ?? 0)).length} offered</p>
-        </AdminPanel>
-        <AdminPanel title="Not linked to retail">
-          <p className="text-2xl font-semibold text-admin-ink">
-            {products.filter((row) => num(row.woo_product_id) === 0).length}
-          </p>
-          <p className="text-xs text-admin-muted">A wholesale product without a WooCommerce id is not in the shop.</p>
-        </AdminPanel>
-        <AdminPanel title="No wholesale price">
-          <p className="text-2xl font-semibold text-admin-ink">
-            {products.filter((row) => unitPriceFor(Number(row.id)) <= 0).length}
-          </p>
-          <p className="text-xs text-admin-muted">The buyer&apos;s catalogue hides a product with no price.</p>
-        </AdminPanel>
+      {/* Top Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <AdminStatTile
+          label="Wholesale Products"
+          icon={Package}
+          tone="brand"
+          value={loading ? undefined : products.length}
+          hint={loading ? undefined : `${activeCount} active in portal`}
+          unavailable={loading ? 'Reading…' : undefined}
+        />
+        <AdminStatTile
+          label="Offered in Portal"
+          icon={CheckCircle2}
+          tone="green"
+          value={loading ? undefined : activeCount}
+          hint={loading ? undefined : `${products.length - activeCount} hidden from portal`}
+          unavailable={loading ? 'Reading…' : undefined}
+        />
+        <AdminStatTile
+          label="Case Packs Verified"
+          icon={Boxes}
+          tone="sky"
+          value={loading ? undefined : `${configuredPackCount} / ${products.length}`}
+          hint={loading ? undefined : configuredPackCount === products.length ? 'All pack counts set' : `${products.length - configuredPackCount} unconfirmed`}
+          unavailable={loading ? 'Reading…' : undefined}
+        />
+        <AdminStatTile
+          label="Volume Discount Tiers"
+          icon={Layers}
+          tone="violet"
+          value={loading ? undefined : tiers.length}
+          hint={loading ? undefined : 'Volume price tiers active'}
+          unavailable={loading ? 'Reading…' : undefined}
+        />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-        <AdminPanel title="Catalogue" description={`${visible.length} of ${products.length} product(s)`} bodyClassName="p-0">
+      {/* Full-width Catalogue Table */}
+      <div className="w-full">
+        <AdminPanel
+          title="Product Catalogue"
+          description={`Showing ${visible.length} of ${products.length} product(s)`}
+          bodyClassName="p-0"
+        >
           <div className="border-b border-admin-line px-4 py-3 space-y-3">
-            <AdminTabs tabs={FILTERS} active={filter} onChange={(id) => setFilter(id as Filter)} />
-            <div className="flex items-center gap-2 rounded-lg border border-admin-line bg-admin-surface px-3 py-2">
-              <Search size={15} className="text-admin-muted" aria-hidden />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search name, SKU or WooCommerce id"
-                className="w-full bg-transparent text-sm text-admin-ink outline-none placeholder:text-admin-muted"
-                aria-label="Search wholesale products"
-              />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <AdminTabs tabs={FILTERS} active={filter} onChange={(id) => setFilter(id as Filter)} />
+              <div className="flex items-center gap-2 rounded-lg border border-admin-line bg-admin-surface px-3 py-1.5 w-full sm:w-80">
+                <Search size={15} className="text-admin-muted shrink-0" aria-hidden />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search name, SKU, or WooCommerce ID…"
+                  className="w-full bg-transparent text-sm text-admin-ink outline-none placeholder:text-admin-muted"
+                  aria-label="Search wholesale products"
+                />
+              </div>
             </div>
           </div>
 
+          {/* Bulk Update Bar */}
           {checked.length ? (
             <div className="border-b border-admin-line bg-himalayan-lighter/50 px-4 py-3">
               <p className="text-xs font-semibold text-himalayan-dark mb-2">{checked.length} selected — bulk update</p>
               <div className="flex flex-wrap items-end gap-2">
                 <label className="text-xs text-admin-muted">
-                  Unit price
+                  Piece Price ($)
                   <input
                     className={`${SELECT} mt-1 w-28`}
                     value={bulk.price}
@@ -510,7 +518,7 @@ export default function WholesaleProductsPage() {
                   />
                 </label>
                 <label className="text-xs text-admin-muted">
-                  MOQ
+                  MOQ (pcs)
                   <input
                     className={`${SELECT} mt-1 w-24`}
                     value={bulk.moq}
@@ -531,29 +539,38 @@ export default function WholesaleProductsPage() {
 
           <AdminTable
             columns={[
-              { key: 'select', label: '' },
-              { key: 'product', label: 'Product' },
-              { key: 'link', label: 'Retail' },
-              { key: 'price', label: 'Wholesale', align: 'right' as const },
-              { key: 'moq', label: 'MOQ', align: 'right' as const },
-              { key: 'stock', label: 'Allocation', align: 'right' as const },
-              { key: 'active', label: 'Offered' },
+              { key: 'select', label: '', width: '40px' },
+              { key: 'product', label: 'Product & SKU' },
+              { key: 'link', label: 'Retail Link' },
+              { key: 'pack', label: 'Pack Size' },
+              { key: 'price', label: 'Piece Price', align: 'right' },
+              { key: 'box_price', label: 'Box Price', align: 'right' },
+              { key: 'moq', label: 'Minimum Order', align: 'right' },
+              { key: 'stock', label: 'Allocation', align: 'right' },
+              { key: 'active', label: 'Status' },
+              { key: 'action', label: 'Action', align: 'right' },
             ]}
-            minWidth="760px"
+            minWidth="960px"
           >
             {loading ? (
-              <AdminTableSkeleton rows={6} columns={6} />
+              <AdminTableSkeleton rows={6} columns={10} />
             ) : visible.length ? (
               visible.map((row) => {
                 const id = Number(row.id);
-                const price = unitPriceFor(id);
+                const policy = readCasePolicy(row.packaging);
+                const caseUnits = policy?.unitsPerCase ?? null;
+                const unitPrice = unitPriceFor(id);
+                const boxPriceVal = caseUnits && unitPrice > 0 ? pricePerBox(unitPrice, caseUnits) : 0;
+                const moqUnits = policy?.minimumUnits ?? num(row.moq);
+                const moqBoxes = caseUnits ? boxCount(moqUnits, caseUnits) : null;
+                const available = num(row.available_units);
+                const isActive = Boolean(Number(row.active ?? 0));
+
                 return (
                   <tr
                     key={id}
-                    className={`cursor-pointer transition-colors ${
-                      id === selectedId ? 'bg-himalayan-lighter/60' : 'hover:bg-admin-canvas/60'
-                    }`}
-                    onClick={() => setSelectedId(id)}
+                    className="cursor-pointer transition-colors hover:bg-admin-canvas/60"
+                    onClick={() => openEdit(row)}
                   >
                     <td className={ADMIN_TD} onClick={(event) => event.stopPropagation()}>
                       <input
@@ -568,31 +585,91 @@ export default function WholesaleProductsPage() {
                       />
                     </td>
                     <td className={ADMIN_TD}>
-                      <div className="font-semibold text-admin-ink">{text(row.name) || 'Unnamed product'}</div>
-                      <div className="text-xs text-admin-muted font-mono">{text(row.wholesale_sku) || 'no SKU'}</div>
+                      <div className="font-semibold text-admin-ink">{text(row.name) || 'Unnamed Product'}</div>
+                      <div className="font-mono text-xs text-admin-muted">{text(row.wholesale_sku) || 'No SKU'}</div>
                     </td>
                     <td className={ADMIN_TD}>
                       {num(row.woo_product_id) ? (
-                        <AdminChip tone="success">#{text(row.woo_product_id)}</AdminChip>
+                        <a
+                          href={`/admin/products?search=${encodeURIComponent(text(row.name))}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 rounded-md border border-admin-line bg-admin-canvas px-2 py-0.5 text-xs font-medium text-admin-ink hover:border-admin-ink transition-colors"
+                          title="View WooCommerce Product"
+                        >
+                          #{text(row.woo_product_id)}
+                          <ExternalLink size={11} className="text-admin-muted" />
+                        </a>
                       ) : (
-                        <AdminChip tone="danger">Not linked</AdminChip>
+                        <span className="text-xs text-admin-muted">—</span>
                       )}
                     </td>
-                    <td className={`${ADMIN_TD} text-right`}>{price > 0 ? money(price) : '—'}</td>
-                    <td className={`${ADMIN_TD} text-right`}>{num(row.moq) || '—'}</td>
-                    <td className={`${ADMIN_TD} text-right`}>{num(row.available_units) || '—'}</td>
+                    <td className={ADMIN_TD}>
+                      {caseUnits ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-admin-ink">
+                          <Package size={13} className="text-admin-muted" />
+                          {caseUnits} {caseUnits === 1 ? 'pc / box' : 'pcs / box'}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-amber-600 font-medium">Pending pack</span>
+                      )}
+                    </td>
+                    <td className={`${ADMIN_TD} text-right`}>
+                      {unitPrice > 0 ? (
+                        <span className="font-semibold text-admin-ink">{money(unitPrice)}</span>
+                      ) : (
+                        <span className="text-xs text-admin-muted">—</span>
+                      )}
+                    </td>
+                    <td className={`${ADMIN_TD} text-right`}>
+                      {boxPriceVal > 0 ? (
+                        <span className="font-semibold text-himalayan-dark">{money(boxPriceVal)}</span>
+                      ) : (
+                        <span className="text-xs text-admin-muted">—</span>
+                      )}
+                    </td>
+                    <td className={`${ADMIN_TD} text-right`}>
+                      {caseUnits && moqBoxes ? (
+                        <span className="text-xs text-admin-ink font-medium">
+                          {moqBoxes} {moqBoxes === 1 ? 'box' : 'boxes'} ({moqUnits} pcs)
+                        </span>
+                      ) : moqUnits > 0 ? (
+                        <span className="text-xs text-admin-muted">{moqUnits} pcs</span>
+                      ) : (
+                        <span className="text-xs text-admin-muted">—</span>
+                      )}
+                    </td>
+                    <td className={`${ADMIN_TD} text-right`}>
+                      {available > 0 ? (
+                        <span className="font-mono text-xs text-admin-ink">{available} pcs</span>
+                      ) : (
+                        <span className="text-xs text-admin-muted">Live stock</span>
+                      )}
+                    </td>
                     <td className={ADMIN_TD} onClick={(event) => event.stopPropagation()}>
                       <button
                         type="button"
                         onClick={() => void toggleActive(row)}
                         disabled={busy === `TOGGLE-${id}`}
-                        className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                          Number(row.active ?? 0)
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-admin-line bg-admin-canvas text-admin-muted'
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                          isActive
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            : 'border-admin-line bg-admin-canvas text-admin-muted hover:text-admin-ink'
                         }`}
                       >
-                        {Number(row.active ?? 0) ? 'Offered' : 'Hidden'}
+                        <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-admin-muted'}`} />
+                        {isActive ? 'Offered' : 'Hidden'}
+                      </button>
+                    </td>
+                    <td className={`${ADMIN_TD} text-right`} onClick={(event) => event.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => openEdit(row)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-admin-line bg-admin-surface px-2.5 py-1 text-xs font-medium text-admin-ink hover:bg-admin-canvas hover:border-admin-ink transition-colors"
+                      >
+                        <Edit3 size={12} />
+                        Edit
                       </button>
                     </td>
                   </tr>
@@ -600,214 +677,352 @@ export default function WholesaleProductsPage() {
               })
             ) : (
               <tr>
-                <td className={ADMIN_TD} colSpan={7}>
-                  <div className="py-8 text-center text-sm text-admin-muted">No product matches this view.</div>
+                <td className={ADMIN_TD} colSpan={10}>
+                  <div className="py-12 text-center text-sm text-admin-muted">
+                    <Package size={32} className="mx-auto mb-2 text-admin-muted/40" />
+                    No wholesale products match this view.
+                  </div>
                 </td>
               </tr>
             )}
           </AdminTable>
         </AdminPanel>
+      </div>
 
-        <div className="space-y-5">
-          <AdminPanel
-            title={draft.id ? 'Edit wholesale product' : 'New wholesale product'}
-            description="Name and SKU should match the retail product this references."
-            action={
-              draft.id ? (
-                <AdminChip tone="neutral">#{draft.id}</AdminChip>
-              ) : (
-                <AdminChip tone="info">Unsaved</AdminChip>
-              )
+      {/* Slide-over Drawer for Edit / New Product */}
+      <AnimatePresence>
+        {isDrawerOpen && (
+          <AdminModal
+            variant="drawer"
+            className="sm:max-w-xl md:max-w-2xl"
+            title={
+              <div className="flex items-center gap-2">
+                <span>{draft.id ? 'Edit Wholesale Product' : 'New Wholesale Product'}</span>
+                {draft.id ? (
+                  <AdminChip tone="brand">#{draft.id}</AdminChip>
+                ) : (
+                  <AdminChip tone="info">New</AdminChip>
+                )}
+              </div>
+            }
+            description={
+              draft.id
+                ? draft.name || draft.wholesale_sku || `Product #${draft.id}`
+                : 'Configure B2B trade pricing and case packaging.'
+            }
+            onClose={() => setIsDrawerOpen(false)}
+            footer={
+              <div className="flex w-full items-center justify-between">
+                <div>
+                  {draft.id ? (
+                    <a
+                      href={`/admin/products?search=${encodeURIComponent(draft.name)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-admin-muted hover:text-admin-ink transition-colors"
+                    >
+                      View retail product <ExternalLink size={12} aria-hidden />
+                    </a>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <AdminButton variant="ghost" onClick={() => setIsDrawerOpen(false)}>
+                    Cancel
+                  </AdminButton>
+                  <AdminButton
+                    variant="primary"
+                    icon={Save}
+                    onClick={() => void saveProduct()}
+                    disabled={busy === 'SAVE'}
+                  >
+                    {busy === 'SAVE' ? 'Saving…' : 'Save Product'}
+                  </AdminButton>
+                </div>
+              </div>
             }
           >
-            <div className="space-y-4">
-              <AdminField label="Product name" htmlFor="wp-name">
-                <AdminInput
-                  id="wp-name"
-                  value={draft.name}
-                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                  placeholder="Himalayan Pink Salt Fine Grain 25 kg"
-                />
-              </AdminField>
+            <div className="space-y-6">
+              {error ? (
+                <AdminNotice tone="danger" title="Save issue">
+                  {error}
+                </AdminNotice>
+              ) : null}
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <AdminField label="Wholesale SKU" htmlFor="wp-sku">
+              {/* Product Identity */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-admin-muted">Product Identity</h3>
+                <AdminField label="Product Name" htmlFor="wp-name">
                   <AdminInput
-                    id="wp-sku"
-                    value={draft.wholesale_sku}
-                    onChange={(event) => setDraft({ ...draft, wholesale_sku: event.target.value })}
+                    id="wp-name"
+                    value={draft.name}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    placeholder="e.g. Himalayan Pink Salt Licks for Horses 2 lbs"
                   />
                 </AdminField>
-                <AdminField label="WooCommerce product id" hint="Links this row to the retail product." htmlFor="wp-woo">
-                  <AdminInput
-                    id="wp-woo"
-                    value={draft.woo_product_id}
-                    onChange={(event) => setDraft({ ...draft, woo_product_id: event.target.value })}
-                    inputMode="numeric"
-                    placeholder="e.g. 2487"
-                  />
-                </AdminField>
-                <AdminField label="WooCommerce variation id" hint="Required for a variable product; leave empty for a simple product." htmlFor="wp-variation">
-                  <AdminInput id="wp-variation" value={draft.woo_variation_id} onChange={(event) => setDraft({ ...draft, woo_variation_id: event.target.value })} inputMode="numeric" />
-                </AdminField>
-                <AdminField label="Wholesale piece price (USD)" hint="Stored per piece. The box price is shown below; retail prices are unchanged." htmlFor="wp-price">
-                  <AdminInput
-                    id="wp-price"
-                    value={basePrice}
-                    onChange={(event) => setBasePrice(event.target.value)}
-                    inputMode="decimal"
-                    placeholder="0.00"
-                  />
-                </AdminField>
-                <AdminField label="Pieces per box" htmlFor="wp-case-units" hint="Use a confirmed pack count. Leave empty until confirmed.">
-                  <AdminInput id="wp-case-units" type="number" min={1} step={1} value={draft.case_units} onChange={(event) => setDraft({ ...draft, case_units: event.target.value })} placeholder="e.g. 6" />
-                </AdminField>
-                <AdminField label="Minimum boxes per product" htmlFor="wp-min-cases">
-                  <AdminInput id="wp-min-cases" type="number" min={4} step={1} value={draft.minimum_cases} onChange={(event) => setDraft({ ...draft, minimum_cases: event.target.value })} />
-                </AdminField>
-                <AdminField label="Additional minimum pieces (optional)" htmlFor="wp-min-pieces" hint="0 means only the minimum number of boxes applies.">
-                  <AdminInput id="wp-min-pieces" type="number" min={0} step={1} value={draft.minimum_pieces} onChange={(event) => setDraft({ ...draft, minimum_pieces: event.target.value })} />
-                </AdminField>
-                <div className="rounded-xl bg-admin-canvas p-3 text-sm text-admin-ink sm:col-span-2 space-y-1">
-                  {Number(draft.case_units) > 0 ? <>
-                    <p className="font-semibold">1 box = {draft.case_units} {Number(draft.case_units) === 1 ? 'piece' : 'pieces'}</p>
-                    <p>{money(pricePerBox(Number(basePrice) || 0, Number(draft.case_units)))} per box · {money(Number(basePrice) || 0)} per piece</p>
-                    <p>Minimum {boxCount(readCasePolicy({ wholesaleCases: { unitsPerCase: Number(draft.case_units), minimumCases: Number(draft.minimum_cases), minimumPieces: Number(draft.minimum_pieces) } })?.minimumUnits ?? 0, Number(draft.case_units))} full boxes per selected product for wholesale pricing.</p>
-                  </> : <p>Confirm pieces per box before offering wholesale orders.</p>}
-                  <p className="text-xs text-admin-muted">Wholesale programme: 30% below retail at 4+ boxes per selected product. Confirm your saved prices when making changes.</p>
-                </div>
-                <AdminField label="Wholesale allocation (pieces)" hint="This cap is in pieces, not boxes. 0 uses live stock. The buyer sees only full boxes available." htmlFor="wp-units">
-                  <AdminInput
-                    id="wp-units"
-                    value={draft.available_units}
-                    onChange={(event) => setDraft({ ...draft, available_units: event.target.value })}
-                    inputMode="numeric"
-                  />
-                </AdminField>
-                <AdminField label="Wholesale visibility" htmlFor="wp-active">
-                  <label className="flex items-center gap-2 text-sm text-admin-ink">
-                    <input
-                      id="wp-active"
-                      type="checkbox"
-                      checked={draft.active}
-                      onChange={(event) => setDraft({ ...draft, active: event.target.checked })}
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <AdminField label="Wholesale SKU" htmlFor="wp-sku">
+                    <AdminInput
+                      id="wp-sku"
+                      value={draft.wholesale_sku}
+                      onChange={(e) => setDraft({ ...draft, wholesale_sku: e.target.value })}
+                      placeholder="HK-LFH-2lbs"
                     />
-                    Offer this product to approved buyers
-                  </label>
-                </AdminField>
+                  </AdminField>
+                  <AdminField label="WooCommerce ID" htmlFor="wp-woo" hint="Retail product #">
+                    <AdminInput
+                      id="wp-woo"
+                      value={draft.woo_product_id}
+                      onChange={(e) => setDraft({ ...draft, woo_product_id: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="e.g. 2543"
+                    />
+                  </AdminField>
+                  <AdminField label="Variation ID" htmlFor="wp-var" hint="Optional">
+                    <AdminInput
+                      id="wp-var"
+                      value={draft.woo_variation_id}
+                      onChange={(e) => setDraft({ ...draft, woo_variation_id: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="e.g. 2545"
+                    />
+                  </AdminField>
+                </div>
               </div>
 
-              <AdminField label="Wholesale notes" hint="Internal only — never shown to a buyer." htmlFor="wp-notes">
+              <hr className="border-admin-line" />
+
+              {/* Packaging & Pricing */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-admin-muted">Packaging & Wholesale Pricing</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <AdminField label="Wholesale Piece Price (USD)" htmlFor="wp-price">
+                    <AdminInput
+                      id="wp-price"
+                      value={basePrice}
+                      onChange={(e) => setBasePrice(e.target.value)}
+                      inputMode="decimal"
+                      placeholder="0.00"
+                    />
+                  </AdminField>
+                  <AdminField label="Pieces per Box" htmlFor="wp-case-units">
+                    <AdminInput
+                      id="wp-case-units"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={draft.case_units}
+                      onChange={(e) => setDraft({ ...draft, case_units: e.target.value })}
+                      placeholder="e.g. 6"
+                    />
+                  </AdminField>
+                  <AdminField label="Minimum Boxes per Order" htmlFor="wp-min-cases">
+                    <AdminInput
+                      id="wp-min-cases"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={draft.minimum_cases}
+                      onChange={(e) => setDraft({ ...draft, minimum_cases: e.target.value })}
+                    />
+                  </AdminField>
+                  <AdminField label="Extra Minimum Pieces" htmlFor="wp-min-pieces" hint="Optional">
+                    <AdminInput
+                      id="wp-min-pieces"
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={draft.minimum_pieces}
+                      onChange={(e) => setDraft({ ...draft, minimum_pieces: e.target.value })}
+                    />
+                  </AdminField>
+                </div>
+
+                {/* Pricing Calculation Summary Card */}
+                <div className="rounded-xl border border-admin-line bg-admin-canvas/70 p-3.5 text-xs text-admin-ink space-y-1">
+                  {Number(draft.case_units) > 0 ? (
+                    <>
+                      <div className="flex items-center justify-between font-semibold text-sm">
+                        <span>1 box = {draft.case_units} {Number(draft.case_units) === 1 ? 'piece' : 'pieces'}</span>
+                        <span className="text-himalayan-dark">
+                          {money(pricePerBox(Number(basePrice) || 0, Number(draft.case_units)))} / box
+                        </span>
+                      </div>
+                      <p className="text-admin-muted">
+                        Unit price: {money(Number(basePrice) || 0)} · MOQ:{' '}
+                        {boxCount(
+                          readCasePolicy({
+                            wholesaleCases: {
+                              unitsPerCase: Number(draft.case_units),
+                              minimumCases: Number(draft.minimum_cases),
+                              minimumPieces: Number(draft.minimum_pieces),
+                            },
+                          })?.minimumUnits ?? 0,
+                          Number(draft.case_units)
+                        )}{' '}
+                        boxes (
+                        {readCasePolicy({
+                          wholesaleCases: {
+                            unitsPerCase: Number(draft.case_units),
+                            minimumCases: Number(draft.minimum_cases),
+                            minimumPieces: Number(draft.minimum_pieces),
+                          },
+                        })?.minimumUnits ?? 0}{' '}
+                        pcs)
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-admin-muted">Enter pieces per box to calculate box pricing and minimum orders.</p>
+                  )}
+                </div>
+              </div>
+
+              <hr className="border-admin-line" />
+
+              {/* Allocation & Visibility */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-admin-muted">Allocation & Portal Visibility</h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <AdminField
+                    label="Wholesale Allocation (Pieces)"
+                    hint="0 uses live WooCommerce stock"
+                    htmlFor="wp-units"
+                  >
+                    <AdminInput
+                      id="wp-units"
+                      value={draft.available_units}
+                      onChange={(e) => setDraft({ ...draft, available_units: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="0"
+                    />
+                  </AdminField>
+                  <div className="flex items-center pt-6">
+                    <label className="flex items-center gap-2.5 text-sm font-medium text-admin-ink cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={draft.active}
+                        onChange={(e) => setDraft({ ...draft, active: e.target.checked })}
+                        className="h-4 w-4 rounded border-admin-line text-himalayan-dark focus:ring-himalayan-dark"
+                      />
+                      Offer to approved wholesale buyers
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Inventory Sync (if linked to WooCommerce) */}
+              {selected && num(selected.woo_product_id) > 0 ? (
+                <>
+                  <hr className="border-admin-line" />
+                  <div className="space-y-2">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-admin-muted">Live Inventory</h3>
+                    <WholesaleInventoryPanel
+                      key={`${selected.id}:${selected.woo_product_id}:${selected.woo_variation_id}`}
+                      productId={num(selected.woo_product_id)}
+                      variationId={num(selected.woo_variation_id)}
+                      sku={text(selected.wholesale_sku)}
+                      piecesPerBox={readCasePolicy(selected.packaging)?.unitsPerCase ?? null}
+                    />
+                  </div>
+                </>
+              ) : null}
+
+              {/* Volume Pricing Tiers */}
+              {selected ? (
+                <>
+                  <hr className="border-admin-line" />
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-admin-muted">Volume Pricing Tiers</h3>
+                    <div className="space-y-2">
+                      {selectedTiers.length ? (
+                        selectedTiers.map((tier) => (
+                          <div
+                            key={String(tier.id)}
+                            className="flex items-center justify-between rounded-lg border border-admin-line bg-admin-surface px-3 py-2 text-xs"
+                          >
+                            <div>
+                              <span className="font-semibold text-admin-ink">
+                                {num(tier.min_units)}+ units
+                              </span>
+                              <span className="text-admin-muted ml-2">
+                                {money(num(tier.unit_price))} / unit
+                              </span>
+                            </div>
+                            {String(tier.id) === String(selectedTiers[0]?.id) ? (
+                              <AdminChip tone="brand">Base Rate</AdminChip>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => void deleteTier(Number(tier.id))}
+                                disabled={busy === `TIER-${Number(tier.id)}`}
+                                className="rounded p-1 text-admin-muted hover:bg-admin-canvas hover:text-red-600 transition-colors"
+                                aria-label="Remove tier"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-xs text-admin-muted">Base wholesale price applies to all quantities.</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-end gap-2 pt-2">
+                      <div className="flex-1">
+                        <label className="text-[11px] font-medium text-admin-muted">
+                          Min Units
+                          <input
+                            className={`${SELECT} mt-1 text-xs`}
+                            value={newTier.minUnits}
+                            onChange={(e) => setNewTier({ ...newTier, minUnits: e.target.value })}
+                            inputMode="numeric"
+                            placeholder="e.g. 50"
+                          />
+                        </label>
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-[11px] font-medium text-admin-muted">
+                          Unit Price ($)
+                          <input
+                            className={`${SELECT} mt-1 text-xs`}
+                            value={newTier.unitPrice}
+                            onChange={(e) => setNewTier({ ...newTier, unitPrice: e.target.value })}
+                            inputMode="decimal"
+                            placeholder="0.00"
+                          />
+                        </label>
+                      </div>
+                      <AdminButton
+                        icon={Plus}
+                        onClick={() => void addTier()}
+                        disabled={busy === 'TIER'}
+                        className="text-xs px-3 py-2"
+                      >
+                        Add Tier
+                      </AdminButton>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              <hr className="border-admin-line" />
+
+              {/* Internal Notes */}
+              <AdminField label="Internal Notes" htmlFor="wp-notes">
                 <textarea
                   id="wp-notes"
                   className={TEXTAREA}
                   rows={2}
                   value={draft.notes}
-                  onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+                  onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+                  placeholder="Private trade notes..."
                 />
               </AdminField>
-
-              <div className="flex flex-wrap gap-2">
-                <AdminButton variant="primary" icon={Save} onClick={() => void saveProduct()} disabled={busy === 'SAVE'}>
-                  {busy === 'SAVE' ? 'Saving…' : 'Save product'}
-                </AdminButton>
-                {draft.id ? (
-                  <a
-                    href={`/admin/products?search=${encodeURIComponent(draft.name)}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-admin-line px-3 py-2 text-sm text-admin-ink hover:bg-admin-canvas"
-                  >
-                    Retail products <ExternalLink size={13} aria-hidden />
-                  </a>
-                ) : null}
-              </div>
-
-              {selected ? (
-                <div className="rounded-xl bg-admin-canvas p-3 text-xs text-admin-muted space-y-1">
-                  <p>
-                    <Boxes size={12} className="inline mr-1" aria-hidden />
-                    {inquiryCount(Number(selected.id))} inquiry line(s) reference this product.
-                  </p>
-                  <p>Wholesale pricing does not change retail prices. The separate physical-inventory control below updates the shared WooCommerce stock count.</p>
-                </div>
-              ) : null}
             </div>
-          </AdminPanel>
-
-          {selected && num(selected.woo_product_id) > 0 ? <WholesaleInventoryPanel key={`${selected.id}:${selected.woo_product_id}:${selected.woo_variation_id}`} productId={num(selected.woo_product_id)} variationId={num(selected.woo_variation_id)} sku={text(selected.wholesale_sku)} piecesPerBox={readCasePolicy(selected.packaging)?.unitsPerCase ?? null} /> : null}
-
-          {selected ? (
-            <AdminPanel title="Volume breaks" description="Quantity pricing the buyer's catalogue applies.">
-              <div className="space-y-2 mb-4">
-                {selectedTiers.length ? (
-                  selectedTiers.map((tier) => (
-                    <div
-                      key={String(tier.id)}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-admin-line px-3 py-2"
-                    >
-                      <div>
-                        <p className="text-sm text-admin-ink">
-                          {num(tier.min_units)} unit{num(tier.min_units) === 1 ? '' : 's'} and above
-                        </p>
-                        <p className="text-xs text-admin-muted">
-                          {money(num(tier.unit_price))} per unit{num(tier.min_units) === 1 ? ' — unit price' : ''}
-                        </p>
-                      </div>
-                      {String(tier.id) === String(selectedTiers[0]?.id) ? (
-                        <AdminChip tone="brand">Base</AdminChip>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void deleteTier(Number(tier.id))}
-                          disabled={busy === `TIER-${Number(tier.id)}`}
-                          className="p-2 rounded-lg text-admin-muted hover:bg-admin-canvas hover:text-red-600"
-                          aria-label="Remove volume break"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-admin-muted">No volume breaks yet. The buyer sees the unit price only.</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-xs text-admin-muted">
-                  From units
-                  <input
-                    className={`${SELECT} mt-1`}
-                    value={newTier.minUnits}
-                    onChange={(event) => setNewTier({ ...newTier, minUnits: event.target.value })}
-                    inputMode="numeric"
-                    placeholder="e.g. 50"
-                  />
-                </label>
-                <label className="text-xs text-admin-muted">
-                  Unit price
-                  <input
-                    className={`${SELECT} mt-1`}
-                    value={newTier.unitPrice}
-                    onChange={(event) => setNewTier({ ...newTier, unitPrice: event.target.value })}
-                    inputMode="decimal"
-                    placeholder="0.00"
-                  />
-                </label>
-              </div>
-              <AdminButton className="mt-3" icon={Plus} onClick={() => void addTier()} disabled={busy === 'TIER'}>
-                Add volume break
-              </AdminButton>
-            </AdminPanel>
-          ) : (
-            <AdminPanel title="Volume breaks">
-              <div className="py-10 text-center text-sm text-admin-muted">
-                <Package size={26} className="mx-auto mb-3 text-admin-muted/60" aria-hidden />
-                Save the product first, then add quantity pricing.
-              </div>
-            </AdminPanel>
-          )}
-        </div>
-      </div>
+          </AdminModal>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
