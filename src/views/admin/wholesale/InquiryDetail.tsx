@@ -62,35 +62,111 @@ interface ResolvedInquiryLine {
   totalPieces: number;
   piecePrice: number;
   boxPrice: number;
+  boxWeightLbs: number;
+  totalWeightLbs: number;
   lineSubtotal: number;
+}
+
+function getUnitWeightLbs(sku: string, name: string): number {
+  const s = sku.toLowerCase();
+  const n = name.toLowerCase();
+  if (s.includes('2lbs') || s.includes('2lb') || n.includes('2 lb') || n.includes('2lb')) return 2;
+  if (s.includes('6lbs') || s.includes('6lb') || n.includes('6 lb') || n.includes('6lb')) return 6;
+  if (s.includes('30lbs') || s.includes('30lb') || n.includes('30 lb') || n.includes('30lb')) return 30;
+  if (s.includes('45lbs') || s.includes('45lb') || n.includes('45 lb') || n.includes('45lb')) return 45;
+  if (s.includes('16oz') || n.includes('16 oz')) return 1;
+  return 2;
+}
+
+function getKnownPackSize(sku: string, name: string): number | null {
+  const s = sku.toLowerCase();
+  const n = name.toLowerCase();
+  if (s === 'hk-lfh-2lbs' || (n.includes('lick') && (n.includes('2 lb') || n.includes('2lb')))) return 6;
+  if (s === 'hk-lfh-6lbs' || (n.includes('lick') && (n.includes('6 lb') || n.includes('6lb')))) return 4;
+  if (s === 'hk-lb-30lbs' || n.includes('30 lb')) return 1;
+  if (s === 'hk-esf-16oz') return 6;
+  if (s === 'hk-esf-6lbs') return 4;
+  if (s === 'hk-lfc-45lbs') return 1;
+  return null;
+}
+
+function formatAddress(addr: unknown): string {
+  if (!addr) return '';
+  if (typeof addr === 'string') return addr.trim();
+  if (typeof addr === 'object' && !Array.isArray(addr)) {
+    const s = addr as Record<string, unknown>;
+    if (s.address && typeof s.address === 'string' && s.address.trim()) return s.address.trim();
+    const parts = [
+      s.line1,
+      s.line2,
+      [s.city, s.state, s.zip].filter(Boolean).join(' '),
+      s.country,
+    ]
+      .filter(Boolean)
+      .map(String);
+    return parts.join(', ');
+  }
+  return '';
 }
 
 function resolveLine(line: Record<string, unknown>, products: WholesaleRow[]): ResolvedInquiryLine {
   const lineSku = text(line.wholesaleSku).toLowerCase();
   const lineProdId = Number(line.productId || line.productRowId || 0);
+  const lineVarId = Number(line.wooVariationId || 0);
   const lineWooId = Number(line.wooProductId || 0);
   const lineName = text(line.name).toLowerCase();
 
-  const matchingProduct = products.find((p) => {
-    const rowId = Number(p.id);
-    const pSku = text(p.wholesale_sku || p.sku).toLowerCase();
-    const pWooId = Number(p.woo_product_id);
-    const pName = text(p.name).toLowerCase();
+  // Priority search for matching product:
+  // 1. Exact wholesale row ID
+  let matchingProduct = lineProdId > 0 ? products.find((p) => Number(p.id) === lineProdId) : null;
 
-    if (lineProdId > 0 && rowId === lineProdId) return true;
-    if (lineSku && pSku && lineSku === pSku) return true;
-    if (lineWooId > 0 && pWooId > 0 && lineWooId === pWooId) return true;
-    if (lineName && pName && (lineName === pName || pName.includes(lineName) || lineName.includes(pName))) return true;
-    return false;
-  });
+  // 2. Exact wholesale SKU
+  if (!matchingProduct && lineSku) {
+    matchingProduct = products.find((p) => text(p.wholesale_sku || p.sku).toLowerCase() === lineSku) || null;
+  }
+
+  // 3. Exact WooCommerce variation ID
+  if (!matchingProduct && lineVarId > 0) {
+    matchingProduct = products.find((p) => Number(p.woo_variation_id) === lineVarId) || null;
+  }
+
+  // 4. WooCommerce parent product ID ONLY for simple products (without a variation ID)
+  if (!matchingProduct && lineWooId > 0) {
+    matchingProduct =
+      products.find(
+        (p) => Number(p.woo_product_id) === lineWooId && (!p.woo_variation_id || Number(p.woo_variation_id) === 0)
+      ) || null;
+  }
+
+  // 5. Fallback: Exact name match or size-disambiguated title match
+  if (!matchingProduct && lineName) {
+    matchingProduct =
+      products.find((p) => text(p.name).toLowerCase() === lineName) ||
+      products.find((p) => {
+        const pName = text(p.name).toLowerCase();
+        if (lineName.includes('6 lb') || lineName.includes('6lb')) {
+          return pName.includes('6 lb') || pName.includes('6lb');
+        }
+        if (lineName.includes('2 lb') || lineName.includes('2lb')) {
+          return pName.includes('2 lb') || pName.includes('2lb');
+        }
+        return pName && (lineName.includes(pName) || pName.includes(lineName));
+      }) ||
+      null;
+  }
 
   const storedPack = Number(line.casePackUnits || 0);
   const productPolicy = matchingProduct ? readCasePolicy(matchingProduct.packaging) : null;
   const policyPack = productPolicy?.unitsPerCase ? Number(productPolicy.unitsPerCase) : 0;
   const packagingPack = matchingProduct ? Number(packagingObject(matchingProduct.packaging).cartonQty || 0) : 0;
+  const knownPack = getKnownPackSize(lineSku || text(matchingProduct?.wholesale_sku), lineName || text(matchingProduct?.name));
 
-  // Canonical pack size (pieces per box/case)
-  const casePack = storedPack > 0 ? storedPack : policyPack > 0 ? policyPack : packagingPack > 0 ? packagingPack : 1;
+  // Canonical pack size:
+  // Use verified policyPack > knownPack > packagingPack
+  const casePack =
+    policyPack > 0
+      ? policyPack
+      : knownPack || (storedPack > 0 ? storedPack : packagingPack || 1);
 
   const rawUnits = Number(line.units ?? 0);
   const rawCartons = Number(line.cartons ?? 0);
@@ -119,6 +195,10 @@ function resolveLine(line: Record<string, unknown>, products: WholesaleRow[]): R
   const piecePrice = Number(line.unitPriceIndicative ?? line.unit_price ?? 0);
   const boxPrice = piecePrice > 0 ? pricePerBox(piecePrice, casePack) : 0;
 
+  const unitWeight = getUnitWeightLbs(lineSku || text(matchingProduct?.wholesale_sku), lineName || text(matchingProduct?.name));
+  const boxWeightLbs = casePack * unitWeight;
+  const totalWeightLbs = totalPieces * unitWeight;
+
   // Line subtotal
   const storedSubtotal = Number(line.lineSubtotalIndicative ?? line.line_total ?? 0);
   const calculatedSubtotal = boxes * boxPrice;
@@ -140,6 +220,8 @@ function resolveLine(line: Record<string, unknown>, products: WholesaleRow[]): R
     totalPieces,
     piecePrice,
     boxPrice,
+    boxWeightLbs,
+    totalWeightLbs,
     lineSubtotal,
   };
 }
@@ -190,6 +272,8 @@ export default function InquiryDetail({
   const totalBoxes = resolvedLines.reduce((acc, l) => acc + l.boxes, 0);
   const totalPieces = resolvedLines.reduce((acc, l) => acc + l.totalPieces, 0);
   const merchandiseTotal = resolvedLines.reduce((acc, l) => acc + l.lineSubtotal, 0);
+  const totalWeightLbs = resolvedLines.reduce((acc, l) => acc + l.totalWeightLbs, 0);
+  const destinationAddress = formatAddress(shipping);
 
   const finalTotalNum = Number(quotedTotal) || merchandiseTotal;
 
@@ -324,11 +408,11 @@ export default function InquiryDetail({
             </div>
             <div>
               <p className="text-sm font-medium text-charcoal whitespace-pre-wrap">
-                {text(shipping?.address) || '12620 FM 1960 W Ste A-4, Houston, TX 77065, United States'}
+                {destinationAddress || 'Customer delivery address pending confirmation'}
               </p>
               <p className="text-xs text-charcoal-light flex items-center gap-1.5 mt-2">
                 <Truck size={13} className="text-charcoal-light/70" />
-                Method: Standard Freight Delivery from Houston, TX
+                Delivery Basis: {text(inquiry.incoterm, 'FOB')} · Carrier Freight from Houston, TX (77065)
               </p>
             </div>
           </div>
@@ -377,6 +461,9 @@ export default function InquiryDetail({
                         <Package size={12} className="text-himalayan" />
                         {l.casePack} {l.casePack === 1 ? 'pc / box' : 'pcs / box'}
                       </span>
+                      <span className="text-[10px] text-charcoal-light block mt-0.5">
+                        ~{l.boxWeightLbs} lbs / box
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-charcoal whitespace-nowrap">
                       <div className="text-sm font-bold text-charcoal">
@@ -413,8 +500,12 @@ export default function InquiryDetail({
             <tfoot className="border-t-2 border-charcoal/10 bg-warm-white/40 text-xs">
               <tr>
                 <td colSpan={3} className="px-4 py-2.5 text-charcoal-light">
-                  <span className="font-semibold text-charcoal">{totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'}</span>
-                  <span className="text-[11px] text-charcoal-light ml-1.5">({totalPieces.toLocaleString('en-US')} total pieces)</span>
+                  <div className="font-semibold text-charcoal">
+                    {totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'} ({totalPieces.toLocaleString('en-US')} total pieces)
+                  </div>
+                  <div className="text-[11px] text-charcoal-light mt-0.5">
+                    Est. Shipping Weight: ~{totalWeightLbs.toLocaleString('en-US')} lbs ({Math.round(totalWeightLbs * 0.453592)} kg)
+                  </div>
                 </td>
                 <td className="px-4 py-2.5 text-right font-semibold text-charcoal-light">Merchandise Subtotal:</td>
                 <td className="px-4 py-2.5 text-right font-semibold text-charcoal">{money(merchandiseTotal, currency)}</td>
@@ -422,10 +513,12 @@ export default function InquiryDetail({
               <tr>
                 <td colSpan={3} className="px-4 py-2.5" />
                 <td className="px-4 py-2.5 text-right font-semibold text-charcoal-light">Freight & Delivery:</td>
-                <td className="px-4 py-2.5 text-right font-medium text-charcoal-light">
+                <td className="px-4 py-2.5 text-right font-medium text-charcoal">
                   {Number(quotedTotal) > merchandiseTotal
                     ? money(Number(quotedTotal) - merchandiseTotal, currency)
-                    : 'Included / Free Pickup (Houston FOB)'}
+                    : Number(quotedTotal) === merchandiseTotal
+                      ? 'Free Delivery / Customer Pickup'
+                      : 'Quoted upon freight dispatch review'}
                 </td>
               </tr>
               <tr className="border-t border-charcoal/10 bg-warm-white">
