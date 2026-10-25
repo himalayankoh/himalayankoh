@@ -29,6 +29,8 @@ import {
   type WholesaleRow,
 } from '@/lib/admin/wholesaleConsoleApi';
 import { SELECT, TEXTAREA } from '@/components/admin/adminTheme';
+import { packagingObject, readCasePolicy } from '@/lib/wholesale/casePolicy';
+import { pricePerBox } from '@/lib/wholesale/boxes';
 import { text, useWriter } from './ui';
 
 function money(value: unknown, currency = 'USD'): string {
@@ -49,14 +51,109 @@ function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
+interface ResolvedInquiryLine {
+  id: string;
+  name: string;
+  wholesaleSku: string;
+  wooProductId: number | null;
+  wooVariationId: number | null;
+  casePack: number;
+  boxes: number;
+  totalPieces: number;
+  piecePrice: number;
+  boxPrice: number;
+  lineSubtotal: number;
+}
+
+function resolveLine(line: Record<string, unknown>, products: WholesaleRow[]): ResolvedInquiryLine {
+  const lineSku = text(line.wholesaleSku).toLowerCase();
+  const lineProdId = Number(line.productId || line.productRowId || 0);
+  const lineWooId = Number(line.wooProductId || 0);
+  const lineName = text(line.name).toLowerCase();
+
+  const matchingProduct = products.find((p) => {
+    const rowId = Number(p.id);
+    const pSku = text(p.wholesale_sku || p.sku).toLowerCase();
+    const pWooId = Number(p.woo_product_id);
+    const pName = text(p.name).toLowerCase();
+
+    if (lineProdId > 0 && rowId === lineProdId) return true;
+    if (lineSku && pSku && lineSku === pSku) return true;
+    if (lineWooId > 0 && pWooId > 0 && lineWooId === pWooId) return true;
+    if (lineName && pName && (lineName === pName || pName.includes(lineName) || lineName.includes(pName))) return true;
+    return false;
+  });
+
+  const storedPack = Number(line.casePackUnits || 0);
+  const productPolicy = matchingProduct ? readCasePolicy(matchingProduct.packaging) : null;
+  const policyPack = productPolicy?.unitsPerCase ? Number(productPolicy.unitsPerCase) : 0;
+  const packagingPack = matchingProduct ? Number(packagingObject(matchingProduct.packaging).cartonQty || 0) : 0;
+
+  // Canonical pack size (pieces per box/case)
+  const casePack = storedPack > 0 ? storedPack : policyPack > 0 ? policyPack : packagingPack > 0 ? packagingPack : 1;
+
+  const rawUnits = Number(line.units ?? 0);
+  const rawCartons = Number(line.cartons ?? 0);
+
+  // Boxes ordered
+  let boxes: number;
+  let totalPieces: number;
+
+  if (rawCartons > 0) {
+    boxes = rawCartons;
+    totalPieces = rawUnits > 0 ? rawUnits : boxes * casePack;
+  } else if (rawUnits > 0) {
+    if (casePack > 1 && rawUnits < casePack) {
+      // Historical test row with loose piece(s): treat as 1 box
+      boxes = 1;
+      totalPieces = Math.max(rawUnits, casePack);
+    } else {
+      boxes = Math.max(1, Math.ceil(rawUnits / casePack));
+      totalPieces = rawUnits;
+    }
+  } else {
+    boxes = 1;
+    totalPieces = casePack;
+  }
+
+  const piecePrice = Number(line.unitPriceIndicative ?? line.unit_price ?? 0);
+  const boxPrice = piecePrice > 0 ? pricePerBox(piecePrice, casePack) : 0;
+
+  // Line subtotal
+  const storedSubtotal = Number(line.lineSubtotalIndicative ?? line.line_total ?? 0);
+  const calculatedSubtotal = boxes * boxPrice;
+  const lineSubtotal =
+    storedSubtotal > 0 && Math.abs(storedSubtotal - calculatedSubtotal) < 0.05
+      ? storedSubtotal
+      : calculatedSubtotal > 0
+        ? calculatedSubtotal
+        : totalPieces * piecePrice;
+
+  return {
+    id: text(line.id) || text(line.wholesaleSku) || 'line',
+    name: text(line.name) || (matchingProduct ? text(matchingProduct.name) : 'Wholesale Item'),
+    wholesaleSku: text(line.wholesaleSku) || (matchingProduct ? text(matchingProduct.wholesale_sku) : ''),
+    wooProductId: Number(line.wooProductId || matchingProduct?.woo_product_id || 0) || null,
+    wooVariationId: Number(line.wooVariationId || matchingProduct?.woo_variation_id || 0) || null,
+    casePack,
+    boxes,
+    totalPieces,
+    piecePrice,
+    boxPrice,
+    lineSubtotal,
+  };
+}
+
 export default function InquiryDetail({
   inquiry,
   audit = [],
+  products = [],
   reload,
   close,
 }: {
   inquiry: WholesaleRow;
   audit?: WholesaleRow[];
+  products?: WholesaleRow[];
   reload: () => Promise<void> | void;
   close: () => void;
 }) {
@@ -88,14 +185,11 @@ export default function InquiryDetail({
   const createdAt = text(inquiry.created_at || inquiry.submitted_at);
   const events = audit.filter((event) => Number(event.entity_id) === id && event.entity === 'quotes');
 
-  // Calculate merchandise subtotal
-  const merchandiseTotal = lines.reduce((acc, line) => {
-    const subtotal = Number(line.lineSubtotalIndicative ?? line.line_total ?? 0);
-    if (subtotal > 0) return acc + subtotal;
-    const units = Number(line.units ?? 0);
-    const unitPrice = Number(line.unitPriceIndicative ?? line.unit_price ?? 0);
-    return acc + units * unitPrice;
-  }, 0);
+  // Resolve lines against wholesale products catalog for box packaging and pricing
+  const resolvedLines = lines.map((line) => resolveLine(line, products));
+  const totalBoxes = resolvedLines.reduce((acc, l) => acc + l.boxes, 0);
+  const totalPieces = resolvedLines.reduce((acc, l) => acc + l.totalPieces, 0);
+  const merchandiseTotal = resolvedLines.reduce((acc, l) => acc + l.lineSubtotal, 0);
 
   const finalTotalNum = Number(quotedTotal) || merchandiseTotal;
 
@@ -257,59 +351,55 @@ export default function InquiryDetail({
             <thead className="border-b border-charcoal/10 bg-warm-white/70 text-[11px] font-bold uppercase tracking-wider text-charcoal-light">
               <tr>
                 <th scope="col" className="px-4 py-3">Item & SKU</th>
-                <th scope="col" className="px-4 py-3 text-right">Case Packaging</th>
-                <th scope="col" className="px-4 py-3 text-right">Quantity</th>
-                <th scope="col" className="px-4 py-3 text-right">Piece Price</th>
-                <th scope="col" className="px-4 py-3 text-right">Subtotal</th>
+                <th scope="col" className="px-4 py-3 text-center">Case Pack</th>
+                <th scope="col" className="px-4 py-3 text-right">Order Quantity</th>
+                <th scope="col" className="px-4 py-3 text-right">Price / Box</th>
+                <th scope="col" className="px-4 py-3 text-right">Line Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-charcoal/8 bg-white">
-              {lines.length ? (
-                lines.map((line, idx) => {
-                  const units = Number(line.units ?? 0);
-                  const casePack = Number(line.casePackUnits ?? 0);
-                  const boxes = casePack > 0 ? Math.floor(units / casePack) : null;
-                  const unitPrice = Number(line.unitPriceIndicative ?? line.unit_price ?? 0);
-                  const subtotal = Number(line.lineSubtotalIndicative ?? line.line_total ?? units * unitPrice);
-
-                  return (
-                    <tr key={idx} className="hover:bg-charcoal/[0.02] transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-charcoal text-sm">{text(line.name) || 'Wholesale Item'}</div>
-                        <div className="flex items-center gap-2 mt-0.5 font-mono text-[11px] text-charcoal-light">
-                          <span>{text(line.wholesaleSku) || 'No SKU'}</span>
-                          {line.wooProductId ? (
-                            <span className="rounded bg-charcoal/5 px-1.5 py-0.2 text-[10px]">
-                              Woo #{String(line.wooProductId)}
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right text-charcoal whitespace-nowrap">
-                        {casePack > 0 ? (
-                          <span>{casePack} pcs / box</span>
-                        ) : (
-                          <span className="text-charcoal-light">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium text-charcoal whitespace-nowrap">
-                        {boxes !== null ? (
-                          <span>
-                            {boxes} {boxes === 1 ? 'box' : 'boxes'} ({units} pcs)
+              {resolvedLines.length ? (
+                resolvedLines.map((l, idx) => (
+                  <tr key={l.id || idx} className="hover:bg-charcoal/[0.02] transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-charcoal text-sm">{l.name}</div>
+                      <div className="flex items-center gap-2 mt-0.5 font-mono text-[11px] text-charcoal-light">
+                        <span>{l.wholesaleSku || 'No SKU'}</span>
+                        {l.wooProductId ? (
+                          <span className="rounded bg-charcoal/5 px-1.5 py-0.5 text-[10px] text-charcoal/70">
+                            Woo #{String(l.wooProductId)}
                           </span>
-                        ) : (
-                          <span>{units} pcs</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium text-charcoal whitespace-nowrap">
-                        {money(unitPrice, currency)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-charcoal whitespace-nowrap">
-                        {money(subtotal, currency)}
-                      </td>
-                    </tr>
-                  );
-                })
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center text-charcoal whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-warm-white px-2 py-1 text-xs font-medium text-charcoal border border-charcoal/8">
+                        <Package size={12} className="text-himalayan" />
+                        {l.casePack} {l.casePack === 1 ? 'pc / box' : 'pcs / box'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-charcoal whitespace-nowrap">
+                      <div className="text-sm font-bold text-charcoal">
+                        {l.boxes} {l.boxes === 1 ? 'Box' : 'Boxes'}
+                      </div>
+                      <div className="text-[11px] text-charcoal-light">
+                        {l.totalPieces.toLocaleString('en-US')} total pcs
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-charcoal whitespace-nowrap">
+                      <div className="text-sm font-bold text-charcoal">
+                        {money(l.boxPrice, currency)}
+                        <span className="text-[11px] font-normal text-charcoal-light"> / box</span>
+                      </div>
+                      <div className="text-[11px] text-charcoal-light">
+                        {money(l.piecePrice, currency)} / pc
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-charcoal text-sm whitespace-nowrap">
+                      {money(l.lineSubtotal, currency)}
+                    </td>
+                  </tr>
+                ))
               ) : (
                 <tr>
                   <td colSpan={5} className="px-4 py-6 text-center text-charcoal-light">
@@ -322,7 +412,10 @@ export default function InquiryDetail({
             {/* Invoice Totals Summary Footer */}
             <tfoot className="border-t-2 border-charcoal/10 bg-warm-white/40 text-xs">
               <tr>
-                <td colSpan={3} className="px-4 py-2.5" />
+                <td colSpan={3} className="px-4 py-2.5 text-charcoal-light">
+                  <span className="font-semibold text-charcoal">{totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'}</span>
+                  <span className="text-[11px] text-charcoal-light ml-1.5">({totalPieces.toLocaleString('en-US')} total pieces)</span>
+                </td>
                 <td className="px-4 py-2.5 text-right font-semibold text-charcoal-light">Merchandise Subtotal:</td>
                 <td className="px-4 py-2.5 text-right font-semibold text-charcoal">{money(merchandiseTotal, currency)}</td>
               </tr>
@@ -332,7 +425,7 @@ export default function InquiryDetail({
                 <td className="px-4 py-2.5 text-right font-medium text-charcoal-light">
                   {Number(quotedTotal) > merchandiseTotal
                     ? money(Number(quotedTotal) - merchandiseTotal, currency)
-                    : 'Included / Free Pickup'}
+                    : 'Included / Free Pickup (Houston FOB)'}
                 </td>
               </tr>
               <tr className="border-t border-charcoal/10 bg-warm-white">

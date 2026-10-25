@@ -484,6 +484,7 @@ const PAYMENT_TERM_LABELS = [
 export function QuotesPanel({
   quotes,
   audit = [],
+  products = [],
   accounts,
   vocabulary,
   reload,
@@ -491,6 +492,7 @@ export function QuotesPanel({
 }: {
   quotes: WholesaleRow[];
   audit?: WholesaleRow[];
+  products?: WholesaleRow[];
   accounts: WholesaleRow[];
   vocabulary: { quoteStatuses: string[] };
   reload: () => Promise<void> | void;
@@ -520,11 +522,17 @@ export function QuotesPanel({
   const lineSummary = (row: WholesaleRow): string => {
     const lines = Array.isArray(row.lines) ? row.lines : [];
     if (!lines.length) return 'no lines';
-    const units = lines.reduce((total, line) => {
-      const entry = (line && typeof line === 'object' ? line : {}) as Record<string, unknown>;
-      return total + (numberValue(entry.units) ?? 0);
-    }, 0);
-    return `${lines.length} product${lines.length === 1 ? '' : 's'} · ${units.toLocaleString('en-US')} units`;
+    let totalBoxes = 0;
+    let totalUnits = 0;
+    for (const raw of lines) {
+      const line = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+      const units = numberValue(line.units) ?? 0;
+      const cartons = numberValue(line.cartons) ?? 0;
+      const pack = numberValue(line.casePackUnits) ?? 0;
+      totalUnits += units;
+      totalBoxes += cartons > 0 ? cartons : pack > 0 ? Math.ceil(units / pack) : (units > 0 ? 1 : 0);
+    }
+    return `${lines.length} product${lines.length === 1 ? '' : 's'} · ${totalBoxes} ${totalBoxes === 1 ? 'box' : 'boxes'} (${totalUnits.toLocaleString('en-US')} pcs)`;
   };
 
   async function setStatus(row: WholesaleRow, status: string) {
@@ -570,7 +578,7 @@ export function QuotesPanel({
           {writer.saved ? <Notice kind="success">{writer.saved}</Notice> : null}
 
           <Field label="Search inquiries"><TextInput value={query} onChange={setQuery} placeholder="Reference, business, SKU or status" /></Field>
-          {inquiry && <InquiryDetail key={inquiryId} inquiry={inquiry} audit={audit} reload={reload} close={() => setInquiryId(null)} />}
+          {inquiry && <InquiryDetail key={inquiryId} inquiry={inquiry} audit={audit} products={products} reload={reload} close={() => setInquiryId(null)} />}
           <DataTable
             columns={[
               { key: 'ref', label: 'Reference', render: (row) => (

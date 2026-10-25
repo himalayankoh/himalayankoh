@@ -313,6 +313,7 @@ export default function AdminWholesaleWorkspace({ initialTab = 'overview' }: { i
       {tab === 'quotes' ? (
         <QuotesPanel audit={workspace.audit}
           quotes={workspace.quotes}
+          products={workspace.products}
           accounts={workspace.accounts}
           vocabulary={{ quoteStatuses: workspace.vocabulary.quoteStatuses }}
           reload={reload}

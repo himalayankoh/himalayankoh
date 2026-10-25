@@ -47,6 +47,7 @@ export interface DocumentQuoteLine {
   units?: number;
   cartons?: number;
   cartonQty?: number | null;
+  casePackUnits?: number | null;
   /** The buyer's price per unit, as `buyerQuoteView` derives it. */
   unitPrice?: number | null;
   /** The buyer's line total, as `buyerQuoteView` derives it. */
@@ -180,7 +181,7 @@ export function renderQuoteDocument(input: DocumentInput): string {
       <td class="sku">${escapeHtml(line.wholesaleSku || line.productId)}</td>
       <td>${escapeHtml(line.name)}</td>
       <td class="num">${quantity(amount(line.units) ?? 0)}</td>
-      <td class="num">${quantity(amount(line.cartons) ?? (line.cartonQty ? Math.ceil((amount(line.units) ?? 0) / line.cartonQty) : 0))}</td>
+      <td class="num">${quantity(amount(line.cartons) ?? ((line.cartonQty || line.casePackUnits) ? Math.ceil((amount(line.units) ?? 0) / (line.cartonQty || line.casePackUnits)!) : 0))}</td>
       <td class="num">${money(unitPrice, currency)}</td>
       <td class="num">${money(lineTotalOf(line, perUnit), currency)}</td>
     </tr>`;
@@ -215,7 +216,8 @@ export function renderQuoteDocument(input: DocumentInput): string {
     ? quote.lines
         .map((line) => {
           const units = amount(line.units) ?? 0;
-          const cartons = amount(line.cartons) ?? (line.cartonQty ? Math.ceil(units / line.cartonQty) : 0);
+          const pack = line.cartonQty || line.casePackUnits || 0;
+          const cartons = amount(line.cartons) ?? (pack > 0 ? Math.ceil(units / pack) : 0);
           return `<li>${escapeHtml(line.name)} — ${quantity(units)} units${cartons ? ` (${quantity(cartons)} cartons)` : ''}</li>`;
         })
         .join('')
