@@ -293,15 +293,24 @@ export function renderQuoteDocument(input: DocumentInput): string {
 <body>
 <header>
   <div>
-    <h1>Himalayan Koh</h1>
-    <div class="muted">Wholesale division — ${escapeHtml(KIND_TITLES[kind])}</div>
+    <h1>Himalayan Koh LLC</h1>
+    <div class="muted" style="font-weight: 600; color: #3f6550;">Wholesale Trade Desk &amp; Distribution Center</div>
+    <div class="muted" style="font-size: 12px; margin-top: 2px;">
+      12620 FM 1960 W Ste A-4, Houston, TX 77065, United States
+    </div>
+    <div class="muted" style="font-size: 12px;">
+      Tel: (832) 224-6466 · Email: wholesale@himalayankoh.com
+    </div>
   </div>
   <div class="meta">
     <div><strong>${escapeHtml(quote.reference || `quote #${quote.id}`)}</strong></div>
+    <div style="font-size: 11px; text-transform: uppercase; color: #3f6550; font-weight: bold; margin-top: 2px;">
+      ${escapeHtml(KIND_TITLES[kind])}
+    </div>
     ${input.orderReference ? `<div>Order ${escapeHtml(input.orderReference)}</div>` : ''}
     <div>Issued ${escapeHtml(generatedAt.toISOString().slice(0, 10))}</div>
     ${quote.validUntil ? `<div>Valid until ${escapeHtml(quote.validUntil)}</div>` : '<div class="muted">No validity date set</div>'}
-    <div>Basis <strong>${escapeHtml(quote.incoterm)}</strong></div>
+    <div>Basis <strong>${escapeHtml(quote.incoterm || 'FOB')} (Houston Hub)</strong></div>
   </div>
 </header>
 

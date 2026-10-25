@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
@@ -86,7 +86,13 @@ export default function PortalCatalogPanel({
   const [destinationPort, setDestinationPort] = useState(buyer?.destinationPort ?? '');
   const [incoterm, setIncoterm] = useState('FOB');
   const [notes, setNotes] = useState('');
-  const [shippingAddress, setShippingAddress] = useState('');
+  const [shippingAddress, setShippingAddress] = useState(buyer?.address || '');
+
+  useEffect(() => {
+    if (buyer?.address && !shippingAddress) {
+      setShippingAddress(buyer.address);
+    }
+  }, [buyer?.address, shippingAddress]);
   const requestKey = useRef<{ key: string; fingerprint: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');

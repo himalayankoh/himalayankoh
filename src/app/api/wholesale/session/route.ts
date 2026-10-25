@@ -35,6 +35,7 @@ export async function GET(request: Request) {
       email: account.email,
       phone: account.phone,
       country: account.country,
+      address: account.address,
       website: account.website,
       businessType: account.businessType,
       status: account.status,

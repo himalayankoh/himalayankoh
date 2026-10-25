@@ -578,7 +578,7 @@ export function QuotesPanel({
           {writer.saved ? <Notice kind="success">{writer.saved}</Notice> : null}
 
           <Field label="Search inquiries"><TextInput value={query} onChange={setQuery} placeholder="Reference, business, SKU or status" /></Field>
-          {inquiry && <InquiryDetail key={inquiryId} inquiry={inquiry} audit={audit} products={products} reload={reload} close={() => setInquiryId(null)} />}
+          {inquiry && <InquiryDetail key={inquiryId} inquiry={inquiry} audit={audit} products={products} accounts={accounts} reload={reload} close={() => setInquiryId(null)} />}
           <DataTable
             columns={[
               { key: 'ref', label: 'Reference', render: (row) => (

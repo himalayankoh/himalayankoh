@@ -103,6 +103,7 @@ export interface BuyerFacts {
   contactName: string;
   email: string;
   country: string;
+  address?: string | null;
   phone?: string | null;
   website?: string | null;
   businessType?: string | null;

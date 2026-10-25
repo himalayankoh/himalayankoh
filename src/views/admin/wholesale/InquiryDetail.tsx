@@ -230,12 +230,14 @@ export default function InquiryDetail({
   inquiry,
   audit = [],
   products = [],
+  accounts = [],
   reload,
   close,
 }: {
   inquiry: WholesaleRow;
   audit?: WholesaleRow[];
   products?: WholesaleRow[];
+  accounts?: WholesaleRow[];
   reload: () => Promise<void> | void;
   close: () => void;
 }) {
@@ -274,6 +276,27 @@ export default function InquiryDetail({
   const merchandiseTotal = resolvedLines.reduce((acc, l) => acc + l.lineSubtotal, 0);
   const totalWeightLbs = resolvedLines.reduce((acc, l) => acc + l.totalWeightLbs, 0);
   const destinationAddress = formatAddress(shipping);
+
+  // Find linked customer account if available
+  const accountId = Number(inquiry.account_id || 0);
+  const matchedAccount = accountId > 0 ? accounts.find((a) => Number(a.id) === accountId) : null;
+
+  const buyerCompany = text(contact?.business) || text(matchedAccount?.company) || 'Wholesale Buyer';
+  const buyerContactName = text(contact?.name) || text(matchedAccount?.contact_name) || '';
+  const buyerEmail = text(contact?.email) || text(matchedAccount?.email) || '';
+  const buyerPhone = text(contact?.phone) || text(matchedAccount?.phone) || '';
+  const buyerBillingAddress =
+    formatAddress(inquiry.billing_address) ||
+    formatAddress(matchedAccount?.billing_address || matchedAccount?.address) ||
+    '';
+
+  const isTestRecord = Boolean(
+    text(contact?.business).toUpperCase().includes('INTERNAL') ||
+    text(contact?.name).toUpperCase().includes('INTERNAL') ||
+    text(destinationAddress).toUpperCase().includes('INTERNAL TEST') ||
+    text(matchedAccount?.company).toUpperCase().includes('INTERNAL') ||
+    text(contact?.email).toLowerCase().includes('ws@himalayankoh.com')
+  );
 
   const finalTotalNum = Number(quotedTotal) || merchandiseTotal;
 
@@ -369,50 +392,138 @@ export default function InquiryDetail({
       ) : null}
 
       <div className="p-6 space-y-6">
+        {/* Seller & Dispatch Warehouse Card */}
+        <div className="rounded-xl border border-himalayan/25 bg-gradient-to-r from-emerald-50/70 via-warm-white to-emerald-50/40 p-4 shadow-xs">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-himalayan-dark">
+                <Building2 size={15} className="text-himalayan" />
+                <span>Issuer &amp; Dispatch Warehouse (Seller)</span>
+              </div>
+              <p className="text-base font-extrabold text-charcoal mt-1">Himalayan Koh LLC</p>
+              <p className="text-xs text-charcoal-light mt-0.5 font-medium">
+                12620 FM 1960 W Ste A-4 · Houston, TX 77065, United States
+              </p>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-charcoal-light mt-1.5">
+                <span className="flex items-center gap-1">
+                  <Phone size={12} className="text-himalayan" />
+                  <a href="tel:8322246466" className="text-charcoal hover:text-himalayan font-medium">
+                    (832) 224-6466
+                  </a>
+                </span>
+                <span>·</span>
+                <span className="flex items-center gap-1">
+                  <Mail size={12} className="text-himalayan" />
+                  <a href="mailto:wholesale@himalayankoh.com" className="text-charcoal hover:text-himalayan font-medium">
+                    wholesale@himalayankoh.com
+                  </a>
+                </span>
+                <span>·</span>
+                <span className="text-charcoal/70">Central USA Distribution Center</span>
+              </div>
+            </div>
+            <div className="flex flex-col items-start sm:items-end gap-1">
+              <span className="inline-flex items-center gap-1 rounded-md bg-white border border-himalayan/30 px-2.5 py-1 text-xs font-bold text-himalayan-dark shadow-xs">
+                <Truck size={13} className="text-himalayan" />
+                Houston Fulfillment Hub (77065)
+              </span>
+              <p className="text-[11px] text-charcoal-light">
+                Basis: <strong className="text-charcoal">{text(inquiry.incoterm, 'FOB')}</strong> · Standard Dispatch 24–48h
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Customer & Shipping Section (2-Column Invoice Cards) */}
         <div className="grid gap-4 sm:grid-cols-2">
           {/* Bill To / Buyer */}
-          <div className="rounded-xl border border-charcoal/10 bg-white p-4 space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-charcoal-light">
-              <Building2 size={14} className="text-himalayan" />
-              <span>Bill To / Wholesale Buyer</span>
+          <div className="rounded-xl border border-charcoal/10 bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-charcoal-light">
+                <User size={14} className="text-himalayan" />
+                <span>Bill To / Wholesale Customer</span>
+              </div>
+              {isTestRecord ? (
+                <span className="inline-flex items-center gap-1 rounded bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                  ⚠️ Internal Test Account
+                </span>
+              ) : matchedAccount?.ref ? (
+                <span className="inline-flex items-center rounded bg-charcoal/5 px-2 py-0.5 text-[10px] font-mono font-semibold text-charcoal/80">
+                  Dealer #{text(matchedAccount.ref)}
+                </span>
+              ) : null}
             </div>
+
             <div>
-              <p className="font-bold text-sm text-charcoal">{text(contact?.business) || 'Trade Customer'}</p>
-              <p className="text-xs text-charcoal-light flex items-center gap-1.5 mt-1">
-                <User size={13} className="text-charcoal-light/70" />
-                {text(contact?.name) || 'Attn: Store Manager'}
-              </p>
-              {text(contact?.email) ? (
-                <p className="text-xs text-charcoal-light flex items-center gap-1.5 mt-0.5">
+              <p className="font-extrabold text-base text-charcoal">{buyerCompany}</p>
+              {buyerContactName ? (
+                <p className="text-xs text-charcoal-light flex items-center gap-1.5 mt-1">
+                  <User size={13} className="text-charcoal-light/70" />
+                  <span>Attn: <strong className="text-charcoal">{buyerContactName}</strong></span>
+                </p>
+              ) : null}
+              {buyerEmail ? (
+                <p className="text-xs text-charcoal-light flex items-center gap-1.5 mt-1">
                   <Mail size={13} className="text-charcoal-light/70" />
-                  <a href={`mailto:${text(contact?.email)}`} className="text-himalayan hover:underline">
-                    {text(contact?.email)}
+                  <a href={`mailto:${buyerEmail}`} className="text-himalayan hover:underline font-medium">
+                    {buyerEmail}
                   </a>
                 </p>
               ) : null}
-              {text(contact?.phone) ? (
+              {buyerPhone ? (
                 <p className="text-xs text-charcoal-light flex items-center gap-1.5 mt-0.5">
                   <Phone size={13} className="text-charcoal-light/70" />
-                  {text(contact?.phone)}
+                  <span>{buyerPhone}</span>
                 </p>
               ) : null}
+            </div>
+
+            {/* Buyer Registered Billing Address */}
+            <div className="border-t border-charcoal/8 pt-2.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-charcoal-light block mb-0.5">
+                Customer Billing Address
+              </span>
+              <p className="text-xs text-charcoal font-medium whitespace-pre-wrap">
+                {buyerBillingAddress || (isTestRecord ? '12620 FM 1960 W Ste A-4, Houston, TX 77065 (Test Entry)' : 'Registered billing address on file with dealer account')}
+              </p>
+              {isTestRecord && (
+                <p className="text-[11px] text-amber-800 bg-amber-50 rounded-md p-2 mt-2 border border-amber-200 leading-relaxed">
+                  <strong>Notice:</strong> This inquiry was generated by an automated workflow test script using the Houston warehouse address. Real customer submissions display the dealer&apos;s verified registered business and billing address.
+                </p>
+              )}
             </div>
           </div>
 
           {/* Ship To / Destination */}
-          <div className="rounded-xl border border-charcoal/10 bg-white p-4 space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-charcoal-light">
-              <MapPin size={14} className="text-himalayan" />
-              <span>Ship To / Delivery Destination</span>
+          <div className="rounded-xl border border-charcoal/10 bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-charcoal-light">
+                <MapPin size={14} className="text-himalayan" />
+                <span>Ship To / Delivery Destination</span>
+              </div>
+              {isTestRecord ? (
+                <span className="inline-flex items-center rounded bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                  Test Destination
+                </span>
+              ) : null}
             </div>
+
             <div>
-              <p className="text-sm font-medium text-charcoal whitespace-pre-wrap">
+              <p className="text-sm font-semibold text-charcoal whitespace-pre-wrap">
                 {destinationAddress || 'Customer delivery address pending confirmation'}
               </p>
               <p className="text-xs text-charcoal-light flex items-center gap-1.5 mt-2">
-                <Truck size={13} className="text-charcoal-light/70" />
-                Delivery Basis: {text(inquiry.incoterm, 'FOB')} · Carrier Freight from Houston, TX (77065)
+                <Truck size={13} className="text-himalayan" />
+                Delivery Basis: <strong className="text-charcoal">{text(inquiry.incoterm, 'FOB')}</strong> · Carrier Freight from Houston, TX (77065)
+              </p>
+            </div>
+
+            <div className="border-t border-charcoal/8 pt-2.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-charcoal-light block mb-0.5">
+                Logistics &amp; Carrier Dispatch
+              </span>
+              <p className="text-xs text-charcoal-light leading-relaxed">
+                Wholesale case and pallet orders are prepared and palletized at the Himalayan Koh Houston central hub. Freight carrier dispatch is quoted upon order review based on delivery dock requirements.
               </p>
             </div>
           </div>

@@ -59,6 +59,31 @@ export async function GET(request: Request) {
       account = accountRows.length ? accountFromRow(accountRows[0]) : null;
     }
 
+    if (!account && (rows[0].buyer_contact || rows[0].shipping_address)) {
+      const bc =
+        rows[0].buyer_contact && typeof rows[0].buyer_contact === 'object'
+          ? (rows[0].buyer_contact as Record<string, unknown>)
+          : {};
+      const ship = rows[0].shipping_address;
+      const addrStr =
+        typeof ship === 'string'
+          ? ship
+          : ship && typeof ship === 'object'
+            ? String((ship as Record<string, unknown>).address || '')
+            : '';
+      account = accountFromRow({
+        id: stored.accountId || 0,
+        ref: '',
+        company: String(bc.business || 'Wholesale Buyer'),
+        contact_name: String(bc.name || ''),
+        email: String(bc.email || ''),
+        phone: bc.phone ? String(bc.phone) : null,
+        country: String(stored.destinationCountry || 'United States'),
+        billing_address: addrStr || null,
+        status: 'ACTIVE',
+      });
+    }
+
     // The audit trail is the revision history. `readQuoteRevisions` already degrades
     // to an empty list rather than throwing: an unreachable audit table must not cost
     // the owner the document, which renders from the quote row itself.
