@@ -540,17 +540,17 @@ export default function WholesaleProductsPage() {
           <AdminTable
             columns={[
               { key: 'select', label: '', width: '40px' },
-              { key: 'product', label: 'Product & SKU' },
-              { key: 'link', label: 'Retail Link' },
-              { key: 'pack', label: 'Pack Size' },
-              { key: 'price', label: 'Piece Price', align: 'right' },
-              { key: 'box_price', label: 'Box Price', align: 'right' },
-              { key: 'moq', label: 'Minimum Order', align: 'right' },
-              { key: 'stock', label: 'Allocation', align: 'right' },
-              { key: 'active', label: 'Status' },
-              { key: 'action', label: 'Action', align: 'right' },
+              { key: 'product', label: 'Product & SKU', width: '260px' },
+              { key: 'link', label: 'Retail Link', width: '90px' },
+              { key: 'pack', label: 'Pack Size', width: '110px' },
+              { key: 'price', label: 'Piece Price', align: 'right', width: '95px' },
+              { key: 'box_price', label: 'Box Price', align: 'right', width: '95px' },
+              { key: 'moq', label: 'Minimum Order', align: 'right', width: '130px' },
+              { key: 'stock', label: 'Allocation', align: 'right', width: '100px' },
+              { key: 'active', label: 'Status', align: 'center', width: '95px' },
+              { key: 'action', label: 'Action', align: 'right', width: '80px' },
             ]}
-            minWidth="960px"
+            minWidth="1020px"
           >
             {loading ? (
               <AdminTableSkeleton rows={6} columns={10} />
@@ -572,7 +572,7 @@ export default function WholesaleProductsPage() {
                     className="cursor-pointer transition-colors hover:bg-admin-canvas/60"
                     onClick={() => openEdit(row)}
                   >
-                    <td className={ADMIN_TD} onClick={(event) => event.stopPropagation()}>
+                    <td className={`${ADMIN_TD} w-10 py-2.5`} onClick={(event) => event.stopPropagation()}>
                       <input
                         type="checkbox"
                         aria-label={`Select ${text(row.name)}`}
@@ -584,91 +584,91 @@ export default function WholesaleProductsPage() {
                         }
                       />
                     </td>
-                    <td className={ADMIN_TD}>
-                      <div className="font-semibold text-admin-ink">{text(row.name) || 'Unnamed Product'}</div>
-                      <div className="font-mono text-xs text-admin-muted">{text(row.wholesale_sku) || 'No SKU'}</div>
+                    <td className={`${ADMIN_TD} max-w-[260px] py-2.5`}>
+                      <div className="font-semibold text-admin-ink leading-snug">{text(row.name) || 'Unnamed Product'}</div>
+                      <div className="font-mono text-xs text-admin-muted truncate mt-0.5">{text(row.wholesale_sku) || 'No SKU'}</div>
                     </td>
-                    <td className={ADMIN_TD}>
+                    <td className={`${ADMIN_TD} whitespace-nowrap py-2.5`}>
                       {num(row.woo_product_id) ? (
                         <a
                           href={`/admin/products?search=${encodeURIComponent(text(row.name))}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 rounded-md border border-admin-line bg-admin-canvas px-2 py-0.5 text-xs font-medium text-admin-ink hover:border-admin-ink transition-colors"
+                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-admin-line bg-admin-canvas px-2 py-0.5 text-xs font-medium text-admin-ink hover:border-admin-ink transition-colors"
                           title="View WooCommerce Product"
                         >
                           #{text(row.woo_product_id)}
-                          <ExternalLink size={11} className="text-admin-muted" />
+                          <ExternalLink size={11} className="text-admin-muted shrink-0" />
                         </a>
                       ) : (
                         <span className="text-xs text-admin-muted">—</span>
                       )}
                     </td>
-                    <td className={ADMIN_TD}>
+                    <td className={`${ADMIN_TD} whitespace-nowrap py-2.5`}>
                       {caseUnits ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-medium text-admin-ink">
-                          <Package size={13} className="text-admin-muted" />
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-admin-ink">
+                          <Package size={13} className="text-admin-muted shrink-0" />
                           {caseUnits} {caseUnits === 1 ? 'pc / box' : 'pcs / box'}
                         </span>
                       ) : (
-                        <span className="text-xs text-amber-600 font-medium">Pending pack</span>
+                        <span className="whitespace-nowrap text-xs text-amber-600 font-medium">Pending pack</span>
                       )}
                     </td>
-                    <td className={`${ADMIN_TD} text-right`}>
+                    <td className={`${ADMIN_TD} text-right whitespace-nowrap py-2.5`}>
                       {unitPrice > 0 ? (
                         <span className="font-semibold text-admin-ink">{money(unitPrice)}</span>
                       ) : (
                         <span className="text-xs text-admin-muted">—</span>
                       )}
                     </td>
-                    <td className={`${ADMIN_TD} text-right`}>
+                    <td className={`${ADMIN_TD} text-right whitespace-nowrap py-2.5`}>
                       {boxPriceVal > 0 ? (
                         <span className="font-semibold text-himalayan-dark">{money(boxPriceVal)}</span>
                       ) : (
                         <span className="text-xs text-admin-muted">—</span>
                       )}
                     </td>
-                    <td className={`${ADMIN_TD} text-right`}>
+                    <td className={`${ADMIN_TD} text-right whitespace-nowrap py-2.5`}>
                       {caseUnits && moqBoxes ? (
-                        <span className="text-xs text-admin-ink font-medium">
+                        <span className="text-xs text-admin-ink font-medium whitespace-nowrap">
                           {moqBoxes} {moqBoxes === 1 ? 'box' : 'boxes'} ({moqUnits} pcs)
                         </span>
                       ) : moqUnits > 0 ? (
-                        <span className="text-xs text-admin-muted">{moqUnits} pcs</span>
+                        <span className="text-xs text-admin-muted whitespace-nowrap">{moqUnits} pcs</span>
                       ) : (
                         <span className="text-xs text-admin-muted">—</span>
                       )}
                     </td>
-                    <td className={`${ADMIN_TD} text-right`}>
+                    <td className={`${ADMIN_TD} text-right whitespace-nowrap py-2.5`}>
                       {available > 0 ? (
-                        <span className="font-mono text-xs text-admin-ink">{available} pcs</span>
+                        <span className="font-mono text-xs text-admin-ink whitespace-nowrap">{available} pcs</span>
                       ) : (
-                        <span className="text-xs text-admin-muted">Live stock</span>
+                        <span className="text-xs text-admin-muted whitespace-nowrap">Live stock</span>
                       )}
                     </td>
-                    <td className={ADMIN_TD} onClick={(event) => event.stopPropagation()}>
+                    <td className={`${ADMIN_TD} text-center whitespace-nowrap py-2.5`} onClick={(event) => event.stopPropagation()}>
                       <button
                         type="button"
                         onClick={() => void toggleActive(row)}
                         disabled={busy === `TOGGLE-${id}`}
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                        className={`inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors ${
                           isActive
                             ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                             : 'border-admin-line bg-admin-canvas text-admin-muted hover:text-admin-ink'
                         }`}
                       >
-                        <span className={`h-1.5 w-1.5 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-admin-muted'}`} />
+                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isActive ? 'bg-emerald-500' : 'bg-admin-muted'}`} />
                         {isActive ? 'Offered' : 'Hidden'}
                       </button>
                     </td>
-                    <td className={`${ADMIN_TD} text-right`} onClick={(event) => event.stopPropagation()}>
+                    <td className={`${ADMIN_TD} text-right whitespace-nowrap py-2.5`} onClick={(event) => event.stopPropagation()}>
                       <button
                         type="button"
                         onClick={() => openEdit(row)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-admin-line bg-admin-surface px-2.5 py-1 text-xs font-medium text-admin-ink hover:bg-admin-canvas hover:border-admin-ink transition-colors"
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-admin-line bg-admin-surface px-2.5 py-1 text-xs font-medium text-admin-ink hover:bg-admin-canvas hover:border-admin-ink transition-colors"
                       >
-                        <Edit3 size={12} />
+                        <Edit3 size={12} className="shrink-0" />
                         Edit
                       </button>
                     </td>
