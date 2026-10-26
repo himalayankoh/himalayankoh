@@ -156,7 +156,7 @@ export async function POST(request: Request, context: { params: Promise<{ resour
     try {
       const previous = body.id ? await getWholesaleRecord('products', Number(body.id)) : null;
       const packaging = { ...packagingObject(previous?.packaging), ...packagingObject(data.packaging) };
-      if (!packaging.wholesaleCases) packaging.wholesaleCases = { unitsPerCase: null, minimumCases: 4, minimumPieces: 0 };
+      if (!packaging.wholesaleCases) packaging.wholesaleCases = { unitsPerCase: null, minimumCases: 1, minimumPieces: 0 };
       const problem = casePolicyProblem(packaging);
       if (problem) return NextResponse.json({ error: problem }, { status: 400 });
       const policy = readCasePolicy(packaging);

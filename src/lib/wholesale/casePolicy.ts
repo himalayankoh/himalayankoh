@@ -23,7 +23,7 @@ export function readCasePolicy(packaging: unknown): WholesaleCasePolicy | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const row = raw as Record<string, unknown>;
   const pack = whole(row.unitsPerCase, 0);
-  const minimumCases = Math.max(4, whole(row.minimumCases, 4));
+  const minimumCases = Math.max(1, whole(row.minimumCases, 1));
   const minimumPieces = whole(row.minimumPieces, 0);
   return {
     unitsPerCase: pack > 0 ? pack : null,
@@ -38,7 +38,7 @@ export function casePolicyProblem(packaging: unknown): string | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'Configure the wholesale case policy.';
   const row = raw as Record<string, unknown>;
   if (row.unitsPerCase !== null && (!Number.isSafeInteger(row.unitsPerCase) || Number(row.unitsPerCase) <= 0)) return 'Pieces per case must be a positive whole number, or empty while unconfirmed.';
-  if (!Number.isSafeInteger(row.minimumCases) || Number(row.minimumCases) < 4) return 'Wholesale requires at least four full cases.';
+  if (!Number.isSafeInteger(row.minimumCases) || Number(row.minimumCases) < 1) return 'Wholesale requires at least one full case.';
   if (!Number.isSafeInteger(row.minimumPieces) || Number(row.minimumPieces) < 0) return 'The optional piece minimum must be a whole number of zero or more.';
   const policy = readCasePolicy(packaging);
   if (policy?.minimumUnits !== null && !Number.isSafeInteger(policy?.minimumUnits)) return 'The resulting minimum is too large.';

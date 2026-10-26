@@ -26,11 +26,11 @@ describe('wholesale full-case minimums', () => {
   });
   it('validates the saved policy without inventing a case size', () => {
     expect(casePolicyProblem({ wholesaleCases: { unitsPerCase: null, minimumCases: 4, minimumPieces: 0 } })).toBeNull();
-    expect(casePolicyProblem({ wholesaleCases: { unitsPerCase: 6, minimumCases: 3, minimumPieces: 0 } })).toMatch(/four/);
+    expect(casePolicyProblem({ wholesaleCases: { unitsPerCase: 6, minimumCases: 0, minimumPieces: 0 } })).toMatch(/one/);
     expect(casePolicyProblem({ wholesaleCases: { unitsPerCase: 1.5, minimumCases: 4, minimumPieces: 0 } })).toMatch(/whole/);
   });
-  it('retains stricter owner MOQs and cannot reduce the four-case floor', () => {
-    expect(readCasePolicy({ wholesaleCases: { unitsPerCase: 6, minimumCases: 1 } })?.minimumUnits).toBe(24);
+  it('retains stricter owner MOQs and respects configured case minimum', () => {
+    expect(readCasePolicy({ wholesaleCases: { unitsPerCase: 6, minimumCases: 2 } })?.minimumUnits).toBe(12);
     expect(quantityProblem({ ...product(6), moq: 30 }, 24)).toMatch(/30 pieces/);
   });
 });
