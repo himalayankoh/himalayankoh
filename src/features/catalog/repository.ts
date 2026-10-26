@@ -429,6 +429,7 @@ async function readBrowserCatalog(): Promise<CatalogProduct[]> {
     const res = await fetch(`/api/admin/catalog?perPage=100&_t=${Date.now()}`, {
       headers: await adminHeaders(),
       cache: 'no-store',
+      signal: AbortSignal.timeout(12000),
     });
     if (res.ok) {
       const rows = trustedAdminCatalogRows(await res.json());

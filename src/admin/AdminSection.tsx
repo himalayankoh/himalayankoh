@@ -1134,9 +1134,11 @@ export function AOrders() {
   const [orderView, setOrderView] = useState<'active' | 'trash'>('active');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [orderBusy, setOrderBusy] = useState(false);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
   const loadOrders = useCallback(() => {
     const token = getAccessToken();
     if (!token) { setLoaded(true); return Promise.resolve(); }
+    setOrdersError(null);
     // WooCommerce holds the store's orders, and /api/admin/orders is the
     // console's authenticated read of them. This screen used to call
     // `/api/checkout?action=orders` — a route that no longer exists — so every
@@ -1144,7 +1146,7 @@ export function AOrders() {
     const url = orderView === 'trash'
       ? '/api/admin/orders?limit=100&status=trash'
       : '/api/admin/orders?limit=100';
-    return fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    return fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) })
       .then(async (r) => {
         const d = (await r.json().catch(() => ({}))) as {
           orders?: AdminOrderRow[];
@@ -1179,7 +1181,7 @@ export function AOrders() {
               }),
         });
       })
-      .catch(() => { setStripeOrders([]); setOrderStats(null); })
+      .catch((err) => { setStripeOrders([]); setOrderStats(null); setOrdersError(err instanceof Error ? err.message : 'Could not load orders.'); })
       .finally(() => setLoaded(true));
   }, [orderView]);
   const refreshOrders = useAutoRefresh(loadOrders);
@@ -1779,6 +1781,17 @@ export function AOrders() {
       </div>
       {!loaded ? (
         <div className="px-6 py-10 text-center text-sm text-gray-400">Loading orders…</div>
+      ) : ordersError ? (
+        <div className="px-6 py-10 text-center">
+          <p className="text-sm text-red-600 mb-2">{ordersError}</p>
+          <button
+            type="button"
+            onClick={() => void loadOrders()}
+            className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700"
+          >
+            Retry
+          </button>
+        </div>
       ) : visibleOrders.length === 0 ? (
         <div className="px-6 py-10 text-center">
           <p className="text-sm text-gray-500 mb-1">No orders yet</p>

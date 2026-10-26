@@ -45,7 +45,8 @@ async function storefrontFacts(
   try {
     // The raw WooCommerce rows are mapped by the same converter the console uses,
     // so "what WooCommerce calls this product" has one implementation.
-    const products = (await listWooProducts({ status: 'any', perPage: 100 })).map(fromWooProduct);
+    const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Storefront timeout')), 6000));
+    const products = (await Promise.race([listWooProducts({ status: 'any', perPage: 100 }), timeout])).map(fromWooProduct);
     for (const product of products) {
       if (!wooIds.includes(product.id)) continue;
       facts.set(product.id, {
@@ -73,9 +74,9 @@ export async function GET(request: Request) {
       data.products.map((product) => product.wooProductId).filter((id): id is number => typeof id === 'number' && id > 0)
     );
 
-    const items: BuyerCatalogItem[] = data.products.filter((product) => data.tiers.some((tier) => tier.productId === product.id && tier.unitPrice > 0)).map((product) => {
+    const items: BuyerCatalogItem[] = data.products.filter((product) => data.tiers.some((tier) => String(tier.productId) === String(product.id) && tier.unitPrice > 0)).map((product) => {
       const tiers = data.tiers
-        .filter((tier) => tier.productId === product.id)
+        .filter((tier) => String(tier.productId) === String(product.id))
         .sort((a, b) => a.minUnits - b.minUnits)
         .map((tier) => ({ minUnits: Math.max(tier.minUnits, product.moq, product.casePolicy?.minimumUnits ?? 0), unitPrice: tier.unitPrice, currency: tier.currency }));
 

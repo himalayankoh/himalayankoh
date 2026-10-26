@@ -123,7 +123,7 @@ export default function WholesaleCustomersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [filter, setFilter] = useState<Filter>('pending');
+  const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [note, setNote] = useState('');
@@ -153,6 +153,24 @@ export default function WholesaleCustomersPage() {
   }, [load]);
 
   const selected = useMemo(() => rows.find((row) => row.id === selectedId) ?? null, [rows, selectedId]);
+
+  const counts = useMemo(() => {
+    return {
+      pending: rows.filter((r) => matchesFilter(r, 'pending')).length,
+      info: rows.filter((r) => matchesFilter(r, 'info')).length,
+      approved: rows.filter((r) => matchesFilter(r, 'approved')).length,
+      rejected: rows.filter((r) => matchesFilter(r, 'rejected')).length,
+      suspended: rows.filter((r) => matchesFilter(r, 'suspended')).length,
+      all: rows.length,
+    };
+  }, [rows]);
+
+  const tabsWithCounts = useMemo(() => {
+    return FILTERS.map((f) => ({
+      id: f.id,
+      label: `${f.label} (${counts[f.id]})`,
+    }));
+  }, [counts]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -269,7 +287,7 @@ export default function WholesaleCustomersPage() {
           bodyClassName="p-0"
         >
           <div className="border-b border-admin-line px-4 py-3 space-y-3">
-            <AdminTabs tabs={FILTERS} active={filter} onChange={(id) => setFilter(id as Filter)} />
+            <AdminTabs tabs={tabsWithCounts} active={filter} onChange={(id) => setFilter(id as Filter)} />
             <label className="flex items-center gap-2 rounded-lg border border-admin-line bg-admin-surface px-3 py-2">
               <Search size={15} className="text-admin-muted" aria-hidden />
               <input

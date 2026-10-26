@@ -146,7 +146,7 @@ export interface WholesaleWorkspaceSources {
  * and 45s gateway timeouts. Bounding concurrency to 2 processes requests smoothly
  * without saturating PHP workers.
  */
-async function pooledAll(tasks: Array<() => Promise<unknown>>, concurrency = 2): Promise<unknown[]> {
+async function pooledAll(tasks: Array<() => Promise<unknown>>, concurrency = 5): Promise<unknown[]> {
   const results = new Array<unknown>(tasks.length);
   let nextIndex = 0;
 
@@ -188,20 +188,20 @@ export async function readWholesaleWorkspaceSources(): Promise<WholesaleWorkspac
   ] = (await pooledAll([
     () => listWholesaleRecords('products', { limit: 500 }, AGGREGATE),
     () => listWholesaleRecords('price_tiers', { limit: 500 }, AGGREGATE),
-    () => listWholesaleRecords('container_profiles', { limit: 100 }, AGGREGATE),
-    () => listWholesaleRecords('cost_profiles', { limit: 200 }, AGGREGATE),
-    () => listWholesaleRecords('freight_rates', { limit: 300, order: 'id' }, AGGREGATE),
-    () => listWholesaleRecords('origins', { limit: 100 }, AGGREGATE),
-    () => listWholesaleRecords('suppliers', { limit: 200 }, AGGREGATE),
-    () => listWholesaleRecords('port_charges', { limit: 300 }, AGGREGATE),
+    () => listWholesaleRecords('container_profiles', { limit: 100 }, AGGREGATE).catch(() => []),
+    () => listWholesaleRecords('cost_profiles', { limit: 200 }, AGGREGATE).catch(() => []),
+    () => listWholesaleRecords('freight_rates', { limit: 300, order: 'id' }, AGGREGATE).catch(() => []),
+    () => listWholesaleRecords('origins', { limit: 100 }, AGGREGATE).catch(() => []),
+    () => listWholesaleRecords('suppliers', { limit: 200 }, AGGREGATE).catch(() => []),
+    () => listWholesaleRecords('port_charges', { limit: 300 }, AGGREGATE).catch(() => []),
     () => listWholesaleRecords('applications', { limit: 200 }, AGGREGATE),
     () => listWholesaleRecords('accounts', { limit: 200 }, AGGREGATE),
     () => listWholesaleRecords('quotes', { limit: 200 }, AGGREGATE),
     () => listWholesaleRecords('orders', { limit: 200 }, AGGREGATE),
-    () => listWholesaleRecords('audit', { limit: 100, order: 'id' }, AGGREGATE),
+    () => listWholesaleRecords('audit', { limit: 100, order: 'id' }, AGGREGATE).catch(() => []),
     () => readWholesalePluginSettings(AGGREGATE).catch(() => null),
     () => freightProviderStatus().catch(() => null),
-  ], 2)) as [
+  ], 5)) as [
     WholesaleRow[],
     WholesaleRow[],
     WholesaleRow[],
@@ -387,8 +387,10 @@ export async function readWholesaleConsole(): Promise<{
   workspace: WholesaleWorkspacePayload;
   overview: WholesaleOverviewPayload;
 }> {
-  const sources = await readWholesaleWorkspaceSources();
-  const overview = await readWholesaleOverview(AGGREGATE);
+  const [sources, overview] = await Promise.all([
+    readWholesaleWorkspaceSources(),
+    readWholesaleOverview(AGGREGATE),
+  ]);
 
   return {
     workspace: wholesaleWorkspacePayload(sources),

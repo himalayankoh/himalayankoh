@@ -83,7 +83,7 @@ export default function PortalCatalogPanel({
   const [calculating, setCalculating] = useState(false);
 
   const [destinationCountry, setDestinationCountry] = useState(buyer?.destinationCountry || 'United States');
-  const [destinationPort, setDestinationPort] = useState(buyer?.destinationPort ?? '');
+  const [destinationPort] = useState(buyer?.destinationPort ?? '');
   const [incoterm, setIncoterm] = useState('FOB');
   const [notes, setNotes] = useState('');
   const [shippingAddress, setShippingAddress] = useState(buyer?.address || '');
@@ -110,14 +110,15 @@ export default function PortalCatalogPanel({
       onDraftChange(draft.filter((line) => line.productRowId !== item.id));
       return;
     }
-    if (item.casePolicy && (!item.casePolicy.unitsPerCase || item.availableUnits < startingUnits(item))) return;
+    const pack = item.casePolicy?.unitsPerCase ?? 1;
+    const units = startingUnits(item) || Math.max(item.moq || 1, pack);
     onDraftChange([
       ...draft,
       {
         productRowId: item.id,
         name: item.name,
         wholesaleSku: item.wholesaleSku,
-        units: startingUnits(item),
+        units,
       },
     ]);
     setPlan(null);
@@ -344,9 +345,46 @@ export default function PortalCatalogPanel({
         <div className="grid lg:grid-cols-[1.4fr_1fr] gap-8">
           <div className="bg-white rounded-3xl border border-charcoal/8 p-6 md:p-7">
             <h2 className="font-serif text-xl font-semibold text-charcoal mb-1">Your quote</h2>
-            <p className="text-charcoal-light text-sm mb-6">
+            <p className="text-charcoal-light text-sm mb-4">
               Enter full boxes for each product. The total pieces are shown automatically. Pallets remain available for larger orders.
             </p>
+
+            {/* Quick add product to quote */}
+            <div className="mb-6 p-4 rounded-2xl bg-warm-white border border-charcoal/10">
+              <label htmlFor="quick-add-product" className="block text-xs font-semibold text-charcoal mb-2">
+                Add a product to your quotation:
+              </label>
+              <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
+                <select
+                  id="quick-add-product"
+                  value=""
+                  onChange={(e) => {
+                    const id = Number(e.target.value);
+                    const it = items.find((p) => p.id === id);
+                    if (it) addProduct(it);
+                  }}
+                  className={`${input} flex-1`}
+                  aria-label="Select wholesale product to add"
+                >
+                  <option value="" disabled>Select a product to add to quote…</option>
+                  {items.map((it) => {
+                    const inDraft = draft.some((l) => l.productRowId === it.id);
+                    const pack = it.casePolicy?.unitsPerCase;
+                    return (
+                      <option key={it.id} value={it.id} disabled={inDraft}>
+                        {it.name} ({it.wholesaleSku}){pack ? ` · ${pack} pcs/box` : ''}{inDraft ? ' — (Already added)' : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+                <Link
+                  href="/wholesale/catalog"
+                  className="px-3 py-2 text-xs font-semibold text-himalayan hover:underline whitespace-nowrap"
+                >
+                  View full catalog →
+                </Link>
+              </div>
+            </div>
 
             {draft.length === 0 ? (
               <div className="text-center py-10">

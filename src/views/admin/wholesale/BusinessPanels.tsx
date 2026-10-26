@@ -211,8 +211,17 @@ export function ApplicationsPanel({
   applications: WholesaleRow[];
   reload: () => Promise<void> | void;
 }) {
-  const [filter, setFilter] = useState('PENDING');
+  const [filter, setFilter] = useState('ALL');
   const writer = useWriter();
+
+  const counts = {
+    ALL: applications.length,
+    APPROVED: applications.filter((row) => text(row.status) === 'APPROVED').length,
+    PENDING: applications.filter((row) => text(row.status) === 'PENDING').length,
+    MORE_INFO_REQUIRED: applications.filter((row) => text(row.status) === 'MORE_INFO_REQUIRED').length,
+    REJECTED: applications.filter((row) => text(row.status) === 'REJECTED').length,
+    SUSPENDED: applications.filter((row) => text(row.status) === 'SUSPENDED').length,
+  };
 
   const shown = filter === 'ALL' ? applications : applications.filter((row) => text(row.status) === filter);
 
@@ -244,12 +253,12 @@ export function ApplicationsPanel({
           value={filter}
           onChange={setFilter}
           options={[
-            { value: 'PENDING', label: 'Pending' },
-            { value: 'MORE_INFO_REQUIRED', label: 'More information required' },
-            { value: 'APPROVED', label: 'Approved' },
-            { value: 'REJECTED', label: 'Rejected' },
-            { value: 'SUSPENDED', label: 'Suspended' },
-            { value: 'ALL', label: 'All applications' },
+            { value: 'ALL', label: `All applications (${counts.ALL})` },
+            { value: 'APPROVED', label: `Approved (${counts.APPROVED})` },
+            { value: 'PENDING', label: `Pending (${counts.PENDING})` },
+            { value: 'MORE_INFO_REQUIRED', label: `Needs info (${counts.MORE_INFO_REQUIRED})` },
+            { value: 'REJECTED', label: `Rejected (${counts.REJECTED})` },
+            { value: 'SUSPENDED', label: `Suspended (${counts.SUSPENDED})` },
           ]}
         />
       }

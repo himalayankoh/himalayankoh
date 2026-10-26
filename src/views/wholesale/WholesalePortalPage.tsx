@@ -117,7 +117,10 @@ export interface BuyerFacts {
 export default function WholesalePortalPage({ initialTab }: { initialTab: PortalTab }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<PortalTab>(initialTab);
-  const [buyer, setBuyer] = useState<BuyerFacts | null>(null);
+  const [buyer, setBuyer] = useState<BuyerFacts | null>(() => {
+    const stored = getWholesaleSession();
+    return stored?.buyer ? (stored.buyer as unknown as BuyerFacts) : null;
+  });
   const [notConfigured, setNotConfigured] = useState(false);
   const [problem, setProblem] = useState('');
   const [loading, setLoading] = useState(true);
@@ -284,7 +287,7 @@ export default function WholesalePortalPage({ initialTab }: { initialTab: Portal
             {tab === 'dashboard' ? (
               <DashboardPanel
                 buyer={buyer}
-                catalogCount={catalog?.count ?? 0}
+                catalogCount={catalog?.count ?? (loading ? -1 : 0)}
                 openQuotes={openQuotes.length}
                 orderCount={orders.length}
                 draftLines={draft.length}
@@ -396,7 +399,7 @@ function DashboardPanel({
   return (
     <div className="space-y-8">
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        <Stat label="Products available" value={catalogCount} hint="Wholesale catalog" />
+        <Stat label="Products available" value={catalogCount < 0 ? '…' : catalogCount} hint="Wholesale catalog" />
         <Stat label="Open requests" value={openQuotes} hint="With our team or awaiting your decision" />
         <Stat label="Wholesale orders" value={orderCount} hint="On this account" />
         <Stat label="Lines in draft" value={draftLines} hint={draftLines ? 'Continue building your quote' : 'No quote in progress'} />
