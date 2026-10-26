@@ -148,6 +148,7 @@ export default function WholesalePortalPage({ initialTab }: { initialTab: Portal
     setProblem('');
 
     if (!getWholesaleSession()) {
+      setBuyer(null);
       setLoading(false);
       setProblem('Sign in to your wholesale account to continue.');
       return;
@@ -155,9 +156,10 @@ export default function WholesalePortalPage({ initialTab }: { initialTab: Portal
 
     const session = await portalRequest<PortalBuyerResponse>('/api/wholesale/session');
     if (!session.ok || !session.data?.authenticated) {
+      setBuyer(null);
       setLoading(false);
       if (session.data && session.data.configured === false) setNotConfigured(true);
-      setProblem(session.error || 'Your wholesale session is no longer valid.');
+      setProblem(session.error || 'Your wholesale session has expired. Sign in again.');
       return;
     }
 

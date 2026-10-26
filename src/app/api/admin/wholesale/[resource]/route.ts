@@ -29,6 +29,7 @@ import { NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { wholesaleDisabled } from '@/lib/wholesale/gate';
 import { deleteWholesaleRecord, getWholesaleRecord, isWholesaleResource, listWholesaleRecords, upsertWholesaleRecord } from '@/lib/wholesale/store';
+import { invalidateConsoleCache } from '@/lib/wholesale/consoleCache';
 import { recordQuoteRevision } from '@/lib/wholesale/revisionLog';
 
 export const dynamic = 'force-dynamic';
@@ -236,6 +237,7 @@ export async function POST(request: Request, context: { params: Promise<{ resour
       }
     }
 
+    invalidateConsoleCache();
     return NextResponse.json({ record, revision }, { status: body.id ? 200 : 201 });
   } catch (error) {
     return NextResponse.json(
@@ -262,6 +264,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ reso
 
   try {
     await deleteWholesaleRecord(resource, id);
+    invalidateConsoleCache();
     return NextResponse.json({ deleted: true, resource, id });
   } catch (error) {
     return NextResponse.json(

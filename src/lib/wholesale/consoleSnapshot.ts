@@ -53,6 +53,8 @@ import {
 } from './store';
 import { freightProviderStatus, type FreightProviderStatus } from './freightProvider';
 import type { ApplicationStatus, Incoterm, QuoteStatus } from './types';
+import { getConsoleCache, getPendingConsolePromise, setPendingConsolePromise, setConsoleCache, invalidateConsoleCache } from './consoleCache';
+export { invalidateConsoleCache };
 
 /**
  * The lifecycle vocabularies the console offers, one list each, shared with the plugin.
@@ -383,17 +385,40 @@ export function wholesaleOverviewPayload(
  * of the fan-out is irreducible from this side: thirteen tables are thirteen reads,
  * because the plugin's record endpoint answers one resource per request.
  */
-export async function readWholesaleConsole(): Promise<{
+export async function readWholesaleConsole(forceFresh = false): Promise<{
   workspace: WholesaleWorkspacePayload;
   overview: WholesaleOverviewPayload;
 }> {
-  const [sources, overview] = await Promise.all([
-    readWholesaleWorkspaceSources(),
-    readWholesaleOverview(AGGREGATE),
-  ]);
+  const cached = getConsoleCache<{
+    workspace: WholesaleWorkspacePayload;
+    overview: WholesaleOverviewPayload;
+  }>(60_000, forceFresh);
+  if (cached) return cached;
 
-  return {
-    workspace: wholesaleWorkspacePayload(sources),
-    overview: wholesaleOverviewPayload(overview, sources.orders),
-  };
+  const pending = getPendingConsolePromise<{
+    workspace: WholesaleWorkspacePayload;
+    overview: WholesaleOverviewPayload;
+  }>();
+  if (pending) return pending;
+
+  const fetchPromise = (async () => {
+    try {
+      const [sources, overview] = await Promise.all([
+        readWholesaleWorkspaceSources(),
+        readWholesaleOverview(AGGREGATE),
+      ]);
+
+      const result = {
+        workspace: wholesaleWorkspacePayload(sources),
+        overview: wholesaleOverviewPayload(overview, sources.orders),
+      };
+      setConsoleCache(result);
+      return result;
+    } finally {
+      setPendingConsolePromise(null);
+    }
+  })();
+
+  setPendingConsolePromise(fetchPromise);
+  return fetchPromise;
 }

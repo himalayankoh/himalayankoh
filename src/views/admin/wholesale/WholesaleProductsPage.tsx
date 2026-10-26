@@ -36,6 +36,7 @@ import { readCasePolicy, packagingObject, casePolicyProblem } from '@/lib/wholes
 import { SELECT, TEXTAREA } from '@/components/admin/adminTheme';
 import {
   fetchWholesaleConsole,
+  listWholesaleResource,
   removeWholesaleRecord,
   saveWholesaleRecord,
   type WholesaleRow,
@@ -132,12 +133,17 @@ export default function WholesaleProductsPage() {
     setLoading(true);
     setError('');
     try {
-      const { workspace } = await fetchWholesaleConsole();
-      setProducts(workspace.products);
-      setTiers(workspace.tiers);
+      const [productsRes, tiersRes] = await Promise.all([
+        listWholesaleResource('products', { limit: 200 }),
+        listWholesaleResource('price_tiers', { limit: 500 }),
+      ]);
+      const productItems = productsRes.items ?? [];
+      const tierItems = tiersRes.items ?? [];
+      setProducts(productItems);
+      setTiers(tierItems);
       setSelectedId((current) => {
-        if (current && workspace.products.some((row) => Number(row.id) === current)) return current;
-        return workspace.products[0] ? Number(workspace.products[0].id) : null;
+        if (current && productItems.some((row) => Number(row.id) === current)) return current;
+        return productItems[0] ? Number(productItems[0].id) : null;
       });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'The wholesale catalogue could not be read.');

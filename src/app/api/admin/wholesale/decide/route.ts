@@ -17,6 +17,7 @@ import { approvalProblem } from '@/lib/wholesale/applicationPolicy';
 import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { wholesaleDisabled } from '@/lib/wholesale/gate';
 import { decideWholesaleApplication, getWholesaleRecord, upsertWholesaleRecord } from '@/lib/wholesale/store';
+import { invalidateConsoleCache } from '@/lib/wholesale/consoleCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +102,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'The requested decision was not confirmed by the database. Refresh the application before retrying.' }, { status: 502 });
     }
 
+    invalidateConsoleCache();
     return NextResponse.json({
       ...result,
       certificateStatus,

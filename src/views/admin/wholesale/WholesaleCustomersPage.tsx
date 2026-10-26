@@ -53,12 +53,12 @@ import { STATE_AUTHORITIES } from '@/lib/wholesale/resaleCertificate/states';
 type Filter = 'pending' | 'info' | 'approved' | 'rejected' | 'suspended' | 'all';
 
 const FILTERS: Array<{ id: Filter; label: string }> = [
+  { id: 'all', label: 'All applications' },
   { id: 'pending', label: 'Pending review' },
-  { id: 'info', label: 'Needs information' },
   { id: 'approved', label: 'Approved' },
+  { id: 'info', label: 'Needs information' },
   { id: 'rejected', label: 'Rejected' },
   { id: 'suspended', label: 'Suspended' },
-  { id: 'all', label: 'All applications' },
 ];
 
 const CHIP_TONE: Record<string, 'success' | 'warning' | 'danger' | 'info' | 'muted' | 'neutral'> = {
@@ -177,7 +177,7 @@ export default function WholesaleCustomersPage() {
     return rows.filter((row) => {
       if (!matchesFilter(row, filter)) return false;
       if (!needle) return true;
-      return [row.company, row.dba, row.email, row.reference, row.contactName, row.address.city, row.address.state]
+      return [row.company, row.dba, row.email, row.reference, row.contactName, row.address?.city, row.address?.state]
         .join(' ')
         .toLowerCase()
         .includes(needle);
@@ -329,7 +329,7 @@ export default function WholesaleCustomersPage() {
                     <div className="text-xs text-admin-muted">{row.email}</div>
                     <div className="text-[11px] text-admin-muted font-mono">{row.reference}</div>
                   </td>
-                  <td className={ADMIN_TD}>{row.certificate.state || row.address.state || '—'}</td>
+                  <td className={ADMIN_TD}>{row.certificate?.state || row.address?.state || '—'}</td>
                   <td className={ADMIN_TD}>
                     <AdminChip tone={CHIP_TONE[row.certificate.status] ?? 'neutral'}>
                       {statusLabel(row.certificate.status)}
@@ -389,12 +389,12 @@ export default function WholesaleCustomersPage() {
                 </div>
                 <div className="space-y-1">
                   <p className={MICRO_LABEL}>Business address</p>
-                  <p className="text-sm text-admin-ink">{selected.address.line1 || '—'}</p>
-                  {selected.address.line2 ? <p className="text-sm text-admin-ink">{selected.address.line2}</p> : null}
+                  <p className="text-sm text-admin-ink">{selected.address?.line1 || '—'}</p>
+                  {selected.address?.line2 ? <p className="text-sm text-admin-ink">{selected.address.line2}</p> : null}
                   <p className="text-sm text-admin-muted">
-                    {[selected.address.city, selected.address.state, selected.address.zip].filter(Boolean).join(', ')}
+                    {[selected.address?.city, selected.address?.state, selected.address?.zip].filter(Boolean).join(', ') || '—'}
                   </p>
-                  <p className="text-sm text-admin-muted">{selected.address.country}</p>
+                  <p className="text-sm text-admin-muted">{selected.address?.country || 'United States'}</p>
                 </div>
                 <div className="space-y-1">
                   <p className={MICRO_LABEL}>Email verification</p>
