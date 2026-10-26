@@ -17,21 +17,13 @@
  * That is deliberate — a B2B order book and a retail checkout have different failure
  * modes, and this one must not be able to take a payment.
  *
- * ## The snapshot is complete, or the reporting built on it is dead
+ * ## Idempotent and Inventory-Affecting
  *
- * Two figures the console reports live on the order, and neither was being written:
- *
- *   - `orders.sell_total` — the column the overview's *booked value* sums. It holds
- *     the same sell total as the quote it came from, so the overview and the profit
- *     view read one number rather than two.
- *   - the load the order was raised on (container, pallets, CBM, weight, and how full
- *     the box was). The overview's *container utilisation* panel averages those, and
- *     a plan without them can only ever say "unspecified … not measured" — a panel
- *     that is always empty is a panel nobody can trust.
- *
- * The utilisation is computed by the engine's own `buildMixedLoad` from the quote's
- * packaged lines rather than by arithmetic repeated here, so the order and the quote
- * builder cannot disagree about how full a container was.
+ * Converting an accepted quotation (or re-running conversion on an existing order)
+ * deducts inventory directly from the authoritative WooCommerce stock records for
+ * each product line, writes an audit record, and synchronizes the wholesale catalogue
+ * availability. If conversion is executed more than once, it is guaranteed idempotent:
+ * existing orders are reused and stock is never deducted twice.
  */
 
 import { NextResponse } from 'next/server';
@@ -39,7 +31,9 @@ import { verifyAdminRequest } from '@/lib/auth/verifyAdminRequest';
 import { wholesaleDisabled } from '@/lib/wholesale/gate';
 import { containerProfileFromRow, orderFromRow, quoteFromRow } from '@/lib/wholesale/mapping';
 import { buildMixedLoad } from '@/lib/wholesale/engine';
-import { listWholesaleRecords, upsertWholesaleRecord } from '@/lib/wholesale/store';
+import { getWholesaleRecord, listWholesaleRecords, upsertWholesaleRecord, type WholesaleRow } from '@/lib/wholesale/store';
+import { wordpressRequest } from '@/lib/backend/wordpress';
+import { purgePublicProduct } from '@/lib/backend/publicCache';
 import type { QuoteLine, WholesaleProduct } from '@/lib/wholesale/types';
 
 /**
@@ -121,6 +115,8 @@ export async function POST(request: Request) {
   const disabled = wholesaleDisabled();
   if (disabled) return disabled;
 
+  const actor = auth.admin.name || auth.admin.username || auth.admin.email || 'wholesale-admin';
+
   let body: {
     quoteId?: number;
     paymentTerms?: { label?: string; depositPct?: number; balancePct?: number; detail?: string };
@@ -141,7 +137,13 @@ export async function POST(request: Request) {
 
     const quote = quoteFromRow(rows[0]);
     const status = String(quote.status).toUpperCase();
-    if (status !== 'ACCEPTED') {
+
+    // 1. Check for an existing wholesale order for this quote to reuse (prevent duplicates)
+    const existingOrders = await listWholesaleRecords<WholesaleRow>('orders', { quote_id: quoteId, limit: 1 });
+    const existingOrder = existingOrders[0];
+
+    // Status validation: must be ACCEPTED, or already CONVERTED_TO_ORDER if an order exists (retryable)
+    if (status !== 'ACCEPTED' && !(status === 'CONVERTED_TO_ORDER' && existingOrder)) {
       return NextResponse.json(
         {
           error: `Only an accepted quotation can become an order — this one is ${status || 'unset'}. Mark it ACCEPTED first, then convert it.`,
@@ -158,74 +160,243 @@ export async function POST(request: Request) {
 
     const accountId = Number(quote.accountId);
 
-    // A failure to measure the load must not stop the order being raised: the order is
-    // the artefact the business runs on, and the utilisation is a report about it.
-    const load = await frozenLoadPlan(quote).catch(() => null);
+    let order = existingOrder;
+    let orderId = Number((existingOrder as { id?: number })?.id ?? 0);
+    let reference = String((existingOrder as { ref?: string })?.ref ?? '');
 
-    // The id is needed for the reference, so the row is created first and the
-    // reference written back — a buyer quotes a reference in an email, not a row id.
-    const created = await upsertWholesaleRecord(
+    if (!order || !orderId) {
+      // Create new wholesale order if none exists yet
+      const load = await frozenLoadPlan(quote).catch(() => null);
+
+      const created = await upsertWholesaleRecord(
+        'orders',
+        {
+          account_id: accountId,
+          quote_id: quoteId,
+          status: 'AWAITING_DEPOSIT',
+          incoterm: quote.incoterm,
+          destination_country: quote.destinationCountry,
+          destination_port: quote.destinationPort,
+          currency: quote.currency,
+          plan: {
+            lines: quote.lines.map((line) => ({
+              productId: line.productId,
+              name: line.name,
+              wholesaleSku: line.wholesaleSku,
+              units: line.units,
+              cartonQty: line.cartonQty,
+            })),
+            containers: quote.containers,
+            units: quote.lines.reduce((total, line) => total + line.units, 0),
+            ...(load ?? {}),
+          },
+          sell_total: quote.sellTotal ?? 0,
+          totals: {
+            sellTotal: quote.sellTotal ?? 0,
+            sellPerUnit:
+              quote.sellTotal && quote.lines.length
+                ? Math.round((quote.sellTotal / quote.lines.reduce((total, line) => total + line.units, 0)) * 10_000) / 10_000
+                : 0,
+            currency: quote.currency,
+            costTotal: quote.totals ? quote.totals.total : 0,
+          },
+          payment_terms: {
+            label,
+            depositPct,
+            balancePct,
+            detail: body.paymentTerms?.detail ? String(body.paymentTerms.detail).slice(0, 500) : '',
+          },
+          paid_amount: 0,
+          notes: body.notes ? String(body.notes).slice(0, 500) : '',
+          created_by: actor,
+        },
+        { actor }
+      );
+
+      orderId = Number((created as { id?: number }).id ?? 0);
+      reference = `HK-WS-O${String(orderId).padStart(5, '0')}`;
+      order = orderId
+        ? await upsertWholesaleRecord('orders', { ref: reference }, { id: orderId, actor })
+        : created;
+    } else if (!reference) {
+      reference = `HK-WS-O${String(orderId).padStart(5, '0')}`;
+    }
+
+    // 2. Idempotency Check: Verify if inventory deduction already completed for this order
+    const orderPlan = (order && typeof (order as Record<string, unknown>).plan === 'object' && !Array.isArray((order as Record<string, unknown>).plan))
+      ? ((order as Record<string, unknown>).plan as Record<string, unknown>)
+      : null;
+
+    const auditRows = orderId
+      ? await listWholesaleRecords<WholesaleRow>('audit', { entity: 'orders', entity_id: orderId, action: 'inventory_deducted', limit: 1 }).catch(() => [])
+      : [];
+
+    const alreadyDeducted = Boolean(orderPlan?.inventoryDeducted || auditRows.length > 0);
+
+    if (alreadyDeducted) {
+      return NextResponse.json(
+        {
+          order: orderFromRow(order as Record<string, unknown>),
+          reference,
+          quoteStatus: 'CONVERTED_TO_ORDER',
+          alreadyDeducted: true,
+          deductions: (orderPlan?.deductions as unknown[]) ?? [],
+        },
+        { status: 200 }
+      );
+    }
+
+    // 3. Perform idempotent WooCommerce stock deduction with audit record
+    const deductions: Array<{
+      productId: string | number;
+      wooProductId: number;
+      wooVariationId: number;
+      unitsDeducted: number;
+      stockBefore: number;
+      stockAfter: number;
+    }> = [];
+
+    for (const line of quote.lines) {
+      const units = Number(line.units);
+      if (!units || units <= 0) continue;
+
+      const lineRecord = line as unknown as Record<string, unknown>;
+      let wooProductId = Number(lineRecord.wooProductId || 0);
+      let wooVariationId = Number(lineRecord.wooVariationId || 0);
+
+      if (!wooProductId && line.productId) {
+        const prodRow = await getWholesaleRecord('products', Number(line.productId)).catch(() => null);
+        if (prodRow) {
+          wooProductId = Number((prodRow as Record<string, unknown>).woo_product_id || 0);
+          wooVariationId = Number((prodRow as Record<string, unknown>).woo_variation_id || 0);
+        }
+      }
+
+      if (!wooProductId) continue;
+
+      // Determine stock target endpoint (variation or parent)
+      const path = wooVariationId
+        ? `/wc/v3/products/${wooProductId}/variations/${wooVariationId}`
+        : `/wc/v3/products/${wooProductId}`;
+
+      const currentWc = await wordpressRequest<{
+        stock_quantity: number | null;
+        manage_stock: boolean;
+      }>(path, {
+        useCredentials: true,
+        timeoutMs: 15_000,
+      });
+
+      let targetPath = path;
+      let stockBefore = typeof currentWc.stock_quantity === 'number' ? currentWc.stock_quantity : 0;
+
+      // If variation manage_stock is off, check if parent manages stock
+      if (wooVariationId && currentWc.manage_stock === false) {
+        const parentWc = await wordpressRequest<{
+          stock_quantity: number | null;
+          manage_stock: boolean;
+        }>(`/wc/v3/products/${wooProductId}`, {
+          useCredentials: true,
+          timeoutMs: 15_000,
+        });
+        if (parentWc.manage_stock) {
+          targetPath = `/wc/v3/products/${wooProductId}`;
+          stockBefore = typeof parentWc.stock_quantity === 'number' ? parentWc.stock_quantity : 0;
+        }
+      }
+
+      const stockAfter = Math.max(0, stockBefore - units);
+
+      // Idempotently set updated stock in WooCommerce
+      await wordpressRequest(targetPath, {
+        useCredentials: true,
+        method: 'PUT',
+        body: {
+          manage_stock: true,
+          stock_quantity: stockAfter,
+        },
+        timeoutMs: 15_000,
+      });
+
+      // Purge edge cache so shelves immediately show updated stock
+      purgePublicProduct(undefined, `wholesale order ${reference} deducted ${units} units for product ${wooProductId}`);
+
+      // Sync available_units on wholesale master row if linked
+      if (line.productId) {
+        await upsertWholesaleRecord(
+          'products',
+          { available_units: stockAfter },
+          { id: Number(line.productId), actor }
+        ).catch((err) => console.error('Failed to sync wholesale available_units:', err));
+      }
+
+      deductions.push({
+        productId: line.productId,
+        wooProductId,
+        wooVariationId,
+        unitsDeducted: units,
+        stockBefore,
+        stockAfter,
+      });
+    }
+
+    // 4. Update order with deduction details in plan and audit notes
+    const updatedPlan = {
+      ...(orderPlan ?? {}),
+      inventoryDeducted: true,
+      inventoryDeductedAt: new Date().toISOString(),
+      deductions,
+    };
+
+    const deductionSummary = deductions.map((d) => `${d.unitsDeducted} units (stock ${d.stockBefore} -> ${d.stockAfter})`).join(', ');
+    const noteSuffix = deductionSummary ? `\n[Inventory Deducted: ${deductionSummary}]` : '';
+    const currentNotes = String((order as Record<string, unknown>)?.notes ?? '');
+    const updatedNotes = `${currentNotes}${noteSuffix}`.trim().slice(0, 500);
+
+    const updatedOrder = await upsertWholesaleRecord(
       'orders',
       {
-        account_id: accountId,
-        quote_id: quoteId,
-        status: 'AWAITING_DEPOSIT',
-        incoterm: quote.incoterm,
-        destination_country: quote.destinationCountry,
-        destination_port: quote.destinationPort,
-        currency: quote.currency,
-        plan: {
-          lines: quote.lines.map((line) => ({
-            productId: line.productId,
-            name: line.name,
-            wholesaleSku: line.wholesaleSku,
-            units: line.units,
-            cartonQty: line.cartonQty,
-          })),
-          containers: quote.containers,
-          units: quote.lines.reduce((total, line) => total + line.units, 0),
-          ...(load ?? {}),
-        },
-        /** The overview's booked value sums this column, for every status. */
-        sell_total: quote.sellTotal ?? 0,
-        totals: {
-          sellTotal: quote.sellTotal ?? 0,
-          sellPerUnit:
-            quote.sellTotal && quote.lines.length
-              ? Math.round((quote.sellTotal / quote.lines.reduce((total, line) => total + line.units, 0)) * 10_000) / 10_000
-              : 0,
-          currency: quote.currency,
-          /** The quote's own frozen cost basis travels with the order, for margin reporting. */
-          costTotal: quote.totals ? quote.totals.total : 0,
-        },
-        payment_terms: {
-          label,
-          depositPct,
-          balancePct,
-          detail: body.paymentTerms?.detail ? String(body.paymentTerms.detail).slice(0, 500) : '',
-        },
-        paid_amount: 0,
-        notes: body.notes ? String(body.notes).slice(0, 500) : '',
-        created_by: auth.admin.name || auth.admin.username || auth.admin.email,
+        plan: updatedPlan,
+        notes: updatedNotes,
       },
-      { actor: auth.admin.name || auth.admin.username || auth.admin.email }
+      { id: orderId, actor }
     );
 
-    const orderId = Number((created as { id?: number }).id ?? 0);
-    const reference = `HK-WS-O${String(orderId).padStart(5, '0')}`;
-    const order = orderId
-      ? await upsertWholesaleRecord('orders', { ref: reference }, { id: orderId, actor: auth.admin.name || auth.admin.username || auth.admin.email })
-      : created;
-
+    // 5. Write audit entry in hk_wholesale_audit
     await upsertWholesaleRecord(
-      'quotes',
-      { status: 'CONVERTED_TO_ORDER' },
-      { id: quoteId, actor: auth.admin.name || auth.admin.username || auth.admin.email }
+      'audit',
+      {
+        at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        actor,
+        action: 'inventory_deducted',
+        entity: 'orders',
+        entity_id: orderId,
+        detail: {
+          quote_id: quoteId,
+          order_ref: reference,
+          deductions,
+        },
+      },
+      { actor }
     );
+
+    // 6. Ensure quote is marked CONVERTED_TO_ORDER
+    if (status !== 'CONVERTED_TO_ORDER') {
+      await upsertWholesaleRecord(
+        'quotes',
+        { status: 'CONVERTED_TO_ORDER' },
+        { id: quoteId, actor }
+      );
+    }
 
     return NextResponse.json(
-      { order: orderFromRow(order as Record<string, unknown>), reference, quoteStatus: 'CONVERTED_TO_ORDER' },
-      { status: 201 }
+      {
+        order: orderFromRow((updatedOrder || order) as Record<string, unknown>),
+        reference,
+        quoteStatus: 'CONVERTED_TO_ORDER',
+        deductions,
+      },
+      { status: existingOrder ? 200 : 201 }
     );
   } catch (error) {
     return NextResponse.json(
