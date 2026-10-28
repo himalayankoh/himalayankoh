@@ -93,7 +93,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   for (const post of posts) {
-    if (!post.slug) continue;
+    if (!post.slug || post.id?.startsWith('res-')) continue;
     entries.push({
       url: `${origin}/blog/${post.slug}`,
       lastModified: post.updated_at ? new Date(post.updated_at) : post.published_at ? new Date(post.published_at) : undefined,

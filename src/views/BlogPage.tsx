@@ -115,7 +115,7 @@ export default function BlogPage({ initialPosts = [] }: BlogPageProps) {
             transition={{ delay: 0.2 }}
             className="text-white/70 text-base max-w-2xl mx-auto"
           >
-Notes on pink salt: how it is used, how it is stored, and what the labels mean
+Research guides and educational articles on Himalayan pink salt: culinary techniques, pasture management, mineral science, and bulk storage protocols
           </motion.p>
         </div>
       </div>
@@ -161,7 +161,7 @@ Notes on pink salt: how it is used, how it is stored, and what the labels mean
           transition={{ delay: 0.3 }}
           className="mb-8 bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-500 cursor-pointer group"
         >
-          <Link to={`/blog/${featuredPost.slug}`} className="grid md:grid-cols-2 gap-0">
+          <Link to={featuredPost.id?.startsWith('res-') ? `/resources/${featuredPost.slug}` : `/blog/${featuredPost.slug}`} className="grid md:grid-cols-2 gap-0">
             <div className="aspect-[16/10] md:aspect-auto overflow-hidden">
               {/* Featured post sits above the fold and is the LCP candidate. */}
               <PostImage
@@ -215,7 +215,7 @@ Notes on pink salt: how it is used, how it is stored, and what the labels mean
               whileHover={{ y: -6 }}
               className="group bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-500 cursor-pointer"
             >
-              <Link to={`/blog/${post.slug}`} className="block">
+              <Link to={post.id?.startsWith('res-') ? `/resources/${post.slug}` : `/blog/${post.slug}`} className="block">
               <div className="aspect-[16/10] overflow-hidden">
                 <PostImage
                   post={post}

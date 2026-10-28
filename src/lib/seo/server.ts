@@ -4,6 +4,8 @@ import { filterNicheBlogPosts } from '@/lib/catalog/nicheBlog';
 import type { BlogPostWithAuthor } from '@/lib/blog/types';
 import { wordpressBlog } from '@/lib/blog/wordpressBlog';
 import { SITE_ORIGIN } from '@/lib/site/origin';
+import { getAllResourceArticles } from '@/data/resources';
+import { AUTHORS } from '@/data/authors';
 
 /**
  * Every server-rendered route (Products, product detail, blog) awaits one of
@@ -179,7 +181,7 @@ export async function lookupSeoBlogPostFull(slug: string): Promise<SeoBlogPostLo
  * this the listing ships as an empty grid and crawlers find no internal links
  * to the individual articles.
  */
-export async function fetchSeoBlogPosts(limit = 24): Promise<SeoBlogPostFull[]> {
+export async function fetchSeoBlogPosts(limit = 36): Promise<SeoBlogPostFull[]> {
   return safeSeoRead(
     'blog index',
     async () => {
@@ -200,7 +202,38 @@ export async function fetchSeoBlogPosts(limit = 24): Promise<SeoBlogPostFull[]> 
         );
       }
 
-      return niche;
+      // Merge comprehensive educational resource guides so /blog features the complete
+      // knowledge base (13+ articles across culinary, livestock, and mineral science).
+      const resources = getAllResourceArticles();
+      const mappedResources: SeoBlogPostFull[] = resources.map((r) => {
+        const author = AUTHORS[r.authorId];
+        return {
+          id: `res-${r.id}`,
+          title: r.title,
+          slug: r.slug,
+          excerpt: r.summary,
+          content: r.sections?.map((s) => s.body.join('\n\n')).join('\n\n') || null,
+          featured_image: r.featuredImage || '/images/hk_salt_crystal.webp',
+          author_id: r.authorId,
+          category: r.category,
+          tags: [r.category],
+          is_published: true,
+          published_at: r.publishedAt,
+          meta_title: `${r.title} | Himalayan Koh`,
+          meta_description: r.metaDescription || r.summary,
+          read_time: parseInt(r.readTime, 10) || 6,
+          view_count: 0,
+          created_at: r.publishedAt,
+          updated_at: r.updatedAt || r.publishedAt,
+          author: {
+            id: r.authorId,
+            full_name: author?.name || 'Himalayan Koh Editorial Team',
+            avatar_url: author?.avatar || null,
+          },
+        };
+      });
+
+      return [...niche, ...mappedResources].slice(0, limit);
     },
     []
   );

@@ -4,6 +4,8 @@ import { buildMetadata } from '@/lib/seo/metadata';
 import { articleJsonLd, breadcrumbJsonLd } from '@/lib/seo/jsonLd';
 import { lookupSeoBlogPostFull } from '@/lib/seo/server';
 import { isOffNicheBlogPost } from '@/lib/catalog/nicheBlog';
+import { getResourceArticleBySlug } from '@/data/resources';
+import { redirect } from 'next/navigation';
 import { SITE_NAME } from '@/lib/seo/constants';
 import JsonLd from '@/components/seo/JsonLd';
 import BlogDetailClient from './BlogDetailClient';
@@ -25,6 +27,16 @@ export async function generateMetadata({
   params: Promise<Params>;
 }): Promise<Metadata> {
   const { slug } = await params;
+  const resArticle = getResourceArticleBySlug(slug);
+  if (resArticle) {
+    return buildMetadata({
+      title: `${resArticle.title} | ${SITE_NAME}`,
+      description: resArticle.metaDescription || resArticle.summary,
+      path: `/resources/${resArticle.slug}`,
+      ogImage: resArticle.featuredImage,
+      ogType: 'article',
+    });
+  }
   const lookup = await readSlug(slug);
 
   // A slug the store says does not exist is a 404, decided before anything is
@@ -64,6 +76,10 @@ export async function generateMetadata({
 
 export default async function Page({ params }: { params: Promise<Params> }) {
   const { slug } = await params;
+  const resArticle = getResourceArticleBySlug(slug);
+  if (resArticle) {
+    redirect(`/resources/${slug}`);
+  }
   const lookup = await readSlug(slug);
 
   if (lookup.state === 'missing') notFound();
