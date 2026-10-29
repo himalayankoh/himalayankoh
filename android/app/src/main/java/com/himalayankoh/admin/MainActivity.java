@@ -1,9 +1,11 @@
 package com.himalayankoh.admin;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -13,9 +15,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
-import android.view.KeyEvent;
 import android.view.View;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -34,6 +36,7 @@ import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
@@ -47,12 +50,15 @@ import java.util.Locale;
  *
  * Provides a high-performance native Android container for the Himalayan Koh
  * Admin Console, with persistent cookie authentication, hardware back navigation,
- * pull-to-refresh, file attachment picker, and offline fallback.
+ * pull-to-refresh, file attachment picker, offline fallback, and real-time
+ * lockscreen push notifications.
  */
 public class MainActivity extends AppCompatActivity {
 
     public static final String ADMIN_URL = "https://himalayankoh.com/admin";
-    private static final String APP_USER_AGENT_TAG = " HimalayanKohAdminApp/1.0.1";
+    private static final String APP_USER_AGENT_TAG = " HimalayanKohAdminApp/1.0.2";
+    private static final String PREFS_NAME = "hk_admin_prefs";
+    private static final String KEY_AUTH_TOKEN = "auth_token";
 
     private WebView webView;
     private ProgressBar progressBar;
@@ -64,6 +70,9 @@ public class MainActivity extends AppCompatActivity {
     private Uri cameraImageUri;
     private ActivityResultLauncher<Intent> fileChooserLauncher;
 
+    // Push notification runtime permission launcher (Android 13+)
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -71,13 +80,41 @@ public class MainActivity extends AppCompatActivity {
 
         initViews();
         registerFileChooser();
+        registerNotificationPermission();
         setupHardwareBackPress();
         setupWebView();
 
+        // Initialize high-priority lockscreen notification channel and background sync
+        HimalayanKohNotificationHelper.initChannel(this);
+        HimalayanKohSyncJobService.schedule(this);
+        checkNotificationPermission();
+
+        String urlToLoad = ADMIN_URL;
+        Intent startingIntent = getIntent();
+        if (startingIntent != null) {
+            String targetUrl = startingIntent.getStringExtra(HimalayanKohNotificationHelper.EXTRA_TARGET_URL);
+            if (targetUrl != null && !targetUrl.trim().isEmpty()) {
+                urlToLoad = targetUrl.startsWith("/") ? "https://himalayankoh.com" + targetUrl : targetUrl;
+            }
+        }
+
         if (isNetworkAvailable()) {
-            webView.loadUrl(ADMIN_URL);
+            webView.loadUrl(urlToLoad);
         } else {
             showErrorLayout();
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (intent != null) {
+            String targetUrl = intent.getStringExtra(HimalayanKohNotificationHelper.EXTRA_TARGET_URL);
+            if (targetUrl != null && !targetUrl.trim().isEmpty() && webView != null) {
+                String fullUrl = targetUrl.startsWith("/") ? "https://himalayankoh.com" + targetUrl : targetUrl;
+                webView.loadUrl(fullUrl);
+            }
         }
     }
 
@@ -95,6 +132,25 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, R.string.no_internet_title, Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    private void registerNotificationPermission() {
+        notificationPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(),
+                isGranted -> {
+                    if (isGranted) {
+                        Toast.makeText(this, "Lockscreen notifications activated", Toast.LENGTH_SHORT).show();
+                    }
+                }
+        );
+    }
+
+    private void checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+            }
+        }
     }
 
     private void registerFileChooser() {
@@ -179,10 +235,49 @@ public class MainActivity extends AppCompatActivity {
         webView.setHorizontalScrollBarEnabled(false);
         webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
 
-        // Expose Native bridge indicator so web application detects the native APK instantly
+        // Expose Native bridge indicator and push notification control to web application
         webView.addJavascriptInterface(new Object() {
-            @android.webkit.JavascriptInterface
+            @JavascriptInterface
             public boolean isNativeApp() {
+                return true;
+            }
+
+            @JavascriptInterface
+            public boolean supportsLockscreenPush() {
+                return true;
+            }
+
+            @JavascriptInterface
+            public void triggerLockscreenNotification(String title, String message, String targetUrl) {
+                runOnUiThread(() -> HimalayanKohNotificationHelper.showLockscreenNotification(
+                        MainActivity.this,
+                        title,
+                        message,
+                        targetUrl,
+                        (int) (System.currentTimeMillis() % 100000)
+                ));
+            }
+
+            @JavascriptInterface
+            public void saveAuthToken(String token) {
+                if (token != null && !token.trim().isEmpty()) {
+                    getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .edit()
+                            .putString(KEY_AUTH_TOKEN, token.trim())
+                            .apply();
+                }
+            }
+
+            @JavascriptInterface
+            public void requestNotificationPermission() {
+                runOnUiThread(() -> checkNotificationPermission());
+            }
+
+            @JavascriptInterface
+            public boolean hasNotificationPermission() {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    return ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+                }
                 return true;
             }
         }, "HimalayanKohNative");
@@ -245,6 +340,22 @@ public class MainActivity extends AppCompatActivity {
             super.onPageFinished(view, url);
             progressBar.setVisibility(View.GONE);
             CookieManager.getInstance().flush();
+
+            // Sync auth token from localStorage to Android native prefs for background sync
+            String jsSync = "try {"
+                    + " if (window.HimalayanKohNative && window.localStorage) {"
+                    + "   var session = window.localStorage.getItem('luxedge_sb_session');"
+                    + "   if (session) {"
+                    + "     try {"
+                    + "       var parsed = JSON.parse(session);"
+                    + "       if (parsed && parsed.accessToken) {"
+                    + "         window.HimalayanKohNative.saveAuthToken(parsed.accessToken);"
+                    + "       }"
+                    + "     } catch(e) {}"
+                    + "   }"
+                    + " }"
+                    + "} catch(e) {}";
+            view.evaluateJavascript(jsSync, null);
         }
 
         @Override

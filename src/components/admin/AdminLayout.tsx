@@ -27,6 +27,7 @@ import {
   DeviceMobile,
 } from '@phosphor-icons/react';
 import { useAuthContext } from '../../context/AuthContext';
+import { readStoredSession as readStoredAdminSession } from '@/services/wordpressAdminAuth';
 import { signOutOfBrowser } from '../../lib/auth/browserSignOut';
 import { useApp } from '@/App';
 import { useDialogFocus } from '../../hooks/useDialogFocus';
@@ -192,7 +193,7 @@ const MOBILE_NAV: { key: string; label: string; to?: string; icon: NavIcon }[] =
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const { isDark } = useMobileTheme();
-  const { user, profile } = useAuthContext();
+  const { user, profile, session } = useAuthContext();
   const { user: appUser } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
@@ -381,10 +382,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const [pushStatus, setPushStatus] = useState<'default' | 'granted' | 'denied'>('default');
+  const [isNativeApp, setIsNativeApp] = useState(false);
+  const lastNotifiedAlertIdRef = useRef<string>('');
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setPushStatus(Notification.permission);
+    }
+    if (typeof window !== 'undefined' && (window as any).HimalayanKohNative?.isNativeApp?.()) {
+      setIsNativeApp(true);
     }
   }, []);
 
@@ -407,6 +413,63 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
 
   useEffect(() => {
+    let isMounted = true;
+    const checkLiveNotifications = async () => {
+      try {
+        const stored = readStoredAdminSession();
+        const token = session?.access_token || stored?.accessToken;
+        if (!token) return;
+
+        if (typeof window !== 'undefined' && (window as any).HimalayanKohNative?.saveAuthToken) {
+          (window as any).HimalayanKohNative.saveAuthToken(token);
+        }
+
+        const res = await fetch('/api/admin/notifications/check', {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!isMounted || !data.ok) return;
+
+        if (Array.isArray(data.alerts)) {
+          setNotifications(
+            data.alerts.map((a: any) => ({
+              id: a.id,
+              category: a.type === 'wholesale_inquiry' ? 'orders' : 'inbox',
+              title: a.title,
+              body: a.message,
+              timestamp: new Date(a.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              read: false,
+              link: a.url,
+            }))
+          );
+        }
+
+        if (data.latestAlert && data.latestAlert.id !== lastNotifiedAlertIdRef.current) {
+          lastNotifiedAlertIdRef.current = data.latestAlert.id;
+          if (typeof window !== 'undefined' && (window as any).HimalayanKohNative?.triggerLockscreenNotification) {
+            (window as any).HimalayanKohNative.triggerLockscreenNotification(
+              data.latestAlert.title,
+              data.latestAlert.message,
+              data.latestAlert.url
+            );
+          }
+        }
+      } catch (err) {
+        // Quiet background check
+      }
+    };
+
+    checkLiveNotifications();
+    const interval = setInterval(checkLiveNotifications, 30_000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [session]);
+
+  useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setNotifOpen(false);
@@ -417,6 +480,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     }
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [notifOpen]);
+
+  const handleTestLockscreenPush = () => {
+    if (typeof window !== 'undefined' && (window as any).HimalayanKohNative?.triggerLockscreenNotification) {
+      (window as any).HimalayanKohNative.triggerLockscreenNotification(
+        'Himalayan Koh Alert (Test)',
+        'Lockscreen push notifications are active! Real-time wholesale inquiries and order alerts will appear here.',
+        '/admin/wholesale/inquiries'
+      );
+    } else {
+      handleRequestPush();
+    }
+  };
 
   const handleRequestPush = async () => {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
@@ -821,7 +896,23 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                     )}
                   </div>
 
-                  {pushStatus !== 'granted' && (
+                  {isNativeApp ? (
+                    <div className="p-2.5 bg-emerald-500/10 border-b border-emerald-500/20 flex items-center justify-between gap-2 text-xs text-emerald-950">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <span className="text-[11px] font-medium truncate">
+                          Lockscreen Push Active (Android)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleTestLockscreenPush}
+                        className="px-2 py-1 rounded bg-[#B86452] text-white text-[10px] font-semibold hover:bg-[#8D4133] shrink-0 active:scale-95 transition-transform"
+                      >
+                        Test Alert
+                      </button>
+                    </div>
+                  ) : pushStatus !== 'granted' && (
                     <div className="p-2.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between gap-2 text-xs text-amber-900">
                       <span className="text-[11px] font-medium leading-tight">
                         Device alerts only — server push is not configured yet
