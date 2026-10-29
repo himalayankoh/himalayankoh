@@ -124,6 +124,8 @@ export default function WholesalePortalPage({ initialTab }: { initialTab: Portal
   const [notConfigured, setNotConfigured] = useState(false);
   const [problem, setProblem] = useState('');
   const [loading, setLoading] = useState(true);
+  const [quotesLoading, setQuotesLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(true);
 
   const [catalog, setCatalog] = useState<PortalCatalogResponse | null>(null);
   const [quotes, setQuotes] = useState<PortalQuote[]>([]);
@@ -145,11 +147,15 @@ export default function WholesalePortalPage({ initialTab }: { initialTab: Portal
 
   const load = useCallback(async () => {
     setLoading(true);
+    setQuotesLoading(true);
+    setOrdersLoading(true);
     setProblem('');
 
     if (!getWholesaleSession()) {
       setBuyer(null);
       setLoading(false);
+      setQuotesLoading(false);
+      setOrdersLoading(false);
       setProblem('Sign in to your wholesale account to continue.');
       return;
     }
@@ -158,6 +164,8 @@ export default function WholesalePortalPage({ initialTab }: { initialTab: Portal
     if (!session.ok || !session.data?.authenticated) {
       setBuyer(null);
       setLoading(false);
+      setQuotesLoading(false);
+      setOrdersLoading(false);
       if (session.data && session.data.configured === false) setNotConfigured(true);
       setProblem(session.error || 'Your wholesale session has expired. Sign in again.');
       return;
@@ -165,20 +173,27 @@ export default function WholesalePortalPage({ initialTab }: { initialTab: Portal
 
     setBuyer((session.data.buyer as BuyerFacts) ?? null);
 
-    const [catalogResult, quotesResult, ordersResult] = await Promise.all([
-      portalRequest<PortalCatalogResponse>('/api/wholesale/catalog'),
-      portalRequest<{ quotes: PortalQuote[] }>('/api/wholesale/quotes'),
-      portalRequest<{ orders: PortalOrder[] }>('/api/wholesale/orders'),
-    ]);
+    const quotesPromise = portalRequest<{ quotes: PortalQuote[] }>('/api/wholesale/quotes').then((res) => {
+      if (res.ok && res.data) setQuotes(res.data.quotes ?? []);
+      setQuotesLoading(false);
+      return res;
+    });
 
-    if (catalogResult.ok && catalogResult.data) setCatalog(catalogResult.data);
-    if (quotesResult.ok && quotesResult.data) setQuotes(quotesResult.data.quotes ?? []);
-    if (ordersResult.ok && ordersResult.data) setOrders(ordersResult.data.orders ?? []);
+    const ordersPromise = portalRequest<{ orders: PortalOrder[] }>('/api/wholesale/orders').then((res) => {
+      if (res.ok && res.data) setOrders(res.data.orders ?? []);
+      setOrdersLoading(false);
+      return res;
+    });
 
-    if (!catalogResult.ok) {
-      setProblem(catalogResult.error || 'The wholesale catalog could not be read.');
-    }
+    const catalogPromise = portalRequest<PortalCatalogResponse>('/api/wholesale/catalog').then((res) => {
+      if (res.ok && res.data) setCatalog(res.data);
+      if (!res.ok) {
+        setProblem(res.error || 'The wholesale catalog could not be read.');
+      }
+      return res;
+    });
 
+    await Promise.all([quotesPromise, ordersPromise, catalogPromise]);
     setLoading(false);
   }, []);
 
@@ -317,6 +332,7 @@ export default function WholesalePortalPage({ initialTab }: { initialTab: Portal
                 tab={tab}
                 quotes={quotes}
                 orders={orders}
+                loading={tab === 'quotes' ? quotesLoading : ordersLoading}
                 currency={catalog?.currency ?? 'USD'}
                 onAccepted={(accepted) =>
                   setQuotes((current) => current.map((entry) => (entry.id === accepted.id ? accepted : entry)))

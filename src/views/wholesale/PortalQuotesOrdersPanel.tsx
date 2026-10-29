@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { CalendarClock, CheckCircle2, ChevronDown, Download, FileText, Package, Printer, Truck } from 'lucide-react';
+import { CalendarClock, CheckCircle2, ChevronDown, Download, FileText, Loader2, Package, Printer, Truck } from 'lucide-react';
 import {
   acceptQuote,
   downloadQuoteDocument,
@@ -254,12 +254,14 @@ export default function PortalQuotesOrdersPanel({
   quotes,
   orders,
   currency,
+  loading = false,
   onAccepted,
 }: {
   tab: PortalTab;
   quotes: PortalQuote[];
   orders: PortalOrder[];
   currency: string;
+  loading?: boolean;
   onAccepted?: (quote: PortalQuote) => void;
 }) {
   if (tab === 'quotes') {
@@ -272,7 +274,13 @@ export default function PortalQuotesOrdersPanel({
           </p>
         </div>
 
-        {quotes.length === 0 ? (
+        {loading ? (
+          <div className="bg-white rounded-2xl border border-charcoal/8 p-12 text-center shadow-sm">
+            <Loader2 className="w-8 h-8 text-himalayan animate-spin mx-auto mb-3" />
+            <p className="text-charcoal font-medium text-base">Loading your quotations…</p>
+            <p className="text-charcoal-light text-xs mt-1">Retrieving RFQs, accepted quotes and pricing status</p>
+          </div>
+        ) : quotes.length === 0 ? (
           <div className="bg-white rounded-2xl border border-charcoal/8 p-10 text-center">
             <FileText className="w-8 h-8 text-charcoal-light mx-auto mb-4" />
             <p className="text-charcoal font-medium mb-1">No quotations yet</p>
@@ -308,7 +316,13 @@ export default function PortalQuotesOrdersPanel({
         </p>
       </div>
 
-      {orders.length === 0 ? (
+      {loading ? (
+        <div className="bg-white rounded-2xl border border-charcoal/8 p-12 text-center shadow-sm">
+          <Loader2 className="w-8 h-8 text-himalayan animate-spin mx-auto mb-3" />
+          <p className="text-charcoal font-medium text-base">Loading your wholesale orders…</p>
+          <p className="text-charcoal-light text-xs mt-1">Retrieving confirmed orders and dispatch status</p>
+        </div>
+      ) : orders.length === 0 ? (
         <div className="bg-white rounded-2xl border border-charcoal/8 p-10 text-center">
           <Truck className="w-8 h-8 text-charcoal-light mx-auto mb-4" />
           <p className="text-charcoal font-medium mb-1">No wholesale orders yet</p>
