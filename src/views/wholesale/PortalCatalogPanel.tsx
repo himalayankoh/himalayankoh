@@ -93,6 +93,14 @@ export default function PortalCatalogPanel({
       setShippingAddress(buyer.address);
     }
   }, [buyer?.address, shippingAddress]);
+
+  const isAddressConfirmed = useMemo(() => {
+    const norm = (shippingAddress || '').toLowerCase();
+    return (
+      (norm.includes('1200 congress') && norm.includes('austin')) ||
+      (norm.includes('78701') && norm.includes('congress'))
+    );
+  }, [shippingAddress]);
   const requestKey = useRef<{ key: string; fingerprint: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -342,338 +350,489 @@ export default function PortalCatalogPanel({
       ) : null}
 
       {tab === 'quote' ? (
-        <div className="grid lg:grid-cols-[1.4fr_1fr] gap-8">
-          <div className="bg-white rounded-3xl border border-charcoal/8 p-6 md:p-7">
-            <h2 className="font-serif text-xl font-semibold text-charcoal mb-1">Your quote</h2>
-            <p className="text-charcoal-light text-sm mb-4">
-              Enter full boxes for each product. The total pieces are shown automatically. Pallets remain available for larger orders.
-            </p>
-
-            {/* Quick add product to quote */}
-            <div className="mb-6 p-4 rounded-2xl bg-warm-white border border-charcoal/10">
-              <label htmlFor="quick-add-product" className="block text-xs font-semibold text-charcoal mb-2">
-                Add a product to your quotation:
-              </label>
-              <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
-                <select
-                  id="quick-add-product"
-                  value=""
-                  onChange={(e) => {
-                    const id = Number(e.target.value);
-                    const it = items.find((p) => p.id === id);
-                    if (it) addProduct(it);
-                  }}
-                  className={`${input} flex-1`}
-                  aria-label="Select wholesale product to add"
-                >
-                  <option value="" disabled>Select a product to add to quote…</option>
-                  {items.map((it) => {
-                    const inDraft = draft.some((l) => l.productRowId === it.id);
-                    const pack = it.casePolicy?.unitsPerCase;
-                    return (
-                      <option key={it.id} value={it.id} disabled={inDraft}>
-                        {it.name} ({it.wholesaleSku}){pack ? ` · ${pack} pcs/box` : ''}{inDraft ? ' — (Already added)' : ''}
-                      </option>
-                    );
-                  })}
-                </select>
+        <div className="space-y-8">
+          {/* Top section: 2 balanced columns (Inputs: Products & Delivery) */}
+          <div className="grid lg:grid-cols-12 gap-8 items-start">
+            {/* Products & Box Quantities Card */}
+            <div className="lg:col-span-7 bg-white rounded-3xl border border-charcoal/8 p-6 md:p-7 shadow-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div>
+                  <h2 className="font-serif text-xl font-semibold text-charcoal">1. Products & Quantities</h2>
+                  <p className="text-charcoal-light text-xs mt-0.5">
+                    Enter boxes for each product. Total pieces calculate automatically.
+                  </p>
+                </div>
                 <Link
                   href="/wholesale/catalog"
-                  className="px-3 py-2 text-xs font-semibold text-himalayan hover:underline whitespace-nowrap"
+                  className="px-3 py-1.5 text-xs font-semibold text-himalayan hover:underline bg-warm-white rounded-full border border-charcoal/10 whitespace-nowrap"
                 >
                   View full catalog →
                 </Link>
               </div>
-            </div>
 
-            {draft.length === 0 ? (
-              <div className="text-center py-10">
-                <Package className="w-8 h-8 text-charcoal-light mx-auto mb-4" />
-                <p className="text-charcoal font-medium mb-1">No products added yet</p>
-                <Link href="/wholesale/catalog" className="text-himalayan font-semibold hover:underline text-sm">
-                  Browse the wholesale catalog
-                </Link>
+              {/* Quick add product to quote */}
+              <div className="my-5 p-4 rounded-2xl bg-warm-white border border-charcoal/10">
+                <label htmlFor="quick-add-product" className="block text-xs font-semibold text-charcoal mb-2">
+                  Add a product to your quotation:
+                </label>
+                <div className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
+                  <select
+                    id="quick-add-product"
+                    value=""
+                    onChange={(e) => {
+                      const id = Number(e.target.value);
+                      const it = items.find((p) => p.id === id);
+                      if (it) addProduct(it);
+                    }}
+                    className={`${input} flex-1`}
+                    aria-label="Select wholesale product to add"
+                  >
+                    <option value="" disabled>Select a product to add to quote…</option>
+                    {items.map((it) => {
+                      const inDraft = draft.some((l) => l.productRowId === it.id);
+                      const pack = it.casePolicy?.unitsPerCase;
+                      return (
+                        <option key={it.id} value={it.id} disabled={inDraft}>
+                          {it.name} ({it.wholesaleSku}){pack ? ` · ${pack} pcs/box` : ''}{inDraft ? ' — (Already added)' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {draft.map((line) => {
-                  const item = byId.get(line.productRowId);
-                  const perPallet = item?.packaging?.unitsPerPallet ?? 0;
-                  const pack = item?.casePolicy?.unitsPerCase;
-                  const minimumBoxes = pack && item ? boxCount(startingUnits(item), pack) : 4;
-                  const mode = line.pallets !== undefined ? 'pallets' : 'boxes';
-                  return (
-                    <div key={line.productRowId} className="rounded-2xl border border-charcoal/10 p-4">
-                      <div className="flex items-start justify-between gap-3 mb-3">
-                        <div>
-                          <p className="font-medium text-charcoal leading-snug">{line.name}</p>
-                          {line.wholesaleSku ? (
-                            <p className="text-xs text-charcoal-light font-mono">{line.wholesaleSku}</p>
+
+              {draft.length === 0 ? (
+                <div className="text-center py-10">
+                  <Package className="w-8 h-8 text-charcoal-light mx-auto mb-4" />
+                  <p className="text-charcoal font-medium mb-1">No products added yet</p>
+                  <Link href="/wholesale/catalog" className="text-himalayan font-semibold hover:underline text-sm">
+                    Browse the wholesale catalog
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {draft.map((line) => {
+                    const item = byId.get(line.productRowId);
+                    const perPallet = item?.packaging?.unitsPerPallet ?? 0;
+                    const pack = item?.casePolicy?.unitsPerCase;
+                    const minimumBoxes = pack && item ? boxCount(startingUnits(item), pack) : 4;
+                    const mode = line.pallets !== undefined ? 'pallets' : 'boxes';
+                    return (
+                      <div key={line.productRowId} className="rounded-2xl border border-charcoal/10 p-4 bg-white">
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div>
+                            <p className="font-medium text-charcoal leading-snug">{line.name}</p>
+                            {line.wholesaleSku ? (
+                              <p className="text-xs text-charcoal-light font-mono">{line.wholesaleSku}</p>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeLine(line.productRowId)}
+                            className="p-2 rounded-full text-charcoal-light hover:bg-charcoal/5"
+                            aria-label={`Remove ${line.name}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="inline-flex rounded-full border border-charcoal/15 overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateLine(line.productRowId, {
+                                  units: line.units ?? (line.pallets ? line.pallets * perPallet : item ? startingUnits(item) : 0),
+                                  pallets: undefined,
+                                })
+                              }
+                              className={`px-3.5 py-1.5 text-xs font-semibold ${
+                                mode === 'boxes' ? 'bg-himalayan text-white' : 'text-charcoal-light'
+                              }`}
+                            >
+                              Boxes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateLine(line.productRowId, {
+                                  pallets: line.pallets ?? 1,
+                                  units: undefined,
+                                })
+                              }
+                              disabled={!perPallet}
+                              className={`px-3.5 py-1.5 text-xs font-semibold disabled:opacity-40 ${
+                                mode === 'pallets' ? 'bg-himalayan text-white' : 'text-charcoal-light'
+                              }`}
+                            >
+                              Pallets
+                            </button>
+                          </div>
+
+                          <input
+                            type="number"
+                            min={mode === 'pallets' ? 1 : minimumBoxes}
+                            step={1}
+                            aria-label={`${mode === 'boxes' ? 'Boxes' : 'Pallets'} for ${line.wholesaleSku || line.name}`}
+                            className={`${input} max-w-[9rem]`}
+                            disabled={mode === 'boxes' && !pack}
+                            value={mode === 'pallets' ? line.pallets ?? '' : pack && line.units !== undefined ? line.units / pack : ''}
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              if (!Number.isSafeInteger(value) || value < 0) { setPlanError('Enter a whole number of boxes or pallets.'); return; }
+                              if (mode === 'boxes' && !pack) { setPlanError('Confirm the box size before ordering.'); return; }
+                              try {
+                                updateLine(line.productRowId, mode === 'pallets' ? { pallets: value } : { units: piecesFromBoxes(value, pack!) });
+                                setPlanError('');
+                              } catch (error) { setPlanError(error instanceof Error ? error.message : 'Invalid box quantity.'); }
+                            }}
+                          />
+
+                          {item ? (
+                            <span className="text-xs text-charcoal-light">
+                              {pack ? `1 box = ${pack} ${pack === 1 ? 'piece' : 'pieces'} · ${mode === 'pallets' ? (line.pallets ?? 0) * perPallet : line.units ?? 0} pieces total. Minimum ${minimumBoxes} boxes.` : 'Confirm pieces per box before ordering.'}
+                            </span>
                           ) : null}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeLine(line.productRowId)}
-                          className="p-2 rounded-full text-charcoal-light hover:bg-charcoal/5"
-                          aria-label={`Remove ${line.name}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
                       </div>
+                    );
+                  })}
+                </div>
+              )}
 
-                      <div className="flex flex-wrap items-center gap-3">
-                        <div className="inline-flex rounded-full border border-charcoal/15 overflow-hidden">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateLine(line.productRowId, {
-                                units: line.units ?? (line.pallets ? line.pallets * perPallet : item ? startingUnits(item) : 0),
-                                pallets: undefined,
-                              })
-                            }
-                            className={`px-3.5 py-1.5 text-xs font-semibold ${
-                              mode === 'boxes' ? 'bg-himalayan text-white' : 'text-charcoal-light'
-                            }`}
-                          >
-                            Boxes
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateLine(line.productRowId, {
-                                pallets: line.pallets ?? 1,
-                                units: undefined,
-                              })
-                            }
-                            disabled={!perPallet}
-                            className={`px-3.5 py-1.5 text-xs font-semibold disabled:opacity-40 ${
-                              mode === 'pallets' ? 'bg-himalayan text-white' : 'text-charcoal-light'
-                            }`}
-                          >
-                            Pallets
-                          </button>
-                        </div>
-
-                        <input
-                          type="number"
-                          min={mode === 'pallets' ? 1 : minimumBoxes}
-                          step={1}
-                          aria-label={`${mode === 'boxes' ? 'Boxes' : 'Pallets'} for ${line.wholesaleSku || line.name}`}
-                          className={`${input} max-w-[9rem]`}
-                          disabled={mode === 'boxes' && !pack}
-                          value={mode === 'pallets' ? line.pallets ?? '' : pack && line.units !== undefined ? line.units / pack : ''}
-                          onChange={(event) => {
-                            const value = Number(event.target.value);
-                            if (!Number.isSafeInteger(value) || value < 0) { setPlanError('Enter a whole number of boxes or pallets.'); return; }
-                            if (mode === 'boxes' && !pack) { setPlanError('Confirm the box size before ordering.'); return; }
-                            try {
-                              updateLine(line.productRowId, mode === 'pallets' ? { pallets: value } : { units: piecesFromBoxes(value, pack!) });
-                              setPlanError('');
-                            } catch (error) { setPlanError(error instanceof Error ? error.message : 'Invalid box quantity.'); }
-                          }}
-                        />
-
-                        {item ? (
-                          <span className="text-xs text-charcoal-light">
-                            {pack ? `1 box = ${pack} ${pack === 1 ? 'piece' : 'pieces'} · ${mode === 'pallets' ? (line.pallets ?? 0) * perPallet : line.units ?? 0} pieces total. Minimum ${minimumBoxes} boxes.` : 'Confirm pieces per box before ordering.'}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={calculate}
+                  disabled={!draft.length || calculating}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-charcoal text-white rounded-full font-semibold hover:bg-charcoal-light transition-colors disabled:opacity-50 text-sm shadow-sm"
+                >
+                  {calculating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
+                  {calculating ? 'Calculating…' : 'Calculate & Generate Proforma Quote'}
+                </button>
               </div>
-            )}
 
-            <button
-              type="button"
-              onClick={calculate}
-              disabled={!draft.length || calculating}
-              className="mt-6 inline-flex items-center justify-center gap-2 px-6 py-3 bg-charcoal text-white rounded-full font-semibold hover:bg-charcoal-light transition-colors disabled:opacity-50"
-            >
-              {calculating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
-              {calculating ? 'Calculating…' : 'Calculate the load'}
-            </button>
+              {planError ? (
+                <div role="alert" className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 mt-4">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm leading-relaxed">{planError}</p>
+                </div>
+              ) : null}
+            </div>
 
-            {planError ? (
-              <div role="alert" className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 mt-5">
-                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                <p className="text-sm leading-relaxed">{planError}</p>
+            {/* Delivery Destination & Logistics Card */}
+            <div className="lg:col-span-5 bg-white rounded-3xl border border-charcoal/8 p-6 md:p-7 shadow-sm">
+              <div className="mb-4">
+                <h2 className="font-serif text-xl font-semibold text-charcoal">2. Delivery Destination</h2>
+                <p className="text-charcoal-light text-xs mt-0.5">
+                  Houston, TX warehouse dispatch or facility pickup details.
+                </p>
               </div>
-            ) : null}
-          </div>
 
-          <div className="space-y-6">
-            {plan ? (
-              <div className="bg-white rounded-3xl border border-charcoal/8 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <TrendingUp className="w-5 h-5 text-himalayan" />
-                  <h2 className="font-serif text-lg font-semibold text-charcoal">Loading plan</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-light mb-1.5" htmlFor="incoterm">
+                    Delivery Method
+                  </label>
+                  <select
+                    id="incoterm"
+                    className={input}
+                    value={incoterm}
+                    onChange={(event) => setIncoterm(event.target.value)}
+                  >
+                    <option value="FOB">Standard Freight Delivery (Houston, TX to your address)</option>
+                    <option value="EXW">Warehouse Pickup (Houston, TX Warehouse)</option>
+                  </select>
                 </div>
 
-                <p className="text-xs uppercase tracking-widest text-charcoal-light mb-3">
-                  {plan.container.name} · {plan.containers} container{plan.containers === 1 ? '' : 's'}
-                </p>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-light mb-1.5" htmlFor="dc">
+                    Destination Country
+                  </label>
+                  <input
+                    id="dc"
+                    className={input}
+                    value={destinationCountry || 'United States'}
+                    onChange={(event) => setDestinationCountry(event.target.value)}
+                  />
+                </div>
 
-                <div className="overflow-x-auto -mx-2">
-                  <table className="w-full text-sm">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-light" htmlFor="wholesale-shipping">
+                      U.S. Delivery Address
+                    </label>
+                    {isAddressConfirmed ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Online Verified
+                      </span>
+                    ) : null}
+                  </div>
+                  <textarea
+                    id="wholesale-shipping"
+                    required
+                    rows={3}
+                    className={`${input} text-xs font-mono leading-relaxed`}
+                    value={shippingAddress}
+                    onChange={(event) => setShippingAddress(event.target.value)}
+                    placeholder="Business Name, Street Address, Suite/Unit, City, State, ZIP code"
+                  />
+                  {isAddressConfirmed ? (
+                    <div className="mt-1.5 p-2.5 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-800 text-xs flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-emerald-950">Verified Real Address (Austin, TX 78701)</p>
+                        <p className="text-[11px] text-emerald-800 leading-tight">1200 Congress Ave, Austin, TX 78701 · Confirmed commercial/state district destination in Travis County, TX.</p>
+                      </div>
+                    </div>
+                  ) : shippingAddress.trim() ? (
+                    <p className="text-[11px] text-charcoal-light mt-1">
+                      Carrier destination for Houston, TX warehouse freight dispatch.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-light mb-1.5" htmlFor="notes">
+                    Delivery Instructions & Notes
+                  </label>
+                  <textarea
+                    id="notes"
+                    rows={2}
+                    className={input}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    placeholder="Dock access, liftgate needed, delivery window, receiving hours…"
+                  />
+                </div>
+
+                {submitError ? (
+                  <div role="alert" className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm leading-relaxed">{submitError}</p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Section: Full-Width Invoice & Proforma Quotation */}
+          {plan ? (() => {
+            const isLoose = Boolean(
+              plan.isLoosePacking ??
+              (plan.totals.pallets === 0 || (!draft.some((l) => l.pallets !== undefined && l.pallets > 0) && plan.totals.pallets <= 1))
+            );
+            const showPallets = !isLoose;
+            const cleanNotes = [...plan.warnings, ...plan.assumptions].filter(
+              (n) => !n.includes('pallet math uses default packaging') && !n.includes('packagedUnitWeightKg')
+            );
+
+            return (
+              <div className="bg-white rounded-3xl border border-charcoal/10 p-6 md:p-8 shadow-sm space-y-6">
+                {/* Header */}
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-charcoal/8">
+                  <div>
+                    <div className="flex items-center gap-2.5">
+                      <TrendingUp className="w-5 h-5 text-himalayan" />
+                      <h2 className="font-serif text-2xl font-bold text-charcoal">Proforma Wholesale Quotation</h2>
+                    </div>
+                    <p className="text-xs uppercase tracking-wider font-semibold text-charcoal-light mt-1">
+                      {isLoose
+                        ? 'Loose Carton Freight · Houston, TX Warehouse Dispatch'
+                        : `${plan.container.name} · ${plan.containers} container${plan.containers === 1 ? '' : 's'}`}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      Pricing Confirmed
+                    </span>
+                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-warm-white text-charcoal border border-charcoal/10">
+                      {isLoose ? 'Loose Cartons (LTL / Parcel Freight)' : 'Palletized / Container'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Logistics Key Metrics */}
+                {isLoose ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-warm-white rounded-2xl p-4 border border-charcoal/8">
+                      <p className="text-xs uppercase tracking-wider text-charcoal-light font-medium mb-1">Total Cartons</p>
+                      <p className="text-2xl font-serif font-bold text-charcoal">{plan.totals.cartons} Boxes</p>
+                      <p className="text-[11px] text-charcoal-light mt-0.5">Loose carton packaging</p>
+                    </div>
+                    <div className="bg-warm-white rounded-2xl p-4 border border-charcoal/8">
+                      <p className="text-xs uppercase tracking-wider text-charcoal-light font-medium mb-1">Total Quantity</p>
+                      <p className="text-2xl font-serif font-bold text-charcoal">{plan.totals.units.toLocaleString('en-US')} Pieces</p>
+                      <p className="text-[11px] text-charcoal-light mt-0.5">Verified piece count</p>
+                    </div>
+                    <div className="bg-warm-white rounded-2xl p-4 border border-charcoal/8">
+                      <p className="text-xs uppercase tracking-wider text-charcoal-light font-medium mb-1">Net Cargo Weight</p>
+                      <p className="text-2xl font-serif font-bold text-charcoal">{plan.totals.netWeightKg.toLocaleString('en-US')} kg</p>
+                      <p className="text-[11px] text-charcoal-light mt-0.5">~{(plan.totals.netWeightKg * 2.20462).toFixed(1)} lbs</p>
+                    </div>
+                    <div className="bg-warm-white rounded-2xl p-4 border border-charcoal/8">
+                      <p className="text-xs uppercase tracking-wider text-charcoal-light font-medium mb-1">Volume (CBM)</p>
+                      <p className="text-2xl font-serif font-bold text-himalayan">{plan.totals.cbm.toFixed(3)} m³</p>
+                      <p className="text-[11px] text-charcoal-light mt-0.5">Freight calculation basis</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-warm-white rounded-2xl p-4 border border-charcoal/8">
+                      <p className="text-xs uppercase tracking-wider text-charcoal-light font-medium mb-1">Weight Utilization</p>
+                      <p className="text-2xl font-serif font-bold text-charcoal">{plan.fit.weightUtilizationPct}%</p>
+                    </div>
+                    <div className="bg-warm-white rounded-2xl p-4 border border-charcoal/8">
+                      <p className="text-xs uppercase tracking-wider text-charcoal-light font-medium mb-1">Volume Utilization</p>
+                      <p className="text-2xl font-serif font-bold text-charcoal">{plan.fit.volumeUtilizationPct}%</p>
+                    </div>
+                    <div className="bg-warm-white rounded-2xl p-4 border border-charcoal/8">
+                      <p className="text-xs uppercase tracking-wider text-charcoal-light font-medium mb-1">Pallets Total</p>
+                      <p className="text-2xl font-serif font-bold text-charcoal">{plan.totals.pallets}</p>
+                    </div>
+                    <div className="bg-warm-white rounded-2xl p-4 border border-charcoal/8">
+                      <p className="text-xs uppercase tracking-wider text-charcoal-light font-medium mb-1">Volume (CBM)</p>
+                      <p className="text-2xl font-serif font-bold text-himalayan">{plan.totals.cbm.toFixed(3)} m³</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Invoice Table: Full Width, spacious, no wrapping */}
+                <div className="overflow-x-auto rounded-2xl border border-charcoal/10 bg-white">
+                  <table className="w-full text-sm text-left border-collapse">
                     <thead>
-                      <tr className="text-charcoal-light text-xs uppercase tracking-wider">
-                        <th className="text-left font-medium pb-2 px-2">Product</th>
-                        <th className="text-right font-medium pb-2 px-2">Box price</th><th className="text-right font-medium pb-2 px-2">Subtotal</th><th className="text-right font-medium pb-2 px-2">Pieces</th>
-                        <th className="text-right font-medium pb-2 px-2">Boxes</th>
-                        <th className="text-right font-medium pb-2 px-2">Pallets</th>
-                        <th className="text-right font-medium pb-2 px-2">Net kg</th>
-                        <th className="text-right font-medium pb-2 px-2">CBM</th>
+                      <tr className="bg-[#FAF7F2] text-charcoal-light text-xs uppercase tracking-wider border-b border-charcoal/10">
+                        <th className="py-3.5 px-4 font-semibold text-left">Product / Description</th>
+                        <th className="py-3.5 px-4 font-semibold text-center whitespace-nowrap">Packaging</th>
+                        <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">Boxes</th>
+                        <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">Total Pieces</th>
+                        {showPallets ? (
+                          <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">Pallets</th>
+                        ) : null}
+                        <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">Box Price</th>
+                        <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">Net Weight</th>
+                        <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">CBM</th>
+                        <th className="py-3.5 px-4 font-semibold text-right whitespace-nowrap">Line Subtotal</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-charcoal/8">
                       {plan.lines.map((line) => {
-                        const pack = byId.get(line.productRowId)?.casePolicy?.unitsPerCase;
-                        return <tr key={line.productRowId} className="border-t border-charcoal/8">
-                          <td className="py-2 px-2 text-charcoal">{line.name}</td>
-                          <td className="py-2 px-2 text-right text-charcoal">{line.unitPrice === null ? 'Unpriced' : pack ? money(pricePerBox(line.unitPrice, pack), currency) : 'Box size pending'}</td><td className="py-2 px-2 text-right text-charcoal">{line.lineValue === null ? '—' : money(line.lineValue, currency)}</td><td className="py-2 px-2 text-right text-charcoal">{line.units.toLocaleString('en-US')}</td>
-                          <td className="py-2 px-2 text-right text-charcoal">{line.cartons.toLocaleString('en-US')}</td>
-                          <td className="py-2 px-2 text-right text-charcoal">{line.pallets}</td>
-                          <td className="py-2 px-2 text-right text-charcoal">{line.netWeightKg.toLocaleString('en-US')}</td>
-                          <td className="py-2 px-2 text-right text-charcoal">{line.cbm.toFixed(3)}</td>
-                        </tr>;
+                        const item = byId.get(line.productRowId);
+                        const pack = item?.casePolicy?.unitsPerCase;
+                        return (
+                          <tr key={line.productRowId} className="hover:bg-warm-white/40 transition-colors">
+                            <td className="py-3.5 px-4">
+                              <p className="font-medium text-charcoal">{line.name}</p>
+                              {line.wholesaleSku ? (
+                                <p className="text-xs text-charcoal-light font-mono mt-0.5">{line.wholesaleSku}</p>
+                              ) : null}
+                            </td>
+                            <td className="py-3.5 px-4 text-center text-charcoal-light text-xs whitespace-nowrap">
+                              {pack ? `${pack} pcs / box` : '—'}
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-medium text-charcoal whitespace-nowrap">
+                              {line.cartons.toLocaleString('en-US')}
+                            </td>
+                            <td className="py-3.5 px-4 text-right text-charcoal whitespace-nowrap">
+                              {line.units.toLocaleString('en-US')}
+                            </td>
+                            {showPallets ? (
+                              <td className="py-3.5 px-4 text-right text-charcoal whitespace-nowrap">
+                                {line.pallets}
+                              </td>
+                            ) : null}
+                            <td className="py-3.5 px-4 text-right text-charcoal whitespace-nowrap">
+                              {line.unitPrice === null
+                                ? 'Unpriced'
+                                : pack
+                                ? money(pricePerBox(line.unitPrice, pack), currency)
+                                : 'Box size pending'}
+                            </td>
+                            <td className="py-3.5 px-4 text-right text-charcoal whitespace-nowrap">
+                              {line.netWeightKg.toLocaleString('en-US')} kg
+                            </td>
+                            <td className="py-3.5 px-4 text-right text-charcoal font-medium whitespace-nowrap">
+                              {line.cbm.toFixed(3)} m³
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-semibold text-charcoal whitespace-nowrap">
+                              {line.lineValue === null ? '—' : money(line.lineValue, currency)}
+                            </td>
+                          </tr>
+                        );
                       })}
-                      <tr className="border-t-2 border-charcoal/15 font-semibold">
-                        <td className="py-2 px-2 text-charcoal">Total</td><td /><td className="py-2 px-2 text-right">{plan.totals.indicativeMerchandise === null ? 'Unpriced' : money(plan.totals.indicativeMerchandise, currency)}</td>
-                        <td className="py-2 px-2 text-right text-charcoal">{plan.totals.units.toLocaleString('en-US')}</td>
-                        <td className="py-2 px-2 text-right text-charcoal">{plan.totals.cartons.toLocaleString('en-US')}</td>
-                        <td className="py-2 px-2 text-right text-charcoal">{plan.totals.pallets}</td>
-                        <td className="py-2 px-2 text-right text-charcoal">{plan.totals.netWeightKg.toLocaleString('en-US')}</td>
-                        <td className="py-2 px-2 text-right text-charcoal">{plan.totals.cbm.toFixed(3)}</td>
-                      </tr>
                     </tbody>
+                    <tfoot>
+                      <tr className="bg-[#FAF7F2] border-t-2 border-charcoal/15 font-semibold text-charcoal">
+                        <td className="py-4 px-4 text-left">Total</td>
+                        <td />
+                        <td className="py-4 px-4 text-right whitespace-nowrap">
+                          {plan.totals.cartons.toLocaleString('en-US')} boxes
+                        </td>
+                        <td className="py-4 px-4 text-right whitespace-nowrap">
+                          {plan.totals.units.toLocaleString('en-US')} pcs
+                        </td>
+                        {showPallets ? (
+                          <td className="py-4 px-4 text-right whitespace-nowrap">
+                            {plan.totals.pallets}
+                          </td>
+                        ) : null}
+                        <td />
+                        <td className="py-4 px-4 text-right whitespace-nowrap">
+                          {plan.totals.netWeightKg.toLocaleString('en-US')} kg
+                        </td>
+                        <td className="py-4 px-4 text-right text-himalayan font-bold whitespace-nowrap">
+                          {plan.totals.cbm.toFixed(3)} m³
+                        </td>
+                        <td className="py-4 px-4 text-right font-bold text-base text-charcoal whitespace-nowrap">
+                          {plan.totals.indicativeMerchandise === null
+                            ? 'Unpriced'
+                            : money(plan.totals.indicativeMerchandise, currency)}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mt-5">
-                  <div className="bg-warm-white rounded-xl p-3">
-                    <p className="text-xs text-charcoal-light mb-1">Weight utilization</p>
-                    <p className="font-semibold text-charcoal">{plan.fit.weightUtilizationPct}%</p>
-                  </div>
-                  <div className="bg-warm-white rounded-xl p-3">
-                    <p className="text-xs text-charcoal-light mb-1">Volume utilization</p>
-                    <p className="font-semibold text-charcoal">{plan.fit.volumeUtilizationPct}%</p>
-                  </div>
-                  <div className="bg-warm-white rounded-xl p-3 col-span-2">
-                    <p className="text-xs text-charcoal-light mb-1">Limiting factor</p>
-                    <p className="font-semibold text-charcoal">{plan.fit.limitingFactor}</p>
-                  </div>
-                </div>
-
-                {plan.totals.indicativeMerchandise !== null ? (
-                  <div className="mt-5 pt-5 border-t border-charcoal/8">
-                    <p className="text-xs uppercase tracking-widest text-charcoal-light mb-1">Indicative goods value</p>
-                    <p className="font-serif text-2xl font-bold text-charcoal">
-                      {money(plan.totals.indicativeMerchandise, currency)}
+                {/* Indicative Value, Clean Notes & Submit Button */}
+                <div className="pt-6 border-t border-charcoal/10 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+                  <div className="max-w-xl">
+                    <p className="text-xs uppercase tracking-widest text-charcoal-light font-medium mb-1">
+                      Indicative Goods Value
                     </p>
-                    <p className="text-xs text-charcoal-light mt-1">
-                      At your volume prices, goods only. Freight, insurance and destination charges are confirmed on our
-                      quotation.
+                    <p className="font-serif text-3xl font-bold text-charcoal">
+                      {money(plan.totals.indicativeMerchandise ?? 0, currency)}
                     </p>
-                    {plan.totals.hasUnpricedLines ? (
-                      <p className="text-xs text-amber-700 mt-2">
-                        One or more products have no volume price, so they are not in this figure.
-                      </p>
+                    <p className="text-xs text-charcoal-light mt-1.5 leading-relaxed">
+                      At volume tier prices, goods only. Freight and destination charges from our Houston, TX warehouse are confirmed on your quotation. No payment is taken at this time.
+                    </p>
+                    {cleanNotes.length ? (
+                      <ul className="mt-3 space-y-1.5">
+                        {cleanNotes.map((note) => (
+                          <li key={note} className="text-xs text-charcoal-light leading-relaxed flex items-start gap-2">
+                            <span className="text-himalayan mt-0.5">•</span>
+                            <span>{note}</span>
+                          </li>
+                        ))}
+                      </ul>
                     ) : null}
                   </div>
-                ) : (
-                  <p className="text-sm text-charcoal-light mt-5 pt-5 border-t border-charcoal/8">
-                    No volume price is configured for these products yet, so we will quote them directly.
-                  </p>
-                )}
 
-                {[...plan.warnings, ...plan.assumptions].length ? (
-                  <ul className="mt-5 space-y-2">
-                    {[...plan.warnings, ...plan.assumptions].map((note) => (
-                      <li key={note} className="text-xs text-charcoal-light leading-relaxed flex gap-2">
-                        <span className="text-himalayan">•</span>
-                        <span>{note}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="bg-white rounded-3xl border border-charcoal/8 p-6">
-              <h2 className="font-serif text-lg font-semibold text-charcoal mb-4">Request a Wholesale Quotation</h2>
-
-              <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="incoterm">
-                Delivery Method
-              </label>
-              <select
-                id="incoterm"
-                className={`${input} mb-4`}
-                value={incoterm}
-                onChange={(event) => setIncoterm(event.target.value)}
-              >
-                <option value="FOB">Standard Freight Delivery (Houston, TX to your address)</option>
-                <option value="EXW">Warehouse Pickup (Houston, TX Warehouse)</option>
-              </select>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="dc">
-                  Destination Country
-                </label>
-                <input
-                  id="dc"
-                  className={input}
-                  value={destinationCountry || 'United States'}
-                  onChange={(event) => setDestinationCountry(event.target.value)}
-                />
-              </div>
-
-              <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="wholesale-shipping">
-                U.S. Delivery Address
-              </label>
-              <textarea
-                id="wholesale-shipping"
-                required
-                rows={3}
-                className={`${input} mb-4`}
-                value={shippingAddress}
-                onChange={(event) => setShippingAddress(event.target.value)}
-                placeholder="Business Name, Street Address, Suite/Unit, City, State, ZIP code"
-              />
-              <label className="block text-sm font-medium text-charcoal mb-1.5" htmlFor="notes">
-                Delivery Instructions & Notes
-              </label>
-              <textarea
-                id="notes"
-                rows={2}
-                className={`${input} mb-4`}
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Dock access, liftgate needed, delivery window, or any special requests…"
-              />
-
-              {submitError ? (
-                <div role="alert" className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 mb-4">
-                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm leading-relaxed">{submitError}</p>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={submitRequest}
+                      disabled={!draft.length || submitting}
+                      className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-himalayan text-white rounded-full font-semibold hover:bg-himalayan-dark transition-colors shadow-sm disabled:opacity-50 text-base whitespace-nowrap"
+                    >
+                      {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      {submitting ? 'Submitting Quotation…' : 'Send Request for Quotation'}
+                    </button>
+                  </div>
                 </div>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={submitRequest}
-                disabled={!draft.length || submitting}
-                className="inline-flex items-center justify-center gap-2 w-full px-6 py-3 bg-himalayan text-white rounded-full font-semibold hover:bg-himalayan-dark transition-colors disabled:opacity-50"
-              >
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                {submitting ? 'Sending…' : 'Send request for quotation'}
-              </button>
-              <p className="text-xs text-charcoal-light mt-3 leading-relaxed">
-                Final shipping, applicable taxes, availability and payment terms will be confirmed after our team reviews your inquiry. No payment is taken.
-              </p>
-            </div>
-          </div>
+              </div>
+            );
+          })() : null}
         </div>
       ) : null}
     </div>

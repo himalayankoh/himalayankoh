@@ -407,6 +407,9 @@ export interface PortalPlan {
   assumptions: string[];
   container: { id: number; code: string; name: string };
   containers: number;
+  packagingMode?: 'loose_cartons' | 'palletized' | 'container';
+  isLoosePacking?: boolean;
+  shipmentTitle?: string;
 }
 
 export interface PortalQuote {

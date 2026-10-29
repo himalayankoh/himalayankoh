@@ -111,6 +111,17 @@ describe('buyer load plan', () => {
     expect(plan.assumptions.join(' ')).toMatch(/goods only/i);
   });
 
+  it('classifies loose boxes as loose carton freight without pallet numbers or debug strings', () => {
+    const plan = buildBuyerPlan(DATA, { lines: [{ productRowId: 1, units: 28 }] }); // 7 boxes of 4
+    expect(plan.isLoosePacking).toBe(true);
+    expect(plan.packagingMode).toBe('loose_cartons');
+    expect(plan.lines[0].pallets).toBe(0);
+    expect(plan.totals.pallets).toBe(0);
+    expect(plan.container.name).toMatch(/Loose Carton/i);
+    expect(plan.shipmentTitle).toMatch(/Loose Carton Freight/i);
+    expect(plan.assumptions.some((a) => a.includes('pallet math uses default packaging'))).toBe(false);
+  });
+
   it('refuses an unknown product rather than skipping the line', () => {
     expect(() => buildBuyerPlan(DATA, { lines: [{ productRowId: 99, units: 10 }] })).toThrow(/No active wholesale product/);
   });

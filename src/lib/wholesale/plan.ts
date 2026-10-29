@@ -97,6 +97,8 @@ export interface PlanLine {
   lineValue: number | null;
 }
 
+export type PackagingMode = 'loose_cartons' | 'palletized' | 'container';
+
 export interface BuyerPlan {
   lines: PlanLine[];
   totals: {
@@ -116,6 +118,9 @@ export interface BuyerPlan {
   assumptions: string[];
   container: { id: number; code: string; name: string };
   containers: number;
+  packagingMode: PackagingMode;
+  isLoosePacking: boolean;
+  shipmentTitle: string;
 }
 
 /**
@@ -167,6 +172,17 @@ export function buildBuyerPlan(
     )
   );
 
+  const anyPalletsRequested = input.lines.some((entry) => entry.pallets !== undefined && entry.pallets > 0);
+  const hasExplicitContainer = Boolean(input.containerProfileId);
+  // An order is loose cartons when the buyer ordered boxes/units (not pallets),
+  // did not select a container profile, and the volume fits within loose freight (<= 1 pallet load).
+  const isLoosePacking = !anyPalletsRequested && !hasExplicitContainer && mixed.totals.pallets <= 1;
+  const packagingMode: PackagingMode = hasExplicitContainer || mixed.totals.pallets > 10
+    ? 'container'
+    : anyPalletsRequested || mixed.totals.pallets > 1
+    ? 'palletized'
+    : 'loose_cartons';
+
   const assumptions: string[] = [];
   const lines: PlanLine[] = resolved.map((entry, index) => {
     const load: PalletLoad = mixed.lines[index];
@@ -176,7 +192,8 @@ export function buildBuyerPlan(
         `${entry.product.name}: ${entry.units.toLocaleString('en-US')} units reached the ${tier.minUnits.toLocaleString('en-US')}-unit price break.`
       );
     }
-    if (entry.product.packagingDefaultsUsed.length) {
+    // Only mention pallet packaging defaults when actually building a pallet load, not loose boxes
+    if (!isLoosePacking && entry.product.packagingDefaultsUsed.length) {
       assumptions.push(
         `${entry.product.name}: pallet math uses default packaging for ${entry.product.packagingDefaultsUsed.join(', ')}.`
       );
@@ -188,9 +205,9 @@ export function buildBuyerPlan(
       wholesaleSku: entry.product.wholesaleSku,
       units: load.units,
       cartons: load.cartons,
-      pallets: load.palletsRequired,
-      palletsFull: load.fullPallets,
-      unitsOnLastPallet: load.unitsOnLastPallet,
+      pallets: isLoosePacking ? 0 : load.palletsRequired,
+      palletsFull: isLoosePacking ? 0 : load.fullPallets,
+      unitsOnLastPallet: isLoosePacking ? 0 : load.unitsOnLastPallet,
       netWeightKg: load.netWeightKg,
       grossWeightKg: load.grossWeightKg,
       cbm: load.cbm,
@@ -205,16 +222,28 @@ export function buildBuyerPlan(
     ? Math.round(priced.reduce((total, line) => total + (line.lineValue ?? 0), 0) * 100) / 100
     : null;
 
-  assumptions.push(
-    'This plan covers goods only: ocean freight, insurance, port charges and duty are confirmed on our quotation.'
-  );
+  if (isLoosePacking) {
+    assumptions.push(
+      'This plan covers goods only: domestic shipping freight and delivery charges from Houston, TX warehouse are confirmed on our quotation.'
+    );
+  } else {
+    assumptions.push(
+      'This plan covers goods only: ocean freight, insurance, port charges and duty are confirmed on our quotation.'
+    );
+  }
+
+  const shipmentTitle = isLoosePacking
+    ? 'Loose Carton Freight · Houston, TX Warehouse Dispatch'
+    : packagingMode === 'palletized'
+    ? 'Palletized Freight · LTL Dispatch'
+    : `${container.name} · ${Math.max(1, Math.trunc(input.containers ?? 1))} container${(input.containers ?? 1) === 1 ? '' : 's'}`;
 
   return {
     lines,
     totals: {
       units: mixed.totals.units,
       cartons: mixed.totals.cartons,
-      pallets: mixed.totals.pallets,
+      pallets: isLoosePacking ? 0 : mixed.totals.pallets,
       netWeightKg: mixed.totals.netWeightKg,
       grossWeightKg: mixed.totals.grossWeightKg,
       cbm: mixed.totals.cbm,
@@ -224,7 +253,14 @@ export function buildBuyerPlan(
     fit: containerFit(container, mixed.totals),
     warnings: mixed.warnings,
     assumptions,
-    container: { id: container.rowId, code: container.id, name: container.name },
-    containers: Math.max(1, Math.trunc(input.containers ?? 1)),
+    container: {
+      id: container.rowId,
+      code: isLoosePacking ? 'LOOSE_CARTONS' : container.id,
+      name: isLoosePacking ? 'Loose Carton Freight (Houston, TX Warehouse)' : container.name,
+    },
+    containers: isLoosePacking ? 1 : Math.max(1, Math.trunc(input.containers ?? 1)),
+    packagingMode,
+    isLoosePacking,
+    shipmentTitle,
   };
 }
