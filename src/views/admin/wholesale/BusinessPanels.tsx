@@ -548,20 +548,39 @@ export function QuotesPanel({
     const sellTotal = numberValue(row.sell_total);
     if (sellTotal !== null && sellTotal > 0) return sellTotal;
     const totals = typeof row.totals === 'object' && row.totals ? (row.totals as Record<string, unknown>) : null;
-    const fromTotals = numberValue(totals?.estimatedMerchandise ?? totals?.indicativeMerchandise ?? totals?.sell_total);
+    const fromTotals = numberValue(
+      totals?.estimatedMerchandise ??
+      totals?.indicativeMerchandise ??
+      totals?.sell_total ??
+      totals?.total ??
+      totals?.merchandise
+    );
     if (fromTotals !== null && fromTotals > 0) return fromTotals;
     const lines = Array.isArray(row.lines) ? row.lines : [];
     let sum = 0;
     for (const raw of lines) {
       const line = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-      const subtotal = numberValue(line.lineSubtotalIndicative ?? line.lineValue);
+      const subtotal = numberValue(
+        line.lineSubtotalIndicative ??
+        line.lineValue ??
+        line.line_total ??
+        line.total ??
+        line.subtotal
+      );
       if (subtotal !== null && subtotal > 0) {
         sum += subtotal;
       } else {
         const units = numberValue(line.units) ?? 0;
-        const price = numberValue(line.unitPriceIndicative ?? line.unitPrice);
+        const price = numberValue(line.unitPriceIndicative ?? line.unitPrice ?? line.price ?? line.unit_price);
         if (units > 0 && price !== null && price > 0) {
           sum += units * price;
+        } else if (units > 0 && Array.isArray(products) && products.length) {
+          const prodId = numberValue(line.productId ?? line.productRowId ?? line.product_id);
+          const p = products.find((prod) => rowId(prod) === prodId);
+          if (p) {
+            const pPrice = numberValue(p.base_price ?? p.price ?? p.unit_price);
+            if (pPrice && pPrice > 0) sum += units * pPrice;
+          }
         }
       }
     }

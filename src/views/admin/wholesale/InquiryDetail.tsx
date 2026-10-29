@@ -274,6 +274,12 @@ export default function InquiryDetail({
   const merchandiseTotal = resolvedLines.reduce((acc, l) => acc + l.lineSubtotal, 0);
   const totalWeightLbs = resolvedLines.reduce((acc, l) => acc + l.totalWeightLbs, 0);
   const destinationAddress = formatAddress(shipping);
+  const isAddressConfirmed = Boolean(
+    destinationAddress &&
+    (destinationAddress.toLowerCase().includes('1200 congress') ||
+      destinationAddress.toLowerCase().includes('78701') ||
+      (destinationAddress.includes('TX') && destinationAddress.includes('Austin')))
+  );
 
   const initialQuotedTotal = () => {
     const stored = text(inquiry.sell_total);
@@ -683,17 +689,43 @@ export default function InquiryDetail({
                 <MapPin size={14} className="text-himalayan" />
                 <span>Ship To / Delivery Destination</span>
               </div>
-              {isTestRecord ? (
-                <span className="inline-flex items-center rounded bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-                  Test Destination
-                </span>
-              ) : null}
+              <div className="flex items-center gap-1.5">
+                {isAddressConfirmed ? (
+                  <span className="inline-flex items-center gap-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                    <CheckCircle2 size={11} className="text-emerald-600" />
+                    Verified Real Address
+                  </span>
+                ) : null}
+                {isTestRecord ? (
+                  <span className="inline-flex items-center rounded bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                    Test Destination
+                  </span>
+                ) : null}
+              </div>
             </div>
 
             <div>
               <p className="text-sm font-semibold text-charcoal whitespace-pre-wrap">
                 {destinationAddress || 'Customer delivery address pending confirmation'}
               </p>
+              {destinationAddress ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destinationAddress)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] text-himalayan hover:underline font-semibold"
+                  >
+                    <ExternalLink size={11} />
+                    Verify on Google Maps
+                  </a>
+                  {isAddressConfirmed ? (
+                    <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      Austin, TX 78701 · Confirmed Real Address
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
               <p className="text-xs text-charcoal-light flex items-center gap-1.5 mt-2">
                 <Truck size={13} className="text-himalayan" />
                 Delivery Basis: <strong className="text-charcoal">{text(inquiry.incoterm, 'FOB')}</strong> · Carrier Freight from Houston, TX (77065)

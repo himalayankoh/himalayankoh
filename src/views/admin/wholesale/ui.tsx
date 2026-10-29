@@ -825,7 +825,7 @@ export function DataTable<T>({
 
   return (
     <div role="region" aria-label="Scrollable wholesale table" tabIndex={0} className="max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-admin-line">
-      <table className="w-full text-sm border-collapse bg-white">
+      <table className="w-full min-w-[1080px] text-sm border-collapse bg-white">
         <thead>
           <tr className="bg-[#FAF8F5] border-b border-charcoal/10 text-charcoal/70 text-[11px] font-bold uppercase tracking-wider select-none">
             {columns.map((column) => (
