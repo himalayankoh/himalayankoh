@@ -29,6 +29,8 @@ const IN_MEMORY_ROUTES: Array<{
   { id: '2', address: `contact@${DOMAIN}`, local: 'contact', forwardsTo: DEFAULT_DESTINATION, enabled: true },
   { id: '3', address: `info@${DOMAIN}`, local: 'info', forwardsTo: DEFAULT_DESTINATION, enabled: true },
   { id: '4', address: `support@${DOMAIN}`, local: 'support', forwardsTo: DEFAULT_DESTINATION, enabled: true },
+  { id: '5', address: `ws@${DOMAIN}`, local: 'ws', forwardsTo: DEFAULT_DESTINATION, enabled: true },
+  { id: '6', address: `wholesale@${DOMAIN}`, local: 'wholesale', forwardsTo: DEFAULT_DESTINATION, enabled: true },
 ];
 
 export async function GET() {

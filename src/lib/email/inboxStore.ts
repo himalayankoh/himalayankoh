@@ -995,7 +995,7 @@ export async function syncExternalCorrespondenceIntoInbox(force = false): Promis
         sourceLower.includes('quote') ||
         Boolean(crm.company);
       const targetMailbox: MailboxAddress = isWholesale
-        ? 'sales@himalayankoh.com'
+        ? 'ws@himalayankoh.com'
         : 'support@himalayankoh.com';
 
       const matchedLead = leadsByEmail.get(crm.email.trim().toLowerCase()) || null;
@@ -1064,6 +1064,107 @@ export async function syncExternalCorrespondenceIntoInbox(force = false): Promis
     }
   } catch {
     // Non-fatal if CRM endpoint is offline
+  }
+
+  // 2b. Sync Wholesale Quotes & RFQ Inquiries from WordPress Wholesale Plugin
+  try {
+    const { listWholesaleRecords } = await import('@/lib/wholesale/store');
+    const quotes = await listWholesaleRecords<Record<string, unknown>>('quotes', { limit: 50 });
+    const accounts = await listWholesaleRecords<Record<string, unknown>>('accounts', { limit: 100 });
+    const accountsById = new Map<number, Record<string, unknown>>(
+      accounts.map((a) => [Number(a.id), a])
+    );
+
+    for (const q of quotes) {
+      const stableId = `ws-quote-${q.id}`;
+      if (byId.has(stableId)) continue;
+
+      const acc = accountsById.get(Number(q.account_id)) || null;
+      const ref = (q.ref as string) || `HK-WS-Q${String(q.id).padStart(5, '0')}`;
+      const buyerName = (acc?.contact_name as string) || (acc?.company_name as string) || 'Wholesale Buyer';
+      const buyerEmail = ((acc?.email as string) || 'wholesale-buyer@himalayankoh.com').trim().toLowerCase();
+      const subject = `Wholesale Inquiry #${ref} — ${acc?.company_name || buyerName}`;
+
+      const lines = Array.isArray(q.lines) ? (q.lines as Array<Record<string, unknown>>) : [];
+      const linesText = lines
+        .map((l) => `• ${l.name || 'Product'} (${l.wholesaleSku || l.sku || ''}): ${l.cartons || l.boxes || l.units || 1} boxes (${l.units || ''} pcs) — $${l.lineSubtotalIndicative || l.unitPriceIndicative || ''}`)
+        .join('\n');
+
+      const totals = (q.totals as Record<string, unknown>) || {};
+      const freight = (q.freight as Record<string, unknown>) || {};
+      const shippingStr = typeof q.shipping_address === 'string'
+        ? q.shipping_address
+        : q.shipping_address
+        ? JSON.stringify(q.shipping_address)
+        : 'Houston Hub Dispatch (FOB)';
+
+      const bodyText = [
+        `Official Wholesale Quotation Request ${ref}`,
+        `Status: ${q.status || 'SUBMITTED'}`,
+        '',
+        `Buyer Contact: ${buyerName}`,
+        `Company: ${acc?.company_name || 'Not provided'}`,
+        `Email: ${buyerEmail}`,
+        ...(acc?.phone ? [`Phone: ${acc.phone}`] : []),
+        `Delivery Destination: ${shippingStr}`,
+        ...(freight?.service ? [`Requested Shipping: ${freight.carrier || ''} ${freight.service} ($${freight.amount || 0})`] : []),
+        '',
+        `Requested Products & Box Quantities:`,
+        linesText || 'No line items recorded',
+        '',
+        `Merchandise Subtotal: $${totals.estimatedMerchandise || totals.indicativeMerchandise || '0.00'} USD`,
+        ...(q.notes ? ['', `Buyer Notes & Instructions:\n${q.notes}`] : []),
+        '',
+        `Review, approve, or price this inquiry in Admin Console:`,
+        `https://himalayankoh.com/admin/wholesale/inquiries`,
+      ].join('\n');
+
+      const createdAt = q.created_at ? new Date(String(q.created_at)).toISOString() : new Date().toISOString();
+
+      const msg: InboxMessage = {
+        id: stableId,
+        threadId: `thread-ws-${ref}`,
+        messageId: `<ws-quote-${q.id}@himalayankoh.com>`,
+        inReplyTo: null,
+        references: [],
+        mailbox: 'ws@himalayankoh.com',
+        correspondenceType: 'business_correspondence',
+        direction: 'inbound',
+        folder: 'inbox',
+        from: {
+          name: buyerName,
+          email: buyerEmail,
+        },
+        to: [
+          {
+            name: 'Wholesale Department',
+            email: 'ws@himalayankoh.com',
+          },
+        ],
+        cc: [],
+        bcc: [],
+        subject,
+        bodyText,
+        snippet: makeSnippet(bodyText),
+        unread: q.status === 'SUBMITTED' || q.status === 'UNDER_REVIEW',
+        starred: false,
+        labels: ['Wholesale', 'Quotation Inquiry', 'RFQ'],
+        attachments: [],
+        leadId: null,
+        leadBusinessName: (acc?.company_name as string) || null,
+        leadStage: String(q.status || 'SUBMITTED'),
+        deliveryStatus: 'received',
+        deliveryNote: `Captured via Wholesale Portal (${ref})`,
+        authIndicators: { spf: 'pass', dkim: 'pass', dmarc: 'pass' },
+        createdAt,
+        updatedAt: q.updated_at ? new Date(String(q.updated_at)).toISOString() : createdAt,
+      };
+
+      byId.set(stableId, msg);
+      changed = true;
+    }
+  } catch (err) {
+    console.warn('[inboxStore] Non-fatal: failed to sync wholesale quotes:', err);
   }
 
   // 3. Ensure outreach catalog preview emails exist in Sent folder for marketing@himalayankoh.com
