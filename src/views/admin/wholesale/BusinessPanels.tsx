@@ -544,6 +544,30 @@ export function QuotesPanel({
     return `${lines.length} product${lines.length === 1 ? '' : 's'} · ${totalBoxes} ${totalBoxes === 1 ? 'box' : 'boxes'} (${totalUnits.toLocaleString('en-US')} pcs)`;
   };
 
+  const estimatedTotal = (row: WholesaleRow): number | null => {
+    const sellTotal = numberValue(row.sell_total);
+    if (sellTotal !== null && sellTotal > 0) return sellTotal;
+    const totals = typeof row.totals === 'object' && row.totals ? (row.totals as Record<string, unknown>) : null;
+    const fromTotals = numberValue(totals?.estimatedMerchandise ?? totals?.indicativeMerchandise ?? totals?.sell_total);
+    if (fromTotals !== null && fromTotals > 0) return fromTotals;
+    const lines = Array.isArray(row.lines) ? row.lines : [];
+    let sum = 0;
+    for (const raw of lines) {
+      const line = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+      const subtotal = numberValue(line.lineSubtotalIndicative ?? line.lineValue);
+      if (subtotal !== null && subtotal > 0) {
+        sum += subtotal;
+      } else {
+        const units = numberValue(line.units) ?? 0;
+        const price = numberValue(line.unitPriceIndicative ?? line.unitPrice);
+        if (units > 0 && price !== null && price > 0) {
+          sum += units * price;
+        }
+      }
+    }
+    return sum > 0 ? Math.round(sum * 100) / 100 : null;
+  };
+
   async function setStatus(row: WholesaleRow, status: string) {
     const id = rowId(row);
     if (!id) return;
@@ -591,14 +615,14 @@ export function QuotesPanel({
           <DataTable
             columns={[
               { key: 'ref', label: 'Reference', render: (row) => (
-                <div>
+                <div className="whitespace-nowrap">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-xs font-semibold text-charcoal">{text(row.ref) || `#${text(row.id)}`}</span>
-                    <span className="px-1.5 py-0.5 rounded bg-charcoal/5 text-[10px] font-mono text-charcoal-light">
+                    <span className="font-mono text-xs font-semibold text-charcoal whitespace-nowrap">{text(row.ref) || `#${text(row.id)}`}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-charcoal/5 text-[10px] font-mono text-charcoal-light whitespace-nowrap">
                       Rev {row.revision ? text(row.revision) : '1'}
                     </span>
                   </div>
-                  <p className="text-[11px] text-charcoal-light mt-0.5">{date(row.created_at)}</p>
+                  <p className="text-[11px] text-charcoal-light mt-0.5 whitespace-nowrap">{date(row.created_at)}</p>
                 </div>
               ) },
               { key: 'buyer', label: 'Buyer', render: (row) => (
@@ -608,7 +632,7 @@ export function QuotesPanel({
                 </div>
               ) },
               { key: 'lane', label: 'Basis / lane', render: (row) => (
-                <span className="text-charcoal-light text-xs">
+                <span className="text-charcoal-light text-xs whitespace-nowrap">
                   <span className="font-medium text-charcoal">{text(row.incoterm, 'EXW')}</span>
                   {text(row.destination_country) ? ` · ${text(row.destination_country)}` : ''}
                   {text(row.destination_port) ? ` (${text(row.destination_port)})` : ''}
@@ -617,66 +641,101 @@ export function QuotesPanel({
               { key: 'source', label: 'Source', render: (row) => {
                 const src = text(row.source, 'portal');
                 return (
-                  <span className="text-[11px] uppercase tracking-wider font-semibold text-charcoal-light">
+                  <span className="text-[11px] uppercase tracking-wider font-semibold text-charcoal-light whitespace-nowrap">
                     {src === 'portal' ? 'Buyer RFQ' : src === 'manual' ? 'Trade Desk' : src}
                   </span>
                 );
               } },
-              { key: 'value', label: 'Quoted', align: 'right', render: (row) => (
-                <span className="font-medium text-charcoal">{money(row.sell_total, text(row.currency, 'USD'))}</span>
-              ) },
+              { key: 'value', label: 'Quoted', align: 'right', render: (row) => {
+                const sellTotal = numberValue(row.sell_total);
+                const currency = text(row.currency, 'USD');
+                if (sellTotal !== null && sellTotal > 0) {
+                  return (
+                    <div className="text-right whitespace-nowrap">
+                      <span className="font-semibold text-charcoal text-xs block">{money(sellTotal, currency)}</span>
+                      <span className="inline-block text-[10px] text-emerald-700 font-medium">Firm quote</span>
+                    </div>
+                  );
+                }
+                const est = estimatedTotal(row);
+                if (est !== null && est > 0) {
+                  return (
+                    <div className="text-right whitespace-nowrap">
+                      <span className="font-semibold text-charcoal text-xs block">{money(est, currency)}</span>
+                      <span className="inline-block text-[10px] text-amber-800 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded font-medium mt-0.5">
+                        Est. / Pending quote
+                      </span>
+                    </div>
+                  );
+                }
+                return <span className="text-charcoal-light text-xs font-mono">—</span>;
+              } },
               { key: 'valid', label: 'Valid to', align: 'right', render: (row) => (
-                <span className="text-charcoal-light text-xs">
+                <span className="text-charcoal-light text-xs whitespace-nowrap">
                   {text(row.valid_until) ? date(row.valid_until) : 'not stated'}
                   {displayStatus(row) === 'EXPIRED' && text(row.status) !== 'EXPIRED' ? (
-                    <span className="block text-amber-700 font-semibold">lapsed</span>
+                    <span className="block text-amber-700 font-semibold whitespace-nowrap">lapsed</span>
                   ) : null}
                 </span>
               ) },
-              { key: 'status', label: 'Status', render: (row) => <Badge status={displayStatus(row)} /> },
+              { key: 'status', label: 'Status', render: (row) => (
+                <div className="whitespace-nowrap">
+                  <Badge status={displayStatus(row)} />
+                </div>
+              ) },
               { key: 'actions', label: '', align: 'right', render: (row) => {
                 const id = rowId(row);
                 const status = text(row.status);
                 return (
-                  <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                    {id ? <Button onClick={() => setInquiryId(id)}>Details</Button> : null}
+                  <div className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap flex-nowrap">
+                    {id ? (
+                      <button
+                        type="button"
+                        onClick={() => setInquiryId(id)}
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg bg-himalayan text-white text-xs font-semibold hover:bg-himalayan-dark transition-colors shadow-xs h-8 whitespace-nowrap"
+                      >
+                        Details
+                      </button>
+                    ) : null}
                     {id ? (
                       <button
                         type="button"
                         onClick={() => onPrice(id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-charcoal/15 text-xs font-semibold text-charcoal hover:bg-charcoal/5"
+                        className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg border border-charcoal/20 bg-white text-charcoal text-xs font-semibold hover:bg-charcoal/5 transition-colors h-8 whitespace-nowrap"
                       >
-                        <FileText className="w-3 h-3" />
+                        <FileText className="w-3.5 h-3.5 text-charcoal-light" />
                         Price
                       </button>
                     ) : null}
                     {id ? (
                       <button
                         type="button"
+                        title="Print quotation"
                         onClick={() => {
                           void writer.run(
                             () => openWholesaleQuoteDocument(id),
                             'Quotation opened in a new tab — print or save it from there.'
                           );
                         }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-charcoal/15 text-xs font-semibold text-charcoal hover:bg-charcoal/5"
+                        className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-charcoal/20 bg-white text-charcoal text-xs font-semibold hover:bg-charcoal/5 transition-colors h-8 whitespace-nowrap"
                       >
-                        <Printer className="w-3 h-3" />
+                        <Printer className="w-3.5 h-3.5 text-charcoal-light" />
                         Print
                       </button>
                     ) : null}
                     {id ? (
                       <button
                         type="button"
+                        title="Download quotation"
                         onClick={() => {
                           void writer.run(
                             () => downloadWholesaleQuoteDocument(id),
                             'Quotation downloaded as a file.'
                           );
                         }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-charcoal/15 text-xs font-semibold text-charcoal hover:bg-charcoal/5"
+                        className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-charcoal/20 bg-white text-charcoal text-xs font-semibold hover:bg-charcoal/5 transition-colors h-8 whitespace-nowrap"
                       >
-                        <Download className="w-3 h-3" />
+                        <Download className="w-3.5 h-3.5 text-charcoal-light" />
                         Download
                       </button>
                     ) : null}
@@ -684,7 +743,7 @@ export function QuotesPanel({
                       <button
                         type="button"
                         onClick={() => setStatus(row, 'UNDER_REVIEW')}
-                        className="px-2.5 py-1 rounded-full border border-charcoal/15 text-xs font-semibold text-charcoal hover:bg-charcoal/5"
+                        className="inline-flex items-center justify-center px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-xs font-semibold hover:bg-blue-100 transition-colors h-8 whitespace-nowrap"
                       >
                         Review
                       </button>
@@ -693,9 +752,9 @@ export function QuotesPanel({
                       <button
                         type="button"
                         onClick={() => setStatus(row, 'ACCEPTED')}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-600 text-white text-xs font-semibold hover:bg-green-700"
+                        className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors h-8 whitespace-nowrap shadow-xs"
                       >
-                        <Check className="w-3 h-3" />
+                        <Check className="w-3.5 h-3.5" />
                         Accepted
                       </button>
                     ) : null}
@@ -707,9 +766,9 @@ export function QuotesPanel({
                           setTerms({ label: PAYMENT_TERM_LABELS[1], depositPct: '30', notes: '' });
                           writer.clear();
                         }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-charcoal text-white text-xs font-semibold hover:bg-charcoal-light"
+                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-charcoal text-white text-xs font-semibold hover:bg-charcoal-light transition-colors h-8 whitespace-nowrap shadow-xs"
                       >
-                        <Truck className="w-3 h-3" />
+                        <Truck className="w-3.5 h-3.5" />
                         Raise order
                       </button>
                     ) : null}
@@ -717,12 +776,12 @@ export function QuotesPanel({
                       <button
                         type="button"
                         onClick={() => setStatus(row, 'EXPIRED')}
-                        className="px-2.5 py-1 rounded-full border border-charcoal/15 text-xs font-semibold text-charcoal-light hover:bg-charcoal/5"
+                        className="inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg border border-charcoal/15 text-charcoal-light text-xs font-medium hover:text-red-700 hover:border-red-200 hover:bg-red-50 transition-colors h-8 whitespace-nowrap"
                       >
                         Expire
                       </button>
                     ) : null}
-                  </span>
+                  </div>
                 );
               } },
             ]}
