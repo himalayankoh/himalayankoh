@@ -7,6 +7,10 @@ import {
   inquirySubject,
   wholesaleInquiryRecipient,
   wholesaleSender,
+  buildQuoteApprovalHtml,
+  buildQuoteApprovalText,
+  buildQuoteDeclinedHtml,
+  buildQuoteDeclinedText,
   type WholesaleInquiryInput,
 } from './wholesaleInquiry';
 
@@ -141,5 +145,69 @@ describe('acknowledgement', () => {
     expect(html).toContain('Maria Alvarez');
     expect(html).toMatch(/not a quotation/i);
     expect(html).toMatch(/No payment has been taken/i);
+  });
+});
+describe('quote approval email', () => {
+  const approvalInput = {
+    reference: 'HK-WS-Q00023',
+    buyer: {
+      businessName: 'Texas Minerals Co',
+      contactName: 'James Wilson',
+      email: 'james@texasminerals.example',
+    },
+    lines: [
+      { name: 'Himalayan Pink Salt for Livestock - 6 lb Pouch', sku: 'HK-ESF-6lbs', units: 21, boxes: 7, unitPrice: 13.97, subtotal: 293.37 },
+    ],
+    currency: 'USD',
+    quotedTotal: 293.37,
+    validUntil: '2026-11-28',
+    deliveryMethod: 'Loose Carton Freight · Houston Warehouse Dispatch',
+    destinationAddress: '1200 Congress Ave, Austin, TX 78701',
+    portalUrl: 'https://himalayankoh.com/wholesale/portal',
+  };
+
+  it('renders quotation HTML with reference, total, boxes, and portal link', () => {
+    const html = buildQuoteApprovalHtml(approvalInput);
+    expect(html).toContain('HK-WS-Q00023');
+    expect(html).toContain('James Wilson');
+    expect(html).toContain('USD 293.37');
+    expect(html).toContain('7');
+    expect(html).toContain('boxes');
+    expect(html).toContain('2026-11-28');
+    expect(html).toContain('https://himalayankoh.com/wholesale/portal');
+  });
+
+  it('renders quotation plain text with reference and total', () => {
+    const text = buildQuoteApprovalText(approvalInput);
+    expect(text).toContain('HK-WS-Q00023');
+    expect(text).toContain('USD 293.37');
+    expect(text).toContain('7 boxes (21 pcs)');
+  });
+});
+
+describe('quote declined email', () => {
+  const declineInput = {
+    reference: 'HK-WS-Q00023',
+    buyer: {
+      businessName: 'Texas Minerals Co',
+      contactName: 'James Wilson',
+      email: 'james@texasminerals.example',
+    },
+    reason: 'Product currently out of stock at Houston warehouse.',
+    portalUrl: 'https://himalayankoh.com/wholesale/portal',
+  };
+
+  it('renders polite decline message and mentions reason', () => {
+    const html = buildQuoteDeclinedHtml(declineInput);
+    expect(html).toContain('HK-WS-Q00023');
+    expect(html).toContain('unable to fulfill or proceed');
+    expect(html).toContain('Product currently out of stock at Houston warehouse.');
+  });
+
+  it('renders plain text decline message', () => {
+    const text = buildQuoteDeclinedText(declineInput);
+    expect(text).toContain('HK-WS-Q00023');
+    expect(text).toContain('unable to fulfill');
+    expect(text).toContain('Product currently out of stock');
   });
 });

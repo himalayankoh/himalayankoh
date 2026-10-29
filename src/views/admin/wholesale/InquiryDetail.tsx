@@ -19,12 +19,14 @@ import {
   Truck,
   User,
   X,
+  XCircle,
 } from 'lucide-react';
 import { AdminButton, AdminModal, AdminNotice } from '@/components/admin/AdminUI';
 import {
   downloadWholesaleQuoteDocument,
   openWholesaleQuoteDocument,
   resendWholesaleInquiryNotification,
+  dispatchWholesaleQuoteDecision,
   saveWholesaleRecord,
   type WholesaleRow,
 } from '@/lib/admin/wholesaleConsoleApi';
@@ -246,14 +248,6 @@ export default function InquiryDetail({
   const status = text(inquiry.status, 'SUBMITTED').toUpperCase();
   const currency = text(inquiry.currency, 'USD');
 
-  const [note, setNote] = useState(text(inquiry.internal_notes));
-  const [invoice, setInvoice] = useState(text(inquiry.invoice_url));
-  const [payment, setPayment] = useState(text(inquiry.external_payment_url));
-  const [quotedTotal, setQuotedTotal] = useState(text(inquiry.sell_total));
-  const [validUntil, setValidUntil] = useState(text(inquiry.valid_until));
-  const [confirmation, setConfirmation] = useState<'quote' | 'resend' | null>(null);
-  const [showAudit, setShowAudit] = useState(false);
-
   const writer = useWriter();
 
   const lines = Array.isArray(inquiry.lines) ? (inquiry.lines as Record<string, unknown>[]) : [];
@@ -276,6 +270,31 @@ export default function InquiryDetail({
   const merchandiseTotal = resolvedLines.reduce((acc, l) => acc + l.lineSubtotal, 0);
   const totalWeightLbs = resolvedLines.reduce((acc, l) => acc + l.totalWeightLbs, 0);
   const destinationAddress = formatAddress(shipping);
+
+  const initialQuotedTotal = () => {
+    const stored = text(inquiry.sell_total);
+    if (stored && Number(stored) > 0) return stored;
+    return merchandiseTotal > 0 ? merchandiseTotal.toFixed(2) : '';
+  };
+
+  const initialValidUntil = () => {
+    const stored = text(inquiry.valid_until);
+    if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)) return stored;
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    return future.toISOString().slice(0, 10);
+  };
+
+  const [note, setNote] = useState(text(inquiry.internal_notes));
+  const [invoice, setInvoice] = useState(text(inquiry.invoice_url));
+  const [payment, setPayment] = useState(text(inquiry.external_payment_url));
+  const [quotedTotal, setQuotedTotal] = useState(initialQuotedTotal);
+  const [validUntil, setValidUntil] = useState(initialValidUntil);
+  const [confirmation, setConfirmation] = useState<'approve' | 'decline' | 'resend' | null>(null);
+  const [declineReason, setDeclineReason] = useState('');
+  const [showOptionalLinks, setShowOptionalLinks] = useState(
+    Boolean(text(inquiry.invoice_url) || text(inquiry.external_payment_url) || text(inquiry.internal_notes))
+  );
+  const [showAudit, setShowAudit] = useState(false);
 
   // Find linked customer account if available
   const accountId = Number(inquiry.account_id || 0);
@@ -305,29 +324,90 @@ export default function InquiryDetail({
     UNDER_REVIEW: { label: 'Under Review', bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200' },
     QUOTED: { label: 'Quotation Issued', bg: 'bg-indigo-50', text: 'text-indigo-800', border: 'border-indigo-200' },
     ACCEPTED: { label: 'Quote Accepted', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200' },
+    REJECTED: { label: 'Inquiry Declined', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200' },
     EXPIRED: { label: 'Expired / Lapsed', bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' },
+    CONVERTED_TO_ORDER: { label: 'Converted to Order', bg: 'bg-purple-50', text: 'text-purple-800', border: 'border-purple-200' },
   };
 
   const statusBadge = STATUS_CONFIG[status] || STATUS_CONFIG.SUBMITTED;
 
-  async function handleSaveQuotation() {
+  async function handleApproveQuotation() {
+    const finalAmount = Number(quotedTotal) || merchandiseTotal;
+    if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
+      throw new Error('Please specify a positive total amount before approving the quotation.');
+    }
+    const finalDate = validUntil || initialValidUntil();
     setConfirmation(null);
     await writer.run(async () => {
       await saveWholesaleRecord(
         'quotes',
         {
           status: 'QUOTED',
-          sell_total: Number(quotedTotal),
-          valid_until: validUntil,
-          revisionReason: 'Trade desk updated final quotation',
+          sell_total: finalAmount,
+          valid_until: finalDate,
+          revisionReason: 'Quotation approved by trade desk and issued to buyer',
           internal_notes: note,
           invoice_url: invoice,
           external_payment_url: payment,
         },
         id
       );
+
+      try {
+        await dispatchWholesaleQuoteDecision(id, 'approve');
+      } catch (emailErr) {
+        console.warn('Quotation updated but email dispatch error:', emailErr);
+      }
+
       await reload();
-    }, 'Final quotation updated successfully.');
+    }, `Quotation approved (${finalAmount.toFixed(2)}) and official email sent to ${buyerEmail || 'buyer'}!`);
+  }
+
+  async function handleDeclineInquiry() {
+    setConfirmation(null);
+    await writer.run(async () => {
+      const updatedNote = declineReason.trim()
+        ? note
+          ? `${note}\n[Decline Note]: ${declineReason.trim()}`
+          : `[Decline Note]: ${declineReason.trim()}`
+        : note;
+
+      await saveWholesaleRecord(
+        'quotes',
+        {
+          status: 'REJECTED',
+          internal_notes: updatedNote,
+          revisionReason: declineReason.trim() ? `Inquiry declined: ${declineReason.trim()}` : 'Inquiry declined by trade desk',
+        },
+        id
+      );
+
+      try {
+        await dispatchWholesaleQuoteDecision(id, 'decline', declineReason.trim() || undefined);
+      } catch (emailErr) {
+        console.warn('Inquiry marked declined but email dispatch error:', emailErr);
+      }
+
+      await reload();
+    }, `Inquiry declined and notification email sent to ${buyerEmail || 'buyer'}.`);
+  }
+
+  async function handleResendNotification() {
+    setConfirmation(null);
+    await writer.run(async () => {
+      if (status === 'QUOTED') {
+        const res = await dispatchWholesaleQuoteDecision(id, 'approve');
+        if (!res.buyerNotified) {
+          throw new Error(res.error || 'Buyer notification could not be delivered.');
+        }
+      } else {
+        const res = await resendWholesaleInquiryNotification(id);
+        if (!res.adminNotified || !res.buyerAcknowledged) {
+          throw new Error(res.error || 'One or more notifications could not be sent.');
+        }
+      }
+      await reload();
+    }, 'Notification email accepted by mail transport.');
   }
 
   async function handleSaveDetails() {
@@ -643,12 +723,24 @@ export default function InquiryDetail({
           </table>
         </div>
 
-        {/* Quotation Management & Final Quote Form */}
-        <div className="rounded-xl border border-charcoal/10 bg-warm-white/40 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 size={16} className="text-himalayan" />
-              <h3 className="text-sm font-bold text-charcoal">Quotation & Pricing Controls</h3>
+        {/* Quotation Decision & Dispatch */}
+        <div className="rounded-2xl border-2 border-charcoal/10 bg-warm-white/40 p-6 space-y-5 shadow-sm">
+          {/* Section Header */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-charcoal/10 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={20} className="text-emerald-700" />
+                <h3 className="text-base font-bold text-charcoal">Quotation Decision & Dispatch</h3>
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${statusBadge.bg} ${statusBadge.text} ${statusBadge.border}`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  {statusBadge.label}
+                </span>
+              </div>
+              <p className="text-xs text-charcoal-light mt-0.5">
+                Review pricing and dispatch official quotation invoice to buyer, or decline inquiry.
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -659,9 +751,9 @@ export default function InquiryDetail({
                     'Quotation opened in new tab for printing.'
                   );
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-charcoal/15 bg-white px-2.5 py-1 text-xs font-semibold text-charcoal hover:bg-charcoal/5 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-charcoal/15 bg-white px-3 py-1.5 text-xs font-semibold text-charcoal hover:bg-charcoal/5 shadow-xs transition-colors"
               >
-                <Printer size={13} />
+                <Printer size={14} />
                 Print Invoice
               </button>
               <button
@@ -672,115 +764,180 @@ export default function InquiryDetail({
                     'Quotation PDF downloaded.'
                   );
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-charcoal/15 bg-white px-2.5 py-1 text-xs font-semibold text-charcoal hover:bg-charcoal/5 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-charcoal/15 bg-white px-3 py-1.5 text-xs font-semibold text-charcoal hover:bg-charcoal/5 shadow-xs transition-colors"
               >
-                <Download size={13} />
+                <Download size={14} />
                 Download PDF
               </button>
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* Pricing & Expiry Input Grid */}
+          <div className="grid gap-4 sm:grid-cols-3 bg-white p-4 rounded-xl border border-charcoal/10">
             <div>
-              <label className="block text-xs font-semibold text-charcoal mb-1" htmlFor="final-quote-total">
-                Final Quoted Total (USD)
+              <label className="block text-xs font-bold text-charcoal mb-1" htmlFor="final-quote-total">
+                Final Quoted Total (USD) <span className="text-himalayan">*</span>
               </label>
-              <input
-                id="final-quote-total"
-                type="number"
-                step="0.01"
-                className={`${SELECT} text-sm font-bold`}
-                value={quotedTotal}
-                onChange={(e) => setQuotedTotal(e.target.value)}
-                placeholder={merchandiseTotal.toFixed(2)}
-              />
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-charcoal-light">$</span>
+                <input
+                  id="final-quote-total"
+                  type="number"
+                  step="0.01"
+                  className={`${SELECT} pl-7 text-sm font-bold text-charcoal`}
+                  value={quotedTotal}
+                  onChange={(e) => setQuotedTotal(e.target.value)}
+                  placeholder={merchandiseTotal.toFixed(2)}
+                />
+              </div>
               <p className="text-[11px] text-charcoal-light mt-1">
-                Enter total including merchandise and agreed freight.
+                Merchandise: {money(merchandiseTotal, currency)}. Adjust if adding freight.
               </p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-charcoal mb-1" htmlFor="valid-through-date">
-                Valid Through Date
+              <label className="block text-xs font-bold text-charcoal mb-1" htmlFor="valid-through-date">
+                Valid Through Date <span className="text-himalayan">*</span>
               </label>
               <input
                 id="valid-through-date"
                 type="date"
-                className={`${SELECT} text-sm`}
+                className={`${SELECT} text-sm font-medium`}
                 value={validUntil}
                 onChange={(e) => setValidUntil(e.target.value)}
               />
-              <p className="text-[11px] text-charcoal-light mt-1">Date when this price quotation expires.</p>
+              <p className="text-[11px] text-charcoal-light mt-1">Pre-set to 30 days validity.</p>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-charcoal mb-1" htmlFor="invoice-url">
-                Stripe / Invoice URL (Optional)
+              <label className="block text-xs font-bold text-charcoal mb-1">
+                Buyer Email Target
               </label>
-              <input
-                id="invoice-url"
-                className={`${SELECT} text-xs`}
-                value={invoice}
-                onChange={(e) => setInvoice(e.target.value)}
-                placeholder="https://buy.stripe.com/..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-charcoal mb-1" htmlFor="payment-url">
-                External Payment URL (Optional)
-              </label>
-              <input
-                id="payment-url"
-                className={`${SELECT} text-xs`}
-                value={payment}
-                onChange={(e) => setPayment(e.target.value)}
-                placeholder="https://..."
-              />
+              <div className="flex items-center gap-2 rounded-lg border border-charcoal/12 bg-warm-white/40 px-3 py-2 text-xs">
+                <Mail size={14} className="text-charcoal-light shrink-0" />
+                <span className="truncate font-mono font-medium text-charcoal" title={buyerEmail || 'No buyer email'}>
+                  {buyerEmail || 'No email on file'}
+                </span>
+              </div>
+              <p className="text-[11px] text-charcoal-light mt-1">
+                {buyerCompany} ({buyerContactName || 'Buyer'})
+              </p>
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-charcoal mb-1" htmlFor="internal-notes">
-              Private Internal Notes (Never shown to customer)
-            </label>
-            <textarea
-              id="internal-notes"
-              className={TEXTAREA}
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Freight quotes, carrier tracking, or dealer communication history..."
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <div className="flex flex-wrap gap-2">
-              <AdminButton
-                variant="primary"
-                icon={Save}
-                onClick={() => setConfirmation('quote')}
+          {/* Action Decision Buttons (OK / Not OK) */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* OK / APPROVAL BUTTON */}
+              <button
+                type="button"
+                onClick={() => setConfirmation('approve')}
                 disabled={writer.saving}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.99] transition-all disabled:opacity-60"
               >
-                {writer.saving ? 'Updating…' : 'Record Final Quotation'}
-              </AdminButton>
-              <AdminButton variant="secondary" onClick={() => void handleSaveDetails()} disabled={writer.saving}>
-                Save Notes & Links
-              </AdminButton>
-              <AdminButton variant="ghost" icon={Send} onClick={() => setConfirmation('resend')}>
-                Resend Email
-              </AdminButton>
+                <CheckCircle2 size={16} />
+                {writer.saving ? 'Processing…' : status === 'QUOTED' ? 'Update & Re-send Quotation (OK)' : 'Approve & Send Quotation (OK)'}
+              </button>
+
+              {/* NOT OK / DECLINE BUTTON */}
+              <button
+                type="button"
+                onClick={() => setConfirmation('decline')}
+                disabled={writer.saving || status === 'REJECTED'}
+                className="inline-flex items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-100 active:scale-[0.99] transition-all disabled:opacity-50"
+              >
+                <XCircle size={16} />
+                Decline Inquiry (Not OK)
+              </button>
+
+              {/* Resend notification button if already quoted */}
+              {status === 'QUOTED' && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmation('resend')}
+                  disabled={writer.saving}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-charcoal/20 bg-white px-3.5 py-2.5 text-xs font-semibold text-charcoal hover:bg-charcoal/5 transition-colors disabled:opacity-50"
+                >
+                  <Send size={14} />
+                  Resend Quotation Email
+                </button>
+              )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowAudit(!showAudit)}
-              className="text-xs text-charcoal-light hover:text-charcoal flex items-center gap-1 transition-colors"
-            >
-              <Clock size={12} />
-              {showAudit ? 'Hide Audit Log' : `View Activity Log (${events.length})`}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowOptionalLinks(!showOptionalLinks)}
+                className="text-xs text-charcoal-light hover:text-charcoal font-medium underline underline-offset-2 transition-colors"
+              >
+                {showOptionalLinks ? 'Hide Payment Links & Notes' : 'Optional Payment Links & Notes'}
+              </button>
+              <span className="text-charcoal/20">|</span>
+              <button
+                type="button"
+                onClick={() => setShowAudit(!showAudit)}
+                className="text-xs text-charcoal-light hover:text-charcoal flex items-center gap-1 transition-colors"
+              >
+                <Clock size={12} />
+                {showAudit ? 'Hide Activity Log' : `Activity History (${events.length})`}
+              </button>
+            </div>
           </div>
+
+          {/* Collapsible Optional Payment Links & Internal Notes */}
+          {showOptionalLinks && (
+            <div className="rounded-xl border border-charcoal/10 bg-white p-4 space-y-3">
+              <h4 className="text-xs font-bold text-charcoal uppercase tracking-wider">
+                Optional Payment Links & Private Notes
+              </h4>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-charcoal mb-1" htmlFor="invoice-url">
+                    Stripe / Invoice URL (Optional)
+                  </label>
+                  <input
+                    id="invoice-url"
+                    className={`${SELECT} text-xs`}
+                    value={invoice}
+                    onChange={(e) => setInvoice(e.target.value)}
+                    placeholder="https://buy.stripe.com/..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-charcoal mb-1" htmlFor="payment-url">
+                    External Payment URL (Optional)
+                  </label>
+                  <input
+                    id="payment-url"
+                    className={`${SELECT} text-xs`}
+                    value={payment}
+                    onChange={(e) => setPayment(e.target.value)}
+                    placeholder="https://..."
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-charcoal mb-1" htmlFor="internal-notes">
+                  Private Internal Notes (Never shown to customer)
+                </label>
+                <textarea
+                  id="internal-notes"
+                  className={TEXTAREA}
+                  rows={2}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Freight quotes, carrier tracking, or dealer communication history..."
+                />
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <AdminButton variant="secondary" onClick={() => void handleSaveDetails()} disabled={writer.saving}>
+                  Save Notes & Links
+                </AdminButton>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Collapsible Activity Log */}
@@ -808,42 +965,129 @@ export default function InquiryDetail({
         )}
       </div>
 
-      {/* Confirmation Modal */}
-      {confirmation && (
+      {/* Confirmation Modals */}
+      {confirmation === 'approve' && (
         <AdminModal
-          title={confirmation === 'quote' ? 'Confirm Final Quotation' : 'Confirm Notification Resend'}
+          title="Approve & Send Quotation to Buyer"
           onClose={() => setConfirmation(null)}
           footer={
             <>
               <AdminButton variant="secondary" onClick={() => setConfirmation(null)}>
                 Cancel
               </AdminButton>
-              <AdminButton
-                variant="primary"
-                onClick={() => {
-                  if (confirmation === 'quote') {
-                    void handleSaveQuotation();
-                  } else {
-                    setConfirmation(null);
-                    void writer.run(async () => {
-                      const res = await resendWholesaleInquiryNotification(id);
-                      if (!res.adminNotified || !res.buyerAcknowledged) {
-                        throw new Error(res.error || 'One or more notifications could not be sent.');
-                      }
-                      await reload();
-                    }, 'Notification emails accepted by mail transport.');
-                  }
-                }}
+              <button
+                type="button"
+                onClick={() => void handleApproveQuotation()}
+                disabled={writer.saving}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-colors disabled:opacity-60"
               >
-                Confirm
+                <CheckCircle2 size={15} />
+                {writer.saving ? 'Approving & Sending…' : 'Confirm & Email Buyer'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-sm text-charcoal">
+            <p>
+              Are you sure you want to approve quotation <strong>#{ref}</strong> and email the official invoice to the wholesale buyer?
+            </p>
+            <div className="rounded-lg bg-warm-white/70 border border-charcoal/10 p-3 space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-charcoal-light">Buyer:</span>
+                <span className="font-semibold">{buyerCompany} ({buyerContactName || 'Buyer'})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-charcoal-light">Email Target:</span>
+                <span className="font-mono font-medium">{buyerEmail || 'ws@himalayankoh.com'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-charcoal-light">Final Quoted Total:</span>
+                <span className="font-bold text-emerald-800">${(Number(quotedTotal) || merchandiseTotal).toFixed(2)} {currency}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-charcoal-light">Valid Through:</span>
+                <span className="font-medium">{validUntil}</span>
+              </div>
+            </div>
+            <p className="text-xs text-charcoal-light">
+              This will update the status to <strong>QUOTED</strong> and deliver the official quotation to the buyer inbox and Wholesale Portal.
+            </p>
+          </div>
+        </AdminModal>
+      )}
+
+      {confirmation === 'decline' && (
+        <AdminModal
+          title="Decline Wholesale Inquiry"
+          onClose={() => setConfirmation(null)}
+          footer={
+            <>
+              <AdminButton variant="secondary" onClick={() => setConfirmation(null)}>
+                Cancel
+              </AdminButton>
+              <button
+                type="button"
+                onClick={() => void handleDeclineInquiry()}
+                disabled={writer.saving}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-rose-700 transition-colors disabled:opacity-60"
+              >
+                <XCircle size={15} />
+                {writer.saving ? 'Declining…' : 'Confirm Decline & Notify Buyer'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-sm text-charcoal">
+            <p>
+              Are you sure you want to decline inquiry <strong>#{ref}</strong>?
+            </p>
+            <div className="rounded-lg bg-rose-50/60 border border-rose-200 p-3 space-y-1 text-xs text-rose-900">
+              <div className="flex justify-between">
+                <span>Buyer:</span>
+                <span className="font-semibold">{buyerCompany}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Email Target:</span>
+                <span className="font-mono">{buyerEmail || 'ws@himalayankoh.com'}</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-charcoal mb-1" htmlFor="decline-reason">
+                Reason for decline (Optional - included in email to buyer)
+              </label>
+              <input
+                id="decline-reason"
+                className={`${SELECT} text-xs`}
+                value={declineReason}
+                onChange={(e) => setDeclineReason(e.target.value)}
+                placeholder="e.g. Volume below minimum threshold, temporary stock shortage, lane not serviced"
+              />
+            </div>
+            <p className="text-xs text-charcoal-light">
+              This will mark the inquiry as <strong>REJECTED</strong> and send a courteous notification to the buyer.
+            </p>
+          </div>
+        </AdminModal>
+      )}
+
+      {confirmation === 'resend' && (
+        <AdminModal
+          title="Confirm Notification Resend"
+          onClose={() => setConfirmation(null)}
+          footer={
+            <>
+              <AdminButton variant="secondary" onClick={() => setConfirmation(null)}>
+                Cancel
+              </AdminButton>
+              <AdminButton variant="primary" onClick={() => void handleResendNotification()} disabled={writer.saving}>
+                {writer.saving ? 'Resending…' : 'Confirm Resend'}
               </AdminButton>
             </>
           }
         >
           <p className="text-sm text-charcoal">
-            {confirmation === 'quote'
-              ? `Confirm and update final quotation total to ${money(Number(quotedTotal) || merchandiseTotal, currency)} for ${ref}?`
-              : `Resend quotation inquiry notification for ${ref} to buyer and trade desk?`}
+            Resend quotation notification for <strong>#{ref}</strong> to <strong>{buyerEmail || 'buyer'}</strong>?
           </p>
         </AdminModal>
       )}

@@ -513,3 +513,14 @@ export async function saveWholesaleProfit(body: {
 export async function resendWholesaleInquiryNotification(inquiryId: number) {
   return send<{ adminNotified: boolean; buyerAcknowledged: boolean; error?: string }>('/api/admin/wholesale/inquiry-email', { inquiryId, confirm: true });
 }
+/** Dispatch official quote decision (approval or decline) to buyer with audit logging. */
+export async function dispatchWholesaleQuoteDecision(
+  inquiryId: number,
+  action: 'approve' | 'decline' | 'resend',
+  reason?: string
+) {
+  return send<{ buyerNotified?: boolean; adminNotified?: boolean; error?: string }>(
+    '/api/admin/wholesale/inquiry-email',
+    { inquiryId, action, reason, confirm: true }
+  );
+}
