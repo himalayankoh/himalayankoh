@@ -87,6 +87,17 @@ export default function WholesaleLandingPage() {
 
                 <div className="bg-white/[0.05] border border-white/10 rounded-2xl p-4 flex items-center justify-between">
                   <div>
+                    <h3 className="text-white font-semibold text-base">3 lb Salt Pouch</h3>
+                    <p className="text-white/60 text-xs mt-0.5">Fine Grain Livestock Salt (10x10x6 in box)</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-himalayan font-bold text-sm block">6 pieces / box</span>
+                    <span className="text-white/40 text-xs">Min. 5 boxes (30 pcs)</span>
+                  </div>
+                </div>
+
+                <div className="bg-white/[0.05] border border-white/10 rounded-2xl p-4 flex items-center justify-between">
+                  <div>
                     <h3 className="text-white font-semibold text-base">6 lb Salt Pouch</h3>
                     <p className="text-white/60 text-xs mt-0.5">Fine / Coarse Grain (10x10x6 in box)</p>
                   </div>
