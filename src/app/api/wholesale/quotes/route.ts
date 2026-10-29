@@ -129,12 +129,50 @@ export async function POST(request: Request) {
     const destinationCountry = text(body.destinationCountry) || gate.account.destinationCountry || '';
     const destinationPort = text(body.destinationPort) || gate.account.destinationPort || '';
 
+    const shippingMethod = text(body.shippingMethod || body.shipping_method) || (incoterm === 'EXW' ? 'WAREHOUSE_PICKUP' : 'PARCEL_USPS');
+    const estimatedFreight = Number(body.estimatedFreight || body.estimated_freight) || 0;
+    const carrierService = text(body.carrierService || body.carrier_service) || '';
+    const shippoRateId = text(body.shippoRateId || body.shippo_rate_id) || '';
+
+    const shippingPayload = {
+      address: shipping,
+      country: destinationCountry || 'United States',
+      shippingMethod,
+      carrierService,
+      estimatedFreight,
+      shippoRateId,
+    };
+
+    const freightPayload = {
+      shippingMethod,
+      carrierService,
+      estimatedFreight,
+      shippoRateId,
+      calculatedAt: new Date().toISOString(),
+    };
+
+    const assumptionsList = [
+      ...plan.assumptions,
+      ...plan.warnings,
+      plan.totals.indicativeMerchandise === null
+        ? 'No tier price is configured for at least one product in this request.'
+        : `Indicative goods value at the prices shown: ${plan.totals.indicativeMerchandise} ${data.products[0]?.currency || 'USD'}.`,
+    ];
+
+    if (carrierService && estimatedFreight > 0) {
+      assumptionsList.push(
+        `Selected shipping: ${carrierService} — Est. carrier freight: ${estimatedFreight.toFixed(2)} USD (Shippo live rate).`
+      );
+    } else if (shippingMethod === 'WAREHOUSE_PICKUP') {
+      assumptionsList.push('Selected shipping: Customer Warehouse Pickup (Houston Hub) — Free ($0.00).');
+    }
+
     const saved = await upsertWholesaleRecord(
       'quotes',
       {
         account_id: gate.buyer.accountId,
         request_key: requestKey,
-        shipping_address: { address: shipping, country: text(body.destinationCountry) },
+        shipping_address: shippingPayload,
         buyer_contact: { business: gate.account.companyName, name: gate.account.contactName, email: gate.account.email, phone: gate.account.phone || '' },
         status: 'SUBMITTED',
         incoterm,
@@ -162,14 +200,16 @@ export async function POST(request: Request) {
           wooProductId: data.products.find((product) => product.rowId === line.productRowId)?.wooProductId,
           wooVariationId: data.products.find((product) => product.rowId === line.productRowId)?.wooVariationId,
         })),
-        assumptions: [
-          ...plan.assumptions,
-          ...plan.warnings,
-          plan.totals.indicativeMerchandise === null
-            ? 'No tier price is configured for at least one product in this request.'
-            : `Indicative goods value at the prices shown: ${plan.totals.indicativeMerchandise} ${data.products[0]?.currency || 'USD'}.`,
-        ],
-        totals: { estimatedMerchandise: plan.totals.indicativeMerchandise, currency: data.products[0]?.currency || 'USD' },
+        assumptions: assumptionsList,
+        freight: freightPayload,
+        totals: {
+          estimatedMerchandise: plan.totals.indicativeMerchandise,
+          estimatedFreight,
+          estimatedTotal: (plan.totals.indicativeMerchandise ?? 0) + estimatedFreight,
+          shippingMethod,
+          carrierService,
+          currency: data.products[0]?.currency || 'USD',
+        },
         notes: text(body.notes, 500),
         created_by: 'wholesale-buyer',
         submitted_at: new Date().toISOString(),

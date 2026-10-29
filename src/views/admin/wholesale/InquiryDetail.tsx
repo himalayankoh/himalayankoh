@@ -5,11 +5,13 @@ import {
   AlertTriangle,
   Building2,
   Calendar,
+  Check,
   CheckCircle2,
   Clock,
   Download,
   ExternalLink,
   FileText,
+  Loader2,
   Mail,
   MapPin,
   Minus,
@@ -17,14 +19,20 @@ import {
   Phone,
   Plus,
   Printer,
+  RefreshCw,
   RotateCcw,
   Save,
   Send,
+  Sparkles,
   Truck,
   User,
   X,
   XCircle,
 } from 'lucide-react';
+import {
+  parseShippingAddress,
+  type LiveCarrierRate,
+} from '@/lib/wholesale/shippingUtils';
 import { AdminButton, AdminModal, AdminNotice } from '@/components/admin/AdminUI';
 import {
   downloadWholesaleQuoteDocument,
@@ -355,6 +363,87 @@ export default function InquiryDetail({
   const [note, setNote] = useState(text(inquiry.internal_notes));
   const [invoice, setInvoice] = useState(text(inquiry.invoice_url));
   const [payment, setPayment] = useState(text(inquiry.external_payment_url));
+  const freightInfo = typeof inquiry.freight === 'object' && inquiry.freight ? (inquiry.freight as Record<string, unknown>) : {};
+  const totalsInfo = typeof inquiry.totals === 'object' && inquiry.totals ? (inquiry.totals as Record<string, unknown>) : {};
+  const shippingAddressObj = typeof inquiry.shipping_address === 'object' && inquiry.shipping_address ? (inquiry.shipping_address as Record<string, unknown>) : {};
+
+  const requestedShippingMode = text(
+    freightInfo.shippingMethod ||
+    totalsInfo.shippingMethod ||
+    shippingAddressObj.shippingMethod ||
+    (inquiry.incoterm === 'EXW' ? 'WAREHOUSE_PICKUP' : 'PARCEL_USPS')
+  );
+  const requestedCarrierService = text(
+    freightInfo.carrierService ||
+    totalsInfo.carrierService ||
+    shippingAddressObj.carrierService
+  );
+  const requestedEstimatedFreight = Number(
+    freightInfo.estimatedFreight ??
+    totalsInfo.estimatedFreight ??
+    shippingAddressObj.estimatedFreight
+  ) || 0;
+
+  const [adminShippoRates, setAdminShippoRates] = useState<LiveCarrierRate[]>([]);
+  const [adminLoadingRates, setAdminLoadingRates] = useState(false);
+  const [adminRatesError, setAdminRatesError] = useState('');
+  const [adminAppliedRate, setAdminAppliedRate] = useState<LiveCarrierRate | null>(null);
+
+  async function checkAdminShippoRates() {
+    if (!destinationAddress.trim()) {
+      setAdminRatesError('No destination address available for this inquiry.');
+      return;
+    }
+    const parsed = parseShippingAddress(destinationAddress, buyerContactName || buyerCompany);
+    if (!parsed) {
+      setAdminRatesError('Could not parse destination address into U.S. street, city, state, zip.');
+      return;
+    }
+
+    setAdminLoadingRates(true);
+    setAdminRatesError('');
+    try {
+      const items = activeLines.map((l) => ({
+        productId: l.wholesaleSku || l.name,
+        quantity: l.boxes,
+        weightLbs: Math.max(1, Math.round(l.boxWeightLbs * 10) / 10),
+      }));
+
+      const res = await fetch('/api/shippo/rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: buyerEmail || 'wholesale@himalayankoh.com',
+          address: parsed,
+          items,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch shipping rates.');
+      const rates = Array.isArray(data.rates) ? (data.rates as LiveCarrierRate[]) : [];
+      setAdminShippoRates(rates);
+      if (!rates.length) {
+        setAdminRatesError('No live rates returned for this package weight/address.');
+      }
+    } catch (err) {
+      console.error('Admin Shippo lookup failed:', err);
+      setAdminRatesError(err instanceof Error ? err.message : 'Unable to fetch rates.');
+    } finally {
+      setAdminLoadingRates(false);
+    }
+  }
+
+  function applyRateToQuote(rate: LiveCarrierRate) {
+    const newTotal = (activeMerchandiseTotal + rate.amount).toFixed(2);
+    setQuotedTotal(newTotal);
+    setAdminAppliedRate(rate);
+    const freightDesc = `Includes ${rate.amount.toFixed(2)} ${rate.provider} ${rate.serviceName} shipping`;
+    if (!note.includes(freightDesc)) {
+      setNote((prev) => (prev ? `${prev} · ${freightDesc}` : freightDesc));
+    }
+  }
+
   const [quotedTotal, setQuotedTotal] = useState(initialQuotedTotal);
   const [validUntil, setValidUntil] = useState(initialValidUntil);
   const [confirmation, setConfirmation] = useState<'approve' | 'counter_offer' | 'decline' | 'resend' | null>(null);
@@ -732,12 +821,113 @@ export default function InquiryDetail({
               </p>
             </div>
 
-            <div className="border-t border-charcoal/8 pt-2.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-charcoal-light block mb-0.5">
-                Logistics &amp; Carrier Dispatch
-              </span>
+            {/* Requested Shipping Mode & Live Shippo Verifier */}
+            <div className="border-t border-charcoal/8 pt-3 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-charcoal-light block">
+                    Buyer Requested Shipping
+                  </span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {requestedShippingMode === 'PARCEL_USPS' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                        <Truck size={12} className="text-himalayan" />
+                        USPS / Ground Parcel (Shippo)
+                      </span>
+                    ) : requestedShippingMode === 'WAREHOUSE_PICKUP' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        Warehouse Pickup (Houston Hub · Free)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-purple-50 text-purple-800 border border-purple-200">
+                        <Package size={12} className="text-purple-600" />
+                        Freight Trucking (LTL / Liftgate)
+                      </span>
+                    )}
+                    {requestedCarrierService ? (
+                      <span className="text-xs text-charcoal font-semibold">
+                        {requestedCarrierService}{requestedEstimatedFreight > 0 ? ` · ${requestedEstimatedFreight.toFixed(2)} USD` : ''}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={checkAdminShippoRates}
+                  disabled={adminLoadingRates || !destinationAddress}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-semibold transition-colors disabled:opacity-50 shadow-2xs"
+                >
+                  {adminLoadingRates ? <Loader2 size={13} className="animate-spin text-himalayan" /> : <Sparkles size={13} className="text-himalayan" />}
+                  {adminLoadingRates ? 'Fetching Shippo…' : adminShippoRates.length ? 'Refresh Shippo Rates' : 'Check Live Shippo Rates'}
+                </button>
+              </div>
+
+              {adminRatesError ? (
+                <p className="text-xs text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-200">
+                  {adminRatesError}
+                </p>
+              ) : null}
+
+              {adminAppliedRate ? (
+                <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Check size={14} className="text-emerald-600" />
+                    Applied <strong>{adminAppliedRate.provider} {adminAppliedRate.serviceName}</strong> (<strong>${adminAppliedRate.amount.toFixed(2)}</strong>) to Quoted Total!
+                  </span>
+                  <span className="text-[11px] font-bold text-emerald-700">Quoted Total: ${quotedTotal} USD</span>
+                </div>
+              ) : null}
+
+              {adminShippoRates.length > 0 ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-blue-950">
+                    Live Carrier Rates from Houston Warehouse (77065) to Customer:
+                  </p>
+                  <div className="space-y-1.5">
+                    {adminShippoRates.map((rate) => {
+                      const isApplied = adminAppliedRate?.objectId === rate.objectId;
+                      return (
+                        <div
+                          key={rate.objectId}
+                          className={`flex items-center justify-between p-2 rounded-lg border text-xs transition-colors ${
+                            isApplied ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-blue-100 hover:border-blue-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-charcoal">{rate.provider}</span>
+                            <span className="text-charcoal-light">{rate.serviceName}</span>
+                            {rate.estimatedDays ? (
+                              <span className="text-[10px] text-charcoal-light">
+                                ({rate.estimatedDays} {rate.estimatedDays === 1 ? 'day' : 'days'})
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-serif font-bold text-charcoal">
+                              ${rate.amount.toFixed(2)} USD
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => applyRateToQuote(rate)}
+                              className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-colors ${
+                                isApplied
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-charcoal/5 hover:bg-charcoal/10 text-charcoal border border-charcoal/15'
+                              }`}
+                            >
+                              {isApplied ? 'Applied ✓' : '+ Apply Freight'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
               <p className="text-xs text-charcoal-light leading-relaxed">
-                Wholesale case and pallet orders are prepared and palletized at the Himalayan Koh Houston central hub. Freight carrier dispatch is quoted upon order review based on delivery dock requirements.
+                Wholesale case and pallet orders dispatch from Houston central hub. Small carton orders (up to 10 boxes) route via USPS Ground / Parcel. Bulk container orders route via freight carrier.
               </p>
             </div>
           </div>

@@ -10,10 +10,18 @@ import {
   Loader2,
   Package,
   Plus,
+  RefreshCw,
   Send,
+  Sparkles,
   Trash2,
   TrendingUp,
+  Truck,
 } from 'lucide-react';
+import {
+  parseShippingAddress,
+  type LiveCarrierRate,
+  type WholesaleShippingMode,
+} from '@/lib/wholesale/shippingUtils';
 import {
   portalRequest,
   type PortalCatalogItem,
@@ -102,6 +110,85 @@ export default function PortalCatalogPanel({
     );
   }, [shippingAddress]);
   const requestKey = useRef<{ key: string; fingerprint: string } | null>(null);
+  const [shippingMode, setShippingMode] = useState<WholesaleShippingMode>('PARCEL_USPS');
+  const [shippoRates, setShippoRates] = useState<LiveCarrierRate[]>([]);
+  const [loadingShippoRates, setLoadingShippoRates] = useState(false);
+  const [shippoRateError, setShippoRateError] = useState('');
+  const [selectedShippoRateId, setSelectedShippoRateId] = useState<string>('');
+
+  const selectedShippoRate = useMemo(() => {
+    return shippoRates.find((r) => r.objectId === selectedShippoRateId) ?? shippoRates[0] ?? null;
+  }, [shippoRates, selectedShippoRateId]);
+
+  async function fetchLiveShippoRates() {
+    if (!shippingAddress.trim()) {
+      setShippoRateError('Please enter a delivery address first.');
+      return;
+    }
+    const parsedAddr = parseShippingAddress(shippingAddress, buyer?.contactName || buyer?.company || 'Wholesale Buyer');
+    if (!parsedAddr) {
+      setShippoRateError('Please provide a complete U.S. street address, city, state and ZIP code.');
+      return;
+    }
+
+    if (!draft.length) {
+      setShippoRateError('Please add at least one product box to your quotation.');
+      return;
+    }
+
+    setLoadingShippoRates(true);
+    setShippoRateError('');
+    try {
+      const items = draft.map((line) => {
+        const item = byId.get(line.productRowId);
+        const pack = item?.casePolicy?.unitsPerCase ?? 1;
+        const boxes = line.pallets !== undefined
+          ? Math.max(1, line.pallets * (item?.packaging?.cartonsPerPallet ?? 10))
+          : Math.max(1, Math.ceil((line.units ?? pack) / pack));
+        const cartonKg = item?.packaging && item.packaging.cartonsPerPallet > 0
+          ? item.packaging.palletGrossWeightKg / item.packaging.cartonsPerPallet
+          : 15;
+        const boxWeightLbs = Math.max(1, Math.round(cartonKg * 2.20462 * 10) / 10);
+        return {
+          productId: item?.wholesaleSku || item?.name || `line-${line.productRowId}`,
+          quantity: boxes,
+          weightLbs: boxWeightLbs,
+        };
+      });
+
+      const res = await fetch('/api/shippo/rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: buyer?.email || 'wholesale@himalayankoh.com',
+          address: parsedAddr,
+          items,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to fetch shipping rates.');
+      }
+      const rates = Array.isArray(data.rates) ? (data.rates as LiveCarrierRate[]) : [];
+      setShippoRates(rates);
+      if (rates.length > 0) {
+        const preferred =
+          rates.find((r) => /usps/i.test(r.provider) && /ground/i.test(r.serviceName)) ||
+          rates.find((r) => /usps/i.test(r.provider)) ||
+          rates[0];
+        setSelectedShippoRateId(preferred.objectId);
+      } else {
+        setShippoRateError('No live carrier rates returned for this package weight/address. Trade desk will quote carrier freight.');
+      }
+    } catch (err) {
+      console.error('Shippo rates lookup failed:', err);
+      setShippoRateError(err instanceof Error ? err.message : 'Unable to calculate shipping rates at this time.');
+    } finally {
+      setLoadingShippoRates(false);
+    }
+  }
+
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [submitted, setSubmitted] = useState<{ reference: string } | null>(null);
@@ -174,7 +261,15 @@ export default function PortalCatalogPanel({
           lines: draft,
           requestKey: requestKey.current.key,
           shippingAddress,
-          incoterm,
+          incoterm: shippingMode === 'WAREHOUSE_PICKUP' ? 'EXW' : 'FOB',
+          shippingMethod: shippingMode,
+          estimatedFreight: shippingMode === 'PARCEL_USPS' && selectedShippoRate ? selectedShippoRate.amount : 0,
+          carrierService: shippingMode === 'PARCEL_USPS' && selectedShippoRate
+            ? `${selectedShippoRate.provider} ${selectedShippoRate.serviceName}`
+            : shippingMode === 'WAREHOUSE_PICKUP'
+            ? 'Customer Pickup (Houston Hub)'
+            : 'Freight Trucking (LTL / Liftgate)',
+          shippoRateId: shippingMode === 'PARCEL_USPS' && selectedShippoRate ? selectedShippoRate.objectId : undefined,
           destinationCountry,
           destinationPort,
           notes,
@@ -530,20 +625,190 @@ export default function PortalCatalogPanel({
               </div>
 
               <div className="space-y-4">
+                {/* Delivery & Shipping Method Selection */}
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-light mb-1.5" htmlFor="incoterm">
-                    Delivery Method
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-light mb-2">
+                    Shipping &amp; Delivery Mode
                   </label>
-                  <select
-                    id="incoterm"
-                    className={input}
-                    value={incoterm}
-                    onChange={(event) => setIncoterm(event.target.value)}
-                  >
-                    <option value="FOB">Standard Freight Delivery (Houston, TX to your address)</option>
-                    <option value="EXW">Warehouse Pickup (Houston, TX Warehouse)</option>
-                  </select>
+                  <div className="space-y-2">
+                    <label
+                      className={`flex items-start gap-3 p-3 rounded-2xl border transition-all cursor-pointer ${
+                        shippingMode === 'PARCEL_USPS'
+                          ? 'border-himalayan bg-himalayan/5 shadow-xs'
+                          : 'border-charcoal/10 hover:border-charcoal/20 bg-warm-white/40'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="wholesale-shipping-mode"
+                        className="mt-1 text-himalayan focus:ring-himalayan"
+                        checked={shippingMode === 'PARCEL_USPS'}
+                        onChange={() => {
+                          setShippingMode('PARCEL_USPS');
+                          setIncoterm('FOB');
+                        }}
+                      />
+                      <div className="flex-1 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-charcoal flex items-center gap-1.5">
+                            <Truck className="w-3.5 h-3.5 text-himalayan" />
+                            USPS / Ground Parcel (Live Shippo Rates)
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider">
+                            Best for Loose Boxes
+                          </span>
+                        </div>
+                        <p className="text-charcoal-light text-[11px] mt-0.5 leading-relaxed">
+                          Shipped directly via USPS / Ground Advantage from Houston Hub. Live rates quoted before submitting.
+                        </p>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`flex items-start gap-3 p-3 rounded-2xl border transition-all cursor-pointer ${
+                        shippingMode === 'FREIGHT_LTL'
+                          ? 'border-himalayan bg-himalayan/5 shadow-xs'
+                          : 'border-charcoal/10 hover:border-charcoal/20 bg-warm-white/40'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="wholesale-shipping-mode"
+                        className="mt-1 text-himalayan focus:ring-himalayan"
+                        checked={shippingMode === 'FREIGHT_LTL'}
+                        onChange={() => {
+                          setShippingMode('FREIGHT_LTL');
+                          setIncoterm('FOB');
+                        }}
+                      />
+                      <div className="flex-1 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-charcoal flex items-center gap-1.5">
+                            <Package className="w-3.5 h-3.5 text-charcoal-light" />
+                            Freight Trucking (LTL / Pallet Carrier)
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full bg-charcoal/5 text-charcoal-light text-[10px] font-semibold">
+                            Large / Pallet Orders
+                          </span>
+                        </div>
+                        <p className="text-charcoal-light text-[11px] mt-0.5 leading-relaxed">
+                          Carrier truck dispatch for pallet loads and dock receiving. Freight confirmed on final quotation.
+                        </p>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`flex items-start gap-3 p-3 rounded-2xl border transition-all cursor-pointer ${
+                        shippingMode === 'WAREHOUSE_PICKUP'
+                          ? 'border-himalayan bg-himalayan/5 shadow-xs'
+                          : 'border-charcoal/10 hover:border-charcoal/20 bg-warm-white/40'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="wholesale-shipping-mode"
+                        className="mt-1 text-himalayan focus:ring-himalayan"
+                        checked={shippingMode === 'WAREHOUSE_PICKUP'}
+                        onChange={() => {
+                          setShippingMode('WAREHOUSE_PICKUP');
+                          setIncoterm('EXW');
+                        }}
+                      />
+                      <div className="flex-1 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-charcoal">Warehouse Pickup (FOB / EXW Houston)</span>
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold">
+                            Free ($0.00)
+                          </span>
+                        </div>
+                        <p className="text-charcoal-light text-[11px] mt-0.5 leading-relaxed">
+                          Self pickup or arrange your own freight carrier from 12620 FM 1960 W Ste A-4, Houston, TX 77065.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
                 </div>
+
+                {/* Live Shippo Carrier Rates Panel */}
+                {shippingMode === 'PARCEL_USPS' ? (
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-blue-950">
+                        <Sparkles className="w-4 h-4 text-himalayan" />
+                        <span>Live Shippo Carrier Rates</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={fetchLiveShippoRates}
+                        disabled={loadingShippoRates || !shippingAddress.trim()}
+                        className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white border border-blue-200 text-blue-900 text-[11px] font-semibold hover:bg-blue-50 transition-colors shadow-2xs disabled:opacity-50"
+                      >
+                        {loadingShippoRates ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-3 h-3" />
+                        )}
+                        {loadingShippoRates ? 'Calculating…' : shippoRates.length ? 'Refresh Rates' : 'Get Live Rates'}
+                      </button>
+                    </div>
+
+                    {shippoRateError ? (
+                      <p className="text-xs text-red-700 bg-red-50 p-2.5 rounded-xl border border-red-200 leading-relaxed">
+                        {shippoRateError}
+                      </p>
+                    ) : null}
+
+                    {loadingShippoRates ? (
+                      <div className="py-4 text-center text-xs text-blue-800 flex items-center justify-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-himalayan" />
+                        <span>Fetching live USPS &amp; carrier rates from Shippo…</span>
+                      </div>
+                    ) : shippoRates.length > 0 ? (
+                      <div className="space-y-2 mt-2">
+                        <p className="text-[11px] text-blue-900 font-medium">Select your preferred delivery carrier:</p>
+                        {shippoRates.map((rate) => {
+                          const isSelected = selectedShippoRateId === rate.objectId;
+                          return (
+                            <label
+                              key={rate.objectId}
+                              className={`flex items-center justify-between p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
+                                isSelected
+                                  ? 'bg-white border-blue-400 shadow-xs'
+                                  : 'bg-white/70 border-blue-200 hover:bg-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <input
+                                  type="radio"
+                                  name="shippo-carrier-rate"
+                                  checked={isSelected}
+                                  onChange={() => setSelectedShippoRateId(rate.objectId)}
+                                  className="text-himalayan focus:ring-himalayan"
+                                />
+                                <div>
+                                  <span className="font-bold text-charcoal">{rate.provider}</span>{' '}
+                                  <span className="text-charcoal-light font-medium">{rate.serviceName}</span>
+                                  {rate.estimatedDays ? (
+                                    <span className="block text-[10px] text-charcoal-light">
+                                      Est. {rate.estimatedDays} {rate.estimatedDays === 1 ? 'business day' : 'business days'}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                              <span className="font-serif font-bold text-sm text-charcoal">
+                                {money(rate.amount, currency)}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-blue-900/80 leading-relaxed">
+                        Click &ldquo;Get Live Rates&rdquo; to calculate real-time USPS and parcel shipping directly from our Houston, TX hub to your address.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
 
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-charcoal-light mb-1.5" htmlFor="dc">
@@ -797,14 +1062,40 @@ export default function PortalCatalogPanel({
                 {/* Indicative Value, Clean Notes & Submit Button */}
                 <div className="pt-6 border-t border-charcoal/10 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
                   <div className="max-w-xl">
-                    <p className="text-xs uppercase tracking-widest text-charcoal-light font-medium mb-1">
-                      Indicative Goods Value
-                    </p>
-                    <p className="font-serif text-3xl font-bold text-charcoal">
-                      {money(plan.totals.indicativeMerchandise ?? 0, currency)}
-                    </p>
+                    <div className="p-4 rounded-2xl bg-warm-white border border-charcoal/10 mb-3 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-charcoal-light">
+                        <span>Merchandise Subtotal:</span>
+                        <span className="font-semibold text-charcoal">{money(plan.totals.indicativeMerchandise ?? 0, currency)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-charcoal-light">
+                        <span>
+                          Estimated Shipping ({shippingMode === 'PARCEL_USPS'
+                            ? selectedShippoRate ? `${selectedShippoRate.provider} ${selectedShippoRate.serviceName}` : 'USPS / Parcel'
+                            : shippingMode === 'WAREHOUSE_PICKUP' ? 'Warehouse Pickup' : 'Freight Trucking'}):
+                        </span>
+                        <span className="font-semibold text-charcoal">
+                          {shippingMode === 'PARCEL_USPS' && selectedShippoRate
+                            ? money(selectedShippoRate.amount, currency)
+                            : shippingMode === 'WAREHOUSE_PICKUP'
+                            ? 'Free ($0.00)'
+                            : 'Confirmed on Quote'}
+                        </span>
+                      </div>
+                      <div className="border-t border-charcoal/10 pt-2 flex items-center justify-between text-sm font-bold text-charcoal">
+                        <span>Indicative Total Quote:</span>
+                        <span className="font-serif text-2xl text-himalayan">
+                          {money(
+                            (plan.totals.indicativeMerchandise ?? 0) +
+                            (shippingMode === 'PARCEL_USPS' && selectedShippoRate ? selectedShippoRate.amount : 0),
+                            currency
+                          )}
+                        </span>
+                      </div>
+                    </div>
                     <p className="text-xs text-charcoal-light mt-1.5 leading-relaxed">
-                      At volume tier prices, goods only. Freight and destination charges from our Houston, TX warehouse are confirmed on your quotation. No payment is taken at this time.
+                      {shippingMode === 'PARCEL_USPS' && selectedShippoRate
+                        ? 'Includes goods and live carrier shipping estimate. Final shipping and payment terms are confirmed on your formal proforma quote.'
+                        : 'At volume tier prices, goods only. Freight and destination charges from our Houston, TX warehouse are confirmed on your quotation. No payment is taken at this time.'}
                     </p>
                     {cleanNotes.length ? (
                       <ul className="mt-3 space-y-1.5">
