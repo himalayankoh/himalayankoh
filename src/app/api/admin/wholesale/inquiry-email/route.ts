@@ -34,7 +34,9 @@ export async function POST(request: Request) {
   try {
     if (action === 'approve' || action === 'decline') {
       const reason = typeof body?.reason === 'string' ? body.reason : undefined;
-      const result = await sendQuoteDecisionNotification(id, action, actor, { reason });
+      const isCounterOffer = Boolean(body?.isCounterOffer);
+      const counterNote = typeof body?.counterNote === 'string' ? body.counterNote : undefined;
+      const result = await sendQuoteDecisionNotification(id, action, actor, { reason, isCounterOffer, counterNote });
       return NextResponse.json(result, { status: result.buyerNotified ? 200 : 502 });
     } else {
       const result = await resendInquiryNotification(id, actor);

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import {
+  AlertTriangle,
   Building2,
   Calendar,
   CheckCircle2,
@@ -11,9 +12,12 @@ import {
   FileText,
   Mail,
   MapPin,
+  Minus,
   Package,
   Phone,
+  Plus,
   Printer,
+  RotateCcw,
   Save,
   Send,
   Truck,
@@ -284,12 +288,70 @@ export default function InquiryDetail({
     return future.toISOString().slice(0, 10);
   };
 
+  // Track editable box quantities per line item (for counter-offer / quantity adjustments)
+  const [offeredBoxes, setOfferedBoxes] = useState<Record<string, number>>(() => {
+    const initial: Record<string, number> = {};
+    for (const l of resolvedLines) {
+      initial[l.id] = l.boxes;
+    }
+    return initial;
+  });
+  const [counterNote, setCounterNote] = useState('');
+
+  const activeLines = resolvedLines.map((l) => {
+    const requestedBoxes = l.boxes;
+    const currentBoxes = Math.max(1, Number(offeredBoxes[l.id] ?? requestedBoxes) || 1);
+    const currentPieces = currentBoxes * l.casePack;
+    const currentLineSubtotal = Math.round(currentBoxes * l.boxPrice * 100) / 100;
+    const currentWeightLbs = currentPieces * (l.totalPieces > 0 ? l.totalWeightLbs / l.totalPieces : l.boxWeightLbs / l.casePack);
+    const isModified = currentBoxes !== requestedBoxes;
+    return {
+      ...l,
+      originalBoxes: requestedBoxes,
+      originalPieces: l.totalPieces,
+      originalSubtotal: l.lineSubtotal,
+      boxes: currentBoxes,
+      totalPieces: currentPieces,
+      lineSubtotal: currentLineSubtotal,
+      totalWeightLbs: currentWeightLbs,
+      isModified,
+    };
+  });
+
+  const isAnyQuantityModified = activeLines.some((l) => l.isModified);
+  const activeTotalBoxes = activeLines.reduce((acc, l) => acc + l.boxes, 0);
+  const activeTotalPieces = activeLines.reduce((acc, l) => acc + l.totalPieces, 0);
+  const activeMerchandiseTotal = activeLines.reduce((acc, l) => acc + l.lineSubtotal, 0);
+  const activeTotalWeightLbs = activeLines.reduce((acc, l) => acc + l.totalWeightLbs, 0);
+
+  function updateLineBoxes(lineId: string, newBoxes: number) {
+    const safeBoxes = Math.max(1, Math.min(10000, Math.round(newBoxes) || 1));
+    setOfferedBoxes((prev) => {
+      const next = { ...prev, [lineId]: safeBoxes };
+      const nextMerchTotal = resolvedLines.reduce((sum, l) => {
+        const b = l.id === lineId ? safeBoxes : (next[l.id] ?? l.boxes);
+        return sum + Math.round(b * l.boxPrice * 100) / 100;
+      }, 0);
+      setQuotedTotal(nextMerchTotal.toFixed(2));
+      return next;
+    });
+  }
+
+  function resetAllBoxesToRequested() {
+    const reset: Record<string, number> = {};
+    for (const l of resolvedLines) {
+      reset[l.id] = l.boxes;
+    }
+    setOfferedBoxes(reset);
+    setQuotedTotal(merchandiseTotal > 0 ? merchandiseTotal.toFixed(2) : '');
+  }
+
   const [note, setNote] = useState(text(inquiry.internal_notes));
   const [invoice, setInvoice] = useState(text(inquiry.invoice_url));
   const [payment, setPayment] = useState(text(inquiry.external_payment_url));
   const [quotedTotal, setQuotedTotal] = useState(initialQuotedTotal);
   const [validUntil, setValidUntil] = useState(initialValidUntil);
-  const [confirmation, setConfirmation] = useState<'approve' | 'decline' | 'resend' | null>(null);
+  const [confirmation, setConfirmation] = useState<'approve' | 'counter_offer' | 'decline' | 'resend' | null>(null);
   const [declineReason, setDeclineReason] = useState('');
   const [showOptionalLinks, setShowOptionalLinks] = useState(
     Boolean(text(inquiry.invoice_url) || text(inquiry.external_payment_url) || text(inquiry.internal_notes))
@@ -317,7 +379,7 @@ export default function InquiryDetail({
     text(contact?.email).toLowerCase().includes('ws@himalayankoh.com')
   );
 
-  const finalTotalNum = Number(quotedTotal) || merchandiseTotal;
+  const finalTotalNum = Number(quotedTotal) || (isAnyQuantityModified ? activeMerchandiseTotal : merchandiseTotal);
 
   const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; border: string }> = {
     SUBMITTED: { label: 'Inquiry Submitted', bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200' },
@@ -331,36 +393,76 @@ export default function InquiryDetail({
 
   const statusBadge = STATUS_CONFIG[status] || STATUS_CONFIG.SUBMITTED;
 
-  async function handleApproveQuotation() {
-    const finalAmount = Number(quotedTotal) || merchandiseTotal;
+  async function handleApproveQuotation(asCounterOffer = false) {
+    const finalAmount = Number(quotedTotal) || (asCounterOffer ? activeMerchandiseTotal : merchandiseTotal);
     if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
-      throw new Error('Please specify a positive total amount before approving the quotation.');
+      throw new Error('Please specify a positive total amount before dispatching the quotation.');
     }
     const finalDate = validUntil || initialValidUntil();
     setConfirmation(null);
+
     await writer.run(async () => {
-      await saveWholesaleRecord(
-        'quotes',
-        {
-          status: 'QUOTED',
-          sell_total: finalAmount,
-          valid_until: finalDate,
-          revisionReason: 'Quotation approved by trade desk and issued to buyer',
-          internal_notes: note,
-          invoice_url: invoice,
-          external_payment_url: payment,
-        },
-        id
-      );
+      const quotePayload: Record<string, unknown> = {
+        status: 'QUOTED',
+        sell_total: finalAmount,
+        valid_until: finalDate,
+        internal_notes: note,
+        invoice_url: invoice,
+        external_payment_url: payment,
+      };
+
+      if (asCounterOffer && isAnyQuantityModified) {
+        const updatedLines = lines.map((rawLine, idx) => {
+          const active = activeLines[idx] || resolveLine(rawLine, products);
+          return {
+            ...rawLine,
+            cartons: active.boxes,
+            boxes: active.boxes,
+            units: active.totalPieces,
+            lineSubtotalIndicative: active.lineSubtotal,
+            line_total: active.lineSubtotal,
+            counterOfferOfferedBoxes: active.boxes,
+            counterOfferRequestedBoxes: active.originalBoxes,
+          };
+        });
+
+        const updatedTotals = {
+          units: activeTotalPieces,
+          cartons: activeTotalBoxes,
+          pallets: Math.ceil(activeTotalBoxes / 40) || 1,
+          netWeightKg: Math.round(activeTotalWeightLbs * 0.453592 * 100) / 100,
+          merchandise: activeMerchandiseTotal,
+          total: finalAmount,
+          currency,
+        };
+
+        quotePayload.lines = updatedLines;
+        quotePayload.totals = updatedTotals;
+        quotePayload.revisionReason = `Counter-offer: Revised to ${activeTotalBoxes} boxes (${activeTotalPieces} pcs). ${counterNote}`.trim();
+        if (counterNote.trim()) {
+          quotePayload.notes = buyerNotes
+            ? `[Trade Desk Counter-Offer Note]: ${counterNote.trim()}\n${buyerNotes}`
+            : `[Trade Desk Counter-Offer Note]: ${counterNote.trim()}`;
+        }
+      } else {
+        quotePayload.revisionReason = 'Quotation approved by trade desk and issued to buyer';
+      }
+
+      await saveWholesaleRecord('quotes', quotePayload, id);
 
       try {
-        await dispatchWholesaleQuoteDecision(id, 'approve');
+        await dispatchWholesaleQuoteDecision(id, 'approve', {
+          isCounterOffer: asCounterOffer && isAnyQuantityModified,
+          counterNote: counterNote.trim() || undefined,
+        });
       } catch (emailErr) {
         console.warn('Quotation updated but email dispatch error:', emailErr);
       }
 
       await reload();
-    }, `Quotation approved (${finalAmount.toFixed(2)}) and official email sent to ${buyerEmail || 'buyer'}!`);
+    }, asCounterOffer && isAnyQuantityModified
+      ? `Counter-offer proposal (${activeTotalBoxes} boxes · ${finalAmount.toFixed(2)}) dispatched to ${buyerEmail || 'buyer'}!`
+      : `Quotation approved (${finalAmount.toFixed(2)}) and official email sent to ${buyerEmail || 'buyer'}!`);
   }
 
   async function handleDeclineInquiry() {
@@ -633,8 +735,8 @@ export default function InquiryDetail({
               </tr>
             </thead>
             <tbody className="divide-y divide-charcoal/8 bg-white">
-              {resolvedLines.length ? (
-                resolvedLines.map((l, idx) => (
+              {activeLines.length ? (
+                activeLines.map((l, idx) => (
                   <tr key={l.id || idx} className="hover:bg-charcoal/[0.02] transition-colors">
                     <td className="px-4 py-3">
                       <div className="font-semibold text-charcoal text-sm">{l.name}</div>
@@ -657,12 +759,56 @@ export default function InquiryDetail({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-charcoal whitespace-nowrap">
-                      <div className="text-sm font-bold text-charcoal">
-                        {l.boxes} {l.boxes === 1 ? 'Box' : 'Boxes'}
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => updateLineBoxes(l.id, l.boxes - 1)}
+                          disabled={l.boxes <= 1 || writer.saving}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-charcoal/20 bg-warm-white text-charcoal hover:bg-charcoal/10 disabled:opacity-30 transition-colors"
+                          title="Decrease box quantity"
+                        >
+                          <Minus size={13} />
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={10000}
+                          value={l.boxes}
+                          onChange={(e) => updateLineBoxes(l.id, parseInt(e.target.value, 10) || 1)}
+                          className="w-16 rounded-lg border border-charcoal/20 bg-white py-1 px-1.5 text-center text-sm font-bold text-charcoal shadow-inner focus:border-himalayan focus:ring-1 focus:ring-himalayan"
+                          aria-label={`Boxes of ${l.name}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateLineBoxes(l.id, l.boxes + 1)}
+                          disabled={writer.saving}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-charcoal/20 bg-warm-white text-charcoal hover:bg-charcoal/10 transition-colors"
+                          title="Increase box quantity"
+                        >
+                          <Plus size={13} />
+                        </button>
+                        <span className="text-xs font-semibold text-charcoal-light ml-0.5">Boxes</span>
                       </div>
-                      <div className="text-[11px] text-charcoal-light">
+
+                      <div className="text-[11px] text-charcoal-light mt-1">
                         {l.totalPieces.toLocaleString('en-US')} total pcs
                       </div>
+
+                      {l.isModified && (
+                        <div className="mt-1 flex items-center justify-end gap-1.5">
+                          <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900 border border-amber-300">
+                            Requested: {l.originalBoxes} box{l.originalBoxes === 1 ? '' : 'es'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => updateLineBoxes(l.id, l.originalBoxes)}
+                            className="text-[10px] text-charcoal-light hover:text-himalayan underline"
+                            title="Reset to requested quantity"
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-charcoal whitespace-nowrap">
                       <div className="text-sm font-bold text-charcoal">
@@ -692,22 +838,27 @@ export default function InquiryDetail({
               <tr>
                 <td colSpan={3} className="px-4 py-2.5 text-charcoal-light">
                   <div className="font-semibold text-charcoal">
-                    {totalBoxes} {totalBoxes === 1 ? 'Box' : 'Boxes'} ({totalPieces.toLocaleString('en-US')} total pieces)
+                    {activeTotalBoxes} {activeTotalBoxes === 1 ? 'Box' : 'Boxes'} ({activeTotalPieces.toLocaleString('en-US')} total pieces)
+                    {isAnyQuantityModified && (
+                      <span className="ml-2 text-xs font-normal text-amber-800">
+                        (Requested: {totalBoxes} boxes / {totalPieces} pcs)
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11px] text-charcoal-light mt-0.5">
-                    Est. Shipping Weight: ~{totalWeightLbs.toLocaleString('en-US')} lbs ({Math.round(totalWeightLbs * 0.453592)} kg)
+                    Est. Shipping Weight: ~{activeTotalWeightLbs.toLocaleString('en-US')} lbs ({Math.round(activeTotalWeightLbs * 0.453592)} kg)
                   </div>
                 </td>
                 <td className="px-4 py-2.5 text-right font-semibold text-charcoal-light">Merchandise Subtotal:</td>
-                <td className="px-4 py-2.5 text-right font-semibold text-charcoal">{money(merchandiseTotal, currency)}</td>
+                <td className="px-4 py-2.5 text-right font-semibold text-charcoal">{money(activeMerchandiseTotal, currency)}</td>
               </tr>
               <tr>
                 <td colSpan={3} className="px-4 py-2.5" />
                 <td className="px-4 py-2.5 text-right font-semibold text-charcoal-light">Freight & Delivery:</td>
                 <td className="px-4 py-2.5 text-right font-medium text-charcoal">
-                  {Number(quotedTotal) > merchandiseTotal
-                    ? money(Number(quotedTotal) - merchandiseTotal, currency)
-                    : Number(quotedTotal) === merchandiseTotal
+                  {Number(quotedTotal) > activeMerchandiseTotal
+                    ? money(Number(quotedTotal) - activeMerchandiseTotal, currency)
+                    : Number(quotedTotal) === activeMerchandiseTotal
                       ? 'Free Delivery / Customer Pickup'
                       : 'Quoted upon freight dispatch review'}
                 </td>
@@ -772,6 +923,50 @@ export default function InquiryDetail({
             </div>
           </div>
 
+          {/* Quantity Negotiation Notice & Counter-Offer Note */}
+          {isAnyQuantityModified && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50/90 p-4 text-xs text-amber-950 space-y-3 shadow-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200/80 pb-2.5">
+                <div className="flex items-center gap-2 font-bold text-sm text-amber-900">
+                  <AlertTriangle size={17} className="text-amber-700" />
+                  <span>Proposed Quantity Revision (Counter-Offer Mode)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-amber-200/80 px-2.5 py-0.5 text-[11px] font-bold text-amber-950">
+                    Requested: {totalBoxes} boxes → Offered: {activeTotalBoxes} boxes
+                  </span>
+                  <button
+                    type="button"
+                    onClick={resetAllBoxesToRequested}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-amber-900 hover:text-amber-950 underline"
+                  >
+                    <RotateCcw size={12} />
+                    Reset to original
+                  </button>
+                </div>
+              </div>
+
+              <p className="leading-relaxed text-amber-900">
+                You have adjusted the order quantity. The calculated merchandise subtotal is now <strong>{money(activeMerchandiseTotal, currency)}</strong> (was {money(merchandiseTotal, currency)}).
+                You can propose this revised quantity to the buyer — they will be notified via email and can review &amp; click <strong>Accept Quotation</strong> directly from their Wholesale Portal.
+              </p>
+
+              <div>
+                <label className="block font-bold text-amber-950 mb-1" htmlFor="counter-note">
+                  Message to Buyer explaining the change (Optional):
+                </label>
+                <input
+                  id="counter-note"
+                  type="text"
+                  value={counterNote}
+                  onChange={(e) => setCounterNote(e.target.value)}
+                  placeholder="e.g. We have 4 boxes available for immediate dispatch from our Houston warehouse; balance can be shipped next month."
+                  className={`${SELECT} bg-white text-xs text-charcoal border-amber-300 focus:border-amber-500`}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Pricing & Expiry Input Grid */}
           <div className="grid gap-4 sm:grid-cols-3 bg-white p-4 rounded-xl border border-charcoal/10">
             <div>
@@ -787,11 +982,11 @@ export default function InquiryDetail({
                   className={`${SELECT} pl-7 text-sm font-bold text-charcoal`}
                   value={quotedTotal}
                   onChange={(e) => setQuotedTotal(e.target.value)}
-                  placeholder={merchandiseTotal.toFixed(2)}
+                  placeholder={activeMerchandiseTotal.toFixed(2)}
                 />
               </div>
               <p className="text-[11px] text-charcoal-light mt-1">
-                Merchandise: {money(merchandiseTotal, currency)}. Adjust if adding freight.
+                Merchandise: {money(activeMerchandiseTotal, currency)}. Adjust if adding freight.
               </p>
             </div>
 
@@ -825,19 +1020,61 @@ export default function InquiryDetail({
             </div>
           </div>
 
-          {/* Action Decision Buttons (OK / Not OK) */}
+          {/* Action Decision Buttons (OK / Counter-Offer / Not OK) */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <div className="flex flex-wrap items-center gap-2.5">
-              {/* OK / APPROVAL BUTTON */}
-              <button
-                type="button"
-                onClick={() => setConfirmation('approve')}
-                disabled={writer.saving}
-                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.99] transition-all disabled:opacity-60"
-              >
-                <CheckCircle2 size={16} />
-                {writer.saving ? 'Processing…' : status === 'QUOTED' ? 'Update & Re-send Quotation (OK)' : 'Approve & Send Quotation (OK)'}
-              </button>
+              {isAnyQuantityModified ? (
+                <>
+                  {/* COUNTER-OFFER PRIMARY BUTTON */}
+                  <button
+                    type="button"
+                    onClick={() => setConfirmation('counter_offer')}
+                    disabled={writer.saving}
+                    className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-amber-700 active:scale-[0.99] transition-all disabled:opacity-60"
+                  >
+                    <Send size={15} />
+                    {writer.saving ? 'Processing…' : `Send Counter-Offer (${activeTotalBoxes} Boxes · ${(Number(quotedTotal) || activeMerchandiseTotal).toFixed(2)})`}
+                  </button>
+
+                  {/* APPROVE ORIGINAL REQUEST BUTTON */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetAllBoxesToRequested();
+                      setConfirmation('approve');
+                    }}
+                    disabled={writer.saving}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-600 bg-emerald-50 px-4 py-2.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 active:scale-[0.99] transition-all disabled:opacity-50"
+                  >
+                    <CheckCircle2 size={15} />
+                    Approve Original Request ({totalBoxes} Boxes)
+                  </button>
+
+                  {/* RESET BUTTON */}
+                  <button
+                    type="button"
+                    onClick={resetAllBoxesToRequested}
+                    disabled={writer.saving}
+                    className="inline-flex items-center gap-1 rounded-xl border border-charcoal/20 bg-white px-3 py-2.5 text-xs font-semibold text-charcoal hover:bg-charcoal/5 transition-colors"
+                  >
+                    <RotateCcw size={13} />
+                    Reset
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* DIRECT APPROVAL BUTTON */}
+                  <button
+                    type="button"
+                    onClick={() => setConfirmation('approve')}
+                    disabled={writer.saving}
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-[0.99] transition-all disabled:opacity-60"
+                  >
+                    <CheckCircle2 size={16} />
+                    {writer.saving ? 'Processing…' : status === 'QUOTED' ? 'Update & Re-send Quotation (OK)' : 'Approve & Send Quotation (OK)'}
+                  </button>
+                </>
+              )}
 
               {/* NOT OK / DECLINE BUTTON */}
               <button
@@ -850,8 +1087,8 @@ export default function InquiryDetail({
                 Decline Inquiry (Not OK)
               </button>
 
-              {/* Resend notification button if already quoted */}
-              {status === 'QUOTED' && (
+              {/* Resend notification button if already quoted and not modified */}
+              {status === 'QUOTED' && !isAnyQuantityModified && (
                 <button
                   type="button"
                   onClick={() => setConfirmation('resend')}
@@ -966,6 +1203,70 @@ export default function InquiryDetail({
       </div>
 
       {/* Confirmation Modals */}
+      {confirmation === 'counter_offer' && (
+        <AdminModal
+          title="Send Counter-Offer / Revised Quotation to Buyer"
+          onClose={() => setConfirmation(null)}
+          footer={
+            <>
+              <AdminButton variant="secondary" onClick={() => setConfirmation(null)}>
+                Cancel
+              </AdminButton>
+              <button
+                type="button"
+                onClick={() => void handleApproveQuotation(true)}
+                disabled={writer.saving}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-amber-700 transition-colors disabled:opacity-60"
+              >
+                <Send size={15} />
+                {writer.saving ? 'Sending Proposal…' : 'Confirm & Email Counter-Offer'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3 text-sm text-charcoal">
+            <p>
+              Send revised quotation proposal for <strong>#{ref}</strong> to wholesale buyer?
+            </p>
+            <div className="rounded-lg bg-amber-50/80 border border-amber-200 p-3.5 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-charcoal-light">Buyer:</span>
+                <span className="font-semibold">{buyerCompany} ({buyerContactName || 'Buyer'})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-charcoal-light">Email Target:</span>
+                <span className="font-mono font-medium">{buyerEmail || 'ws@himalayankoh.com'}</span>
+              </div>
+              <div className="border-t border-amber-200/60 pt-2 flex justify-between">
+                <span className="text-charcoal-light">Requested Quantity:</span>
+                <span className="font-medium text-charcoal/70 line-through">{totalBoxes} Boxes ({totalPieces} pcs) · ${merchandiseTotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-amber-950 font-bold">Proposed Counter-Offer:</span>
+                <span className="font-bold text-amber-900">{activeTotalBoxes} Boxes ({activeTotalPieces} pcs)</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-charcoal-light">Revised Quoted Total:</span>
+                <span className="font-extrabold text-amber-900">${(Number(quotedTotal) || activeMerchandiseTotal).toFixed(2)} {currency}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-charcoal-light">Valid Through:</span>
+                <span className="font-medium">{validUntil}</span>
+              </div>
+              {counterNote.trim() && (
+                <div className="border-t border-amber-200/60 pt-2">
+                  <span className="text-charcoal-light block mb-0.5">Note to Buyer:</span>
+                  <p className="italic text-charcoal bg-white/70 p-2 rounded border border-amber-200/50">{counterNote.trim()}</p>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-charcoal-light">
+              This will update the quotation with the revised quantities, set status to <strong>QUOTED</strong>, and dispatch the counter-offer email. The buyer can review and click <strong>Accept Quotation</strong> directly in their Wholesale Portal.
+            </p>
+          </div>
+        </AdminModal>
+      )}
+
       {confirmation === 'approve' && (
         <AdminModal
           title="Approve & Send Quotation to Buyer"
@@ -977,7 +1278,7 @@ export default function InquiryDetail({
               </AdminButton>
               <button
                 type="button"
-                onClick={() => void handleApproveQuotation()}
+                onClick={() => void handleApproveQuotation(false)}
                 disabled={writer.saving}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-colors disabled:opacity-60"
               >
@@ -999,6 +1300,10 @@ export default function InquiryDetail({
               <div className="flex justify-between">
                 <span className="text-charcoal-light">Email Target:</span>
                 <span className="font-mono font-medium">{buyerEmail || 'ws@himalayankoh.com'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-charcoal-light">Approved Quantity:</span>
+                <span className="font-medium text-charcoal">{totalBoxes} Boxes ({totalPieces} pcs)</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-charcoal-light">Final Quoted Total:</span>

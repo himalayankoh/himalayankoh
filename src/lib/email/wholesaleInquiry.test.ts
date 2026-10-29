@@ -183,6 +183,28 @@ describe('quote approval email', () => {
     expect(text).toContain('USD 293.37');
     expect(text).toContain('7 boxes (21 pcs)');
   });
+
+  it('renders counter-offer badge, revised heading, and counter-offer note', () => {
+    const counterInput = {
+      ...approvalInput,
+      isCounterOffer: true,
+      counterNote: 'We have 4 boxes available for immediate dispatch from Houston.',
+      lines: [
+        { name: 'Himalayan Pink Salt for Livestock - 6 lb Pouch', sku: 'HK-ESF-6lbs', units: 12, boxes: 4, unitPrice: 13.97, subtotal: 167.64 },
+      ],
+      quotedTotal: 167.64,
+    };
+    const html = buildQuoteApprovalHtml(counterInput);
+    expect(html).toContain('Counter-Offer');
+    expect(html).toContain('Himalayan Koh Wholesale Counter-Offer');
+    expect(html).toContain('We have 4 boxes available for immediate dispatch from Houston.');
+    expect(html).toContain('USD 167.64');
+
+    const text = buildQuoteApprovalText(counterInput);
+    expect(text).toContain('Counter-Offer');
+    expect(text).toContain('We have 4 boxes available for immediate dispatch from Houston.');
+    expect(text).toContain('USD 167.64');
+  });
 });
 
 describe('quote declined email', () => {

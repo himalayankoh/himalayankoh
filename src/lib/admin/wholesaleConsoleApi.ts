@@ -517,10 +517,18 @@ export async function resendWholesaleInquiryNotification(inquiryId: number) {
 export async function dispatchWholesaleQuoteDecision(
   inquiryId: number,
   action: 'approve' | 'decline' | 'resend',
-  reason?: string
+  options?: { reason?: string; isCounterOffer?: boolean; counterNote?: string } | string
 ) {
+  const opts = typeof options === 'string' ? { reason: options } : options;
   return send<{ buyerNotified?: boolean; adminNotified?: boolean; error?: string }>(
     '/api/admin/wholesale/inquiry-email',
-    { inquiryId, action, reason, confirm: true }
+    {
+      inquiryId,
+      action,
+      reason: opts?.reason,
+      isCounterOffer: opts?.isCounterOffer,
+      counterNote: opts?.counterNote,
+      confirm: true,
+    }
   );
 }

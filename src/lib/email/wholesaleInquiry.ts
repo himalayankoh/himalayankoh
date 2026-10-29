@@ -321,6 +321,8 @@ export interface WholesaleQuoteApprovalInput {
   invoiceUrl?: string;
   portalUrl: string;
   notes?: string;
+  isCounterOffer?: boolean;
+  counterNote?: string;
 }
 
 export interface WholesaleQuoteDeclineInput {
@@ -357,16 +359,30 @@ export function buildQuoteApprovalHtml(input: WholesaleQuoteApprovalInput): stri
     )
     .join('');
 
+  const title = input.isCounterOffer
+    ? 'Himalayan Koh Wholesale Counter-Offer'
+    : 'Himalayan Koh Wholesale Quotation';
+  const intro = input.isCounterOffer
+    ? 'Thank you for your wholesale inquiry. Our trade desk has reviewed your request and prepared a revised quantity and pricing proposal below for your review and approval.'
+    : 'Thank you for your interest in Himalayan Koh. Our trade desk has reviewed your wholesale inquiry and issued your official quotation below.';
+
   return `<div style="font-family:Arial,Helvetica,sans-serif;color:#2d2722;line-height:1.55;max-width:640px;margin:0 auto;padding:24px;border:1px solid #e7ded5;border-radius:12px;background:#ffffff">
   <div style="border-bottom:2px solid #8d4133;padding-bottom:12px;margin-bottom:20px">
-    <h2 style="margin:0;color:#8d4133;font-size:20px;letter-spacing:-0.02em">Himalayan Koh Wholesale Quotation</h2>
-    <p style="margin:4px 0 0;font-size:13px;color:#777">Quotation Reference: <strong>${escapeHtml(input.reference)}</strong></p>
+    <h2 style="margin:0;color:#8d4133;font-size:20px;letter-spacing:-0.02em">${escapeHtml(title)}</h2>
+    <p style="margin:4px 0 0;font-size:13px;color:#777">Quotation Reference: <strong>${escapeHtml(input.reference)}</strong>${input.isCounterOffer ? ' <span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:bold;margin-left:6px">Counter-Offer</span>' : ''}</p>
   </div>
 
   <p style="margin:0 0 14px;font-size:14px">Hello ${escapeHtml(input.buyer.contactName || input.buyer.businessName)},</p>
   <p style="margin:0 0 16px;font-size:14px">
-    Thank you for your interest in Himalayan Koh. Our trade desk has reviewed your wholesale inquiry and issued your official quotation below.
+    ${escapeHtml(intro)}
   </p>
+
+  ${input.isCounterOffer ? `
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #d97706;border-radius:6px;padding:12px 14px;margin-bottom:18px">
+      <strong style="color:#b45309;font-size:13px">Trade Desk Revised Proposal / Counter-Offer Note:</strong>
+      <p style="margin:4px 0 0;font-size:13px;color:#451a03">${escapeHtml(input.counterNote || 'Order quantities have been adjusted based on current warehouse allocation. Please review the updated figures below and confirm in your Wholesale Portal if acceptable.')}</p>
+    </div>
+  ` : ''}
 
   <div style="background:#fbf8f5;border:1px solid #ebd9cf;border-radius:8px;padding:14px;margin-bottom:20px">
     <table style="width:100%;font-size:13px;border-collapse:collapse">
@@ -411,7 +427,7 @@ export function buildQuoteApprovalHtml(input: WholesaleQuoteApprovalInput): stri
   ` : `
     <div style="margin:22px 0;text-align:center">
       <a href="${escapeHtml(input.portalUrl)}" style="display:inline-block;background:#8d4133;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 24px;border-radius:8px;font-size:14px">
-        View & Accept in Wholesale Portal
+        ${input.isCounterOffer ? 'View & Accept Revised Proposal in Wholesale Portal' : 'View & Accept in Wholesale Portal'}
       </a>
     </div>
   `}
@@ -432,11 +448,16 @@ export function buildQuoteApprovalText(input: WholesaleQuoteApprovalInput): stri
     .join('\n');
 
   return [
-    `Himalayan Koh Wholesale Quotation ${input.reference}`,
+    input.isCounterOffer
+      ? `Himalayan Koh Wholesale Counter-Offer for Quotation ${input.reference}`
+      : `Himalayan Koh Wholesale Quotation ${input.reference}`,
     '',
     `Hello ${input.buyer.contactName || input.buyer.businessName},`,
     '',
-    `Your wholesale quotation ${input.reference} has been approved by our trade desk.`,
+    input.isCounterOffer
+      ? 'Our trade desk has reviewed your wholesale inquiry and prepared a revised quantity and pricing proposal below.'
+      : `Your wholesale quotation ${input.reference} has been approved by our trade desk.`,
+    input.isCounterOffer && input.counterNote ? `\nTrade Desk Note: ${input.counterNote}\n` : '',
     '',
     `Final Quoted Total: ${formatMoney(input.quotedTotal, input.currency)}`,
     `Valid Through: ${input.validUntil}`,
@@ -461,7 +482,9 @@ export async function sendWholesaleQuoteApprovalEmail(
 ): Promise<{ buyerNotified: boolean; adminNotified: boolean; error: string }> {
   const recipient = wholesaleInquiryRecipient();
   const from = wholesaleSender();
-  const subject = `Official Wholesale Quotation ${input.reference} — Himalayan Koh`;
+  const subject = input.isCounterOffer
+    ? `Revised Wholesale Proposal ${input.reference} — Himalayan Koh`
+    : `Official Wholesale Quotation ${input.reference} — Himalayan Koh`;
 
   let buyerNotified = false;
   let adminNotified = false;
@@ -487,7 +510,9 @@ export async function sendWholesaleQuoteApprovalEmail(
   try {
     adminNotified = await sendEmail({
       to: recipient,
-      subject: `[ISSUED] Quotation ${input.reference} sent to ${input.buyer.businessName}`,
+      subject: input.isCounterOffer
+        ? `[COUNTER-OFFER] Quotation ${input.reference} revised proposal sent to ${input.buyer.businessName}`
+        : `[ISSUED] Quotation ${input.reference} sent to ${input.buyer.businessName}`,
       html: buildQuoteApprovalHtml(input),
       text: buildQuoteApprovalText(input),
       from: `Himalayan Koh Wholesale <${from}>`,

@@ -75,7 +75,7 @@ export async function sendQuoteDecisionNotification(
   id: number,
   decision: 'approve' | 'decline',
   actor: string,
-  options?: { reason?: string }
+  options?: { reason?: string; isCounterOffer?: boolean; counterNote?: string }
 ) {
   const quote = await getWholesaleRecord('quotes', id);
   let account: Record<string, unknown> | null = null;
@@ -150,6 +150,8 @@ export async function sendQuoteDecisionNotification(
       invoiceUrl: quote.invoice_url ? String(quote.invoice_url) : undefined,
       portalUrl,
       notes: quote.notes ? String(quote.notes) : undefined,
+      isCounterOffer: options?.isCounterOffer,
+      counterNote: options?.counterNote,
     });
 
     await upsertWholesaleRecord(
@@ -159,8 +161,8 @@ export async function sendQuoteDecisionNotification(
         actor,
         entity: 'quotes',
         entity_id: id,
-        action: result.buyerNotified ? 'quote_approved_email_sent' : 'quote_approved_email_failed',
-        detail: { ...result, reference, operation: 'admin_quote_approve', quotedTotal, validUntil },
+        action: result.buyerNotified ? (options?.isCounterOffer ? 'quote_counter_offer_email_sent' : 'quote_approved_email_sent') : (options?.isCounterOffer ? 'quote_counter_offer_email_failed' : 'quote_approved_email_failed'),
+        detail: { ...result, reference, operation: options?.isCounterOffer ? 'admin_quote_counter_offer' : 'admin_quote_approve', quotedTotal, validUntil, isCounterOffer: options?.isCounterOffer, counterNote: options?.counterNote },
       },
       { actor }
     );
