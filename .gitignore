@@ -86,6 +86,12 @@ android/app/build/
 android/local.properties
 android/gradle/wrapper/gradle-wrapper.jar
 
+# Firebase credentials for the Android admin app: google-services.json carries the
+# project's client API key, and the Admin SDK JSON is a live private key. Both are
+# downloaded from the Firebase console onto this machine and never committed.
+android/app/google-services.json
+secrets/
+
 
 # Wholesale QA run output (ephemeral test data, not evidence)
 qa-wholesale/e2e-result.json
