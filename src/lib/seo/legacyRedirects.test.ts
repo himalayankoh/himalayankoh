@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LEGACY_REDIRECTS } from './legacyRedirects';
+import { isLegacyProductRedirectSource, LEGACY_REDIRECTS } from './legacyRedirects';
 import { NICHE_SECTIONS } from '../catalog/nicheSections';
 
 /**
@@ -85,6 +85,12 @@ const APP_OWNED_PATHS = [
 ];
 
 describe('legacy redirect map', () => {
+  it('keeps retired product redirect URLs out of the product sitemap set', () => {
+    expect(isLegacyProductRedirectSource('himalayan-koh-edible-salt-grain')).toBe(true);
+    expect(isLegacyProductRedirectSource('himalayan-edible-pink-salt')).toBe(true);
+    expect(isLegacyProductRedirectSource('himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh')).toBe(false);
+  });
+
   it('never shadows a route this app serves', () => {
     const sources = new Set(LEGACY_REDIRECTS.map((rule) => rule.source));
     const shadowed = APP_OWNED_PATHS.filter((path) => sources.has(path));

@@ -70,7 +70,7 @@ export default function WholesaleLandingPage() {
                   </div>
                   <div className="text-right">
                     <span className="text-himalayan font-bold text-sm block">6 pieces / box</span>
-                    <span className="text-white/40 text-xs">Min. 5 boxes (30 pcs)</span>
+                    <span className="text-white/40 text-xs">Min. 4 boxes (24 pcs)</span>
                   </div>
                 </div>
 
@@ -81,7 +81,7 @@ export default function WholesaleLandingPage() {
                   </div>
                   <div className="text-right">
                     <span className="text-himalayan font-bold text-sm block">4 pieces / box</span>
-                    <span className="text-white/40 text-xs">Min. 5 boxes (20 pcs)</span>
+                    <span className="text-white/40 text-xs">Min. 4 boxes (16 pcs)</span>
                   </div>
                 </div>
 
@@ -92,7 +92,7 @@ export default function WholesaleLandingPage() {
                   </div>
                   <div className="text-right">
                     <span className="text-himalayan font-bold text-sm block">6 pieces / box</span>
-                    <span className="text-white/40 text-xs">Min. 5 boxes (30 pcs)</span>
+                    <span className="text-white/40 text-xs">Min. 4 boxes (24 pcs)</span>
                   </div>
                 </div>
 
@@ -103,7 +103,7 @@ export default function WholesaleLandingPage() {
                   </div>
                   <div className="text-right">
                     <span className="text-himalayan font-bold text-sm block">3 pieces / box</span>
-                    <span className="text-white/40 text-xs">Min. 5 boxes (15 pcs)</span>
+                    <span className="text-white/40 text-xs">Min. 4 boxes (12 pcs)</span>
                   </div>
                 </div>
 
@@ -114,7 +114,7 @@ export default function WholesaleLandingPage() {
                   </div>
                   <div className="text-right">
                     <span className="text-himalayan font-bold text-sm block">1 piece / box</span>
-                    <span className="text-white/40 text-xs">Min. 5 boxes (5 pcs)</span>
+                    <span className="text-white/40 text-xs">Min. 4 boxes (4 pcs)</span>
                   </div>
                 </div>
               </div>

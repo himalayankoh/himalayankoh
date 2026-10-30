@@ -62,25 +62,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        <meta name="description" content={DEFAULT_DESCRIPTION} />
-        <link rel="canonical" href={origin} />
-        <meta property="og:title" content={DEFAULT_TITLE} />
-        <meta property="og:description" content={DEFAULT_DESCRIPTION} />
-        <meta property="og:url" content={origin} />
-        <meta property="og:site_name" content={SITE_NAME} />
-        <meta property="og:type" content="website" />
-        <meta property="og:image" content={`${origin}${DEFAULT_OG_IMAGE}`} />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content={DEFAULT_TITLE} />
-        <meta name="twitter:description" content={DEFAULT_DESCRIPTION} />
-        <meta name="twitter:image" content={`${origin}${DEFAULT_OG_IMAGE}`} />
-        {/* Google AdSense Verification & Account Verification */}
-        <meta name="google-adsense-account" content="ca-pub-5473713135927706" />
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5473713135927706"
-          crossOrigin="anonymous"
-        />
+        {/* Next Metadata is the single source for descriptions, canonicals,
+            OpenGraph, Twitter and the AdSense verification marker. The duplicate
+            hand-written tags caused two publisher markers in the rendered head.
+            AdSense is opt-in through AdSlot and its consent-aware loader; it must
+            not be fetched globally while the integration is disabled. */}
         <link rel="preconnect" href="https://wp.himalayankoh.com" />
         <link rel="preload" href="/fonts/source-serif-4/latin-normal.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         {/* Site-level structured data — applies to every route, not just the homepage. */}

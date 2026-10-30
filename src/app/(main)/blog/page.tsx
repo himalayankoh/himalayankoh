@@ -11,7 +11,7 @@ export function generateMetadata(): Metadata {
   return buildMetadata({
     title: 'Blog - Himalayan Pink Salt Guides | Himalayan Koh',
     description:
-      'Guides on Himalayan pink salt: grain sizes, brining and cooking, storage, salt blocks, lamps and buying in bulk.',
+      'Practical guides to Himalayan pink salt, including grain sizes, cooking, storage, and livestock salt-block management.',
     path: '/blog',
   });
 }
