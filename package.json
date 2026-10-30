@@ -58,7 +58,8 @@
     "deploy:production": "node scripts/deploy-production.mjs",
     "check:production-backend": "node scripts/check-production-backend.mjs",
     "pack:plugins": "node scripts/pack-plugins.mjs",
-    "verify:wordpress": "node scripts/verify-wordpress-writes.mjs"
+    "verify:wordpress": "node scripts/verify-wordpress-writes.mjs",
+    "indexnow:submit": "node scripts/submit-indexnow.mjs"
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",
