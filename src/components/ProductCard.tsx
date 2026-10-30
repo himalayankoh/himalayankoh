@@ -149,6 +149,8 @@ export default function ProductCard({ product, index, onQuickView, shopHighlight
             srcSet={cardImage.srcSet}
             sizes={cardImage.sizes}
             alt={product.name}
+            width={500}
+            height={400}
             className="w-full h-full object-contain p-2 motion-safe:group-hover:scale-[1.03] transition-transform duration-200"
             loading={priority ? 'eager' : 'lazy'}
             fetchPriority={priority ? 'high' : undefined}

@@ -154,6 +154,8 @@ export default function Layout({ children }: LayoutProps) {
               <img
                 src="/logo.svg"
                 alt="Himalayan Koh"
+                width={132}
+                height={44}
                 className="h-8 md:h-11 w-auto max-w-[145px] sm:max-w-none"
               />
             </Link>

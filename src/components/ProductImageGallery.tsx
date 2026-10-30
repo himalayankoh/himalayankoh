@@ -174,6 +174,8 @@ export default function ProductImageGallery({
               <img
                 src={img}
                 alt={`${alt} thumbnail ${idx + 1}`}
+                width={64}
+                height={64}
                 className="w-full h-full object-contain p-1"
                 loading="lazy"
                 decoding="async"

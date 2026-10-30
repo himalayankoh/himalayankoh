@@ -62,6 +62,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        <meta name="description" content={DEFAULT_DESCRIPTION} />
+        <link rel="canonical" href={origin} />
+        <meta property="og:title" content={DEFAULT_TITLE} />
+        <meta property="og:description" content={DEFAULT_DESCRIPTION} />
+        <meta property="og:url" content={origin} />
+        <meta property="og:site_name" content={SITE_NAME} />
+        <meta property="og:type" content="website" />
+        <meta property="og:image" content={`${origin}${DEFAULT_OG_IMAGE}`} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={DEFAULT_TITLE} />
+        <meta name="twitter:description" content={DEFAULT_DESCRIPTION} />
+        <meta name="twitter:image" content={`${origin}${DEFAULT_OG_IMAGE}`} />
         {/* Google AdSense Verification & Account Verification */}
         <meta name="google-adsense-account" content="ca-pub-5473713135927706" />
         <script
