@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { AlertCircle, GripVertical, Image as ImageIcon, Loader2, Pencil, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { MAX_PRODUCT_IMAGES } from '../../lib/images/productImageConstants';
 import type { AdminProductImage } from './productImageTypes';
+import { AdminChip } from './AdminUI';
 
 interface ImageDropzoneProps {
   images: AdminProductImage[];
@@ -96,17 +97,21 @@ export default function ImageDropzone({
         className="hidden"
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-charcoal-light">
-        <span>{images.length} / {MAX_PRODUCT_IMAGES} images</span>
+      <div className="flex items-center justify-between gap-2 text-sm text-admin-muted">
+        <span>
+          {images.length} / {MAX_PRODUCT_IMAGES} images
+        </span>
         {slotsRemaining > 0 ? (
-          <span>{slotsRemaining} slot{slotsRemaining === 1 ? '' : 's'} remaining</span>
+          <span>
+            {slotsRemaining} slot{slotsRemaining === 1 ? '' : 's'} remaining
+          </span>
         ) : (
-          <span className="text-amber-700">Maximum reached</span>
+          <AdminChip tone="warning">Maximum reached</AdminChip>
         )}
       </div>
 
       {validationMessage && (
-        <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-800">
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
           <AlertCircle size={16} className="mt-0.5 shrink-0" />
           <p>{validationMessage}</p>
         </div>
@@ -120,27 +125,29 @@ export default function ImageDropzone({
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         onClick={() => canAddMore && fileInputRef.current?.click()}
-        className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center transition-all ${
+        className={`rounded-2xl border-2 border-dashed p-8 text-center transition-colors ${
           canAddMore ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
         } ${
-          dragOver ? 'border-himalayan bg-himalayan/10' : 'border-gray-200 hover:border-himalayan/50 hover:bg-himalayan/5'
+          dragOver
+            ? 'border-himalayan bg-himalayan-lighter'
+            : 'border-admin-line hover:border-himalayan/50 hover:bg-admin-canvas/60'
         }`}
       >
         {uploading ? (
           <div className="space-y-2">
-            <Loader2 size={32} className="animate-spin text-himalayan mx-auto" />
-            <p className="text-charcoal font-medium">Uploading images...</p>
+            <Loader2 size={32} className="mx-auto animate-spin text-himalayan" />
+            <p className="font-medium text-admin-ink">Uploading images…</p>
             {uploadProgress && uploadProgress.total > 0 && (
-              <p className="text-sm text-charcoal-light">
+              <p className="text-sm text-admin-muted">
                 {uploadProgress.completed} of {uploadProgress.total} complete
               </p>
             )}
           </div>
         ) : (
           <>
-            <Upload size={32} className="text-gray-300 mx-auto mb-2" />
-            <p className="text-charcoal font-medium">Drag & drop or tap to add images</p>
-            <p className="text-sm text-charcoal-light mt-1">
+            <Upload size={32} className="mx-auto mb-2 text-admin-muted/60" />
+            <p className="font-medium text-admin-ink">Drag and drop, or click to add images</p>
+            <p className="mt-1 text-sm text-admin-muted">
               JPG, PNG, WebP, GIF · up to 5 MB each · max {MAX_PRODUCT_IMAGES} images
             </p>
           </>
@@ -148,7 +155,9 @@ export default function ImageDropzone({
       </div>
 
       {images.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+        /* A fixed three-column grid: the console keeps its desktop layout at
+           every viewport instead of restacking. */
+        <div className="grid grid-cols-3 gap-4">
           {images.map((image, index) => {
             const displayUrl = image.previewUrl;
             const persistedUrl = resolveThumbnailUrl(image);
@@ -166,12 +175,12 @@ export default function ImageDropzone({
                   e.preventDefault();
                   handleReorderDrop(index);
                 }}
-                className={`relative group aspect-square rounded-xl overflow-hidden border-2 ${
-                  isThumbnail ? 'border-himalayan' : hasError ? 'border-red-300' : 'border-gray-200'
+                className={`group relative aspect-square overflow-hidden rounded-xl border-2 bg-admin-canvas ${
+                  isThumbnail ? 'border-himalayan' : hasError ? 'border-red-300' : 'border-admin-line'
                 } ${dragIndex === index ? 'opacity-60' : ''}`}
               >
-                <div className="absolute top-2 left-2 z-10 p-1 bg-white/90 rounded-md cursor-grab active:cursor-grabbing">
-                  <GripVertical size={14} className="text-charcoal-light" />
+                <div className="absolute left-2 top-2 z-10 cursor-grab rounded-md bg-admin-surface/90 p-1 active:cursor-grabbing">
+                  <GripVertical size={14} className="text-admin-muted" />
                 </div>
 
                 <img
@@ -181,25 +190,25 @@ export default function ImageDropzone({
                 />
 
                 {isBusy && (
-                  <div className="absolute inset-0 bg-white/70 flex flex-col items-center justify-center gap-2">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-admin-surface/75">
                     <Loader2 size={20} className="animate-spin text-himalayan" />
-                    <span className="text-xs font-medium text-charcoal">Uploading...</span>
+                    <span className="text-xs font-medium text-admin-ink">Uploading…</span>
                   </div>
                 )}
 
                 {hasError && (
-                  <div className="absolute inset-x-0 bottom-0 bg-red-600/90 text-white text-[11px] px-2 py-1.5 line-clamp-2">
+                  <div className="absolute inset-x-0 bottom-0 line-clamp-2 bg-red-600/90 px-2 py-1.5 text-[11px] text-white">
                     {image.error || 'Upload failed'}
                   </div>
                 )}
 
                 {!hasError && !isBusy && image.optimization && (
-                  <div className="absolute inset-x-0 bottom-0 bg-black/65 text-white text-[11px] px-2 py-1 truncate sm:group-hover:opacity-0 transition-opacity">
+                  <div className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-2 py-1 text-[11px] text-white transition-opacity group-hover:opacity-0">
                     {image.optimization}
                   </div>
                 )}
 
-                <div className="absolute inset-0 bg-black/45 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 sm:gap-2 p-2">
+                <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/45 p-2 opacity-0 transition-opacity group-hover:opacity-100">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -207,7 +216,7 @@ export default function ImageDropzone({
                       onEdit(image);
                     }}
                     disabled={isBusy}
-                    className="p-2 bg-white text-charcoal rounded-lg hover:bg-gray-100 disabled:opacity-40"
+                    className="rounded-lg bg-admin-surface p-2 text-admin-ink transition-colors hover:bg-admin-canvas disabled:opacity-40"
                     title="Edit image"
                   >
                     <Pencil size={16} />
@@ -219,8 +228,10 @@ export default function ImageDropzone({
                       onSetThumbnail(persistedUrl);
                     }}
                     disabled={isBusy}
-                    className={`p-2 rounded-lg disabled:opacity-40 ${
-                      isThumbnail ? 'bg-himalayan text-white' : 'bg-white text-charcoal hover:bg-gray-100'
+                    className={`rounded-lg p-2 transition-colors disabled:opacity-40 ${
+                      isThumbnail
+                        ? 'bg-himalayan text-white'
+                        : 'bg-admin-surface text-admin-ink hover:bg-admin-canvas'
                     }`}
                     title="Set as thumbnail"
                   >
@@ -233,7 +244,7 @@ export default function ImageDropzone({
                       openReplacePicker(image.id);
                     }}
                     disabled={isBusy}
-                    className="p-2 bg-white text-charcoal rounded-lg hover:bg-gray-100 disabled:opacity-40"
+                    className="rounded-lg bg-admin-surface p-2 text-admin-ink transition-colors hover:bg-admin-canvas disabled:opacity-40"
                     title="Replace image"
                   >
                     <RefreshCw size={16} />
@@ -245,7 +256,7 @@ export default function ImageDropzone({
                         e.stopPropagation();
                         onRetry(image.id);
                       }}
-                      className="p-2 bg-white text-himalayan rounded-lg hover:bg-gray-100"
+                      className="rounded-lg bg-admin-surface p-2 text-himalayan transition-colors hover:bg-admin-canvas"
                       title="Retry upload"
                     >
                       <RefreshCw size={16} />
@@ -257,7 +268,7 @@ export default function ImageDropzone({
                       e.stopPropagation();
                       onRemove(image.id);
                     }}
-                    className="p-2 bg-white text-red-600 rounded-lg hover:bg-red-50"
+                    className="rounded-lg bg-admin-surface p-2 text-red-600 transition-colors hover:bg-red-50"
                     title="Remove image"
                   >
                     <Trash2 size={16} />
@@ -265,13 +276,13 @@ export default function ImageDropzone({
                 </div>
 
                 {isThumbnail && (
-                  <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-himalayan text-white text-xs rounded-full">
+                  <span className="absolute bottom-2 left-2 rounded-full bg-himalayan px-2 py-0.5 text-[11px] font-semibold text-white">
                     Thumbnail
                   </span>
                 )}
 
                 {image.status === 'local' && !isBusy && (
-                  <span className="absolute top-2 right-2 px-2 py-0.5 bg-black/60 text-white text-[10px] rounded-full">
+                  <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-semibold text-white">
                     Preview
                   </span>
                 )}

@@ -21,8 +21,24 @@
 
 import type { Product, StockStatus } from '../../data/products';
 import { collectMissingCatalogFields, priceDisplayFromRange } from '../products/price';
-import { backendConfig, hasWooCommerceCredentials } from './config';
-import { wordpressRequest, wordpressRequestSafe, type QueryValue } from './wordpress';
+import { productSlugFromName } from '../products/slug';
+import { wordpressMediaUrl } from '../images/wordpressMediaUrl';
+import { UNCATEGORIZED_CATEGORY, cleanProductName, normalizeWeightUnits } from '../products/displayName';
+import { parseStoreSrcset, type ResponsiveImageSources } from '../images/responsiveImage';
+import { SEO_META_KEYS, variationPriceRange, type WooVariationLike } from '../woo/productPayload';
+import {
+  productVariations,
+  variationOptionLabels,
+  type RestV3Attribute,
+} from '../woo/variationOptions';
+import { backendConfig } from './config';
+import { hasWooCommerceCredentials } from './credentials';
+import {
+  wordpressRequest,
+  wordpressRequestSafe,
+  WORDPRESS_MAX_PER_PAGE,
+  type QueryValue,
+} from './wordpress';
 
 const STORE_API = '/wc/store/v1';
 const REST_V3 = '/wc/v3';
@@ -44,6 +60,14 @@ export interface StoreApiImage {
   src?: string;
   thumbnail?: string;
   alt?: string;
+  /**
+   * WordPress's own responsive candidates for this image, `url Nw` pairs.
+   *
+   * Published by WooCommerce; the storefront keeps only the part of it that is
+   * provably a saving — see `lib/images/responsiveImage.ts`.
+   */
+  srcset?: string;
+  sizes?: string;
 }
 
 export interface StoreApiTerm {
@@ -67,10 +91,20 @@ export interface StoreApiProduct {
   is_on_backorder?: boolean;
   on_sale?: boolean;
   is_featured?: boolean;
+  /**
+   * WooCommerce's own stock block. `remaining` is present only when the product
+   * has tracked stock, so its absence is "not tracked", never zero.
+   */
+  stock_availability?: {
+    text?: string;
+    class?: string;
+    remaining?: number | null;
+  };
 }
 
 /** WooCommerce REST v3 product (authenticated; carries price and stock). */
 export interface RestV3Product {
+  status?: string;
   id?: number;
   name?: string;
   slug?: string;
@@ -85,9 +119,17 @@ export interface RestV3Product {
   stock_status?: string;
   stock_quantity?: number | null;
   featured?: boolean;
-  images?: Array<{ id?: number; src?: string; alt?: string }>;
+  images?: Array<{ id?: number; src?: string; alt?: string; srcset?: string; sizes?: string }>;
   categories?: Array<{ id?: number; name?: string; slug?: string }>;
   date_modified_gmt?: string;
+  /** 'simple' | 'variable' | … — decides whether prices live on the variations. */
+  type?: string;
+  /** Variation ids, present only on a variable product. */
+  variations?: number[];
+  /** Declared attributes; the ones with `variation: true` are what a shopper picks. */
+  attributes?: RestV3Attribute[];
+  meta_data?: Array<{ id?: number; key?: string; value?: unknown }>;
+  yoast_head_json?: { title?: string; description?: string };
 }
 
 /** WordPress core product (public; no price or stock, used only as fallback). */
@@ -102,7 +144,104 @@ export interface WpCoreProduct {
   excerpt?: { rendered?: string };
   product_cat?: number[];
   _embedded?: Record<string, Array<{ source_url?: string; alt_text?: string }>>;
+  yoast_head_json?: { title?: string; description?: string };
 }
+
+/**
+ * Storefront slugs a merged product retired, and what sells them now.
+ *
+ * Two maps exist for one retirement because two servers publish the same product:
+ * the WordPress-served `/product/<slug>` is covered by
+ * `hk_storefront_retired_product_slugs()` in the plugin, and the storefront's own
+ * `/products/<slug>` is covered here — this app never sees the plugin's redirect,
+ * and the plugin never sees this route. Keep them in step when a merge retires a
+ * product; a retired slug with no entry here is a dead link on the storefront.
+ */
+export const RETIRED_PRODUCT_SLUGS: Record<string, string> = {
+  // Product 2497 — 45 lbs rock salt
+  '2497': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'himalayan-rock-salt-45-lbs': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'himalayan-rock-salt-45lbs': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'himalayan-rock-salt-45-lbs-2-3-large-chunks': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'himalayan-rock-salt-chunks-18-lbs': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'himalayan-rock-salt-bag': 'himalayan-rock-salt-45-lbs-large-chunks',
+  'rock-salt-45-lbs': 'himalayan-rock-salt-45-lbs-large-chunks',
+
+  // Product 2492 — 6 lb fine/coarse
+  '2492': 'himalayan-salt-6-lbs',
+  'himalayan-salt-6lbs': 'himalayan-salt-6-lbs',
+  'himalayan-salt-fine-grain-6-lbs': 'himalayan-salt-6-lbs',
+  'himalayan-salt-coarse-grain-6-lbs': 'himalayan-salt-6-lbs',
+  'himalayan-salt-fine-and-coarse-grain-6-lbs': 'himalayan-salt-6-lbs',
+  'himalayan-salt-pouches': 'himalayan-salt-6-lbs',
+  'pouches': 'himalayan-salt-6-lbs',
+
+  // Product 2490 — 3 lb fine grain
+  '2490': 'himalayan-salt-fine-grain-3-lbs',
+  'himalayan-salt-fine-grain-3lbs': 'himalayan-salt-fine-grain-3-lbs',
+  'himalayan-salt-3-lbs': 'himalayan-salt-fine-grain-3-lbs',
+  'himalayan-salt-3lbs': 'himalayan-salt-fine-grain-3-lbs',
+
+  // Product 2488 — 12-14 lb lick
+  '2488': 'himalayan-salt-lick-12-to-14-lbs',
+  'himalayan-salt-lick-12-14-lbs': 'himalayan-salt-lick-12-to-14-lbs',
+  'himalayan-salt-lick-12-14lbs': 'himalayan-salt-lick-12-to-14-lbs',
+  'himalayan-salt-lick-12-to-14lbs': 'himalayan-salt-lick-12-to-14-lbs',
+  'himalayan-salt-lick-14-lbs': 'himalayan-salt-lick-12-to-14-lbs',
+  'himalayan-salt-lick-14lbs': 'himalayan-salt-lick-12-to-14-lbs',
+
+  // Product 2487 — 5-6 lb lick
+  '2487': 'himalayan-salt-lick-5-to-6-lbs',
+  'himalayan-salt-lick-5-6-lbs': 'himalayan-salt-lick-5-to-6-lbs',
+  'himalayan-salt-lick-5-6lbs': 'himalayan-salt-lick-5-to-6-lbs',
+  'himalayan-salt-lick-5-to-6lbs': 'himalayan-salt-lick-5-to-6-lbs',
+  'salt-licks': 'himalayan-salt-lick-5-to-6-lbs',
+
+  // Product 2485 — 1-2 lb lick
+  '2485': 'himalayan-salt-lick-1-to-2-lbs',
+  'himalayan-salt-lick-1-2-lbs': 'himalayan-salt-lick-1-to-2-lbs',
+  'himalayan-salt-lick-1-2lbs': 'himalayan-salt-lick-1-to-2-lbs',
+  'himalayan-salt-lick-1-to-2lbs': 'himalayan-salt-lick-1-to-2-lbs',
+  'himalayan-salt-lick-2-lbs': 'himalayan-salt-lick-1-to-2-lbs',
+  'himalayan-salt-lick-2lbs': 'himalayan-salt-lick-1-to-2-lbs',
+
+  // Product 2484 — 30 lb block
+  '2484': 'himalayan-salt-block-30-lbs',
+  'himalayan-salt-block-30lbs': 'himalayan-salt-block-30-lbs',
+  'salt-block': 'himalayan-salt-block-30-lbs',
+
+  // Product 2482 — 6 lb edible pouch
+  '2482': 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs',
+  'himalayan-pink-edible-salt-fine-grain-pouch-6lbs': 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs',
+  'himalayan-edible-salt-6-lbs': 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs',
+
+  // Product 2481 — 3 lb edible pouch
+  '2481': 'himalayan-pink-edible-salt-fine-grain-pouch-3-lbs',
+  'himalayan-pink-edible-salt-fine-grain-pouch-3lbs': 'himalayan-pink-edible-salt-fine-grain-pouch-3-lbs',
+  'himalayan-edible-salt-3-lbs': 'himalayan-pink-edible-salt-fine-grain-pouch-3-lbs',
+
+  // Product 2479 — 16 oz spice jar
+  '2479': 'himalayan-pink-edible-salt-16-oz-jar',
+  'himalayan-pink-edible-salt-16oz-jar': 'himalayan-pink-edible-salt-16-oz-jar',
+  'himalayan-pink-edible-salt-fine-grain-16-oz-jar': 'himalayan-pink-edible-salt-16-oz-jar',
+  'himalayan-pink-edible-salt-coarse-grain-16-oz-jar': 'himalayan-pink-edible-salt-16-oz-jar',
+  'himalayan-edible-pink-salt-16-oz-jar': 'himalayan-pink-edible-salt-16-oz-jar',
+  'himalayan-edible-pink-salt': 'himalayan-pink-edible-salt-16-oz-jar',
+};
+
+/**
+ * Category name the catalog model carries when a source reported none.
+ *
+ * The storefront needs a non-empty string in `Product.category`, so the model has
+ * a placeholder. Consumers that must not invent taxonomy — the admin catalog read
+ * model counts categories, a product page shows the eyebrow — treat this value as
+ * "not reported" instead.
+ *
+ * Defined in `lib/products/displayName.ts` (see `reportedCategoryName` there) and
+ * re-exported here because the server-side readers already import it from this
+ * module; there is one string, not one per consumer.
+ */
+export { UNCATEGORIZED_CATEGORY };
 
 /* ------------------------------------------------------------------ */
 /* Pure helpers — unit tested                                          */
@@ -155,6 +294,8 @@ export function htmlToText(html: string | undefined | null): string {
     .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
+    .replace(/&ndash;|&#8211;/g, '–')
+    .replace(/&mdash;|&#8212;/g, '—')
     .replace(/&#0?39;|&rsquo;|&#8217;/g, "'")
     .replace(/&quot;|&#34;/g, '"')
     .replace(/&lt;/g, '<')
@@ -183,41 +324,158 @@ function buildProduct(input: {
   priceMin: number | null;
   priceMax?: number;
   images: string[];
+  /** Store-published responsive candidates, keyed by image URL. */
+  imageResponsive?: ResponsiveImageSources;
   category: string;
   stockStatus: StockStatus;
+  /** Units the source reports, or null when it reports no count. */
+  stockQuantity?: number | null;
   sku: string | null;
   isFeatured: boolean;
   updatedAt: string | null;
+  metaTitle?: string | null;
+  metaDescription?: string | null;
+  /** Commerce-readiness facts the public contract reads — see `data/products`. */
+  commerceReadiness?: string | null;
+  supplierSource?: string | null;
+  costPrice?: number | null;
+  usInventory?: boolean | null;
+  riskFlags?: string[] | null;
+  safetyReviewStatus?: string | null;
+  ownerApproved?: boolean | null;
 }): Product {
   const price = priceDisplayFromRange(input.priceMin, input.priceMax);
+  // WooCommerce media is authoritative. A missing original remains missing;
+  // app overlays cannot prove that they depict this particular SKU.
+  const originals = Array.from(new Set(input.images.map(wordpressMediaUrl).filter(Boolean)));
+  const images = originals;
   return {
     id: input.id,
     slug: input.slug,
-    name: input.name,
+    // The visible name only: the store's trailing brand suffix and its `lbs.`/`lb.`
+    // weight spellings are normalized here, once, for every backend source. The slug
+    // above was derived from the store row, so URLs are untouched by this.
+    name: cleanProductName(input.name, input.slug),
     price,
     priceRange: Boolean(input.priceMax),
     priceMin: input.priceMin,
     priceMax: input.priceMax,
-    image: input.images[0] ?? '',
-    images: input.images,
-    category: input.category || 'Uncategorized',
-    description: input.description || undefined,
+    image: images[0] ?? '',
+    images,
+    imageResponsive: input.imageResponsive ? Object.fromEntries(
+      Object.entries(input.imageResponsive).map(([url, source]) => [wordpressMediaUrl(url), source])
+    ) : undefined,
+    category: input.category || UNCATEGORIZED_CATEGORY,
+    // The description and SEO strings are customer-facing text too, so the same weight
+    // spelling rule applies to them. The brand suffix is deliberately NOT stripped from
+    // metadata — only from the visible name (see `cleanProductName`).
+    description: input.description ? normalizeWeightUnits(input.description) : undefined,
     inStock: isPurchasable(input.stockStatus),
     isFeatured: input.isFeatured,
     sku: input.sku,
     stockStatus: input.stockStatus,
+    stockQuantity: input.stockQuantity ?? null,
     updatedAt: input.updatedAt,
+    metaTitle: input.metaTitle ? normalizeWeightUnits(input.metaTitle) : undefined,
+    metaDescription: input.metaDescription ? normalizeWeightUnits(input.metaDescription) : undefined,
+    commerceReadiness: input.commerceReadiness ?? null,
+    supplierSource: input.supplierSource ?? null,
+    costPrice: input.costPrice ?? null,
+    usInventory: input.usInventory ?? null,
+    riskFlags: input.riskFlags ?? [],
+    safetyReviewStatus: input.safetyReviewStatus ?? null,
+    ownerApproved: input.ownerApproved ?? null,
     missing: collectMissingCatalogFields({
       priceMin: input.priceMin,
       sku: input.sku,
       stockStatus: input.stockStatus,
-      images: input.images,
+      images,
     }),
   };
 }
 
+function extractMetaString(
+  metaData: Array<{ key?: string; value?: unknown }> | undefined,
+  key: string
+): string | null {
+  const entry = metaData?.find((m) => m.key === key);
+  if (!entry || entry.value === undefined || entry.value === null) return null;
+  const str = String(entry.value).trim();
+  return str || null;
+}
+
+/**
+ * The console meta keys the storefront's public policy reads.
+ *
+ * Mirrors the relevant rows of `CONSOLE_META_FIELDS` (`lib/woo/productPayload.ts`),
+ * which is the one table that says where each console field lives on the store.
+ * Kept as a local map because this module reads meta on the hot catalog path and
+ * must not pull the whole console field table into the storefront read.
+ */
+const CONSOLE_META_KEYS = {
+  commerceReadiness: '_himalayan_koh_commerce_readiness',
+  supplierSource: '_himalayan_koh_supplier_source',
+  costPrice: '_himalayan_koh_cost_price',
+  usInventory: '_himalayan_koh_us_inventory',
+  riskFlags: '_himalayan_koh_risk_flags',
+  safetyReviewStatus: '_himalayan_koh_safety_review_status',
+  nicheApproved: '_himalayan_koh_niche_approved',
+} as const;
+
+/** A JSON-string list console meta field (see `fromConsoleMetaValue`), or []. */
+function parseStringListMeta(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return value.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+}
+
+/** A boolean console meta field, read the way `fromConsoleMetaValue` reads it. */
+function parseYesNoMeta(value: string | null): boolean | null {
+  if (value === null) return null;
+  const v = value.trim().toLowerCase();
+  if (v === 'yes' || v === 'true' || v === '1') return true;
+  if (v === 'no' || v === 'false' || v === '0') return false;
+  return null;
+}
+
+/**
+ * A reported unit count, or null when the source reported none.
+ *
+ * Guarded rather than coerced: `undefined`, `null`, `NaN` and a negative number
+ * all mean "no count I can stand behind", and none of them becomes a zero that
+ * the storefront would then render as "out of stock".
+ */
+function finiteCount(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 function imageUrls(images: Array<{ src?: string; thumbnail?: string }> | undefined): string[] {
   return (images ?? []).map((image) => image?.src || image?.thumbnail || '').filter(Boolean);
+}
+
+/**
+ * The responsive data the store publishes for its own images, keyed by URL.
+ *
+ * Built from the same array `imageUrls` reads, so a URL can only be a key if it
+ * is also an image the product renders. Anything the store did not publish a
+ * usable `srcset` for is simply absent, and the component then renders the plain
+ * `src` it always did.
+ */
+function imageResponsiveMap(
+  images: Array<{ src?: string; srcset?: string }> | undefined
+): ResponsiveImageSources | undefined {
+  const map: ResponsiveImageSources = {};
+
+  for (const image of images ?? []) {
+    const source = parseStoreSrcset(image?.srcset, image?.src);
+    if (source && image?.src) map[image.src] = source;
+  }
+
+  return Object.keys(map).length > 0 ? map : undefined;
 }
 
 /** Store API product -> Product. */
@@ -234,15 +492,22 @@ export function mapStoreProduct(raw: StoreApiProduct): Product {
           ? 'out_of_stock'
           : 'unknown';
 
+  const slugFromPermalink = raw.permalink ? raw.permalink.replace(/\/+$/, '').split('/').pop() : '';
+  const resolvedSlug = raw.slug || slugFromPermalink || productSlugFromName(raw.name ?? '');
+
   return buildProduct({
     id: raw.id ?? '',
-    slug: raw.slug ?? '',
+    slug: resolvedSlug,
     name: htmlToText(raw.name),
-    description: raw.short_description || raw.description || '',
+    // WooCommerce sends markup, and the product page renders this value as text, so
+    // `<p>` used to appear verbatim in the middle of a product's copy.
+    description: htmlToText(raw.short_description || raw.description),
     priceMin,
     images: imageUrls(raw.images),
+    imageResponsive: imageResponsiveMap(raw.images),
     category: htmlToText(raw.categories?.[0]?.name),
     stockStatus,
+    stockQuantity: finiteCount(raw.stock_availability?.remaining),
     sku: raw.sku?.trim() ? raw.sku.trim() : null,
     isFeatured: raw.is_featured === true,
     updatedAt: null,
@@ -256,18 +521,46 @@ export function mapRestV3Product(raw: RestV3Product): Product {
   // priceMax — that field means "top of the variant range" everywhere else.
   const priceMin = parseMajorUnitPrice(raw.price) ?? parseMajorUnitPrice(raw.sale_price) ?? parseMajorUnitPrice(raw.regular_price);
 
+  const yoastTitle =
+    extractMetaString(raw.meta_data, SEO_META_KEYS.title) ??
+    raw.yoast_head_json?.title?.trim() ??
+    null;
+  const yoastDesc =
+    extractMetaString(raw.meta_data, SEO_META_KEYS.description) ??
+    raw.yoast_head_json?.description?.trim() ??
+    null;
+
   return buildProduct({
     id: raw.id ?? '',
     slug: raw.slug ?? '',
     name: htmlToText(raw.name),
-    description: raw.short_description || raw.description || '',
+    // Same as `mapStoreProduct`: the page renders this as text, so the store's markup
+    // is reduced to the sentence it carries.
+    description: htmlToText(raw.short_description || raw.description),
     priceMin,
     images: imageUrls(raw.images),
+    imageResponsive: imageResponsiveMap(raw.images),
     category: htmlToText(raw.categories?.[0]?.name),
     stockStatus: normalizeStockStatus(raw.stock_status),
+    // REST v3 sends null for a product that does not manage stock, which stays
+    // null here: "not tracked" and "none left" are different answers.
+    stockQuantity: finiteCount(raw.stock_quantity),
     sku: raw.sku?.trim() ? raw.sku.trim() : null,
     isFeatured: raw.featured === true,
     updatedAt: raw.date_modified_gmt ?? null,
+    metaTitle: yoastTitle,
+    metaDescription: yoastDesc,
+    // The console's own readiness facts, read back from the same `meta_data` the
+    // admin editor writes (`CONSOLE_META_FIELDS`). Store API and WP-core reads
+    // carry no meta, so those answers stay null — which the storefront policy
+    // reads as "never classified", the same as the console does.
+    commerceReadiness: extractMetaString(raw.meta_data, CONSOLE_META_KEYS.commerceReadiness),
+    supplierSource: extractMetaString(raw.meta_data, CONSOLE_META_KEYS.supplierSource),
+    costPrice: parseMajorUnitPrice(extractMetaString(raw.meta_data, CONSOLE_META_KEYS.costPrice) ?? undefined),
+    usInventory: parseYesNoMeta(extractMetaString(raw.meta_data, CONSOLE_META_KEYS.usInventory)),
+    riskFlags: parseStringListMeta(extractMetaString(raw.meta_data, CONSOLE_META_KEYS.riskFlags)),
+    safetyReviewStatus: extractMetaString(raw.meta_data, CONSOLE_META_KEYS.safetyReviewStatus),
+    ownerApproved: parseYesNoMeta(extractMetaString(raw.meta_data, CONSOLE_META_KEYS.nicheApproved)),
   });
 }
 
@@ -294,6 +587,8 @@ export function mapWpCoreProduct(raw: WpCoreProduct): Product {
     sku: null,
     isFeatured: false,
     updatedAt: raw.modified ?? null,
+    metaTitle: raw.yoast_head_json?.title?.trim() || null,
+    metaDescription: raw.yoast_head_json?.description?.trim() || null,
   });
 }
 
@@ -310,6 +605,15 @@ export interface ProductQuery {
   featured?: boolean;
   orderby?: 'date' | 'price' | 'popularity' | 'rating' | 'title';
   order?: 'asc' | 'desc';
+  /**
+   * Next.js data-cache window, in seconds, for this read.
+   *
+   * Omitted by default, and omitted means uncached: the admin console reads these
+   * adapters directly and the owner has to see the row they just saved, not a copy
+   * from a minute ago. Only the storefront's sealed reads pass a window — see
+   * `lib/backend/serverCatalog.ts` for that policy and why a short one is safe.
+   */
+  revalidate?: number;
   signal?: AbortSignal;
 }
 
@@ -332,6 +636,7 @@ export async function fetchStoreProductsSafe(
   query: ProductQuery = {}
 ): Promise<{ products: Product[]; error: string | null }> {
   const { data, error } = await wordpressRequestSafe<StoreApiProduct[]>(`${STORE_API}/products`, {
+    revalidate: query.revalidate,
     params: productParams(query),
     signal: query.signal,
   });
@@ -341,31 +646,177 @@ export async function fetchStoreProductsSafe(
 /**
  * Authenticated REST v3 read — the only route reporting price and stock while
  * the Store API product routes are broken. Null when no credentials are set.
+ *
+ * Variable products are the reason this is more than a map: WooCommerce keeps
+ * their prices on the variations, so the parent row reports an empty
+ * `regular_price` even though the product is priced. Without the extra read the
+ * storefront showed "Price unavailable" on products a customer could buy — and
+ * with grain now a variation axis, the same read is what tells the storefront
+ * which options exist at all.
  */
 export async function fetchAdminProducts(query: ProductQuery = {}): Promise<Product[] | null> {
   if (!hasWooCommerceCredentials()) return null;
 
   const raw = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
+    revalidate: query.revalidate,
     params: { ...productParams(query), status: 'publish' },
     useCredentials: true,
     signal: query.signal,
   });
-  return (Array.isArray(raw) ? raw : []).map(mapRestV3Product);
+  const rows = Array.isArray(raw) ? raw : [];
+  return withVariations(rows, rows.map(mapRestV3Product), query.signal);
 }
 
 /** Authenticated REST v3 single-product lookup by slug. */
 export async function fetchAdminProductBySlug(
   slug: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  revalidate?: number
 ): Promise<Product | null> {
   if (!hasWooCommerceCredentials()) return null;
-  const raw = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
+
+  // Direct single-product REST v3 lookup by ID if numeric
+  if (/^\d+$/.test(slug)) {
+    const single = await wordpressRequest<RestV3Product>(`${REST_V3}/products/${slug}`, {
+      revalidate,
+      useCredentials: true,
+      signal,
+    }).catch(() => null);
+    if (single && single.id && single.status === 'publish') {
+      const [product] = await withVariations([single], [mapRestV3Product(single)], signal);
+      if (product) return product;
+    }
+  }
+
+  const exact = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
+    revalidate,
     params: { slug, status: 'publish', per_page: 1 },
     useCredentials: true,
     signal,
   });
-  const first = Array.isArray(raw) ? raw[0] : null;
-  return first ? mapRestV3Product(first) : null;
+  let rows = Array.isArray(exact) ? exact : [];
+
+  // A slug a merge retired resolves to the product that replaced it, so an old
+  // storefront URL lands on something buyable rather than on a 404.
+  const successor = RETIRED_PRODUCT_SLUGS[slug];
+  if (rows.length === 0 && successor) {
+    const resolved = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
+      revalidate,
+      params: { slug: successor, status: 'publish', per_page: 1 },
+      useCredentials: true,
+      signal,
+    });
+    rows = Array.isArray(resolved) ? resolved : [];
+  }
+
+  // Admin-generated slugs historically used the product title while Woo kept a
+  // shorter legacy slug. Resolve that safe alias server-side instead of making
+  // every admin View link land on a false 404.
+  if (rows.length === 0) {
+    const candidates = await wordpressRequest<RestV3Product[]>(`${REST_V3}/products`, {
+      revalidate,
+      params: { search: slug, status: 'publish', per_page: 100 },
+      useCredentials: true,
+      signal,
+    });
+    rows = (Array.isArray(candidates) ? candidates : []).filter((row) =>
+      row.slug === slug || productSlugFromName(String(row.name ?? ''), row.slug) === slug
+    ).slice(0, 1);
+  }
+
+  const [product] = await withVariations(rows, rows.map(mapRestV3Product), signal);
+  return product ?? null;
+}
+
+/**
+ * Reads a variable product's variations once, for both things they carry.
+ *
+ * Published child prices determine the range, including when WooCommerce's parent
+ * summary still contains the price of a retired variation.
+ * The variation *options* are set whatever the parent's price is, because they are
+ * what a shopper chooses between: a single-priced variable product with a grain
+ * selector still has to tell the storefront which grains exist.
+ *
+ * Only variable products are read, and in parallel, so a catalog page costs one
+ * round trip plus one per variable product rather than a serial chain. A failure
+ * here leaves the price unknown and the options absent — never invented, because
+ * an unavailable price and a free product are very different things to advertise.
+ */
+async function withVariations(
+  rows: RestV3Product[],
+  products: Product[],
+  signal?: AbortSignal
+): Promise<Product[]> {
+  const targets = rows
+    .map((row, index) => ({ row, product: products[index] }))
+    .filter(
+      (entry): entry is { row: RestV3Product; product: Product } =>
+        Boolean(entry.product) &&
+        entry.row.type === 'variable' &&
+        (entry.row.variations?.length ?? 0) > 0
+    );
+
+  if (!targets.length) return products;
+
+  await Promise.all(
+    targets.map(async ({ row, product }) => {
+      // Prices, cached briefly. The parent read still runs uncached, so a stock
+      // change is visible on the next request; what this avoids is paying the
+      // origin's latency for every variation on every screen that lists the
+      // catalog, which is what made the console's catalog read take longer than
+      // a request is allowed to.
+      const { data } = await wordpressRequestSafe<WooVariationLike[]>(
+        `${REST_V3}/products/${row.id}/variations`,
+        {
+          params: { per_page: 20 },
+          useCredentials: true,
+          signal,
+          timeoutMs: 6000,
+          revalidate: 60,
+        }
+      );
+      if (!data) return;
+
+      // What the shopper can choose. Both forms come from this one read, so the
+      // labels the selector shows and the pairs the cart is told cannot disagree.
+      const variations = productVariations(row.attributes, data);
+      if (variations) {
+        product.variations = variations;
+        product.grainSizes = variationOptionLabels(variations);
+      }
+      if (!product.sku) {
+        const firstSku = data.find((v) => (v.sku ?? '').trim())?.sku?.trim();
+        if (firstSku) product.sku = firstSku;
+      }
+
+      // The range across the variations, which is what a variable product has to
+      // show. Its parent price is WooCommerce's own one-line summary of the
+      // variation set — the cheapest — so presenting that alone asserts that every
+      // option costs the same, which is exactly the claim a shopper is misled by.
+      //
+      // Both ends come from the variation rows already read, so WooCommerce stays
+      // the source; retired children and stale parent summaries cannot lower it.
+      const range = variationPriceRange(data.filter(v => v.status === undefined || v.status === 'publish'));
+      if (!range) return;
+
+      // Real published children own a variable product's price. A stale parent
+      // summary or a retired child must not advertise a lower purchase price.
+      const min = range.min;
+      const max = Math.max(range.max, min);
+
+      // `priceMax` is the top of a variant range and stays absent when every
+      // variation costs the same, so a single-price product does not render as
+      // "$34.57 - $34.57". The display string is derived from the same
+      // normalised max, or the label and the range would disagree.
+      const hasRange = max > min;
+      product.priceMin = min;
+      product.priceMax = hasRange ? max : undefined;
+      product.priceRange = hasRange;
+      product.price = priceDisplayFromRange(min, hasRange ? max : null);
+    })
+  );
+
+  return products;
 }
 
 /**
@@ -386,6 +837,7 @@ export async function fetchWpCoreProducts(query: ProductQuery = {}): Promise<{
   if (query.category !== undefined) params.product_cat = query.category;
 
   const { data, error } = await wordpressRequestSafe<WpCoreProduct[]>('/wp/v2/product', {
+    revalidate: query.revalidate,
     params,
     signal: query.signal,
   });

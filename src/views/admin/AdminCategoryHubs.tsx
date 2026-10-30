@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
-import { Button } from '../../components/ui';
 import { useToast } from '../../context/ToastContext';
 import {
   CATEGORY_FILTER_TABS,
@@ -12,11 +11,15 @@ import {
 import type { CategoryHubOverrideForm } from '../../lib/categoryContent/cmsTypes';
 import type { CategoryContentKey } from '../../lib/categoryContent';
 import type { CategoryTrustPoint } from '../../lib/categoryContent';
-import { categoryHubApi } from '../../lib/supabase/api/categoryHub';
-import { isSupabaseConfigured } from '../../lib/supabase/client';
-
-const inputClass =
-  'w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-himalayan/30';
+import { categoryHubApi } from '../../lib/categoryContent/hubOverrides';
+import {
+  AdminButton,
+  AdminField,
+  AdminInput,
+  AdminPageHeader,
+  AdminPanel,
+} from '../../components/admin/AdminUI';
+import { BUTTON, MICRO_LABEL, SURFACE, TEXTAREA } from '../../components/admin/adminTheme';
 
 const editableKeys = CATEGORY_FILTER_TABS.map((tab) => tab.key).filter(
   (key): key is CategoryContentKey => Boolean(key)
@@ -62,6 +65,13 @@ function buildFormFromSources(
   };
 }
 
+/**
+ * Category hubs — the CMS overrides behind the enriched shop category pages.
+ *
+ * A two-pane console screen: the category list is a rail on the left, the editor
+ * is the pane on the right, at every viewport (fixed 12-column grid, never a
+ * breakpoint stack).
+ */
 export default function AdminCategoryHubs() {
   const [selectedKey, setSelectedKey] = useState<CategoryContentKey>(editableKeys[0]);
   const [form, setForm] = useState<CategoryHubOverrideForm>(() =>
@@ -72,12 +82,6 @@ export default function AdminCategoryHubs() {
   const toast = useToast();
 
   const loadForm = useCallback(async (key: CategoryContentKey) => {
-    if (!isSupabaseConfigured()) {
-      setForm(buildFormFromSources(key, null));
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     try {
       const override = await categoryHubApi.getOverride(key, { includeUnpublished: true });
@@ -102,12 +106,6 @@ export default function AdminCategoryHubs() {
   const handleSave = async () => {
     setSaving(true);
 
-    if (!isSupabaseConfigured()) {
-      toast.error('Supabase is required to save category hub CMS overrides.');
-      setSaving(false);
-      return;
-    }
-
     try {
       await categoryHubApi.upsertOverride(form);
       toast.success('Category hub saved. Changes appear on the shop page after refresh.');
@@ -118,7 +116,7 @@ export default function AdminCategoryHubs() {
     }
   };
 
-  const handleReset = async () => {
+  const handleReset = () => {
     const base = getCategoryContent(selectedKey);
     if (!base) return;
     setForm({
@@ -155,221 +153,193 @@ export default function AdminCategoryHubs() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-charcoal">Category Hubs</h1>
-          <p className="text-charcoal-light text-sm mt-1 max-w-2xl">
-            Edit hero copy, SEO, and trust points for enriched shop category pages. Gallery, guides,
-            PDFs, and blog cards still use the code registry and Supabase blog mapping.
-          </p>
-        </div>
-        <Link
-          to={previewPath}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-charcoal hover:border-himalayan/40"
-        >
-          Preview on storefront
-          <ExternalLink size={16} />
-        </Link>
-      </div>
+    <>
+      <AdminPageHeader
+        eyebrow="Content"
+        title="Category hubs"
+        description="Hero copy, SEO and trust points for the enriched shop category pages. Gallery, guides, PDFs and blog cards still come from the code registry and the blog mapping."
+        actions={
+          <Link to={previewPath} className={BUTTON.secondary}>
+            Preview on storefront
+            <ExternalLink size={16} />
+          </Link>
+        }
+      />
 
-      {!isSupabaseConfigured() && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
-          Connect Supabase to enable CMS overrides. Storefront uses static registry content only.
-        </div>
-      )}
-
-      <div className="grid lg:grid-cols-12 gap-6">
-        <aside className="lg:col-span-4 bg-white rounded-2xl shadow-sm p-4 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-charcoal-light px-2 mb-2">
-            Shop categories
-          </p>
-          {editableKeys.map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setSelectedKey(key)}
-              className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                selectedKey === key
-                  ? 'bg-himalayan text-white'
-                  : 'bg-gray-50 text-charcoal hover:bg-himalayan-lighter'
-              }`}
-            >
-              {filterLabelFromKey(key)}
-            </button>
-          ))}
+      <div className="grid grid-cols-12 gap-5">
+        <aside className={`${SURFACE} col-span-4 p-4`}>
+          <p className={MICRO_LABEL}>Shop categories</p>
+          <div className="mt-3 space-y-1">
+            {editableKeys.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSelectedKey(key)}
+                aria-current={selectedKey === key ? 'true' : undefined}
+                className={`w-full rounded-xl px-3.5 py-2.5 text-left text-sm font-medium transition-colors ${
+                  selectedKey === key
+                    ? 'bg-himalayan text-white'
+                    : 'text-admin-ink hover:bg-admin-canvas'
+                }`}
+              >
+                {filterLabelFromKey(key)}
+              </button>
+            ))}
+          </div>
         </aside>
 
-        <div className="lg:col-span-8 bg-white rounded-2xl shadow-sm p-6">
+        <div className="col-span-8">
           {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 size={32} className="animate-spin text-himalayan" />
-            </div>
+            <AdminPanel title={filterLabelFromKey(selectedKey)} description="Reading CMS override…">
+              <div className="space-y-3">
+                {Array.from({ length: 5 }, (_, index) => (
+                  <div key={index} className="h-12 animate-pulse rounded-xl bg-admin-canvas" />
+                ))}
+              </div>
+            </AdminPanel>
           ) : (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-serif text-xl font-bold text-charcoal">
-                  {filterLabelFromKey(selectedKey)}
-                </h2>
-                <label className="flex items-center gap-2 text-sm text-charcoal cursor-pointer">
+            <AdminPanel
+              title={filterLabelFromKey(selectedKey)}
+              description="Edits here override the code registry for this hub."
+              action={
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-admin-ink">
                   <input
                     type="checkbox"
                     checked={form.is_published}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, is_published: event.target.checked }))
                     }
-                    className="w-4 h-4 rounded border-gray-300 text-himalayan focus:ring-himalayan"
+                    className="h-4 w-4 rounded border-admin-line-strong text-himalayan focus:ring-himalayan"
                   />
                   Published on storefront
                 </label>
-              </div>
-
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-charcoal uppercase tracking-wider">
-                  Hero
-                </h3>
-                <label className="block text-sm">
-                  <span className="font-medium text-charcoal">Eyebrow</span>
-                  <input
-                    className={`${inputClass} mt-1.5`}
-                    value={form.hero.eyebrow}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        hero: { ...current.hero, eyebrow: event.target.value },
-                      }))
-                    }
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium text-charcoal">Title</span>
-                  <input
-                    className={`${inputClass} mt-1.5`}
-                    value={form.hero.title}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        hero: { ...current.hero, title: event.target.value },
-                      }))
-                    }
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium text-charcoal">Subtitle</span>
-                  <textarea
-                    className={`${inputClass} mt-1.5 min-h-24 resize-none`}
-                    value={form.hero.subtitle}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        hero: { ...current.hero, subtitle: event.target.value },
-                      }))
-                    }
-                  />
-                </label>
-              </section>
-
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-charcoal uppercase tracking-wider">SEO</h3>
-                <label className="block text-sm">
-                  <span className="font-medium text-charcoal">Meta title</span>
-                  <input
-                    className={`${inputClass} mt-1.5`}
-                    value={form.seo.title}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        seo: { ...current.seo, title: event.target.value },
-                      }))
-                    }
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium text-charcoal">Meta description</span>
-                  <textarea
-                    className={`${inputClass} mt-1.5 min-h-24 resize-none`}
-                    value={form.seo.description}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        seo: { ...current.seo, description: event.target.value },
-                      }))
-                    }
-                  />
-                </label>
-              </section>
-
-              <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-charcoal uppercase tracking-wider">
-                    Trust points
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={addTrustPoint}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-himalayan"
-                  >
-                    <Plus size={14} />
-                    Add point
-                  </button>
-                </div>
-                {form.trust_points.map((point, index) => (
-                  <div
-                    key={`trust-${index}`}
-                    className="p-4 border border-gray-100 rounded-xl space-y-3 bg-gray-50/50"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-semibold text-charcoal-light">
-                        Point {index + 1}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeTrustPoint(index)}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
-                        aria-label="Remove trust point"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                    <input
-                      className={inputClass}
-                      placeholder="Label"
-                      value={point.label}
-                      onChange={(event) => updateTrustPoint(index, 'label', event.target.value)}
+              }
+            >
+              <div className="space-y-6">
+                <section className="space-y-4">
+                  <h3 className={MICRO_LABEL}>Hero</h3>
+                  <AdminField label="Eyebrow" htmlFor="hub-eyebrow">
+                    <AdminInput
+                      id="hub-eyebrow"
+                      value={form.hero.eyebrow}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          hero: { ...current.hero, eyebrow: event.target.value },
+                        }))
+                      }
                     />
+                  </AdminField>
+                  <AdminField label="Title" htmlFor="hub-title">
+                    <AdminInput
+                      id="hub-title"
+                      value={form.hero.title}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          hero: { ...current.hero, title: event.target.value },
+                        }))
+                      }
+                    />
+                  </AdminField>
+                  <AdminField label="Subtitle" htmlFor="hub-subtitle">
                     <textarea
-                      className={`${inputClass} min-h-16 resize-none`}
-                      placeholder="Detail"
-                      value={point.detail}
-                      onChange={(event) => updateTrustPoint(index, 'detail', event.target.value)}
+                      id="hub-subtitle"
+                      className={`${TEXTAREA} min-h-24`}
+                      value={form.hero.subtitle}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          hero: { ...current.hero, subtitle: event.target.value },
+                        }))
+                      }
                     />
-                  </div>
-                ))}
-              </section>
+                  </AdminField>
+                </section>
 
-              <div className="flex flex-wrap gap-3 pt-2 border-t border-gray-100">
-                <Button
-                  onClick={handleSave}
-                  disabled={saving}
-                  isLoading={saving}
-                  leftIcon={<Save size={18} />}
-                >
-                  Save CMS override
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={handleReset}
-                  leftIcon={<RefreshCw size={16} />}
-                >
-                  Reset to defaults
-                </Button>
+                <section className="space-y-4 border-t border-admin-line pt-5">
+                  <h3 className={MICRO_LABEL}>SEO</h3>
+                  <AdminField label="Meta title" htmlFor="hub-seo-title">
+                    <AdminInput
+                      id="hub-seo-title"
+                      value={form.seo.title}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          seo: { ...current.seo, title: event.target.value },
+                        }))
+                      }
+                    />
+                  </AdminField>
+                  <AdminField label="Meta description" htmlFor="hub-seo-description">
+                    <textarea
+                      id="hub-seo-description"
+                      className={`${TEXTAREA} min-h-24`}
+                      value={form.seo.description}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          seo: { ...current.seo, description: event.target.value },
+                        }))
+                      }
+                    />
+                  </AdminField>
+                </section>
+
+                <section className="space-y-3 border-t border-admin-line pt-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className={MICRO_LABEL}>Trust points</h3>
+                    <AdminButton icon={Plus} onClick={addTrustPoint}>
+                      Add point
+                    </AdminButton>
+                  </div>
+                  {form.trust_points.length === 0 && (
+                    <p className="text-sm text-admin-muted">
+                      This hub has no trust points. Adding one writes a label and a detail line.
+                    </p>
+                  )}
+                  {form.trust_points.map((point, index) => (
+                    <div key={`trust-${index}`} className="space-y-3 rounded-xl border border-admin-line bg-admin-canvas/60 p-4">
+                      <div className="flex items-center justify-between">
+                        <span className={MICRO_LABEL}>Point {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeTrustPoint(index)}
+                          className="rounded-lg p-1.5 text-red-600 transition-colors hover:bg-red-50"
+                          aria-label="Remove trust point"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      <AdminInput
+                        placeholder="Label"
+                        value={point.label}
+                        onChange={(event) => updateTrustPoint(index, 'label', event.target.value)}
+                      />
+                      <textarea
+                        className={`${TEXTAREA} min-h-16`}
+                        placeholder="Detail"
+                        value={point.detail}
+                        onChange={(event) => updateTrustPoint(index, 'detail', event.target.value)}
+                      />
+                    </div>
+                  ))}
+                </section>
+
+                <div className="flex flex-wrap gap-3 border-t border-admin-line pt-5">
+                  <AdminButton variant="primary" icon={Save} onClick={handleSave} disabled={saving}>
+                    {saving && <Loader2 size={16} className="animate-spin" />}
+                    Save CMS override
+                  </AdminButton>
+                  <AdminButton icon={RefreshCw} onClick={handleReset}>
+                    Reset to defaults
+                  </AdminButton>
+                </div>
               </div>
-            </div>
+            </AdminPanel>
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }

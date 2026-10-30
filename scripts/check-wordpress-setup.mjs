@@ -112,7 +112,8 @@ function report(label, result, { required = false } = {}) {
 
 console.log('WordPress core');
 const core = [];
-core.push(report('GET /wp-json/', await probe('/')));
+const coreRoot = await probe('/');
+core.push(report('GET /wp-json/', coreRoot));
 core.push(report('GET /wp/v2/pages', await probe('/wp/v2/pages?per_page=1')));
 core.push(report('GET /wp/v2/posts', await probe('/wp/v2/posts?per_page=1')));
 core.push(report('GET /wp/v2/product', await probe('/wp/v2/product?per_page=1')));
@@ -192,6 +193,312 @@ if (productsResult.fatal) {
   console.log('    then set WOOCOMMERCE_CONSUMER_KEY / WOOCOMMERCE_CONSUMER_SECRET in .env.local.');
   console.log('    That enables /wc/v3/products, which returns price, SKU and stock today.');
 }
+
+/*
+ * HK plugins.
+ *
+ * These two namespaces are the app's own WordPress half, and every route in them
+ * requires `manage_options` — so they are probed with the WordPress administrator
+ * application password (a different credential from the WooCommerce key above; the
+ * consumer key does not authenticate them).
+ *
+ * A 404 here is the single most consequential fact this script can report: saved
+ * addresses, wishlist persistence, cart binding across devices, password resets,
+ * LeadOS and the CRM inbox all read and write through these plugins, and when they
+ * are not installed the features fail one at a time with nothing naming the cause.
+ */
+console.log('\nHK WordPress plugins');
+
+const wpUser = process.env.WORDPRESS_ADMIN_USER || '';
+const wpAppPassword = (process.env.WORDPRESS_ADMIN_APP_PASSWORD || '').replace(/\s+/g, '');
+const hasAdminCredential = Boolean(wpUser && wpAppPassword);
+console.log(`  credential: ${hasAdminCredential ? `present (${wpUser})` : 'absent'}`);
+
+/**
+ * One request with the administrator application password. Never throws.
+ *
+ * A POST is used only for the routes that are registered POST-only; it carries an
+ * empty object, which every one of them rejects on validation or permission before
+ * doing anything. Nothing here writes.
+ */
+async function probeAdmin(path, { method = 'GET' } = {}) {
+  if (!hasAdminCredential) {
+    return { status: 0, ms: 0, detail: 'No administrator application password is configured.', body: '' };
+  }
+
+  const started = Date.now();
+  try {
+    const headers = {
+      Accept: 'application/json',
+      'User-Agent': UA,
+      Authorization: `Basic ${Buffer.from(`${wpUser}:${wpAppPassword}`).toString('base64')}`,
+    };
+    if (method !== 'GET') headers['Content-Type'] = 'application/json';
+    const response = await fetch(`${apiRoot}${path}`, {
+      method,
+      headers,
+      body: method === 'GET' ? undefined : '{}',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const body = await response.text();
+    let json = null;
+    try {
+      json = JSON.parse(body);
+    } catch {
+      /* not JSON */
+    }
+    return {
+      status: response.status,
+      ms: Date.now() - started,
+      fatal: looksLikeWordPressFatal(body),
+      html: looksLikeHtml(body),
+      detail: json?.message ? `${json.code || response.status}: ${json.message}` : `HTTP ${response.status}`,
+      json,
+      body,
+    };
+  } catch (error) {
+    return {
+      status: 0,
+      ms: Date.now() - started,
+      detail: error.name === 'TimeoutError' ? `timed out after ${timeoutMs}ms` : error.message,
+      body: '',
+    };
+  }
+}
+
+const storefrontPlugin = await probeAdmin('/hk-storefront/v1/events?limit=1');
+const crmPlugin = await probeAdmin('/crm/v1/leads?search=');
+// The wholesale plugin is a third namespace, and its absence is not a storefront fault:
+// a shop with no trade desk is a legitimate deployment. So it is probed and reported
+// separately, and only the namespaces the retail shop depends on gate the verdict.
+const wholesalePlugin = await probeAdmin('/hk-wholesale/v1/settings');
+
+/*
+ * The namespace list is public, so it answers "is the plugin registered at all"
+ * without any credential — which is the question that matters when no administrator
+ * password is configured. A namespace that is not listed is a plugin that is not
+ * active, whatever a credentialed probe would have said.
+ */
+const namespaceList = coreRoot?.json?.namespaces;
+const namespaces = Array.isArray(namespaceList) ? namespaceList.map(String) : [];
+const namespacesKnown = namespaces.length > 0;
+const storefrontRegistered = namespaces.includes('hk-storefront/v1');
+const crmRegistered = namespaces.includes('crm/v1');
+const wholesaleRegistered = namespaces.includes('hk-wholesale/v1');
+
+/*
+ * The wholesale plugin reports its own schema health. It has to: `dbDelta()` returns
+ * nothing when MySQL refuses a statement, so an install that could not build one of its
+ * tables reads as healthy from the outside — every list is an empty list, and only a
+ * write fails. A missing table is therefore reported here, before anyone tries to use
+ * the desk. (One was: a column named `lines` is a reserved word, and the unquoted CREATE
+ * TABLE for it never ran.)
+ */
+const wholesaleSettings = wholesalePlugin?.json;
+const wholesaleMissingTables = Array.isArray(wholesaleSettings?.missing_tables) ? wholesaleSettings.missing_tables : [];
+const wholesaleMissingColumns = wholesaleSettings?.missing_columns && typeof wholesaleSettings.missing_columns === 'object'
+  ? Object.entries(wholesaleSettings.missing_columns)
+  : [];
+if (wholesaleSettings && wholesaleRegistered) {
+  const schema =
+    wholesaleMissingTables.length || wholesaleMissingColumns.length
+      ? `INCOMPLETE — missing ${[wholesaleMissingTables.length ? `${wholesaleMissingTables.join(', ')} table(s)` : '', wholesaleMissingColumns.map(([table, columns]) => `${table}.${columns.join('/')}`).join(', ')].filter(Boolean).join(' and ')}`
+      : 'complete';
+  console.log(
+    `  wholesale schema: code v${wholesaleSettings.db_version || '?'} · installed v${wholesaleSettings.installed_db_version || '?'} · ${schema}`
+  );
+  if (schema !== 'complete' && wholesaleSettings.schema_error) {
+    console.log(`      the database refused: ${wholesaleSettings.schema_error}`);
+  }
+}
+
+if (namespacesKnown) {
+  console.log(
+    `  registered: hk-storefront/v1 = ${storefrontRegistered ? 'yes' : 'no'} · crm/v1 = ${crmRegistered ? 'yes' : 'no'} · hk-wholesale/v1 = ${wholesaleRegistered ? 'yes' : 'no'}`
+  );
+}
+
+// A namespace the index does not list is 'ABSENT' even when the credentialed probe
+// could not run — that is an observation, not a guess.
+if (namespacesKnown && !storefrontRegistered && storefrontPlugin.status === 0) {
+  storefrontPlugin.status = 404;
+  storefrontPlugin.detail = 'The hk-storefront/v1 namespace is not registered on this site.';
+}
+if (namespacesKnown && !crmRegistered && crmPlugin.status === 0) {
+  crmPlugin.status = 404;
+  crmPlugin.detail = 'The crm/v1 namespace is not registered on this site.';
+}
+
+const pluginsPass =
+  (storefrontPlugin.status >= 200 && storefrontPlugin.status < 300) &&
+  (crmPlugin.status >= 200 && crmPlugin.status < 300);
+
+function reportPlugin(label, result, dependsOn) {
+  let marker;
+  if (result.status >= 200 && result.status < 300) marker = 'PASS ';
+  else if (result.fatal) marker = 'FATAL';
+  else if (result.status === 401 || result.status === 403) marker = 'AUTH ';
+  else if (result.status === 404) marker = 'ABSENT';
+  else marker = 'FAIL ';
+
+  console.log(`  ${marker} ${label} — HTTP ${result.status || 'ERR'} · ${result.ms}ms`);
+  if (marker !== 'PASS ') {
+    console.log(`         ${result.detail}`);
+    if (marker === 'ABSENT' || marker === 'AUTH ') console.log(`         Blocks: ${dependsOn}`);
+  }
+}
+
+reportPlugin(
+  'GET /hk-storefront/v1/events',
+  storefrontPlugin,
+  'wishlist, saved addresses, cart across devices, customer sign-in and password resets'
+);
+reportPlugin('GET /crm/v1/leads', crmPlugin, 'the CRM inbox and LeadOS');
+reportPlugin(
+  'GET /hk-wholesale/v1/settings',
+  wholesalePlugin,
+  'the wholesale portal, quotations and the trade console (not needed by the retail shop)'
+);
+
+if (!pluginsPass) {
+  console.log('');
+  console.log('  The plugins are part of this repository (`wordpress/himalayan-koh-storefront.php`,');
+  console.log('  `wordpress/himalayan-koh-leados.php`) and are installed on WordPress, not deployed');
+  console.log('  with the Worker. To resolve:');
+  console.log('');
+  if (!hasAdminCredential) {
+    console.log('    1. Create a WordPress application password for an administrator');
+    console.log('       (Users -> Profile -> Application Passwords) and set');
+    console.log('       WORDPRESS_ADMIN_USER / WORDPRESS_ADMIN_APP_PASSWORD in the server env.');
+  }
+  console.log('    2. Copy each plugin onto the site:');
+  console.log('       wp-content/plugins/himalayan-koh-storefront/himalayan-koh-storefront.php');
+  console.log('       wp-content/plugins/himalayan-koh-leados/himalayan-koh-leados.php');
+  console.log('       (or zip the folder and upload it under Plugins -> Add New -> Upload Plugin)');      console.log('    3. Activate both. Re-running this script should then print PASS for each.');
+  console.log('');
+  console.log('    The wholesale plugin (`wordpress/hk-wholesale.php`) is installed the same way');
+  console.log('    (`deploy/hk-wholesale.zip`, built by `npm run pack:plugins`). Its absence only');
+  console.log('    affects the trade portal, and `WHOLESALE_SESSION_SECRET` must be set on the');
+  console.log('    deployment for buyers to sign in.');
+  console.log('');
+  console.log('    If an administrator application password is configured and the plugins are');
+  console.log('    already installed but inactive, activation is a single authenticated call:');
+  console.log('       POST /wp-json/wp/v2/plugins/himalayan-koh-storefront/himalayan-koh-storefront');
+  console.log('            { "status": "active" }');
+}
+
+/*
+ * Every route the application actually calls on the HK plugins.
+ *
+ * The two probes above answer "is the plugin there at all". This answers the
+ * question that comes next — after the plugin is uploaded, is the *whole* surface
+ * there, including the tables and endpoints added since the last deploy. A route
+ * that was never named here is a feature that fails later, one at a time, with
+ * nothing saying which deploy it went missing from.
+ *
+ * Registration is judged by whether WordPress answers `rest_no_route`, which is what
+ * it returns for a URL that is not registered **or** for a registered URL called with
+ * the wrong method — so each route below carries the method it is registered for.
+ * Probing everything with GET reports every POST-only route as missing, which is how
+ * a working customer sign-in came to look absent.
+ */
+const REQUIRED_ROUTES = {
+  'hk-storefront/v1': [
+    ['/events', 'first-party traffic events'],
+    ['/events/summary', 'traffic aggregation'],
+    ['/settings', 'site settings'],
+    ['/category-hubs', 'category-hub overrides'],
+    ['/category-hubs/one?key=home', 'one category hub'],
+    ['/admin-records?table=store_settings', 'the console record store'],
+    ['/admin-records/one?table=store_settings&id=free_shipping', 'one console record'],
+    ['/hermes-evidence', 'Hermes evidence store'],
+    ['/hermes-evidence/status', 'evidence status updates', 'POST'],
+    ['/newsletter', 'newsletter subscribers'],
+    ['/contact', 'contact submissions'],
+    ['/wishlist/count?owner=0', 'wishlist'],
+    ['/addresses?owner=0', 'saved addresses'],
+    ['/cart-session?owner=0', 'cart binding'],
+    ['/customer/login', 'customer sign-in', 'POST'],
+    ['/customer/register', 'account creation', 'POST'],
+    ['/customer/request-password-reset', 'password-reset request', 'POST'],
+    ['/customer/reset-password', 'password reset', 'POST'],
+    ['/customer/change-password', 'password change', 'POST'],
+    ['/legacy-orders/import', 'the historical order import', 'POST'],
+  ],
+  'crm/v1': [
+    ['/leads?search=', 'the CRM inbox and LeadOS lead library'],
+  ],
+  'hk-wholesale/v1': [
+    ['/settings', 'the wholesale workspace vocabulary'],
+    ['/overview', 'wholesale counts, values and container utilisation'],
+    ['/catalog', 'the wholesale catalogue with tier prices'],
+    ['/access?email=probe%40example.invalid', 'buyer approval lookup used at sign-in'],
+    ['/records?resource=products&limit=1', 'the wholesale record store'],
+    ['/records/one?resource=products&id=0', 'one wholesale record'],
+    ['/apply', 'a buyer application', 'POST'],
+    ['/decide', 'approving an application', 'POST'],
+  ],
+};
+
+const sweep = async () => {
+  console.log('\nHK plugin surface (every route the application calls)');
+
+  for (const [namespace, routes] of Object.entries(REQUIRED_ROUTES)) {
+    const registered =
+      namespace === 'hk-storefront/v1'
+        ? storefrontRegistered
+        : namespace === 'crm/v1'
+          ? crmRegistered
+          : wholesaleRegistered;
+
+    if (namespacesKnown && !registered) {
+      // Absent as a whole: listing each route as missing would be noise, and the
+      // namespace line above already says which deploy the plugin is missing from.
+      console.log(`  ${namespace} — not registered (${routes.length} route(s) unavailable)`);
+      continue;
+    }
+
+    let missing = 0;
+    const lines = [];
+    for (const [path, purpose, method = 'GET'] of routes) {
+      const result = await probeAdmin(`/${namespace}${path}`, { method });
+      const code = result.json?.code;
+      let marker;
+      if (result.status >= 200 && result.status < 300) marker = 'PASS   ';
+      else if (result.fatal) marker = 'FATAL  ';
+      else if (code && code !== 'rest_no_route') marker = 'PRESENT';
+      else if (result.status === 401 || result.status === 403) marker = 'AUTH   ';
+      else if (result.status === 0) marker = 'UNKNOWN';
+      else {
+        marker = 'ABSENT ';
+        missing += 1;
+      }
+      lines.push(`      ${marker} ${path} — ${purpose}`);
+    }
+
+    console.log(`  ${namespace}: ${routes.length - missing}/${routes.length} route(s) present`);
+    for (const line of lines) console.log(line);
+  }
+
+  // Installed plugins, with the version that is actually active. This is the only
+  // way to tell "uploaded an old build" from "uploaded the current one" — the
+  // plugin file on the server is the deployment, and nothing else records it.
+  if (hasAdminCredential) {
+    const installed = await probeAdmin('/wp/v2/plugins');
+    if (Array.isArray(installed.json)) {
+      const hk = installed.json.filter((plugin) =>
+        String(plugin?.name || '').toLowerCase().includes('himalayan')
+      );
+      console.log('\n  Installed HK plugins');
+      if (!hk.length) console.log('      (none — the plugins are not installed on this site)');
+      for (const plugin of hk) {
+        console.log(`      ${plugin.plugin} — ${plugin.version} — ${plugin.status}`);
+      }
+    }
+  }
+};
+
+await sweep();
 
 const critical =
   core[0] && core[1] && core[3] && storeProducts === false && adminProducts === false;

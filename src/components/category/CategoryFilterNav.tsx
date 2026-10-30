@@ -1,43 +1,37 @@
 import { Link } from 'react-router-dom';
-import {
-  CATEGORY_FILTER_TABS,
-  CATEGORY_PRODUCT_LABELS,
-  buildProductsCategoryPath,
-  type CategoryContentKey,
-} from '../../lib/categoryContent';
-import type { Product } from '../../data/products';
+import { buildProductsCategoryPath, type CategoryFilterTab } from '../../lib/categoryContent';
 
 interface Props {
-  activeFilter: string;
-  products: Product[];
+  /** The selected `?category=` value, or `null` for All. */
+  activeKey: string | null;
+  /** The pills to show — already derived from the catalogue, with "All" first. */
+  tabs: readonly CategoryFilterTab[];
 }
 
-/** URL-driven category pills — deep links and browser history work out of the box. */
-export default function CategoryFilterNav({ activeFilter, products }: Props) {
-  // A category pill with zero matching products is a dead end — the shopper
-  // clicks it, lands on an empty grid, and bounces. "All" always shows.
-  const visibleTabs = CATEGORY_FILTER_TABS.filter((tab) => {
-    if (!tab.key) return true;
-    const labels = CATEGORY_PRODUCT_LABELS[tab.key as CategoryContentKey];
-    return products.some((p) => labels.includes(p.category));
-  });
-
+/**
+ * URL-driven category pills — deep links and browser history work out of the box.
+ *
+ * The pills come from `productsCategoryTabs(products)`, so they are the categories
+ * the catalogue actually carries: a category with no products is not offered, and
+ * a category the owner adds in WooCommerce appears without a code change. The
+ * active pill is matched by key rather than label, so a newer WooCommerce category
+ * cannot collide with a shelf by name.
+ */
+export default function CategoryFilterNav({ activeKey, tabs }: Props) {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 sm:flex-wrap sm:justify-center sm:overflow-visible scrollbar-thin">
-      {visibleTabs.map((tab) => {
-        const isActive = activeFilter === tab.label;
-        const to = tab.key
-          ? buildProductsCategoryPath(tab.key as CategoryContentKey)
-          : '/products';
+    <nav aria-label="Product categories" className="flex sm:flex-wrap gap-2 w-full min-w-0 overflow-x-auto pb-1">
+      {tabs.map((tab) => {
+        const isActive = (tab.key ?? null) === (activeKey ?? null);
+        const to = buildProductsCategoryPath(tab.key);
 
         return (
           <Link
-            key={tab.label}
+            key={tab.key ?? tab.label}
             to={to}
             replace={false}
-            className={`shrink-0 px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ${
+            className={`shrink-0 min-h-11 flex items-center px-3 py-2 rounded-full text-sm font-medium transition-colors duration-150 ${
               isActive
-                ? 'bg-himalayan text-white shadow-lg shadow-himalayan/25'
+                ? 'bg-himalayan-dark text-white'
                 : 'bg-white text-charcoal hover:bg-himalayan-lighter border border-gray-200'
             }`}
             aria-current={isActive ? 'page' : undefined}
@@ -46,6 +40,6 @@ export default function CategoryFilterNav({ activeFilter, products }: Props) {
           </Link>
         );
       })}
-    </div>
+    </nav>
   );
 }

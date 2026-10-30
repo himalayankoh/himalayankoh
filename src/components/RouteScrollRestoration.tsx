@@ -37,6 +37,14 @@ export default function RouteScrollRestoration() {
       return;
     }
 
+    if (pathname.startsWith('/admin')) {
+      const mainEl = document.getElementById('main-content');
+      if (mainEl) {
+        mainEl.scrollTop = 0;
+      }
+      return;
+    }
+
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     document.getElementById('main-content')?.focus({ preventScroll: true });
   }, [pathname, search]);

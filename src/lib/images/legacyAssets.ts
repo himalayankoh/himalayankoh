@@ -4,7 +4,7 @@
  * under public/images/legacy/ and served from our own domain, so the site has
  * no runtime dependency on WordPress and the old host can be shut down.
  *
- * Every reference to these nine files goes through this module. To move them
+ * Every reference to these four files goes through this module. To move them
  * somewhere else later (Supabase Storage, a CDN), change the paths here — the
  * rest of the codebase does not name them.
  *
@@ -14,12 +14,16 @@
  * that script's only remaining purpose is documenting where they came from.
  */
 
+/**
+ * The pink salt photographs the storefront uses.
+ *
+ * The registry is deliberately small: an asset record is not harmless, because
+ * its `alt` text and file name are what a gallery renders. This is the set the
+ * approved public pages actually reference — the homepage hero among them — and
+ * nothing is registered "just in case".
+ */
 export type LegacyImageKey =
-  | 'horseLickPaddock'
   | 'horseLicking'
-  | 'horsesBanner'
-  | 'cattleGrazing'
-  | 'cattleSaltBag'
   | 'bowlOfSalt'
   | 'saltPouch6lb'
   | 'pinkSaltJar16oz'
@@ -38,35 +42,11 @@ const LEGACY_DIR = '/images/legacy';
 const WP_BASE = 'https://himalayankoh.com/wp-content/uploads';
 
 export const LEGACY_IMAGES: Record<LegacyImageKey, LegacyImage> = {
-  horseLickPaddock: {
-    src: `${LEGACY_DIR}/horse-salt-lick-paddock.jpg`,
-    width: 600,
-    height: 450,
-    wordpress: `${WP_BASE}/2021/03/horse-lick-himalayan-salt5-600x450.jpg`,
-  },
   horseLicking: {
     src: `${LEGACY_DIR}/horse-licking-salt.jpg`,
     width: 600,
     height: 450,
     wordpress: `${WP_BASE}/2017/10/slat-licking-horse.jpg`,
-  },
-  horsesBanner: {
-    src: `${LEGACY_DIR}/horses-grazing-banner.jpg`,
-    width: 1300,
-    height: 200,
-    wordpress: `${WP_BASE}/2019/08/horses-1300x200.jpg`,
-  },
-  cattleGrazing: {
-    src: `${LEGACY_DIR}/cattle-grazing.jpg`,
-    width: 600,
-    height: 450,
-    wordpress: `${WP_BASE}/2017/10/blog9.jpg`,
-  },
-  cattleSaltBag: {
-    src: `${LEGACY_DIR}/cattle-salt-bag.jpg`,
-    width: 600,
-    height: 450,
-    wordpress: `${WP_BASE}/2020/10/1-600x450.jpeg`,
   },
   bowlOfSalt: {
     src: `${LEGACY_DIR}/bowl-of-salt.jpg`,
@@ -104,3 +84,51 @@ export const LEGACY_IMAGES: Record<LegacyImageKey, LegacyImage> = {
  * — the local files then take over automatically.
  */
 export const legacyImage = (key: LegacyImageKey): string => LEGACY_IMAGES[key].src;
+
+/** Smaller derivatives of the same authorized photos, with actual pixel widths. */
+export function legacyHeroImage(key: 'horseLicking' | 'bowlOfSalt') {
+  const name = key === 'horseLicking' ? 'horse-licking-salt' : 'bowl-of-salt';
+  const widths = key === 'horseLicking' ? [200, 332] : [200, 400, 549];
+  return {
+    src: `${LEGACY_DIR}/${name}-${widths.at(-1)}.webp`,
+    srcSet: widths.map(width => `${LEGACY_DIR}/${name}-${width}.webp ${width}w`).join(', '),
+    sizes: '(min-width: 1024px) 282px, (min-width: 640px) calc((100vw - 64px) / 2), calc((100vw - 44px) / 2)',
+    width: key === 'horseLicking' ? 332 : 549,
+    height: 332,
+  };
+}
+
+/**
+ * Records that point at a legacy file this repository does not actually have.
+ *
+ * These paths were referenced by editorial records (a blog post's featured image)
+ * and never committed, so they 404 on the site. The honest fix is to correct the
+ * record; until then a reader must not be shown a broken image, and guessing a
+ * *new* photograph for a post would be inventing content. So each dead path is
+ * mapped to the registered asset that is closest in subject, and the substitution
+ * is reported to the console rather than performed silently — the owner sees which
+ * record still needs fixing.
+ */
+export const MISSING_LEGACY_IMAGES: Record<string, LegacyImageKey> = {
+  '/images/legacy/cattle-grazing.jpg': 'saltRockBag',
+  '/images/legacy/horse-salt-lick-paddock.jpg': 'horseLicking',
+};
+
+/**
+ * A usable path for an image reference, and the missing path it stood in for.
+ *
+ * `substitutedFrom` is null when the reference was fine, so a caller can render the
+ * image either way and warn only when something is actually wrong.
+ */
+export function resolveLegacyImageSrc(src: string | null | undefined): {
+  src: string;
+  substitutedFrom: string | null;
+} {
+  const trimmed = (src ?? '').trim();
+  if (!trimmed) return { src: '', substitutedFrom: null };
+
+  const replacement = MISSING_LEGACY_IMAGES[trimmed];
+  if (replacement) return { src: LEGACY_IMAGES[replacement].src, substitutedFrom: trimmed };
+
+  return { src: trimmed, substitutedFrom: null };
+}

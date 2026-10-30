@@ -1,0 +1,841 @@
+// ============================================================================
+// LUXEDGE — ADMIN BLOG MANAGER (Phase E)
+//
+// Database-backed blog CMS manager. Creating/editing/publishing a post here
+// writes to Supabase `blog_posts`/`blog_revisions` — NO repo change, commit,
+// build or deployment is ever needed for content operations. Publishing
+// updates the storefront (via reloadBlogs), the worker SEO path and the
+// dynamic sitemap automatically.
+//
+// Every write authorizes with the signed-in admin's JWT; RLS governs access.
+// Revisions are appended on each create/edit/lifecycle change so Salman can
+// recover any earlier version.
+// ============================================================================
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Plus, FileText, Eye, Trash, PencilLine, Copy, Archive,
+  ArrowCounterClockwise, MagnifyingGlass, FloppyDisk, CalendarPlus, CheckCircle, Sparkle, Warning,
+} from '@phosphor-icons/react';
+import { useApp } from '../App';
+import { getFreshAccessToken } from '../services/wordpressAdminAuth';
+import { generateSeoJson } from '../features/ai/seo';
+import { isBlogPublic } from '../content/reviewHolds';
+import {
+  adminListAll, adminCreate, adminUpdate, adminSetLifecycle, adminDelete,
+  adminListRevisions, adminRestoreRevision,
+  type CmsBlogRow, type CmsBlogRevision,
+} from '../services/blog';
+import { useBlogJobStore } from '../features/blog/blogJobStore';
+
+const STATUS_META: Record<CmsBlogRow['status'], { label: string; cls: string }> = {
+  published: { label: 'Published', cls: 'bg-green-100 text-green-700' },
+  scheduled: { label: 'Scheduled', cls: 'bg-yellow-100 text-yellow-700' },
+  draft: { label: 'Draft', cls: 'bg-gray-100 text-gray-600' },
+  archived: { label: 'Archived', cls: 'bg-red-100 text-red-600' },
+};
+
+export function getBlogStatusMeta(status: string | null | undefined): { label: string; cls: string } {
+  if (!status) return { label: 'Draft', cls: 'bg-gray-100 text-gray-600' };
+  const s = String(status).toLowerCase().trim();
+  if (s === 'published' || s === 'publish') return STATUS_META.published;
+  if (s === 'scheduled') return STATUS_META.scheduled;
+  if (s === 'draft' || s === 'pending') return STATUS_META.draft;
+  if (s === 'archived' || s === 'trash' || s === 'deleted') return STATUS_META.archived;
+  return STATUS_META[status as CmsBlogRow['status']] || { label: status, cls: 'bg-gray-100 text-gray-600' };
+}
+
+const slugify = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+/** Factual blog SEO prompt shared by the per-post button and the bulk run. */
+function buildBlogSeoPrompt(title: string, excerpt: string, content: string): string {
+  return `Write premium, honest SEO for this blog article for Himalayan Koh (authentic Himalayan pink salt).
+Title: ${title}
+Excerpt: ${excerpt || 'none'}
+Content: ${content || 'none'}
+
+Return ONLY JSON with EXACTLY these keys:
+{"seoTitle": "<=60 chars, factual, no fake claims", "metaDescription": "<=160 chars, factual", "targetKeyword": "one primary keyword", "secondaryKeywords": ["3-5 keywords"], "searchIntent": "informational | buyer"}
+No other text.`;
+}
+
+const emptyDraft = (): Omit<CmsBlogRow, 'id'> => ({
+  slug: '', title: '', excerpt: null, content: '', hero_image_url: null, hero_image_alt: null,
+  tags: [], author_name: 'Himalayan Koh Editorial Team', author_id: null, status: 'draft',
+  created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  scheduled_at: null, published_at: null, seo_title: null, meta_description: null,
+  target_keyword: null, secondary_keywords: [], search_intent: null, faq: [], internal_links: [],
+  generated_by: 'manual', automation_locked: false,
+});
+
+export default function BlogManager() {
+  const { notify, reloadBlogs } = useApp();
+  const [rows, setRows] = useState<CmsBlogRow[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<CmsBlogRow | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState<Omit<CmsBlogRow, 'id'>>(emptyDraft());
+  const [faqJson, setFaqJson] = useState('[]');
+  const [tagsText, setTagsText] = useState('');
+  const [keywordsText, setKeywordsText] = useState('');
+  const [secondaryText, setSecondaryText] = useState('');
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | CmsBlogRow['status']>('all');
+  const [automationOnly, setAutomationOnly] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [seoBusy, setSeoBusy] = useState(false);
+  // Background Auto-SEO job - lives in a module store so it survives SPA
+  // navigation AND full page reloads (localStorage checkpoint + resume offer).
+  const seo = useBlogJobStore();
+  // Skip the store's onFinished reload once this component has unmounted.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+  const [confirm, setConfirm] = useState<{ id: string; title: string; permanent: boolean } | null>(null);
+  const [revisions, setRevisions] = useState<CmsBlogRevision[]>([]);
+  const [showRevisionsFor, setShowRevisionsFor] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      setRows(await adminListAll());
+      setLoadError(null);
+    } catch (e) {
+      setLoadError((e as Error).message || 'Could not load blog posts.');
+    }
+  };
+  useEffect(() => { void load(); }, []);
+
+  // First-party post views (page_view events per /blog/<slug>) from the
+  // server endpoint — one request, aggregated server-side, never N+1.
+  const [stats, setStats] = useState<Record<string, { views: number; views7d: number; views30d: number }> | null>(null);
+  const [statsNote, setStatsNote] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getFreshAccessToken();
+        const r = await fetch('/api/admin/blog-stats', { headers: { Authorization: `Bearer ${token}` } });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = (await r.json()) as { stats?: Record<string, { views: number; views7d: number; views30d: number }>; unavailable?: string };
+        if (!cancelled) { setStats(j.stats ?? null); setStatsNote(j.unavailable ?? null); }
+      } catch {
+        if (!cancelled) { setStats(null); setStatsNote('Analytics unavailable'); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const startCreate = () => {
+    setCreating(true);
+    setEditing(null);
+    setForm(emptyDraft());
+    setFaqJson('[]');
+    setTagsText('');
+    setKeywordsText('');
+    setSecondaryText('');
+  };
+
+  const startEdit = (r: CmsBlogRow) => {
+    setCreating(false);
+    setEditing(r);
+    setForm({ ...r });
+    setFaqJson(JSON.stringify(r.faq || [], null, 2));
+    setTagsText((r.tags || []).join(', '));
+    setKeywordsText(r.target_keyword || '');
+    setSecondaryText((r.secondary_keywords || []).join(', '));
+    setShowRevisionsFor(null);
+  };
+
+  const toPatch = useMemo((): Partial<Omit<CmsBlogRow, 'id'>> => {
+    let faq: { q: string; a: string }[] | null = null;
+    try { faq = JSON.parse(faqJson); if (!Array.isArray(faq)) faq = null; } catch { faq = null; }
+    return {
+      slug: form.slug,
+      title: form.title,
+      excerpt: form.excerpt || null,
+      content: form.content,
+      hero_image_url: form.hero_image_url || null,
+      hero_image_alt: form.hero_image_alt || null,
+      tags: tagsText.split(',').map((s) => s.trim()).filter(Boolean),
+      author_name: form.author_name || 'Himalayan Koh Editorial Team',
+      target_keyword: keywordsText.trim() || null,
+      secondary_keywords: secondaryText.split(',').map((s) => s.trim()).filter(Boolean),
+      faq: faq || [],
+      ...(form.seo_title ? { seo_title: form.seo_title } : { seo_title: null }),
+      ...(form.meta_description ? { meta_description: form.meta_description } : { meta_description: null }),
+      ...(form.search_intent ? { search_intent: form.search_intent } : { search_intent: null }),
+    };
+  }, [form, faqJson, tagsText, keywordsText, secondaryText]);
+
+  const saveDraft = async () => {
+    if (!form.title.trim()) { notify('Title is required.', 'error'); return; }
+    if (!form.slug.trim()) {
+      const auto = slugify(form.title);
+      if (!auto) { notify('A valid slug is required.', 'error'); return; }
+      setForm((f) => ({ ...f, slug: auto }));
+      // Let the state commit then retry next click; for now attempt with auto.
+      return saveDraftWith(form.slug || auto);
+    }
+    return saveDraftWith(form.slug.trim());
+  };
+
+  const saveDraftWith = async (slug: string) => {
+    setBusy(true);
+    try {
+      if (creating || (editing && form.status === 'draft' && !editing.published_at)) {
+        if (creating) {
+          await adminCreate({
+            slug,
+            title: form.title,
+            content: form.content ?? '',
+            excerpt: form.excerpt || undefined,
+            heroImageUrl: form.hero_image_url || undefined,
+            heroImageAlt: form.hero_image_alt || undefined,
+            tags: form.tags || [],
+            authorName: form.author_name || 'Himalayan Koh Editorial Team',
+            seoTitle: form.seo_title || undefined,
+            metaDescription: form.meta_description || undefined,
+            targetKeyword: form.target_keyword || undefined,
+            secondaryKeywords: form.secondary_keywords || [],
+            searchIntent: form.search_intent || undefined,
+            faq: toPatch.faq || undefined,
+          });
+        } else if (editing) {
+          await adminUpdate(editing.id, toPatch);
+        }
+      } else {
+        // Saving an existing published/scheduled post keeps its status; only edit content.
+        await adminUpdate(editing!.id, toPatch);
+      }
+      notify('Saved.');
+      await reloadBlogs(true);
+      setCreating(false); setEditing(null);
+      await load();
+    } catch (e) {
+      notify((e as Error).message || 'Save failed.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const lifecycle = async (action: 'publish' | 'unpublish' | 'archive' | 'restore', id: string) => {
+    setBusy(true);
+    try {
+      await adminSetLifecycle(id, action);
+      const target = (rows || []).find((r) => r.id === id);
+      const liveUrl = target?.slug ? `/blog/${target.slug}` : '';
+      const notice =
+        action === 'publish'
+          ? `Published live ✓ ${liveUrl}`
+          : action === 'unpublish'
+            ? 'Unpublished — moved to drafts.'
+            : `Post ${action}.`;
+      notify(notice);
+      await reloadBlogs(true);
+      await load();
+    } catch (e) {
+      notify((e as Error).message || 'Action failed.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const schedule = async (id: string) => {
+    const at = window.prompt('Publish at (YYYY-MM-DDTHH:MM, local time):', '');
+    if (at == null) return;
+    if (!at.trim()) { notify('Schedule cancelled.', 'info'); return; }
+    const iso = new Date(at.trim()).toISOString();
+    setBusy(true);
+    try {
+      await adminSetLifecycle(id, 'schedule', { scheduled_at: iso });
+      notify('Scheduled.');
+      await reloadBlogs(true);
+      await load();
+    } catch (e) {
+      notify((e as Error).message || 'Could not schedule.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // One-click AI SEO for the post being edited: generate from title + content,
+  // fill the SEO fields and (for an existing post) save immediately.
+  const generateBlogSeo = async () => {
+    if (!form.title.trim()) { notify('Title is required to generate SEO.', 'error'); return; }
+    if (!form.content?.trim()) { notify('Write some content first — SEO is generated from the article.', 'error'); return; }
+    setSeoBusy(true);
+    try {
+      const parsed = await generateSeoJson(buildBlogSeoPrompt(form.title, form.excerpt || '', (form.content || '').slice(0, 3000)));
+      const seoTitle = String(parsed.seoTitle || form.seo_title || '').trim().slice(0, 60) || null;
+      const meta = String(parsed.metaDescription || form.meta_description || '').trim().slice(0, 160) || null;
+      const kw = String(parsed.targetKeyword || form.target_keyword || '').trim() || null;
+      const sec = Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords.map(String).slice(0, 5) : form.secondary_keywords || [];
+      setForm((f) => ({ ...f, seo_title: seoTitle, meta_description: meta, target_keyword: kw, secondary_keywords: sec }));
+      setKeywordsText(kw || '');
+      setSecondaryText(sec.join(', '));
+      if (editing) {
+        await adminUpdate(editing.id, { seo_title: seoTitle, meta_description: meta, target_keyword: kw, secondary_keywords: sec });
+        notify('SEO generated & saved.');
+        await reloadBlogs(true);
+        await load();
+      } else {
+        notify('SEO generated — click Save to persist the post.');
+      }
+    } catch (e) {
+      notify(`AI SEO failed: ${(e as Error).message}`, 'error');
+    } finally {
+      setSeoBusy(false);
+    }
+  };
+
+  // Eligibility reads the RAW persisted SEO columns (never display fallbacks),
+  // matching the products page: a post is complete only when it has a real
+  // SEO title, meta description AND target keyword. Complete SEO is never
+  // re-run by the bulk loop or a resume.
+  const blogSeoStatus = (r: CmsBlogRow): 'complete' | 'incomplete' | 'missing' => {
+    const t = !!r.seo_title;
+    const d = !!r.meta_description;
+    const k = !!r.target_keyword;
+    if (t && d && k) return 'complete';
+    if (t || d || k) return 'incomplete';
+    return 'missing';
+  };
+
+  // Generate + save SEO for one post (title/meta/keywords/secondary derived
+  // from the article). Throws → the job store counts it as failed and continues.
+  const generateAndSaveBlogSeo = async (r: CmsBlogRow) => {
+    const parsed = await generateSeoJson(buildBlogSeoPrompt(r.title, r.excerpt || '', (r.content || '').slice(0, 3000)));
+    await adminUpdate(r.id, {
+      seo_title: String(parsed.seoTitle || r.seo_title || '').trim().slice(0, 60) || null,
+      meta_description: String(parsed.metaDescription || r.meta_description || '').trim().slice(0, 160) || null,
+      target_keyword: String(parsed.targetKeyword || r.target_keyword || '').trim() || null,
+      secondary_keywords: Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords.map(String).slice(0, 5) : r.secondary_keywords || [],
+    });
+  };
+
+  // Bulk Auto SEO - the loop lives in the module-level blog job store so it
+  // keeps running (and keeps reporting progress) while the user navigates to
+  // another admin page and back; a full page reload offers to resume the rest.
+  // Processes Missing + Incomplete only, NEVER overwrites Complete.
+  const autoSeoBlogs = async () => {
+    const targets = (rows || []).filter((r) => r.title);
+    const work = targets.filter((r) => blogSeoStatus(r) !== 'complete');
+    if (work.length === 0) {
+      notify(`All ${targets.length} post(s) already have complete SEO.`, 'info');
+      return;
+    }
+    if (!window.confirm(`Auto-generate and save SEO for ${work.length} post(s) missing or incomplete SEO? Complete SEO is never overwritten.`)) return;
+    const started = await useBlogJobStore.getState().start({
+      targets,
+      statusOf: blogSeoStatus,
+      runOne: generateAndSaveBlogSeo,
+      label: (r) => r.title,
+      onFinished: async () => {
+        if (mountedRef.current) {
+          await reloadBlogs(true);
+          await load();
+        }
+      },
+    });
+    if (started) {
+      const skipped = targets.length - work.length;
+      notify(`Auto SEO job started — ${work.length} to process, ${skipped} already complete. It keeps running in the background; progress shows here.`);
+    }
+  };
+
+  // A run killed by a full page reload restores its checkpoint from localStorage
+  // (`interrupted`). Resume resolves those ids back to the rows currently
+  // loaded; posts that actually saved before the reload are now 'complete' and
+  // get skipped by the same eligibility check, so nothing is regenerated.
+  const resumeInterruptedBlogSeo = async () => {
+    const inter = useBlogJobStore.getState().interrupted;
+    if (!inter) return;
+    const byId = new Map((rows || []).map((r) => [r.id, r]));
+    const targets = inter.ids.map((id) => byId.get(id)).filter((r): r is CmsBlogRow => Boolean(r));
+    if (targets.length === 0) {
+      notify('The posts from the interrupted SEO run are gone — cleared.', 'info');
+      useBlogJobStore.getState().dismissInterrupted();
+      return;
+    }
+    const work = targets.filter((r) => r.title && blogSeoStatus(r) !== 'complete');
+    if (work.length === 0) {
+      notify('The remaining posts from the interrupted SEO run already have complete SEO.', 'info');
+      useBlogJobStore.getState().dismissInterrupted();
+      return;
+    }
+    if (!window.confirm(`Resume Auto SEO for the ${work.length} post(s) left from the interrupted run? Complete SEO is never overwritten.`)) return;
+    const started = await useBlogJobStore.getState().resume({
+      targets,
+      statusOf: blogSeoStatus,
+      runOne: generateAndSaveBlogSeo,
+      label: (r) => r.title,
+      onFinished: async () => {
+        if (mountedRef.current) {
+          await reloadBlogs(true);
+          await load();
+        }
+      },
+    });
+    if (started) notify(`Auto SEO resumed — ${work.length} to process. It keeps running in the background.`);
+  };
+
+  const duplicate = async (r: CmsBlogRow) => {
+    setBusy(true);
+    try {
+      await adminCreate({
+        slug: `${r.slug}-copy`,
+        title: `${r.title} (Copy)`,
+        content: r.content ?? '',
+        excerpt: r.excerpt || undefined,
+        heroImageUrl: r.hero_image_url || undefined,
+        heroImageAlt: r.hero_image_alt || undefined,
+        tags: r.tags || [],
+        authorName: r.author_name || 'Himalayan Koh Editorial Team',
+        seoTitle: r.seo_title || undefined,
+        metaDescription: r.meta_description || undefined,
+        targetKeyword: r.target_keyword || undefined,
+        secondaryKeywords: r.secondary_keywords || [],
+        searchIntent: r.search_intent || undefined,
+        faq: r.faq || [],
+        internalLinks: r.internal_links || [],
+      });
+      notify('Duplicated as draft.');
+      await load();
+    } catch (e) {
+      notify((e as Error).message || 'Could not duplicate.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doDelete = async () => {
+    if (!confirm) return;
+    setBusy(true);
+    try {
+      await adminDelete(confirm.id, confirm.permanent);
+      notify(confirm.permanent ? 'Deleted permanently.' : 'Archived.');
+      await reloadBlogs(true);
+      await load();
+    } catch (e) {
+      notify((e as Error).message || 'Delete failed.', 'error');
+    } finally {
+      setBusy(false);
+      setConfirm(null);
+    }
+  };
+
+  const openRevisions = async (id: string) => {
+    setShowRevisionsFor(id);
+    try { setRevisions(await adminListRevisions(id)); }
+    catch (e) { notify((e as Error).message || 'Could not load revisions.', 'error'); }
+  };
+
+  const restoreRevision = async (blogId: string, rev: number) => {
+    setBusy(true);
+    try {
+      await adminRestoreRevision(blogId, rev);
+      notify('Restored to that revision.');
+      const fresh = await adminListAll();
+      setRows(fresh);
+      const r = fresh.find((x) => x.id === blogId);
+      if (r) startEdit(r);
+      await reloadBlogs(true);
+    } catch (e) {
+      notify((e as Error).message || 'Restore failed.', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const counts = useMemo(() => {
+    const base = rows || [];
+    return {
+      published: base.filter((r) => r.status === 'published').length,
+      scheduled: base.filter((r) => r.status === 'scheduled').length,
+      draft: base.filter((r) => r.status === 'draft').length,
+      archived: base.filter((r) => r.status === 'archived').length,
+      automation: base.filter((r) => r.generated_by === 'automation').length,
+    };
+  }, [rows]);
+
+  const visible = useMemo(() => {
+    let list = rows || [];
+    if (statusFilter !== 'all') list = list.filter((r) => r.status === statusFilter);
+    if (automationOnly) list = list.filter((r) => r.generated_by === 'automation');
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      list = list.filter((r) => r.title.toLowerCase().includes(q) || r.slug.toLowerCase().includes(q));
+    }
+    return list;
+  }, [rows, statusFilter, automationOnly, query]);
+
+  const input = 'w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-luxe-gold/40 border-gray-300';
+  const label = 'block text-xs font-semibold text-gray-500 mb-1';
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Blog Manager</h1>
+          <p className="text-xs text-gray-500 mt-1">
+            Content lives in WordPress — publishing needs no code deployment. Public reads can take up to five minutes to refresh.
+          </p>
+        </div>
+        <button onClick={startCreate} className="flex items-center gap-2 px-4 py-2 bg-luxe-gold hover:bg-luxe-gold-dark text-white text-sm rounded-lg">
+          <Plus size={16} /> New Post
+        </button>
+      </div>
+
+      {/* Dashboard counts */}
+      {!creating && !editing && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {([
+            ['published', counts.published, STATUS_META.published],
+            ['scheduled', counts.scheduled, STATUS_META.scheduled],
+            ['draft', counts.draft, STATUS_META.draft],
+            ['archived', counts.archived, STATUS_META.archived],
+          ] as [CmsBlogRow['status'], number, typeof STATUS_META.published][]).map(([key, n, meta]) => (
+            <button key={key} onClick={() => setStatusFilter(statusFilter === key ? 'all' : key)}
+              className={`text-left p-4 rounded-xl border bg-white ${statusFilter === key ? 'ring-2 ring-luxe-gold/50' : ''}`}>
+              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${meta.cls}`}>{meta.label}</span>
+              <div className="text-2xl font-bold mt-2">{n}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {loadError && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-4">Failed to load posts: {loadError}</div>}
+
+      {/* Editor */}
+      {(creating || editing) && (
+        <div className="bg-white rounded-2xl border shadow-sm p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-bold">{creating ? 'New Post' : `Editing: ${editing!.title}`}</h2>
+            <div className="flex gap-2">
+              <button onClick={() => { setCreating(false); setEditing(null); }} className="px-3 py-1.5 text-sm border rounded-lg">Cancel</button>
+              <button onClick={saveDraft} disabled={busy} className="flex items-center gap-1.5 px-4 py-1.5 text-sm bg-luxe-gold text-white rounded-lg disabled:opacity-50">
+                <FloppyDisk size={14} /> Save
+              </button>
+            </div>
+          </div>
+
+          {editing?.status === 'published' && (
+            <div className="flex items-center justify-between gap-3 mb-5 px-4 py-2.5 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+              <span className="flex items-center gap-2"><CheckCircle size={17} weight="fill" /> This post is <strong className="font-semibold">LIVE</strong> — changes take effect instantly, no deploy needed.</span>
+              <Link to={`/blog/${editing.slug}`} className="inline-flex items-center gap-1 text-green-700 font-semibold underline whitespace-nowrap">View live page →</Link>
+            </div>
+          )}
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              <div>
+                <label className={label}>Title *</label>
+                <input className={input} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Post title" />
+              </div>
+              <div>
+                <label className={label}>Slug (URL) *</label>
+                <input className={input} value={form.slug} onChange={(e) => setForm({ ...form, slug: slugify(e.target.value) })} placeholder="my-blog-slug" />
+              </div>
+              <div>
+                <label className={label}>Excerpt</label>
+                <textarea className={input} rows={2} value={form.excerpt || ''} onChange={(e) => setForm({ ...form, excerpt: e.target.value })} />
+              </div>
+              <div>
+                <label className={label}>Author</label>
+                <input className={input} value={form.author_name || ''} onChange={(e) => setForm({ ...form, author_name: e.target.value })} />
+              </div>
+              <div>
+                <label className={label}>Tags (comma separated)</label>
+                <input className={input} value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="horse, grooming" />
+              </div>
+              <div>
+                <label className={label}>Hero image URL</label>
+                <input className={input} value={form.hero_image_url || ''} onChange={(e) => setForm({ ...form, hero_image_url: e.target.value })} />
+              </div>
+              <div>
+                <label className={label}>Hero image alt text</label>
+                <input className={input} value={form.hero_image_alt || ''} onChange={(e) => setForm({ ...form, hero_image_alt: e.target.value })} />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className={label}>Content (markdown: ## headings, [label](/path) links)</label>
+                <textarea className={`${input} font-mono`} rows={10} value={form.content ?? ''} onChange={(e) => setForm({ ...form, content: e.target.value })} />
+              </div>
+              <div className="bg-indigo-50 rounded-lg p-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-indigo-800 flex items-center gap-1.5"><Sparkle size={14} />Auto SEO</p>
+                <button
+                  onClick={generateBlogSeo}
+                  disabled={!isBlogPublic() || seoBusy || !form.title.trim() || !form.content?.trim()}
+                  title={isBlogPublic() ? undefined : 'The blog is withdrawn from the index, so AI generation is off.'}
+                  className="px-3 py-1.5 text-xs font-semibold bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white rounded-lg flex items-center gap-1.5"
+                >
+                  <Sparkle size={13} />{seoBusy ? 'Generating…' : 'Generate & Save'}
+                </button>
+                <p className="w-full text-[10px] text-indigo-600">Writes the SEO title, meta description, keywords and intent from the article — saved instantly for existing posts.</p>
+                {!isBlogPublic() && (
+                  <p className="w-full text-[10px] font-semibold text-rose-600">The blog is withdrawn from the index, so AI generation is disabled. Re-enable it in src/content/reviewHolds.ts.</p>
+                )}
+              </div>
+              <div>
+                <label className={label}>SEO title (max 60)</label>
+                <input className={input} maxLength={60} value={form.seo_title || ''} onChange={(e) => setForm({ ...form, seo_title: e.target.value })} />
+                <span className="text-[10px] text-gray-400">{(form.seo_title || '').length}/60</span>
+              </div>
+              <div>
+                <label className={label}>Meta description (max 160)</label>
+                <textarea className={input} rows={2} maxLength={160} value={form.meta_description || ''} onChange={(e) => setForm({ ...form, meta_description: e.target.value })} />
+                <span className="text-[10px] text-gray-400">{(form.meta_description || '').length}/160</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={label}>Target keyword</label>
+                  <input className={input} value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} />
+                </div>
+                <div>
+                  <label className={label}>Search intent</label>
+                  <input className={input} value={form.search_intent || ''} onChange={(e) => setForm({ ...form, search_intent: e.target.value })} placeholder="buyer | informational" />
+                </div>
+              </div>
+              <div>
+                <label className={label}>Secondary keywords (comma separated)</label>
+                <input className={input} value={secondaryText} onChange={(e) => setSecondaryText(e.target.value)} />
+              </div>
+              <div>
+                <label className={label}>FAQ (JSON array of {`{ "q": "...", "a": "..." }`})</label>
+                <textarea className={`${input} font-mono`} rows={3} value={faqJson} onChange={(e) => setFaqJson(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div className="mt-6 border-t pt-4">
+            <p className="text-xs font-semibold text-gray-500 mb-2">Live preview</p>
+            <div className="border rounded-lg p-4 bg-gray-50 text-sm">
+              <h3 className="text-lg font-bold mb-2">{form.title}</h3>
+              <div id="blog-cms-preview" className="space-y-2"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(form.content ?? '') }} />
+            </div>
+          </div>
+
+          {/* Actions for an existing post */}
+          {editing && (
+            <div className="mt-5 border-t pt-4 flex flex-wrap gap-2">
+              <Link to={`/blog/${editing.slug}`} className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg"><Eye size={14} /> View live</Link>
+              <Link to="/blog" className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg"><FileText size={14} /> Blog page</Link>
+              {editing.status !== 'published' && (
+                <button onClick={() => lifecycle('publish', editing.id)} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-green-600 text-white rounded-lg disabled:opacity-50"><Eye size={14} /> Publish now</button>
+              )}
+              <button onClick={() => schedule(editing.id)} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg"><CalendarPlus size={14} /> Schedule</button>
+              {editing.status === 'published' && (
+                <button onClick={() => lifecycle('unpublish', editing.id)} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg"><Eye size={14} /> Unpublish</button>
+              )}
+              {editing.status !== 'archived' && (
+                <button onClick={() => lifecycle('archive', editing.id)} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg"><Archive size={14} /> Archive</button>
+              )}
+              {editing.status === 'archived' && (
+                <button onClick={() => lifecycle('restore', editing.id)} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg"><ArrowCounterClockwise size={14} /> Restore</button>
+              )}
+              <button onClick={() => duplicate(editing)} disabled={busy} className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg"><Copy size={14} /> Duplicate as draft</button>
+              <button onClick={() => setConfirm({ id: editing.id, title: editing.title, permanent: false })} className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg text-red-500"><Trash size={14} /> Delete</button>
+              <button onClick={() => openRevisions(editing.id)} className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg"><ArrowCounterClockwise size={14} /> Revisions</button>
+            </div>
+          )}
+
+          {showRevisionsFor && revisions.length > 0 && (
+            <div className="mt-4 border rounded-lg p-4">
+              <p className="text-xs font-semibold mb-2">Revision history</p>
+              <div className="space-y-1">
+                {revisions.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between text-xs border-b py-1">
+                    <span>#{r.revision} · {r.action} · {r.actor}{r.actor_email ? ` (${r.actor_email})` : ''} · {new Date(r.created_at).toLocaleString()}</span>
+                    {r.next ? <button onClick={() => restoreRevision(r.blog_id, r.revision)} className="text-luxe-gold underline">Restore</button> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Filters + list */}
+      {!creating && !editing && (
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 bg-white border rounded-lg px-3 py-2 flex-1 min-w-[200px]">
+              <MagnifyingGlass size={16} className="text-gray-400" />
+              <input className="text-sm w-full outline-none" placeholder="Search posts…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-600">
+              <input type="checkbox" checked={automationOnly} onChange={(e) => setAutomationOnly(e.target.checked)} /> Automation only ({counts.automation})
+            </label>
+            <button onClick={autoSeoBlogs} disabled={!isBlogPublic() || seo.running || !rows} title={isBlogPublic() ? 'Auto-generate + save SEO for every post missing or incomplete SEO — complete SEO is never overwritten. Keeps running while you work on other pages.' : 'The blog is withdrawn from the index (reviewHolds.ts), so AI generation is off.'} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-white rounded-lg">
+              <Sparkle size={15} />{seo.running ? `Auto SEO… ${seo.done}/${seo.total}` : 'Auto SEO All'}
+            </button>
+          </div>
+
+          {/* Bulk Auto SEO progress - from the background blog job store, so it
+              persists across navigation and shows the live position when you
+              come back; a full reload offers to resume the rest below. */}
+          {seo.running && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-purple-800 font-medium flex items-center gap-2">
+                  <Sparkle size={14} />Auto SEO — {seo.done}/{seo.total}
+                </span>
+                <span className="text-xs text-purple-600 truncate">{seo.current}</span>
+              </div>
+              <div className="mt-2 h-1.5 bg-purple-100 rounded-full overflow-hidden">
+                <div className="h-full bg-purple-500 transition-all" style={{ width: `${seo.total ? Math.round((seo.done / seo.total) * 100) : 0}%` }} />
+              </div>
+              {seo.errors > 0 && <p className="text-xs text-amber-600 mt-1">{seo.errors} failed so far — continuing.</p>}
+              <p className="text-[11px] text-purple-500 mt-1">Running in the background — switch pages and it keeps going.</p>
+            </div>
+          )}
+          {seo.report && !seo.running && (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-2.5 text-xs text-purple-800 flex flex-wrap gap-x-4 gap-y-1">
+              <span>SEO complete: <b>{seo.report.complete}</b></span>
+              <span>Generated/updated: <b>{seo.report.updated}</b></span>
+              <span>Skipped: <b>{seo.report.skipped}</b></span>
+              <span>Failed: <b>{seo.report.failed}</b></span>
+            </div>
+          )}
+          {/* Interrupted-run offer - a full page reload killed a running Auto SEO
+              job; the store restored its checkpoint from localStorage, so the
+              remaining posts can be resumed instead of lost. */}
+          {seo.interrupted && !seo.running && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="text-amber-900 font-semibold flex items-center gap-2">
+                <Warning size={16} />Auto SEO was interrupted
+              </span>
+              <span className="text-xs text-amber-700">
+                {seo.interrupted.processed} of {seo.interrupted.ids.length} posts were processed before the page reloaded.
+              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={() => void resumeInterruptedBlogSeo()}
+                  disabled={!rows || seo.running}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-medium rounded-lg"
+                >
+                  Resume remaining
+                </button>
+                <button
+                  onClick={() => useBlogJobStore.getState().dismissInterrupted()}
+                  className="px-3 py-1.5 border border-amber-300 hover:bg-amber-100 text-amber-800 text-xs font-medium rounded-lg"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
+          {visible.length > 0 ? (
+            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase"><tr>
+                  <th className="px-6 py-4">Post</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Generated</th><th className="px-6 py-4">Updated</th><th className="px-6 py-4">Views</th><th className="px-6 py-4">Actions</th>
+                </tr></thead>
+                <tbody>
+                  {visible.map((r) => (
+                    <tr key={r.id} className="border-t hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          {r.hero_image_url
+                            ? <img src={r.hero_image_url} alt="" className="w-12 h-8 rounded object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} />
+                            : <div className="w-12 h-8 rounded bg-gray-100 flex items-center justify-center"><FileText size={14} className="text-gray-300" /></div>}
+                          <div>
+                            {r.status === 'published'
+                              ? <Link to={`/blog/${r.slug}`} className="font-medium text-sm text-luxe-gold hover:underline">{r.title}</Link>
+                              : <p className="font-medium text-sm">{r.title}</p>}
+                            <p className="text-xs text-gray-400">/{r.slug}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {(() => {
+                          const meta = getBlogStatusMeta(r.status);
+                          return <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${meta.cls}`}>{meta.label}</span>;
+                        })()}
+                      </td>
+                      <td className="px-6 py-4 text-xs text-gray-500">{r.generated_by || 'manual'}</td>
+                      <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">{new Date(r.updated_at).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {stats == null ? (
+                          <span className="text-xs text-gray-300" title={statsNote || 'Loading analytics…'}>—</span>
+                        ) : (
+                          <span className="relative inline-block group cursor-help">
+                            <span className="text-xs text-gray-600">{stats[r.slug]?.views ?? 0}</span>
+                            <span className="pointer-events-none absolute left-0 top-full mt-1 z-30 hidden whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-2 text-[11px] text-gray-600 shadow-lg group-hover:block">
+                              <span className="block font-semibold text-gray-800">Post views (first-party)</span>
+                              <span className="block">Total (90d): {stats[r.slug]?.views ?? 0}</span>
+                              <span className="block">Last 7 days: {stats[r.slug]?.views7d ?? 0}</span>
+                              <span className="block">Last 30 days: {stats[r.slug]?.views30d ?? 0}</span>
+                              {statsNote && <span className="block text-amber-600">{statsNote}</span>}
+                            </span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-1">
+                          <button title="Edit" onClick={() => startEdit(r)} className="p-2 hover:bg-luxe-gold-soft rounded text-luxe-gold"><PencilLine size={16} /></button>
+                          <Link to={`/blog/${r.slug}`} title="View" className="p-2 hover:bg-luxe-gold-soft rounded text-luxe-gold"><Eye size={16} /></Link>
+                          {r.status !== 'published' && <button title="Publish" onClick={() => lifecycle('publish', r.id)} className="p-2 hover:bg-green-50 rounded text-green-600"><Eye size={16} /></button>}
+                          {r.status === 'published' && <button title="Unpublish" onClick={() => lifecycle('unpublish', r.id)} className="p-2 hover:bg-yellow-50 rounded text-yellow-600"><Eye size={16} /></button>}
+                          <button title="Delete/archive" onClick={() => setConfirm({ id: r.id, title: r.title, permanent: false })} className="p-2 hover:bg-red-50 rounded text-red-500"><Trash size={16} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border p-12 text-center text-gray-500">
+              <FileText size={48} className="mx-auto text-gray-200 mb-4" />No blog posts found.
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Delete confirmation */}
+      {confirm && (
+        <div className="fixed inset-0 z-[300] bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold mb-2">Delete post</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              <span className="font-semibold">{confirm.title}</span>. Archiving is reversible and removes it from the storefront/sitemap.
+              Tick below only to permanently erase (and its revision history).
+            </p>
+            <label className="flex items-center gap-2 text-sm mb-4">
+              <input type="checkbox" checked={confirm.permanent} onChange={(e) => setConfirm({ ...confirm, permanent: e.target.checked })} />
+              Permanent delete (irreversible)
+            </label>
+            <div className="flex gap-3">
+              <button onClick={doDelete} disabled={busy} className={`flex-1 py-2.5 rounded-lg font-medium text-white disabled:opacity-50 ${confirm.permanent ? 'bg-red-500' : 'bg-orange-500'}`}>
+                {confirm.permanent ? 'Delete permanently' : 'Archive'}
+              </button>
+              <button onClick={() => setConfirm(null)} className="flex-1 py-2.5 border rounded-lg">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Minimal markdown-ish render for the live preview (headings + inline links). */
+export function renderMarkdown(content: string): string {
+  const inline = (text: string) =>
+    text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-luxe-gold-dark underline">$1</a>');
+  return content
+    .split('\n')
+    .map((line) => {
+      const t = line.trim();
+      if (!t) return '<br/>';
+      if (t.startsWith('### ')) return '<p class="font-semibold">' + inline(t.slice(4)) + '</p>';
+      if (t.startsWith('## ')) return '<h4 class="font-bold mt-3">' + inline(t.slice(3)) + '</h4>';
+      if (t.startsWith('# ')) return '<h3 class="font-bold mt-3">' + inline(t.slice(2)) + '</h3>';
+      return '<p>' + inline(t) + '</p>';
+    })
+    .join('');
+}

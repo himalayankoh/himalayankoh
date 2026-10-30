@@ -1,15 +1,28 @@
 'use client';
 
-import { Suspense } from 'react';
+import { MotionConfig } from 'framer-motion';
 import { AuthProvider } from '@/context/AuthContext';
 import { ToastProvider } from '@/context/ToastContext';
 import HashUrlRedirect from '@/components/HashUrlRedirect';
 import NavigationProgress from '@/components/NavigationProgress';
 import RouteScrollRestoration from '@/components/RouteScrollRestoration';
 import StaleChunkRecovery from '@/components/StaleChunkRecovery';
+import StorefrontTraffic from '@/components/StorefrontTraffic';
 
 /**
- * Scroll helpers use search params and must suspend — keep off the main page tree.
+ * Client-only effects, and deliberately *not* wrapped in Suspense.
+ *
+ * They used to be, because they read search params through
+ * `useSearchParams()` from `next/navigation`, which may only be called inside a
+ * boundary. A boundary with a `null` fallback above these components also sits
+ * above every route, and that has two costs: the prerendered document is missing
+ * whatever it guards (so the console visibly redraws once it hydrates), and a
+ * boundary that is still hydrating when its query-string update lands throws
+ * React error #419 and takes the page down with the generic "error occurred in the
+ * Server Components render" message. Each of these components now reads
+ * `window.location` through the app's router shim instead, so nothing here
+ * suspends and no boundary is required. `router-compat.test.ts` guards that: no
+ * file may import `useSearchParams` from `next/navigation` again.
  *
  * SEO used to be mounted here too. It imperatively mutated <title>/<meta>/
  * <link rel="canonical"> in document.head on every route change (a Vite/
@@ -24,22 +37,23 @@ import StaleChunkRecovery from '@/components/StaleChunkRecovery';
  */
 function ClientEffects() {
   return (
-    <Suspense fallback={null}>
+    <>
       <HashUrlRedirect />
       <NavigationProgress />
       <RouteScrollRestoration />
-    </Suspense>
+      <StorefrontTraffic />
+    </>
   );
 }
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <AuthProvider>
+    <MotionConfig reducedMotion="user"><AuthProvider>
       <ToastProvider>
         <StaleChunkRecovery />
         <ClientEffects />
         {children}
       </ToastProvider>
-    </AuthProvider>
+    </AuthProvider></MotionConfig>
   );
 }

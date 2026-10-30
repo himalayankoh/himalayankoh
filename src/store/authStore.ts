@@ -1,0 +1,196 @@
+// ============================================================================
+// AUTH STORE (WordPress admin sessions)
+//
+// Single source of truth for the signed-in admin. The session comes from
+// `services/wordpressAdminAuth.ts` — the WordPress admin client, which is the only
+// place that token is read or written. The token persists in localStorage and
+// survives a refresh; expiry is handled there, and there is nothing to refresh
+// with, because only the server that signed it can mint another.
+//
+// SECURITY:
+//  - No plaintext passwords anywhere. The application password is sent once, to
+//    the login route, and never stored.
+//  - The role is never invented here: `admin` comes from a token the server
+//    signed after checking the WordPress administrator role.
+//  - When admin sign-in is unavailable, it fails with an honest message; there is
+//    NO demo admin password fallback.
+// ============================================================================
+
+import { create } from 'zustand';
+import {
+  type SbUser,
+  signInWithPassword,
+  signUp as sbSignUp,
+  signOut as sbSignOut,
+  getSession,
+  onAuthStateChange,
+  isWordPressAdminAuthConfigured,
+} from '../services/wordpressAdminAuth';
+/**
+ * The customer's store profile needs no syncing here any more.
+ *
+ * This used to fire-and-forget a write into the app's own `customers` table on every
+ * sign-in. That table was a second, invisible copy of who a customer is: the
+ * storefront's real identity is the WooCommerce customer the sign-in itself resolves
+ * (see `lib/auth/customerSession.ts`), and writing a parallel row on the side is how
+ * the two disagree later. The call was also already inert — the module it lived in
+ * only ran against the Supabase source.
+ */
+
+export interface AuthResult {
+  success: boolean;
+  message: string;
+  user: SbUser | null;
+}
+
+interface AuthStore {
+  user: SbUser | null;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
+  /** True once the initial session hydration finished (avoids flash-redirects). */
+  ready: boolean;
+  init: () => Promise<void>;
+  signIn: (email: string, password: string) => Promise<AuthResult>;
+  signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
+  signOut: () => Promise<void>;
+  setSessionUser: (user: SbUser | null) => void;
+}
+
+let initialized = false;
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleRefresh(expiresAt?: number): void {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
+  if (!expiresAt) return;
+  // Refresh 2 minutes before expiry, or in 10s if already within 2 minutes
+  const delay = Math.max(10_000, expiresAt - Date.now() - 120_000);
+  refreshTimer = setTimeout(async () => {
+    try {
+      const refreshed = await getSession();
+      if (refreshed) scheduleRefresh(refreshed.expiresAt);
+    } catch {
+      /* handled inside getSession */
+    }
+  }, delay);
+}
+
+export const useAuthStore = create<AuthStore>()((set) => ({
+  user: null,
+  isAuthenticated: false,
+  isAdmin: false,
+  ready: false,
+
+  init: async () => {
+    if (initialized) return;
+    initialized = true;
+    onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
+        set({ user: null, isAuthenticated: false, isAdmin: false });
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        const u = getSessionUserSync();
+        applyUser(set, u);
+        const raw = typeof window !== 'undefined' ? window.localStorage.getItem('luxedge_sb_session') : null;
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as { expiresAt?: number };
+            if (parsed.expiresAt) scheduleRefresh(parsed.expiresAt);
+          } catch { /* ignore */ }
+        }
+      }
+    });
+
+    if (typeof window !== 'undefined') {
+      const onActivity = () => {
+        if (document.visibilityState === 'visible') {
+          void getSession().then((s) => {
+            if (s) scheduleRefresh(s.expiresAt);
+          });
+        }
+      };
+      window.addEventListener('focus', onActivity);
+      document.addEventListener('visibilitychange', onActivity);
+    }
+
+    const session = await getSession();
+    applyUser(set, session?.user || null);
+    if (session) scheduleRefresh(session.expiresAt);
+    set({ ready: true });
+  },
+
+  signIn: async (email, password) => {
+    if (!isWordPressAdminAuthConfigured()) {
+      return {
+        success: false,
+        message: 'Admin sign-in is not available in this environment.',
+        user: null,
+      };
+    }
+    try {
+      const session = await signInWithPassword(email.trim(), password);
+      applyUser(set, session.user);
+      scheduleRefresh(session.expiresAt);
+      return { success: true, message: 'Signed in successfully.', user: session.user };
+    } catch (e) {
+      return { success: false, message: (e as Error).message || 'Sign-in failed.', user: null };
+    }
+  },
+
+  signUp: async (name, email, password) => {
+    if (!isWordPressAdminAuthConfigured()) {
+      return {
+        success: false,
+        message: 'Admin sign-in is not available in this environment.',
+        user: null,
+      };
+    }
+    try {
+      const { session } = await sbSignUp(name.trim(), email.trim(), password);
+      if (session) {
+        applyUser(set, session.user);
+        scheduleRefresh(session.expiresAt);
+      }
+      return {
+        success: true,
+        message: session ? 'Account created — you are signed in.' : 'Account created — check your email to confirm.',
+        user: session?.user || null,
+      };
+    } catch (e) {
+      return { success: false, message: (e as Error).message || 'Account creation failed.', user: null };
+    }
+  },
+
+  signOut: async () => {
+    if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
+    await sbSignOut();
+    set({ user: null, isAuthenticated: false, isAdmin: false });
+  },
+
+  setSessionUser: (user) => applyUser(set, user),
+}));
+
+function getSessionUserSync(): SbUser | null {
+  // Avoid a circular import: read the raw stored session directly here.
+  try {
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem('luxedge_sb_session') : null;
+    if (!raw) return null;
+    const s = JSON.parse(raw) as { user?: SbUser };
+    return s.user || null;
+  } catch {
+    return null;
+  }
+}
+
+function applyUser(
+  set: (partial: Partial<AuthStore>) => void,
+  user: SbUser | null
+): void {
+  set({
+    user,
+    isAuthenticated: !!user,
+    isAdmin: user?.role === 'admin',
+  });
+}

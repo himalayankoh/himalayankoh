@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import type { CategoryContentBundle } from '../../lib/categoryContent';
+import type { ContentGalleryImage } from '../../lib/content/types';
 import { enrichArticleList, getCategoryAvailability } from '../../lib/categoryContent';
 import CategoryHubGallery from './CategoryHubGallery';
 import type { CategoryArticleSource } from '../../hooks/useCategoryBlogArticles';
@@ -12,6 +13,12 @@ import PdpEmptyState from '../product/PdpEmptyState';
 
 interface Props {
   content: CategoryContentBundle;
+  /**
+   * The gallery built from the shelf's products. When it is missing or empty the
+   * registry's own photographs stand in, so a hub whose products carry no usable
+   * photo still shows something rather than an empty state.
+   */
+  galleryImages?: ContentGalleryImage[];
   articles?: CategoryArticleCard[];
   articlesLoading?: boolean;
   articlesSource?: CategoryArticleSource;
@@ -19,6 +26,7 @@ interface Props {
 
 export default function CategoryEducationPanel({
   content,
+  galleryImages,
   articles,
   articlesLoading,
   articlesSource,
@@ -28,18 +36,17 @@ export default function CategoryEducationPanel({
     [articles, content.articles]
   );
 
+  const gallery = galleryImages && galleryImages.length > 0 ? galleryImages : content.gallery;
+
   const availability = getCategoryAvailability({
     ...content,
+    gallery,
     articles: resolvedArticles,
   });
 
   return (
-    <motion.aside
+    <aside
       key={content.key}
-      initial={{ opacity: 0, x: 16 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 16 }}
-      transition={{ duration: 0.28, ease: 'easeOut' }}
       className="rounded-2xl border border-gray-200/80 bg-white/90 shadow-sm p-4 sm:p-5 space-y-6 lg:sticky lg:top-[var(--header-height)]"
       aria-label={`${content.hero.title} guides and resources`}
     >
@@ -51,7 +58,7 @@ export default function CategoryEducationPanel({
           Lifestyle gallery
         </h3>
         {availability.gallery ? (
-          <CategoryHubGallery images={content.gallery} title={content.hero.title} />
+          <CategoryHubGallery images={gallery} title={content.hero.title} />
         ) : (
           <PdpEmptyState
             title="Gallery"
@@ -77,6 +84,6 @@ export default function CategoryEducationPanel({
         categoryLabel={content.productCategoryLabel}
         emptyMessage={content.emptyStates.pdfs}
       />
-    </motion.aside>
+    </aside>
   );
 }

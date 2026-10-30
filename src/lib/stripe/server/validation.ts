@@ -1,47 +1,74 @@
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// The payment amount is always derived from orders.total (computed
-// server-side from real product prices in serverCreateOrder), never from
-// client-supplied item prices — see create-payment-intent/route.ts.
-// orderId is therefore required; `items` is accepted only to report an
-// item count in Stripe metadata and carries no price data.
-export function validateCreatePaymentIntentBody(body: unknown) {
-  const record = body as Record<string, unknown>;
-  const email = typeof record?.email === 'string' ? record.email.trim() : '';
-  const orderId = typeof record?.orderId === 'string' ? record.orderId.trim() : '';
-  const couponCode = typeof record?.couponCode === 'string' ? record.couponCode : '';
-  const shippingMethod: 'standard' | 'expedited' =
-    record?.shippingMethod === 'expedited' ? 'expedited' : 'standard';
-  const items = Array.isArray(record?.items) ? record.items : [];
+function nonEmpty(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
 
-  if (!email || !EMAIL_RE.test(email)) {
+function address(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as Record<string, unknown>;
+  const required = ['fullName', 'addressLine1', 'city', 'state', 'postalCode', 'country'];
+  const result = Object.fromEntries(required.map((key) => [key, nonEmpty(row[key])])) as Record<string, string | null>;
+  if (Object.values(result).some((entry) => !entry)) return null;
+  return { ...result, addressLine2: nonEmpty(row.addressLine2) || undefined } as {
+    fullName: string;
+    addressLine1: string;
+    addressLine2?: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+  };
+}
+
+export function validateCreatePaymentIntentBody(body: unknown) {
+  const record = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  const email = nonEmpty(record.email) || '';
+  const shippingAddress = address(record.shippingAddress);
+  const billingAddress = record.billingAddress ? address(record.billingAddress) : shippingAddress;
+  const couponCode = nonEmpty(record.couponCode) || '';
+  const shippingMethod = record.shippingMethod === 'expedited' ? 'expedited' as const : 'standard' as const;
+  const shippoRateId = nonEmpty(record.shippoRateId) || undefined;
+  const notes = nonEmpty(record.notes) || undefined;
+
+  if (!EMAIL_RE.test(email)) {
     return { ok: false as const, status: 400, error: 'A valid email is required.' };
   }
-
-  if (!orderId) {
-    return { ok: false as const, status: 400, error: 'orderId is required to create a payment.' };
+  if (!shippingAddress) {
+    return { ok: false as const, status: 400, error: 'A complete shipping address is required.' };
   }
-
-  const itemCount = items.reduce((sum, item) => {
-    const row = item as Record<string, unknown>;
-    return sum + Math.max(1, Math.floor(Number(row?.quantity) || 0));
-  }, 0);
+  if (!billingAddress) {
+    return { ok: false as const, status: 400, error: 'A complete billing address is required.' };
+  }
+  // No cart-identifier check here any more. The cart is identified by the request's
+  // own cookie, which this validator cannot see and must not ask the browser to
+  // assert — an empty cart is answered by the route, as "Cart is empty".
 
   return {
     ok: true as const,
-    data: { email, orderId, couponCode, shippingMethod, itemCount },
+    data: {
+      email,
+      phone: nonEmpty(record.phone) || undefined,
+      shippingAddress,
+      billingAddress,
+      // A `userId` in the body is deliberately not read: identity comes from the
+      // caller's verified session, so a browser cannot name the account it is
+      // paying as. See `lib/auth/customerRequest`.
+      couponCode,
+      shippingMethod,
+      shippoRateId,
+      shippingCarrier: nonEmpty(record.shippingCarrier) || undefined,
+      shippingService: nonEmpty(record.shippingService) || undefined,
+      notes,
+    },
   };
 }
 
 export function validateVerifyPaymentBody(body: unknown) {
-  const record = body as Record<string, unknown>;
-  const orderId = typeof record?.orderId === 'string' ? record.orderId.trim() : '';
-  const paymentIntentId =
-    typeof record?.paymentIntentId === 'string' ? record.paymentIntentId.trim() : '';
-
-  if (!orderId || !paymentIntentId) {
-    return { ok: false as const, status: 400, error: 'orderId and paymentIntentId are required.' };
+  const record = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  const paymentIntentId = nonEmpty(record.paymentIntentId) || '';
+  if (!paymentIntentId) {
+    return { ok: false as const, status: 400, error: 'paymentIntentId is required.' };
   }
-
-  return { ok: true as const, data: { orderId, paymentIntentId } };
+  return { ok: true as const, data: { paymentIntentId } };
 }

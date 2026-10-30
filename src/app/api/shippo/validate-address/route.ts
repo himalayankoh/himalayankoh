@@ -1,7 +1,23 @@
+/**
+ * Live address validation for a checkout.
+ *
+ * The second public route that calls Shippo, so it carries the same two guards as
+ * `/api/shippo/rates` — same-site browsers only, and a per-client rate limit — for the
+ * same reason: an anonymous caller must not be able to spend the store's carrier credit.
+ * See that route for why a missing `Origin` is allowed through and why the limit is
+ * per isolate rather than global.
+ */
+
 import { NextResponse } from 'next/server';
+import { clientIp } from '@/lib/http/clientIp';
+import { isAllowedRequestOrigin } from '@/lib/http/originAllowlist';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { resolveShippoConfigError } from '@/lib/shippo/config';
 import { validateShippingAddress } from '@/lib/shippo/server/validateAddress';
 import type { CheckoutShippingAddress } from '@/lib/shippo/types';
+
+/** Validations one client may make per minute. */
+const VALIDATE_LIMIT = { limit: 30, windowMs: 60_000 };
 
 function parseAddress(body: Record<string, unknown>): CheckoutShippingAddress | null {
   const address = body.address as Record<string, unknown> | undefined;
@@ -30,6 +46,19 @@ function parseAddress(body: Record<string, unknown>): CheckoutShippingAddress | 
 }
 
 export async function POST(request: Request) {
+  const origin = request.headers.get('origin');
+  if (origin && !isAllowedRequestOrigin(origin, request.url)) {
+    return NextResponse.json({ error: 'Origin not allowed.' }, { status: 403 });
+  }
+
+  const limit = checkRateLimit(`shippo-validate:${clientIp(request)}`, VALIDATE_LIMIT);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many address checks. Please wait a moment and try again.' },
+      { status: 429, headers: { 'Retry-After': String(Math.max(1, Math.ceil((limit.resetAt - Date.now()) / 1000))) } },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();

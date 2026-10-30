@@ -1,15 +1,19 @@
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
+
 import {
-  calculateOrderTotals,
-  supportedCoupons,
-  type CreateOrderData,
-  type ShippingMethod,
-} from '@/lib/supabase/api/orders';
-import type { CartWithItems, Json, Order, OrderItem, OrderWithItems } from '@/lib/supabase/database.types';
-import { dispatchOrderCreatedNotifications } from '@/lib/orders/notifyOrderEvents';
+  HK_META,
+  createWooOrder,
+  findPendingWooOrderByFingerprint,
+  orderWithItemsFromWoo,
+  type WooOrderLike,
+} from '@/lib/woo/orders';
+import { clearStoreCart, mapStoreCart, readStoreCart, sanitizeCartLineName, type StoreCartLine } from '@/lib/woo/storeCart';
+import { findCouponByCode } from '@/lib/woo/coupons';
+import type { CreateOrderData, ShippingMethod } from '@/lib/orders/totals';
+import type { OrderWithItems } from '@/lib/commerce/types';
 import { resolveShippoConfigError } from '@/lib/shippo/config';
 import { fetchShippoRatesForOrder, pickRateForShippingMethod } from '@/lib/shippo/server/rates';
 import type { CheckoutShippingAddress, RatesLineItem } from '@/lib/shippo/types';
+import { checkoutInputFingerprint } from '@/lib/woo/checkoutPricing';
 
 /**
  * Authoritative server-side shipping cost. The client-supplied
@@ -20,7 +24,7 @@ import type { CheckoutShippingAddress, RatesLineItem } from '@/lib/shippo/types'
  * returns no rates, we fall back to the flat-rate table in calculateOrderTotals
  * (which ignores the override when we pass undefined).
  */
-async function resolveServerShippingCost(params: {
+export async function resolveServerShippingCost(params: {
   shippingAddress: CreateOrderData['shippingAddress'];
   email: string;
   shippingMethod: ShippingMethod;
@@ -56,12 +60,93 @@ async function resolveServerShippingCost(params: {
 }
 
 /**
- * Re-prices every cart line from the products table immediately before order
- * creation. Cart_items.unit_price is client-writable (see cartApi.addToCart)
- * and must never be trusted for money math — this is the single source of
- * truth for what a customer actually gets charged.
+ * A cart line, as the checkout guards need to see it.
+ *
+ * Structural rather than the old Supabase row type: the cart is WooCommerce's
+ * now, and these guards ask questions about *shape* — is the product still
+ * sellable, is the quantity available, what does the line cost — not about which
+ * database stored it. Keeping the type local is what let the read move to
+ * WooCommerce while the guards, and the tests that pin them, stayed put.
  */
-export function priceCartItems(cartItems: CartWithItems['cart_items']) {
+export interface CheckoutCartItem {
+  id: string;
+  product_id: string;
+  /** Parent product id when this line is a variation, else null. */
+  parent_product_id?: string | null;
+  /** The variation id when this line is a variation, else null. */
+  variation_id?: string | null;
+  quantity: number;
+  grain_size: string | null;
+  unit_price: number;
+  product: {
+    id: string;
+    name: string;
+    price: number;
+    thumbnail?: string | null;
+    is_active: boolean;
+    tags?: string[] | null;
+    inventory?: {
+      track_inventory?: boolean;
+      allow_backorder?: boolean;
+      quantity?: number;
+      reserved_quantity?: number;
+    } | null;
+  } | null;
+}
+
+/** A cart, as the checkout needs it. `id` is the WooCommerce cart token. */
+export interface CheckoutCart {
+  id: string;
+  cart_items: CheckoutCartItem[];
+}
+
+/**
+ * Every cart line that must not be charged for, judged from the cart alone.
+ *
+ * Prices are no longer readable from the cart and trusted: they *are* the cart's
+ * prices. WooCommerce prices each line when it is added, so the browser no longer
+ * writes a unit price anywhere — the client-writable `cart_items.unit_price` this
+ * comment used to warn about is gone with the table.
+ */
+export function checkoutCartIssues(
+  cartItems: CheckoutCartItem[],
+): Array<{ cartItemId: string; message: string }> {
+  const issues: Array<{ cartItemId: string; message: string }> = [];
+  for (const item of cartItems) {
+    const product = item.product as any;
+    if (!product) {
+      issues.push({ cartItemId: item.id, message: 'This product is no longer available.' });
+      continue;
+    }
+    if (!product.is_active) {
+      issues.push({ cartItemId: item.id, message: `${product.name || 'This product'} is unavailable.` });
+      continue;
+    }
+    const inventory = Array.isArray(product.inventory) ? product.inventory[0] : product.inventory;
+    if (inventory?.track_inventory && !inventory.allow_backorder) {
+      const available = Math.max(0, Number(inventory.quantity || 0) - Number(inventory.reserved_quantity || 0));
+      if (Number(item.quantity) > available) {
+        issues.push({ cartItemId: item.id, message: `${product.name || 'This product'} has only ${available} available.` });
+      }
+    }
+    if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+      issues.push({ cartItemId: item.id, message: 'Cart quantities must be positive whole numbers.' });
+    }
+  }
+  return issues;
+}
+
+export function validateCheckoutCartItems(
+  cartItems: CheckoutCartItem[],
+): void {
+  const issues = checkoutCartIssues(cartItems);
+  if (issues.length > 0) {
+    throw new Error(`${issues[0].message} Remove it or adjust the quantity and try again.`);
+  }
+}
+
+export function priceCartItems(cartItems: CheckoutCartItem[]) {
+  validateCheckoutCartItems(cartItems);
   return cartItems.map((item) => {
     const product = item.product;
     if (!product) {
@@ -71,144 +156,280 @@ export function priceCartItems(cartItems: CartWithItems['cart_items']) {
   });
 }
 
-export async function loadCartForCheckout(
-  userId: string | null,
-  cartSessionId: string | null
-): Promise<CartWithItems | null> {
-  const supabase = getSupabaseAdmin();
-
-  let query = supabase.from('carts').select(`
-    *,
-    cart_items(
-      *,
-      product:products(*)
-    )
-  `);
-
-  if (userId) {
-    query = query.eq('user_id', userId);
-  } else if (cartSessionId) {
-    query = query.eq('session_id', cartSessionId);
-  } else {
-    return null;
-  }
-
-  const { data, error } = await query.maybeSingle();
-  if (error) throw error;
-  return data as CartWithItems | null;
+export function cartFingerprint(cartItems: CheckoutCartItem[]): string {
+  return cartItems
+    .map((item) => `${item.product_id}:${item.grain_size || ''}:${item.quantity}`)
+    .sort()
+    .join('|');
 }
 
-export async function serverCreateOrder(
+/**
+ * The cart, read from WooCommerce.
+ *
+ * `cartToken` is the value of the cart cookie (`lib/cart/cookies.ts`). The Stripe
+ * webhook has no browser and therefore no cookie, which is why the token rather
+ * than the cookie is what identifies the cart here: the reserved Woo order records
+ * it, and the webhook reads it back when the payment succeeds.
+ *
+ * Null means "no cart", the same answer the previous Supabase read gave for a
+ * missing row, so every caller's empty-cart handling is unchanged.
+ */
+export async function loadCartForCheckout(cartToken: string | null): Promise<CheckoutCart | null> {
+  if (!cartToken) return null;
+
+  const { cart } = await readStoreCart({ cartToken, nonce: null });
+  const view = mapStoreCart(cart);
+  if (!view.items.length) return null;
+
+  return { id: cartToken, cart_items: view.items.map(toCheckoutItem) };
+}
+
+/**
+ * A WooCommerce cart line, in the shape the guards and the order writer expect.
+ *
+ * `price` is the line's own price rather than a fresh catalog read: it is what
+ * WooCommerce will charge, and a second opinion read from the catalog is how a
+ * cart and the checkout that charges it start disagreeing.
+ */
+function toCheckoutItem(line: StoreCartLine): CheckoutCartItem {
+  return {
+    id: line.key,
+    product_id: line.productId,
+    parent_product_id: line.parentProductId ?? null,
+    variation_id: line.parentProductId ? line.productId : null,
+    quantity: line.quantity,
+    // A WooCommerce cart line carries no grain size — see
+    // docs/STOREFRONT-WORDPRESS-CONTRACT.md for why the storefront's grain
+    // selector cannot reach a WooCommerce cart.
+    grain_size: null,
+    unit_price: line.unitPrice ?? 0,
+    product: {
+      id: line.productId,
+      name: sanitizeCartLineName(line.name, line.variationLabel),
+      price: line.unitPrice ?? 0,
+      thumbnail: line.image || null,
+      // The store is holding this line in its own cart, so it considers the
+      // product purchasable. Stock is left unknown on purpose: WooCommerce owns
+      // the count and enforces it when the order is written.
+      is_active: true,
+      tags: null,
+      inventory: null,
+    },
+  };
+}
+
+export interface ReserveOrderOptions {
+  /**
+   * The WooCommerce customer id, taken from the verified session — never from the
+   * request body. Null is a guest, and a supported path.
+   */
+  customerId: number | null;
+  /** The WooCommerce cart token, recorded so the webhook can empty the cart. */
+  cartToken: string | null;
+  /**
+   * The payment method to record up front. Set for an invoice order (there is no
+   * payment to wait for); left unset for Stripe, where the webhook records how the
+   * order was actually paid.
+   */
+  paymentMethod?: string;
+  paymentMethodTitle?: string;
+  /** The verified server-side shipping quote shared with PaymentIntent pricing. */
+  shippingCostOverride?: number;
+  /** Recomputed from WooCommerce order fields and included in checkout identity. */
+  discountAmountOverride?: number;
+  /** WooCommerce tax applied to the order for the verified destination. */
+  taxAmountOverride?: number;
+}
+
+export interface ReservedOrder {
+  order: OrderWithItems;
+  /**
+   * The store's own order record, for callers that need its meta (the payment
+   * reference, the cart token) rather than the projection the screens render.
+   */
+  raw: WooOrderLike;
+  /** True when this call reused the pending order an earlier attempt created. */
+  reused: boolean;
+  /** The cart token the reservation recorded, when there was a cart. */
+  cartToken: string | null;
+}
+
+/**
+ * Reserves the WooCommerce order for a checkout, once per cart.
+ *
+ * ## Why the order exists before the payment
+ *
+ * The store's order id is the identifier every later step needs — Stripe metadata,
+ * the webhook, the tracking page, the customer's history — so it is created first
+ * and the payment is attached to it. That also makes idempotency a property of the
+ * store rather than of a session row this app has to keep: a second attempt at the
+ * same cart finds the pending order the first attempt reserved (matched on
+ * `_hk_cart_fingerprint`) and reuses it, so a double-click cannot become two
+ * orders. Nothing here touches Supabase.
+ *
+ * ## What the server decides
+ *
+ * The cart is read from WooCommerce and priced from its own lines, the shipping
+ *amount is re-quoted server-side, and the identity is the customer id the caller's
+ * session proved. Every number on the order is the store's.
+ *
+ * The cart is **not** emptied here: an abandoned payment must leave the shopper's
+ * cart intact. The webhook empties it once the money is confirmed.
+ */
+export async function reserveOrderForCheckout(
   data: CreateOrderData,
-  options: { userId?: string | null; cartSessionId?: string | null }
-): Promise<OrderWithItems> {
-  const cart = await loadCartForCheckout(options.userId ?? null, options.cartSessionId ?? null);
+  options: ReserveOrderOptions
+): Promise<ReservedOrder> {
+  const cart = await loadCartForCheckout(options.cartToken);
 
   if (!cart || !cart.cart_items?.length) {
     throw new Error('Cart is empty. Add products again and retry checkout.');
   }
 
-  const supabase = getSupabaseAdmin();
   const pricedItems = priceCartItems(cart.cart_items);
+  const fingerprint = cartFingerprint(cart.cart_items);
 
-  // Recompute shipping server-side; never trust data.shippingCostOverride.
+  // Recompute shipping server-side; the browser's amounts are display only. The
+  // Stripe route can pass a quote it has already revalidated against Shippo so
+  // the order and PaymentIntent share one server-approved charge.
   const shippingMethod = (data.shippingMethod || 'standard') as ShippingMethod;
-  const resolvedShipping = await resolveServerShippingCost({
-    shippingAddress: data.shippingAddress,
-    email: data.email,
-    shippingMethod,
-    shippoRateId: data.shippoRateId,
-    lineItems: pricedItems.map((item) => ({
-      productId: item.product_id ?? undefined,
-      quantity: item.quantity,
-    })),
-  });
+  const resolvedShipping = options.shippingCostOverride !== undefined
+    ? {
+        shippingCostOverride: options.shippingCostOverride,
+        shippoRateId: data.shippoRateId || null,
+        carrier: data.shippingCarrier || null,
+        service: data.shippingService || null,
+      }
+    : await resolveServerShippingCost({
+        shippingAddress: data.shippingAddress,
+        email: data.email,
+        shippingMethod,
+        shippoRateId: data.shippoRateId,
+        lineItems: pricedItems.map((item) => ({
+          productId: item.product_id ?? undefined,
+          quantity: item.quantity,
+        })),
+      });
 
-  const totals = calculateOrderTotals(
-    pricedItems.map((item) => ({
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-    })),
-    {
-      couponCode: data.couponCode,
-      shippingMethod,
-      shippingCostOverride: resolvedShipping.shippingCostOverride,
+  // Check if coupon grants free shipping
+  if (data.couponCode?.trim()) {
+    try {
+      const wooCoupon = await findCouponByCode(data.couponCode);
+      if (wooCoupon?.free_shipping) {
+        resolvedShipping.shippingCostOverride = 0;
+        resolvedShipping.service = `${resolvedShipping.service || resolvedShipping.carrier || shippingMethod} (Free Shipping with Coupon)`;
+      }
+    } catch {
+      // Best-effort check; fallback to resolved shipping if coupon lookup fails
     }
-  );
-  const normalizedCoupon = data.couponCode?.trim().toUpperCase();
-
-  const resolvedRateId = resolvedShipping.shippoRateId;
-  const resolvedCarrier = resolvedShipping.carrier ?? data.shippingCarrier ?? null;
-  const resolvedService = resolvedShipping.service ?? data.shippingService ?? null;
-
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert({
-      user_id: options.userId || null,
-      email: data.email,
-      phone: data.phone || null,
-      status: 'pending',
-      payment_status: data.paymentStatus || 'pending',
-      subtotal: totals.subtotal,
-      shipping_cost: totals.shippingCost,
-      tax_amount: totals.taxAmount,
-      discount_amount: totals.discountAmount,
-      total: totals.total,
-      shipping_address: data.shippingAddress as unknown as Json,
-      billing_address: {
-        ...(data.billingAddress || data.shippingAddress),
-        shippingMethod: data.shippingMethod || 'standard',
-        shippoRateId: resolvedRateId,
-        shippingCarrier: resolvedCarrier,
-        shippingService: resolvedService,
-      } as unknown as Json,
-      shippo_rate_id: resolvedRateId,
-      shipping_carrier: resolvedCarrier,
-      shipping_service: resolvedService,
-      payment_method: data.paymentMethod || data.paymentProvider || null,
-      notes: [
-        data.notes,
-        normalizedCoupon && supportedCoupons[normalizedCoupon] ? `Coupon: ${normalizedCoupon}` : null,
-        data.paymentIntentId ? `Stripe payment intent: ${data.paymentIntentId}` : null,
-      ]
-        .filter(Boolean)
-        .join('\n') || null,
-    } as never)
-    .select()
-    .single();
-
-  if (orderError) throw orderError;
-
-  const orderItems = pricedItems.map((item) => ({
-    order_id: (order as Order).id,
-    product_id: item.product_id,
-    product_name: item.product?.name || 'Unknown Product',
-    product_image: item.product?.thumbnail || null,
-    quantity: item.quantity,
-    grain_size: item.grain_size,
-    unit_price: item.unitPrice,
-    total_price: item.unitPrice * item.quantity,
-  }));
-
-  const { data: createdItems, error: itemsError } = await supabase
-    .from('order_items')
-    .insert(orderItems as never)
-    .select();
-
-  if (itemsError) throw itemsError;
-
-  if (data.clearCart !== false) {
-    const { error: clearError } = await supabase
-      .from('cart_items')
-      .delete()
-      .eq('cart_id', cart.id);
-    if (clearError) throw clearError;
   }
 
-  dispatchOrderCreatedNotifications((order as Order).id);
+  const checkoutFingerprint = checkoutInputFingerprint({
+    cartFingerprint: fingerprint,
+    email: data.email,
+    shippingAddress: data.shippingAddress,
+    billingAddress: data.billingAddress ?? data.shippingAddress,
+    shippingMethod,
+    shippingRateId: resolvedShipping.shippoRateId,
+    shippingCost: resolvedShipping.shippingCostOverride ?? 0,
+    couponCode: data.couponCode,
+    discountAmount: options.discountAmountOverride ?? 0,
+    taxAmount: options.taxAmountOverride ?? 0,
+  });
+
+  // A retried request at identical checkout inputs reuses its pending reservation;
+  // an address, shipping, coupon, or pricing change gets its own immutable order.
+  const existing = await findPendingWooOrderByFingerprint({
+    fingerprint,
+    checkoutFingerprint,
+    email: data.email,
+    customerId: options.customerId,
+  });
+  if (existing) {
+    return {
+      order: orderWithItemsFromWoo(existing) as OrderWithItems,
+      raw: existing,
+      reused: true,
+      cartToken: cart.id,
+    };
+  }
+
+  const wooOrder = await createWooOrder({
+    email: data.email,
+    phone: data.phone,
+    billing: {
+      first_name: data.billingAddress?.fullName?.split(' ')[0] || data.shippingAddress.fullName.split(' ')[0] || '',
+      last_name: data.billingAddress?.fullName?.split(' ').slice(1).join(' ') || data.shippingAddress.fullName.split(' ').slice(1).join(' ') || '',
+      address_1: data.billingAddress?.addressLine1 || data.shippingAddress.addressLine1,
+      address_2: data.billingAddress?.addressLine2 || data.shippingAddress.addressLine2,
+      city: data.billingAddress?.city || data.shippingAddress.city,
+      state: data.billingAddress?.state || data.shippingAddress.state,
+      postcode: data.billingAddress?.postalCode || data.shippingAddress.postalCode,
+      country: data.billingAddress?.country || data.shippingAddress.country || 'US',
+      email: data.email,
+      phone: data.phone,
+    },
+    shipping: {
+      first_name: data.shippingAddress.fullName.split(' ')[0] || '',
+      last_name: data.shippingAddress.fullName.split(' ').slice(1).join(' ') || '',
+      address_1: data.shippingAddress.addressLine1,
+      address_2: data.shippingAddress.addressLine2,
+      city: data.shippingAddress.city,
+      state: data.shippingAddress.state,
+      postcode: data.shippingAddress.postalCode,
+      country: data.shippingAddress.country || 'US',
+    },
+    lineItems: pricedItems.map((item) => ({
+      productId: Number(item.parent_product_id ?? item.product_id),
+      variationId: item.variation_id ? Number(item.variation_id) : undefined,
+      quantity: item.quantity,
+      price: item.unitPrice,
+    })),
+    shippingMethod,
+    shippingTotal: resolvedShipping.shippingCostOverride,
+    shippingMethodTitle: resolvedShipping.service || resolvedShipping.carrier || shippingMethod,
+    couponCode: data.couponCode,
+    customerNote: data.notes,
+    // The store's own customer record, so the order appears under the customer in
+    // WooCommerce's admin — not only in this app's meta.
+    customerId: options.customerId ?? undefined,
+    status: 'pending',
+    paymentMethod: options.paymentMethod,
+    paymentMethodTitle: options.paymentMethodTitle,
+    meta: {
+      [HK_META.userId]: options.customerId ? String(options.customerId) : null,
+      [HK_META.cartFingerprint]: fingerprint,
+      [HK_META.checkoutFingerprint]: checkoutFingerprint,
+      [HK_META.cartToken]: cart.id,
+      [HK_META.shippoRateId]: resolvedShipping.shippoRateId,
+      [HK_META.carrier]: resolvedShipping.carrier ?? data.shippingCarrier ?? null,
+      [HK_META.service]: resolvedShipping.service ?? data.shippingService ?? null,
+      // Recorded so the label step knows which rate/speed the customer paid for;
+      // it is a fact about the order, not about the checkout that made it.
+      [HK_META.shippingMethod]: shippingMethod,
+    },
+  });
 
   return {
-    ...(order as Order),
-    order_items: createdItems as OrderItem[],
+    order: orderWithItemsFromWoo(wooOrder) as OrderWithItems,
+    raw: wooOrder,
+    reused: false,
+    cartToken: cart.id,
   };
+}
+
+/**
+ * Empties the cart a reserved order was placed from.
+ *
+ * Called by the webhook once payment is confirmed, and by the invoice route once
+ * the order exists. Best-effort on purpose: a cart that fails to clear must not
+ * turn a paid order into an error the customer sees.
+ */
+export async function clearReservedCart(cartToken: string | null): Promise<void> {
+  if (!cartToken) return;
+  try {
+    await clearStoreCart({ cartToken, nonce: null });
+  } catch (error) {
+    console.error('[Order] The cart could not be emptied after checkout:', error);
+  }
 }

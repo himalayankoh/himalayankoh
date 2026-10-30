@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Expand, X } from 'lucide-react';
-import type { PdpGalleryImage } from '../../lib/products/pdpContent';
+import type { ContentGalleryImage } from '../../lib/content/types';
 
 interface Props {
-  images: PdpGalleryImage[];
+  images: ContentGalleryImage[];
   title: string;
 }
 
@@ -69,7 +69,7 @@ export default function CategoryHubGallery({ images, title }: Props) {
                 loading="lazy"
                 decoding="async"
                 className="max-w-full max-h-full w-auto h-auto object-contain"
-                onError={(e) => { (e.target as HTMLImageElement).src = '/images/placeholder-livestock.svg'; }}
+                onError={(e) => { (e.target as HTMLImageElement).src = '/images/placeholder-product.svg'; }}
               />
               <span className="absolute inset-0 bg-charcoal/0 group-hover:bg-charcoal/20 transition-colors" aria-hidden />
               <span className="absolute bottom-1 right-1 w-6 h-6 rounded-md bg-white/90 text-charcoal flex items-center justify-center opacity-80 group-hover:opacity-100 shadow-sm">

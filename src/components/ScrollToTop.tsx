@@ -7,7 +7,7 @@ export default function ScrollToTop() {
 
   useEffect(() => {
     const handleScroll = () => setVisible(window.scrollY > 500);
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -25,7 +25,7 @@ export default function ScrollToTop() {
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.9 }}
           onClick={scrollToTop}
-          className="fixed bottom-6 right-6 z-fab w-12 h-12 bg-himalayan hover:bg-himalayan-dark text-white rounded-full shadow-lg shadow-himalayan/30 flex items-center justify-center transition-colors"
+          className="hk-floating-action fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-3 sm:right-5 z-fab w-11 h-11 bg-himalayan hover:bg-himalayan-dark text-white rounded-full shadow-lg shadow-himalayan/30 flex items-center justify-center transition-colors"
           aria-label="Scroll to top"
         >
           <ArrowUp size={20} />

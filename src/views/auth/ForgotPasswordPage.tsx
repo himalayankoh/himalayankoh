@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Loader2, ArrowLeft, Check } from 'lucide-react';
-import { authApi } from '../../lib/supabase/api';
 import { useToast } from '../../context/ToastContext';
 
 export default function ForgotPasswordPage() {
@@ -16,7 +15,17 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      await authApi.resetPassword(email);
+      // WordPress sends the mail; this app only decides that the link points back
+      // at /reset-password on the storefront rather than at wp-login.php.
+      const response = await fetch('/api/auth/customer/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || 'Failed to send reset email');
+      }
       setSuccess(true);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to send reset email');
@@ -38,8 +47,9 @@ export default function ForgotPasswordPage() {
           </div>
           <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Check Your Email</h1>
           <p className="text-charcoal-light mb-6">
-            We&apos;ve sent password reset instructions to <strong>{email}</strong>.
-            Please check your inbox and follow the link to reset your password.
+            If an account exists for <strong>{email}</strong>, we&apos;ve sent it a link to
+            choose a new password. The link can be opened on any device and expires in
+            24 hours.
           </p>
           <div className="space-y-3">
             <Link

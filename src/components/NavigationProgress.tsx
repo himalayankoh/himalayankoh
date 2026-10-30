@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useLocation } from 'react-router-dom';
 import {
   endNavigationProgress,
   isNavigating,
@@ -18,10 +18,20 @@ import {
  * It creeps toward 90% rather than tracking real progress, which is not
  * knowable, then completes when the route actually changes. The point is to
  * confirm the click landed, not to predict a duration.
+ *
+ * `useLocation` is the app's own shim, which reads the query string from
+ * `window.location`, not `useSearchParams` from `next/navigation`. That hook may
+ * only be called inside a Suspense boundary, and this component sat in one with a
+ * `null` fallback: the boundary therefore had to hydrate before it could resolve
+ * the query string, and the update that resolved it arrived mid-hydration. React
+ * answers exactly that with error #419 — "this Suspense boundary received an
+ * update before it finished hydrating" — which aborts the boundary and surfaces
+ * as the generic "error occurred in the Server Components render" page on every
+ * admin route. Reading the browser removes the boundary requirement, so nothing
+ * above a route suspends any more.
  */
 export default function NavigationProgress() {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const { pathname, search } = useLocation();
   const active = useSyncExternalStore(
     subscribeNavigationProgress,
     isNavigating,
@@ -33,24 +43,24 @@ export default function NavigationProgress() {
   // A new route rendered — whatever was in flight has arrived.
   useEffect(() => {
     endNavigationProgress();
-  }, [pathname, searchParams]);
+  }, [pathname, search]);
 
   useEffect(() => {
     if (active) {
       setVisible(true);
       setWidth(12);
-      // Approach 90% and wait there. Reaching 100% before the page is ready
-      // would claim the navigation had finished when it had not.
+      // Approach a modest visual ceiling quickly. The route effect below owns
+      // completion; this bar must never crawl visibly at 90–99% while a
+      // background data request is still running.
       const creep = setInterval(() => {
-        setWidth((current) => (current >= 90 ? current : current + (90 - current) * 0.18));
-      }, 180);
+        setWidth((current) => (current >= 82 ? current : current + (82 - current) * 0.3));
+      }, 100);
 
       // A navigation that never completes — a route that throws, a click the
-      // router discards, a prefetch that stalls — would otherwise leave the bar
-      // on screen for the rest of the session, which looks far more broken than
-      // the pause it was meant to explain. Clearing it after ten seconds is
-      // wrong about the navigation but right about the interface.
-      const failsafe = setTimeout(endNavigationProgress, 10_000);
+      // router discards, a prefetch that stalls — must not leave the bar on
+      // screen for the rest of the session. This is only a terminal recovery
+      // guard; normal completion comes from the route/search render effect.
+      const failsafe = setTimeout(endNavigationProgress, 5_000);
 
       return () => {
         clearInterval(creep);
@@ -61,12 +71,12 @@ export default function NavigationProgress() {
     if (!visible) return undefined;
 
     setWidth(100);
-    // Held briefly at full width so the completion is seen rather than
-    // disappearing in the same frame it is drawn.
+    // Held only briefly at full width so completion is visible without making
+    // a fast route feel delayed.
     const hide = setTimeout(() => {
       setVisible(false);
       setWidth(0);
-    }, 220);
+    }, 120);
     return () => clearTimeout(hide);
   }, [active, visible]);
 

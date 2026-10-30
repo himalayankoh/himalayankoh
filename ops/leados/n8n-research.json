@@ -1,0 +1,264 @@
+{
+  "name": "HK LeadOS 2 — Private Research Worker",
+  "nodes": [
+    {
+      "id": "Every-20-seconds",
+      "name": "Every 20 seconds",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 20
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "id": "Claim-research",
+      "name": "Claim research",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://himalayankoh.com/api/leados/research-worker",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "position": [
+        240,
+        0
+      ],
+      "typeVersion": 4.2,
+      "onError": "stopWorkflow"
+    },
+    {
+      "id": "Job-available",
+      "name": "Job available",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const j=$input.first().json.job; return j ? [{json:j}] : [];"
+      },
+      "position": [
+        460,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "id": "Expand-bounded-queries",
+      "name": "Expand bounded queries",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const job=$input.first().json; const queries=[job.query]; if(job.searchDepth===2)queries.push(job.query+\" wholesale supplier\"); return queries.map(query=>({json:{...job,query}}));"
+      },
+      "position": [
+        570,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "id": "Private-SearXNG",
+      "name": "Private SearXNG",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "http://127.0.0.1:8891/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.query }}"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "language",
+              "value": "en-US"
+            },
+            {
+              "name": "safesearch",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 45000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1000
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "position": [
+        690,
+        0
+      ],
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "Source-result",
+      "name": "Source result",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const job=$('Job available').first().json; const results=[],errors=[]; let succeeded=0; for(const response of $input.all()){const data=response.json.body || response.json;if(Array.isArray(data.results)){succeeded++;results.push(...data.results);errors.push(...(data.unresponsive_engines||[]).map(x=>JSON.stringify(x)));}else errors.push('Private SearXNG query failed or returned non-JSON data.');} return [{json:{id:job.id,claimToken:job.claimToken,results:results.slice(0,100),upstreamErrors:errors.slice(0,10),error:succeeded?'':'Private SearXNG failed or returned non-JSON results.'}}];"
+      },
+      "position": [
+        920,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "id": "Store-evidence",
+      "name": "Store evidence",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://himalayankoh.com/api/leados/research-worker",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "position": [
+        1160,
+        0
+      ],
+      "typeVersion": 4.2
+    },
+    {
+      "id": "Loop-research-queries",
+      "name": "Loop research queries",
+      "type": "n8n-nodes-base.splitInBatches",
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "position": [
+        630,
+        0
+      ],
+      "typeVersion": 3
+    }
+  ],
+  "connections": {
+    "Every 20 seconds": {
+      "main": [
+        [
+          {
+            "node": "Claim research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim research": {
+      "main": [
+        [
+          {
+            "node": "Job available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job available": {
+      "main": [
+        [
+          {
+            "node": "Expand bounded queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand bounded queries": {
+      "main": [
+        [
+          {
+            "node": "Loop research queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Private SearXNG": {
+      "main": [
+        [
+          {
+            "node": "Loop research queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Source result": {
+      "main": [
+        [
+          {
+            "node": "Store evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop research queries": {
+      "main": [
+        [
+          {
+            "node": "Source result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Private SearXNG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 110
+  }
+}

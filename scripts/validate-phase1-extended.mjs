@@ -49,7 +49,7 @@ async function main() {
     await page.goto(`${base}/login`, { waitUntil: 'networkidle' });
     const hasSupabase = Boolean(process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY);
     if (hasSupabase) {
-      await page.fill('input[type="email"]', 'admin@himalayankoh.com');
+      await page.fill('input[name="email"]', 'admin@himalayankoh.com');
       await page.fill('input[type="password"]', 'Admin123!');
       await page.getByRole('button', { name: /sign in|log in/i }).click();
       await page.waitForTimeout(4000);

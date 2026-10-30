@@ -17,11 +17,43 @@ export function decodePackingProfileTag(
     (tag): tag is string => typeof tag === 'string' && tag.startsWith(PACKING_PROFILE_TAG_PREFIX),
   );
   if (!encoded) return null;
+  return decodePackingProfileJson(
+    productId,
+    decodeURIComponent(encoded.slice(PACKING_PROFILE_TAG_PREFIX.length)),
+  );
+}
+
+/**
+ * Decodes a packing profile from its JSON form.
+ *
+ * The same validation the tag form used, because both are the same profile: an
+ * incomplete one is not a profile with defaults, it is a profile that does not
+ * exist yet, and rating a parcel on half-filled dimensions would quote a price for
+ * a box the customer will not receive.
+ */
+export function decodePackingProfileJson(
+  productId: string,
+  json: unknown,
+): ProductPackingProfile | null {
+  if (json && typeof json === 'object') {
+    // WooCommerce hands a serialised meta value back already parsed.
+    return profileFromParsed(productId, json as Partial<Omit<ProductPackingProfile, 'productId'>>);
+  }
+  if (typeof json !== 'string' || !json.trim()) return null;
 
   try {
-    const parsed = JSON.parse(
-      decodeURIComponent(encoded.slice(PACKING_PROFILE_TAG_PREFIX.length)),
-    ) as Partial<Omit<ProductPackingProfile, 'productId'>>;
+    const parsed = JSON.parse(json) as Partial<Omit<ProductPackingProfile, 'productId'>>;
+    return profileFromParsed(productId, parsed);
+  } catch {
+    return null;
+  }
+}
+
+function profileFromParsed(
+  productId: string,
+  parsed: Partial<Omit<ProductPackingProfile, 'productId'>>,
+): ProductPackingProfile | null {
+  try {
     const row: ProductPackingProfileRow = {
       product_id: productId,
       product_length_in: Number(parsed.productLengthIn),

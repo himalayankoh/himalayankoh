@@ -1,18 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import ProductDetailView from '../components/ProductDetailView';
 import ProductCard from '../components/ProductCard';
 import type { Product } from '../data/products';
-import { lookupCatalogProduct } from '../lib/backend';
+import { getCatalogProducts, lookupCatalogProduct } from '../lib/backend/catalogClient';
+import { relatedProducts } from '../features/catalog/relatedProducts';
 import ProductDetailSections from '../components/product/ProductDetailSections';
-import ProductLifestyleGallery from '../components/product/ProductLifestyleGallery';
-import PdpEmptyState from '../components/product/PdpEmptyState';
-import ProductPdpEnrichedSections, {
-  pdpHidesDetailFaqs,
-} from '../components/product/ProductPdpEnrichedSections';
-import { getPdpContent } from '../lib/products/pdpContent';
-import { getProductDisplayName } from '../lib/products/productSeo';
 
 interface ProductDetailPageProps {
   /**
@@ -21,18 +15,49 @@ interface ProductDetailPageProps {
    * loading spinner a client-only fetch would leave for crawlers.
    */
   initialProduct?: Product | null;
+  initialRelated?: Product[];
 }
 
-export default function ProductDetailPage({ initialProduct = null }: ProductDetailPageProps) {
+export default function ProductDetailPage({
+  initialProduct = null,
+  initialRelated = [],
+}: ProductDetailPageProps) {
   const { slug: routeSlug } = useParams<{ slug: string }>();
   const [product, setProduct] = useState<Product | null>(initialProduct);
-  const [related, setRelated] = useState<Product[]>([]);
+  const [related, setRelated] = useState<Product[]>(initialRelated);
   const [loading, setLoading] = useState(!initialProduct);
+  const relatedTarget = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!product || related.length || !relatedTarget.current) return;
+    let cancelled = false;
+    const load = () => {
+      observer?.disconnect();
+      // The shared, public read runs only near this below-the-fold section.
+      // It neither delays the main photo nor repeats the product lookup.
+      void getCatalogProducts().then(result => {
+        if (!cancelled) setRelated(relatedProducts(product, result.products));
+      }).catch(() => { /* A related-read failure must not hide the buyable product. */ });
+    };
+    const observer = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) load();
+    }, { rootMargin: '200px' });
+    if (observer) observer.observe(relatedTarget.current);
+    else load();
+    return () => { cancelled = true; observer?.disconnect(); };
+  }, [product, related.length]);
 
   useEffect(() => {
     if (!routeSlug) {
       setProduct(null);
       setRelated([]);
+      setLoading(false);
+      return;
+    }
+
+    // If server already seeded this exact product and related items, bypass
+    // the client refetch so we never cause an unnecessary re-render / layout shift.
+    if (initialProduct && initialProduct.slug === routeSlug) {
       setLoading(false);
       return;
     }
@@ -74,14 +99,6 @@ export default function ProductDetailPage({ initialProduct = null }: ProductDeta
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeSlug]);
 
-  const pdpContent = useMemo(
-    () => (product ? getPdpContent(product) : null),
-    [product]
-  );
-
-  const showGalleryColumn =
-    pdpContent?.availability.gallery || Boolean(pdpContent?.emptyStates.gallery);
-
   if (loading) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center bg-warm-white">
@@ -117,57 +134,26 @@ export default function ProductDetailPage({ initialProduct = null }: ProductDeta
   }
 
   return (
-    <div className="min-h-screen bg-warm-white py-8 md:py-12">
+    <div className="min-h-screen bg-warm-white py-5 md:py-8">
       {/* Product/FAQ/WebPage JSON-LD is server-rendered by app/(main)/products/[slug]/page.tsx
           — injecting a second copy here would duplicate the graph for crawlers. */}
-      <div
-        className={
-          showGalleryColumn ? 'max-w-7xl mx-auto px-4 sm:px-6' : 'max-w-5xl mx-auto px-4 sm:px-6'
-        }
-      >
-        <div
-          className={
-            showGalleryColumn
-              ? 'flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_220px] lg:gap-8 lg:items-start'
-              : undefined
-          }
-        >
-          <ProductDetailView product={product} variant="page" />
-          {pdpContent && showGalleryColumn && (
-            pdpContent.availability.gallery ? (
-              <ProductLifestyleGallery
-                images={pdpContent.gallery}
-                productName={getProductDisplayName(product)}
-              />
-            ) : (
-              <aside className="w-full lg:w-auto" aria-label="Lifestyle gallery">
-                <PdpEmptyState
-                  title="In the field"
-                  message={pdpContent.emptyStates.gallery!}
-                  compact
-                />
-              </aside>
-            )
-          )}
-        </div>
+      <div className="max-w-5xl mx-auto px-4 sm:px-6">
+        <ProductDetailView product={product} variant="page" />
 
-        {pdpContent && <ProductPdpEnrichedSections content={pdpContent} />}
+        <ProductDetailSections product={product} />
 
-        <ProductDetailSections
-          product={product}
-          hideFaqSection={pdpContent ? pdpHidesDetailFaqs(pdpContent) : false}
-        />
-
+        <div ref={relatedTarget}>
         {related.length > 0 && (
-          <section className="mt-14">
-            <h2 className="font-serif text-2xl font-bold text-charcoal mb-6">Related Products</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <section className="mt-8">
+            <h2 className="font-serif text-xl font-bold text-charcoal mb-4">Related Products</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 lg:gap-4">
               {related.map((item, index) => (
                 <ProductCard key={item.id} product={item} index={index} />
               ))}
             </div>
           </section>
         )}
+        </div>
       </div>
     </div>
   );

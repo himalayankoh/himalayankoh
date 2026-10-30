@@ -1,7 +1,25 @@
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyClient = any;
+/**
+ * The admin console's settings store — WordPress options, read through the plugin.
+ *
+ * These values used to be rows in Supabase's `site_settings` (one row per category
+ * and key). They are WordPress options now, one option per category, exposed by
+ * `hk-storefront/v1/settings` and reached through `lib/wordpress/siteContent.ts`.
+ *
+ * ## Why the cache stayed
+ *
+ * Not because of the backend: because a storefront page render asks for the same
+ * category several times (a header, a footer and a landing block all want the site
+ * settings), and one HTTP round trip per ask is what the cache avoids. The TTL is
+ * short on purpose — a setting the owner just changed should be live in a minute,
+ * and every write invalidates its own keys immediately rather than waiting.
+ *
+ * A read failure returns the caller's fallback (null / an empty map) instead of
+ * throwing: a page must not go blank because a settings endpoint is down, and a
+ * blank value is already what "not configured" means to every caller.
+ */
 
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
+import { WordPressApiError } from '@/lib/backend/wordpress';
+import { siteSettingsApi } from '@/lib/wordpress/siteContent';
 
 interface CacheEntry {
   value: string | null;
@@ -15,73 +33,215 @@ function cacheKey(category: string, key: string) {
   return `${category}::${key}`;
 }
 
-export async function getSetting(category: string, key: string): Promise<string | null> {
+/**
+ * "I could not ask" is not "you have not set it".
+ *
+ * Every caller used to receive `null` for both, which is how a WordPress timeout
+ * turned into a confident "Not Configured" on the Omnisend card while the owner's
+ * key sat safely in the database. A status screen has to be able to tell those two
+ * apart, so this carries the failure alongside the value instead of replacing it.
+ */
+export interface SettingReadFailure {
+  kind: 'wordpress_unavailable' | 'deployment_unconfigured';
+  /** The origin's HTTP status when it answered at all; null for a transport failure. */
+  status: number | null;
+  message: string;
+}
+
+export interface SettingRead {
+  value: string | null;
+  failure: SettingReadFailure | null;
+}
+
+export function toSettingReadFailure(error: unknown): SettingReadFailure {
+  if (error instanceof WordPressApiError) {
+    // Status 0 means "no HTTP answer", and that covers two different situations: this
+    // deployment has no WordPress origin at all, or the origin timed out or refused the
+    // connection. Only the first is a configuration mistake. Reading a stall as
+    // `deployment_unconfigured` is how a WordPress outage told the owner that the
+    // Omnisend key they had just saved was never saved.
+    const missingOrigin = error.status === 0 && /is not configured/i.test(error.message);
+    return {
+      kind: missingOrigin ? 'deployment_unconfigured' : 'wordpress_unavailable',
+      status: error.status === 0 ? null : error.status,
+      message: error.message,
+    };
+  }
+  return {
+    kind: 'wordpress_unavailable',
+    status: null,
+    message: error instanceof Error ? error.message : 'The WordPress settings store could not be reached.',
+  };
+}
+
+export async function getSetting(category: string, key: string, options: { fresh?: boolean } = {}): Promise<string | null> {
+  return (await getSettingWithStatus(category, key, options)).value;
+}
+
+/**
+ * The same read as `getSetting`, keeping the failure.
+ *
+ * `fresh` skips the in-process cache. A status screen must not repeat a negative
+ * answer this process cached sixty seconds ago — that is precisely the state that
+ * made a saved key look missing until the TTL expired.
+ */
+export async function getSettingWithStatus(
+  category: string,
+  key: string,
+  options: { fresh?: boolean } = {},
+): Promise<SettingRead> {
   const k = cacheKey(category, key);
-  const hit = cache.get(k);
-  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  if (!options.fresh) {
+    const hit = cache.get(k);
+    if (hit && hit.expiresAt > Date.now()) return { value: hit.value, failure: null };
+  }
 
   try {
-    const supabase: AnyClient = getSupabaseAdmin();
-    const { data } = await supabase
-      .from('site_settings')
-      .select('value')
-      .eq('category', category)
-      .eq('key', key)
-      .maybeSingle();
+    const values = await siteSettingsApi.read(category);
+    const now = Date.now();
+    for (const [name, value] of Object.entries(values)) {
+      cache.set(cacheKey(category, name), { value: value ?? null, expiresAt: now + TTL_MS });
+    }
+    // A key the store does not hold is cached too: "not set" is an answer, and
+    // re-asking on every render is how a missing setting becomes a slow page.
+    if (!(key in values)) cache.set(k, { value: null, expiresAt: now + TTL_MS });
+    return { value: key in values ? values[key] ?? null : null, failure: null };
+  } catch (error) {
+    // Deliberately not cached: a failure is a moment, not an answer, and caching
+    // it is what keeps a transient outage showing after the origin has recovered.
+    return { value: null, failure: toSettingReadFailure(error) };
+  }
+}
 
-    const value = (data as { value?: string | null } | null)?.value ?? null;
-    cache.set(k, { value, expiresAt: Date.now() + TTL_MS });
-    return value;
-  } catch {
-    return null;
+/**
+ * The same read, with the failure kept instead of swallowed.
+ *
+ * `getSettingsForCategory` answers `{}` for both "nothing is stored" and "the store
+ * could not be reached", and for a page render that is the right answer — blank is
+ * already what "not configured" means. A *status* screen needs the difference,
+ * though: "the owner has not saved a key yet" and "this deployment is not allowed
+ * to read the stored keys" are different problems with different fixes, and only
+ * one of them is the owner's. So this variant reports the HTTP status rather than
+ * hiding it behind an empty object.
+ */
+export async function getSettingsForCategoryWithStatus(
+  category: string,
+): Promise<{
+  values: Record<string, string | null>;
+  ok: boolean;
+  status: number | null;
+  /** Present only on failure, and named so a screen can say why. */
+  failure: SettingReadFailure | null;
+}> {
+  try {
+    const values = await siteSettingsApi.read(category);
+    const now = Date.now();
+    for (const [key, value] of Object.entries(values)) {
+      cache.set(cacheKey(category, key), { value: value ?? null, expiresAt: now + TTL_MS });
+    }
+    return { values, ok: true, status: 200, failure: null };
+  } catch (error) {
+    // A `WordPressApiError` carries the status the origin answered with; anything
+    // else (a bad URL, an abort) has none, and `null` says exactly that rather
+    // than inventing a 500.
+    const failure = toSettingReadFailure(error);
+    return { values: {}, ok: false, status: failure.status, failure };
   }
 }
 
 export async function getSettingsForCategory(
   category: string,
 ): Promise<Record<string, string | null>> {
-  try {
-    const supabase: AnyClient = getSupabaseAdmin();
-    const { data } = await supabase
-      .from('site_settings')
-      .select('key, value')
-      .eq('category', category);
+  return (await getSettingsForCategoryWithStatus(category)).values;
+}
 
-    const result: Record<string, string | null> = {};
-    for (const row of (data ?? []) as { key: string; value: string | null }[]) {
-      result[row.key] = row.value;
-      cache.set(cacheKey(category, row.key), {
-        value: row.value,
-        expiresAt: Date.now() + TTL_MS,
-      });
-    }
-    return result;
-  } catch {
-    return {};
+/**
+ * Reads the given fields up front — one store read per category, all at once —
+ * and fills the same cache `getSetting` reads.
+ *
+ * Why this exists: a caller needing a dozen fields across several categories used
+ * to `await getSetting` once per field, which put a store round trip behind each
+ * and serialised them (measured on staging: ~18s cold for the admin settings
+ * screen). The categories are independent, so their reads belong in one wave; and
+ * by filling the cache, the per-field lookups that follow cost nothing at all —
+ * this warms the existing cache rather than replacing it, so a warm process still
+ * answers a field without touching the store.
+ *
+ * A category the store cannot answer for caches `null` for its requested keys,
+ * which is exactly what `getSetting` reports for it — a settings endpoint that is
+ * down still means "not configured".
+ */
+export async function prefetchSettings(
+  fields: ReadonlyArray<{ category: string; key: string }>,
+): Promise<void> {
+  const byCategory = new Map<string, string[]>();
+  for (const { category, key } of fields) {
+    const keys = byCategory.get(category);
+    if (keys) keys.push(key);
+    else byCategory.set(category, [key]);
   }
+
+  // Only categories with at least one unexpired-cache miss are read. A process
+  // that already answered these fields (the settings screen writes the same
+  // cache on its own read) pays nothing here — without this check the warm path
+  // would do the store reads anyway and be slower than the per-field lookups it
+  // replaced.
+  const now = Date.now();
+  const categories = [...byCategory.keys()].filter((category) =>
+    (byCategory.get(category) ?? []).some((key) => {
+      const hit = cache.get(cacheKey(category, key));
+      return !hit || hit.expiresAt <= now;
+    }),
+  );
+  if (categories.length === 0) return;
+
+  const reads = await Promise.all(
+    categories.map(async (category) => {
+      try {
+        return await siteSettingsApi.read(category);
+      } catch {
+        return {} as Record<string, string | null>;
+      }
+    }),
+  );
+
+  categories.forEach((category, index) => {
+    const values = reads[index] ?? {};
+    for (const key of byCategory.get(category) ?? []) {
+      const value = key in values ? values[key] ?? null : null;
+      cache.set(cacheKey(category, key), { value, expiresAt: now + TTL_MS });
+    }
+  });
 }
 
 export async function upsertSettings(
   category: string,
   settings: Record<string, string | null>,
 ): Promise<void> {
-  const supabase: AnyClient = getSupabaseAdmin();
-  const rows = Object.entries(settings).map(([key, value]) => ({
+  const keys = Object.keys(settings);
+  if (keys.length === 0) return;
+
+  // A cleared field is stored as null rather than dropped: "the owner emptied this"
+  // and "this was never set" are different states, and only the first should
+  // overwrite an existing value.
+  await siteSettingsApi.write(
     category,
-    key,
-    value: value || null,
-    updated_at: new Date().toISOString(),
-  }));
+    Object.fromEntries(Object.entries(settings).map(([key, value]) => [key, value || null])),
+  );
 
-  if (rows.length === 0) return;
+  for (const key of keys) cache.delete(cacheKey(category, key));
+}
 
-  await supabase
-    .from('site_settings')
-    .upsert(rows, { onConflict: 'category,key' });
-
-  for (const { key } of rows) {
-    cache.delete(cacheKey(category, key));
-  }
+/**
+ * Removes one stored value.
+ *
+ * Needed by the stores that keep a *collection* in settings — campaign drafts are
+ * one key per campaign — because clearing a field is not the same as deleting the
+ * record: an empty string is still a campaign that exists.
+ */
+export async function deleteSetting(category: string, key: string): Promise<void> {
+  await siteSettingsApi.remove(category, key);
+  cache.delete(cacheKey(category, key));
 }
 
 export function invalidateCategory(category: string): void {

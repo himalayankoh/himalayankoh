@@ -31,7 +31,12 @@ const PRODUCTS = [
     weight: 30,
     weight_unit: 'lbs',
     categoryHint: 'cattle',
-    images: ['/images/legacy/cattle-salt-bag.jpg', '/images/legacy/salt-rock-bag.jpg'],
+    images: [
+      '/images/products/himalayan-salt-block-30lbs-hero.webp',
+      '/images/products/himalayan-salt-block-30lbs-horse.webp',
+      '/images/products/himalayan-salt-block-30lbs-cow.webp',
+      '/images/products/himalayan-salt-block-30lbs-livestock.webp',
+    ],
     meta_title: 'Himalayan Salt Block 30 lbs for Cattle & Livestock | Himalayan Koh',
     meta_description: 'Natural 30 lb Himalayan salt block for cattle and livestock. Retail price $49.95.',
   },

@@ -1,4 +1,4 @@
-import type { Order } from '@/lib/supabase/database.types';
+import type { Order } from '@/lib/commerce/types';
 
 export async function updateAdminOrderStatus(
   accessToken: string,

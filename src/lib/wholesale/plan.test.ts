@@ -1,0 +1,160 @@
+import { describe, expect, it } from 'vitest';
+
+import { WholesaleEngineError } from './engine';
+import { buildBuyerPlan, parseLineRequests } from './plan';
+import { containerProfileFromRow, priceTierFromRow, productFromRow } from './mapping';
+import { DEFAULT_PACKAGING_PROFILE } from './types';
+import type { WholesaleData } from './pricing';
+
+const PACKAGING = { ...DEFAULT_PACKAGING_PROFILE, cartonQty: 4, maxPalletGrossWeightKg: 1_000 };
+
+const DATA: WholesaleData = {
+  products: [
+    productFromRow({
+      id: 1,
+      name: 'Fine Grain',
+      wholesale_sku: 'HK-WS-FINE',
+      currency: 'USD',
+      ex_factory_cost: 18.5,
+      net_unit_weight_kg: 2.5,
+      active: 1,
+      packaging: PACKAGING,
+    }),
+    productFromRow({
+      id: 2,
+      name: 'Coarse Grain',
+      wholesale_sku: 'HK-WS-COARSE',
+      currency: 'USD',
+      ex_factory_cost: 19.25,
+      net_unit_weight_kg: 2.6,
+      active: 1,
+      packaging: PACKAGING,
+    }),
+  ],
+  tiers: [
+    priceTierFromRow({ id: 1, product_id: 1, min_units: 1_000, unit_price: 16.4, currency: 'USD' }),
+    priceTierFromRow({ id: 2, product_id: 1, min_units: 100, unit_price: 17.9, currency: 'USD' }),
+  ],
+  containers: [containerProfileFromRow({ id: 1, code: '20FT', name: '20ft Standard', usable_cbm: 33.2, max_cargo_weight_kg: 28_200, practical_volume_factor: 0.9, pallet_capacity: 10 })],
+  costProfiles: [],
+  freightRates: [],
+};
+
+describe('line requests', () => {
+  it('accepts units or pallets and refuses both', () => {
+    expect(parseLineRequests([{ productRowId: 1, units: 500 }])).toEqual([{ productRowId: 1, units: 500 }]);
+    expect(parseLineRequests([{ productRowId: 1, pallets: 2 }])).toEqual([{ productRowId: 1, pallets: 2 }]);
+    expect(() => parseLineRequests([{ productRowId: 1, units: 500, pallets: 2 }])).not.toThrow();
+    // Both are passed through; buildMixedLoad is what refuses the ambiguity, so
+    // there is exactly one owner of that rule.
+    expect(() =>
+      buildBuyerPlan(DATA, { lines: [{ productRowId: 1, units: 500, pallets: 2 }] })
+    ).toThrow(/either units or pallets/);
+  });
+
+  it('refuses an empty request rather than answering zero', () => {
+    expect(() => parseLineRequests([])).toThrow(WholesaleEngineError);
+    expect(() => parseLineRequests('nonsense')).toThrow(/at least one product/i);
+  });
+
+  it('refuses a missing or non-positive quantity', () => {
+    expect(() => parseLineRequests([{ productRowId: 1 }])).toThrow(/unit quantity or a number of pallets/);
+    expect(() => parseLineRequests([{ productRowId: 1, units: 0 }])).toThrow(/greater than zero/);
+    expect(() => parseLineRequests([{ productRowId: 0, units: 5 }])).toThrow(/whole wholesale product id/);
+  });
+});
+
+describe('buyer load plan', () => {
+  it('prices at the highest break the quantity reaches, and says which one', () => {
+    const plan = buildBuyerPlan(DATA, { lines: [{ productRowId: 1, units: 1_000 }] });
+    expect(plan.lines[0].unitPrice).toBe(16.4);
+    expect(plan.lines[0].tierMinUnits).toBe(1_000);
+    expect(plan.lines[0].lineValue).toBe(16_400);
+    expect(plan.assumptions.join(' ')).toMatch(/1,000-unit price break/);
+
+    const smaller = buildBuyerPlan(DATA, { lines: [{ productRowId: 1, units: 200 }] });
+    expect(smaller.lines[0].unitPrice).toBe(17.9);
+  });
+
+  it('converts pallets through the product’s own packaging', () => {
+    const plan = buildBuyerPlan(DATA, { lines: [{ productRowId: 1, pallets: 2 }] });
+    // 9 cartons per layer × 6 layers = 54 cartons per pallet × 4 units = 216 units.
+    expect(plan.lines[0].units).toBe(432);
+    expect(plan.lines[0].pallets).toBe(2);
+    expect(plan.totals.pallets).toBe(2);
+  });
+
+  it('reports an unpriced line instead of inventing a price', () => {
+    const plan = buildBuyerPlan(DATA, { lines: [{ productRowId: 2, units: 500 }] });
+    expect(plan.lines[0].unitPrice).toBeNull();
+    expect(plan.totals.indicativeMerchandise).toBeNull();
+    expect(plan.totals.hasUnpricedLines).toBe(true);
+  });
+
+  it('mixes products and sums the physical totals', () => {
+    const plan = buildBuyerPlan(DATA, {
+      lines: [
+        { productRowId: 1, units: 1_000 },
+        { productRowId: 2, units: 500 },
+      ],
+    });
+    expect(plan.lines).toHaveLength(2);
+    expect(plan.totals.units).toBe(1_500);
+    expect(plan.totals.indicativeMerchandise).toBeNull();
+    expect(plan.totals.hasUnpricedLines).toBe(true);
+    expect(plan.totals.netWeightKg).toBeGreaterThan(0);
+    expect(plan.fit.limitingFactor).not.toBe('NONE');
+  });
+
+  it('states that the plan is goods only', () => {
+    const plan = buildBuyerPlan(DATA, { lines: [{ productRowId: 1, units: 100 }] });
+    expect(plan.assumptions.join(' ')).toMatch(/goods only/i);
+  });
+
+  it('classifies loose boxes as loose carton freight without pallet numbers or debug strings', () => {
+    const plan = buildBuyerPlan(DATA, { lines: [{ productRowId: 1, units: 28 }] }); // 7 boxes of 4
+    expect(plan.isLoosePacking).toBe(true);
+    expect(plan.packagingMode).toBe('loose_cartons');
+    expect(plan.lines[0].pallets).toBe(0);
+    expect(plan.totals.pallets).toBe(0);
+    expect(plan.container.name).toMatch(/Loose Carton/i);
+    expect(plan.shipmentTitle).toMatch(/Loose Carton Freight/i);
+    expect(plan.assumptions.some((a) => a.includes('pallet math uses default packaging'))).toBe(false);
+  });
+
+  it('refuses an unknown product rather than skipping the line', () => {
+    expect(() => buildBuyerPlan(DATA, { lines: [{ productRowId: 99, units: 10 }] })).toThrow(/No active wholesale product/);
+  });
+});
+
+
+describe('inquiry quantity boundaries', () => {
+  it('rejects duplicate product lines instead of bypassing allocation and tier rules', () => {
+    expect(() => parseLineRequests([{ productRowId: 1, units: 6 }, { productRowId: 1, units: 6 }])).toThrow(/single line/);
+  });
+  it.each([1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])('rejects non-whole or unsafe quantities: %s', (units) => {
+    expect(() => parseLineRequests([{ productRowId: 1, units }])).toThrow();
+  });
+  it('uses allocation as a server-side ceiling on the calculation too', () => {
+    const data = { ...DATA, products: DATA.products.map((p) => ({ ...p, availableUnits: 10 })) };
+    expect(() => buildBuyerPlan(data, { lines: [{ productRowId: 1, units: 11 }] })).toThrow(/allocation of 10/);
+  });
+});
+
+
+describe('confirmed wholesale case rules at the server boundary', () => {
+  const cases = (pack: number, available = 100) => ({ ...DATA, products: [{ ...DATA.products[0], moq: 0, availableUnits: available, packaging: { ...PACKAGING, cartonQty: pack }, casePolicy: { unitsPerCase: pack, minimumCases: 4, minimumPieces: 0, minimumUnits: pack * 4 } }] });
+  it('rejects small and partial-case requests before computing a price', () => {
+    expect(() => buildBuyerPlan(cases(6), { lines: [{ productRowId: 1, units: 18 }] })).toThrow(/24 pieces/);
+    expect(() => buildBuyerPlan(cases(6), { lines: [{ productRowId: 1, units: 25 }] })).toThrow(/full cases of 6/);
+    expect(() => buildBuyerPlan(cases(4), { lines: [{ productRowId: 1, units: 12 }] })).toThrow(/16 pieces/);
+  });
+  it('allows four genuine cases without requiring every catalogue product', () => {
+    expect(buildBuyerPlan(cases(6), { lines: [{ productRowId: 1, units: 24 }] }).lines[0].cartons).toBe(4);
+    expect(buildBuyerPlan(cases(4), { lines: [{ productRowId: 1, units: 16 }] }).lines[0].cartons).toBe(4);
+  });
+  it('never increases stock to meet the new minimum', () => {
+    expect(() => buildBuyerPlan(cases(6, 10), { lines: [{ productRowId: 1, units: 24 }] })).toThrow(/allocation of 10/);
+    expect(() => buildBuyerPlan(cases(6, 0), { lines: [{ productRowId: 1, units: 24 }] })).toThrow(/allocation of 0/);
+  });
+});

@@ -49,9 +49,14 @@ export async function fetchShippoRates(params: {
 
   if (!response.ok) {
     if (response.status === 422 && body.unsupportedProducts) {
-      throw new Error(body.error || 'Live carrier rates are not available for one or more items.');
+      throw new Error(body.error || 'We cannot price delivery for one or more items in this cart.');
     }
-    throw new Error(body.error || 'Unable to fetch shipping rates.');
+    // The shop's own words, not the route's. `/api/shippo/rates` answers with an
+    // operator-facing diagnosis — a key that is missing, or one this environment
+    // refuses to spend — and that text was rendered straight onto the checkout page,
+    // in front of a customer. A request that failed is not a statement about the
+    // address either, so this does not blame it.
+    throw new Error('Delivery could not be priced right now. Please try again.');
   }
 
   return {

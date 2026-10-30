@@ -12,9 +12,7 @@ import { SkeletonOrderList } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
 import DashboardSidebar from '../components/account/DashboardSidebar';
 import { useAuthContext } from '../context/AuthContext';
-import { ordersApi } from '../lib/supabase/api';
-import type { OrderWithItems } from '../lib/supabase/database.types';
-import { isSupabaseConfigured } from '../lib/supabase/client';
+import type { OrderWithItems } from '../lib/commerce/types';
 import { useCart } from '../store/cartStore';
 import { useToast } from '../context/ToastContext';
 
@@ -28,7 +26,7 @@ const statusIcons: Record<string, React.ReactNode> = {
 };
 
 export default function OrdersPage() {
-  const { user, profile } = useAuthContext();
+  const { user, profile, session } = useAuthContext();
   const { addItem } = useCart();
   const toast = useToast();
   const [orders, setOrders] = useState<OrderWithItems[]>([]);
@@ -38,14 +36,24 @@ export default function OrdersPage() {
 
   useEffect(() => {
     const fetchOrders = async () => {
-      if (!user?.id || !isSupabaseConfigured()) {
+      const token = session?.access_token;
+      if (!user || !token) {
         setLoading(false);
         return;
       }
 
       try {
-        const { orders } = await ordersApi.getUserOrders(user.id);
-        setOrders(orders);
+        const response = await fetch('/api/account/orders', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        });
+        if (!response.ok) {
+          throw new Error(`Unable to read orders (${response.status})`);
+        }
+        const data = await response.json();
+        setOrders(data.orders || []);
       } catch (err) {
         console.error('Failed to fetch orders:', err);
       } finally {
@@ -54,7 +62,7 @@ export default function OrdersPage() {
     };
 
     fetchOrders();
-  }, [user?.id]);
+  }, [user, session?.access_token]);
 
   const handleReorder = async (order: OrderWithItems) => {
     for (const item of order.order_items) {
@@ -69,17 +77,28 @@ export default function OrdersPage() {
   };
 
   const handleCancelOrder = async (order: OrderWithItems) => {
-    if (!user?.id) return;
+    const token = session?.access_token;
+    if (!token) return;
     if (!window.confirm(`Cancel order ${order.order_number}? This cannot be undone.`)) return;
 
     setCancellingId(order.id);
     try {
-      const cancelled = await ordersApi.cancelOrder(order.id, user.id);
+      const response = await fetch(`/api/account/orders/${order.id}/cancel`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || `Unable to cancel order (${response.status})`);
+      }
       setOrders((current) =>
-        current.map((o) => (o.id === order.id ? { ...o, status: cancelled.status } : o))
+        current.map((o) => (o.id === order.id ? { ...o, status: 'cancelled' } : o))
       );
       setSelectedOrder((current) =>
-        current?.id === order.id ? { ...current, status: cancelled.status } : current
+        current?.id === order.id ? { ...current, status: 'cancelled' } : current
       );
       toast.success('Order cancelled.');
     } catch (err) {

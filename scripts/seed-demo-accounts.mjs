@@ -20,7 +20,7 @@ const demoAccounts = [
     email: 'admin@himalayankoh.com',
     password: 'Admin@123',
     role: 'admin',
-    fullName: 'Himalayan Koh Super Admin',
+    fullName: 'Salman Bashir',
     phone: '(832) 224-6466',
   },
   {

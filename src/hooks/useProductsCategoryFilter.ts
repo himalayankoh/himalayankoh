@@ -1,39 +1,71 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import type { NicheCheckInput } from '../lib/catalog/nicheSections';
 import {
   CATEGORY_QUERY_PARAM,
-  categoryKeyFromFilterLabel,
-  filterLabelFromKey,
   normalizeCategoryQueryValue,
   parseCategoryFromSearchParams,
+  resolveAvailableCategoryKey,
+  resolveCategoryFilterKey,
 } from '../lib/categoryContent';
 
-const ALL_LABEL = 'All';
-
 /**
- * URL is the source of truth: /products?category=salt-lick-horses
- * Supports aliases (?category=horses). Browser back/forward restores filters.
+ * URL is the source of truth: /products?category=edible-pink-salt
+ *
+ * The category pills are built from the catalogue (`productsCategoryTabs`), so the
+ * set of valid keys is no longer fixed in code: it is whatever categories the
+ * products carry. That is why the products are an input here. A `?category=` value
+ * that is not well-formed or names an unknown category is All and is dropped.
+ * Known hubs retain their filter when empty, so a cooking link cannot display
+ * animal products by silently falling back to All. Browser back/forward restores filters.
+ *
+ * The address bar is only read from the render *after mount*. Before that the
+ * router reports an empty query string on purpose (its `getServerSnapshot`),
+ * which is also what the server had, so the hydration render has to decide from
+ * `initialCategoryKey` alone, plus the same products the server rendered with.
+ * Reading `window.location` a render early made the hub page hydrate as the whole
+ * catalogue — React error #418 on every load of `/products?category=<shelf>`; see
+ * `resolveCategoryFilterKey` for the whole account.
+ *
+ * A page with no products yet cannot judge a key and leaves it alone; the effect
+ * re-resolves once the catalogue arrives. That is what stops a valid category
+ * from flickering to All during the first client read.
  */
-export function useProductsCategoryFilter() {
+export function useProductsCategoryFilter(
+  initialCategoryKey?: string | null,
+  products: ReadonlyArray<NicheCheckInput> = []
+) {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const categoryKey = useMemo(
-    () => parseCategoryFromSearchParams(searchParams),
-    [searchParams]
-  );
+  /** False on the server and on the hydration render; true from the render after mount. */
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
 
-  const activeFilter = useMemo(
-    () => (categoryKey ? filterLabelFromKey(categoryKey) : ALL_LABEL),
-    [categoryKey]
-  );
+  const categoryKey = useMemo(() => {
+    const resolved = resolveCategoryFilterKey({
+      hydrated,
+      browserHasQuery: typeof window !== 'undefined' && Boolean(window.location.search),
+      browserPath: typeof window !== 'undefined' ? window.location.pathname : '',
+      fromSearchParams: parseCategoryFromSearchParams(searchParams),
+      initialCategoryKey,
+    });
+    if (!resolved) return null;
+    // With no catalogue read yet there is nothing to check the key against.
+    if (products.length === 0) return resolved;
+    return resolveAvailableCategoryKey(resolved, products);
+  }, [hydrated, searchParams, initialCategoryKey, products]);
 
-  /** Strip invalid ?category= values so broken links fall back to All. */
+  /** Strip invalid ?category= values so broken and stale links fall back to All. */
   useEffect(() => {
     const raw = searchParams.get(CATEGORY_QUERY_PARAM);
     if (!raw) return;
 
     const resolved = normalizeCategoryQueryValue(raw);
-    if (!resolved) {
+    const known =
+      resolved !== null &&
+      (products.length === 0 || resolveAvailableCategoryKey(resolved, products) !== null);
+
+    if (!known || resolved === null) {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -55,32 +87,7 @@ export function useProductsCategoryFilter() {
         { replace: true }
       );
     }
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, products]);
 
-  const setActiveFilter = useCallback(
-    (label: string) => {
-      const key = label === ALL_LABEL ? null : categoryKeyFromFilterLabel(label);
-
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          if (!key) {
-            next.delete(CATEGORY_QUERY_PARAM);
-          } else {
-            next.set(CATEGORY_QUERY_PARAM, key);
-          }
-          return next;
-        },
-        { replace: false }
-      );
-    },
-    [setSearchParams]
-  );
-
-  return {
-    activeFilter,
-    categoryKey,
-    setActiveFilter,
-    isAll: activeFilter === ALL_LABEL,
-  };
+  return { categoryKey };
 }

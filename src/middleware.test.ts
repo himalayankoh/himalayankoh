@@ -1,0 +1,354 @@
+import { NextRequest } from 'next/server';
+import { afterEach, describe, expect, it } from 'vitest';
+import { config, middleware } from './middleware';
+
+/**
+ * The edge rules, exercised on real URLs.
+ *
+ * These cases are the measured leaks, not invented ones: each redirect below
+ * stands for a URL that, on the running build, answered 200 and repeated an
+ * animal-product term back into its own raw HTML before this rule existed.
+ *
+ * The middleware is `async` because one of its jobs is the legacy WooCommerce
+ * callback bridge, which has to `fetch` the backend. Every case below therefore
+ * awaits it — the bridge's own accept/refuse judgement is pinned separately in
+ * `lib/http/legacyWooCallback.test.ts`.
+ */
+
+async function run(url: string) {
+  const response = await middleware(new NextRequest(new URL(url, 'https://himalayankoh.com')));
+  const rewrite = response.headers.get('x-middleware-rewrite');
+  return {
+    passesThrough: response.headers.get('x-middleware-next') === '1',
+    status: response.status,
+    location: response.headers.get('location'),
+    /** The internal path a rewrite answers on, or null when nothing was rewritten. */
+    rewriteTo: rewrite ? new URL(rewrite).pathname : null,
+    /** The query the rewritten request kept, so the browser URL is unchanged. */
+    rewriteSearch: rewrite ? new URL(rewrite).search : null,
+  };
+}
+
+describe('middleware — content URLs that name something off-niche', () => {
+  it('leaves a product URL to the route that resolves the product', async () => {
+    // A product slug is no longer judged by its text at the edge. The owner can
+    // approve an animal-named product from the console (a fact no URL rule can
+    // know), so the decision moved to the PDP: it withholds a record and redirects
+    // its URL (an empty-bodied 308, so the slug is still never serialised), and
+    // 404s a slug that was never a product.
+    for (const url of ['/products/salt-licks-for-horses', '/products/salt-block-for-deer', '/products/horse%2Dsalt', '/products/salt-licks']) {
+      expect((await run(url)).passesThrough, url).toBe(true);
+    }
+  });
+
+  it('decodes the segment before judging it', async () => {
+    expect((await run('/blog/horse%2Dsalt')).status).toBe(308);
+  });
+
+  it('retires a livestock article URL rather than rendering its slug', async () => {
+    expect(await run('/blog/why-do-dairy-cows-need-trace-minerals')).toEqual({
+      passesThrough: false,
+      status: 308,
+      location: 'https://himalayankoh.com/blog',
+      rewriteTo: null,
+      rewriteSearch: null,
+    });
+  });
+
+  it('leaves real product and article URLs alone', async () => {
+    expect((await run('/products/himalayan-koh-edible-salt-grain')).passesThrough).toBe(true);
+    expect((await run('/blog/himalayan-pink-salt-vs-white-salt-farmers')).passesThrough).toBe(true);
+  });
+
+  it('does not touch routes that carry session or payment parameters', async () => {
+    for (const url of ['/checkout?token=abc', '/track?order=42', '/admin?search=horses', '/account']) {
+      expect((await run(url)).passesThrough).toBe(true);
+    }
+  });
+});
+
+describe('middleware — browse query strings', () => {
+  it('drops a search term that names an animal product', async () => {
+    expect((await run('/products?search=horses')).location).toBe('https://himalayankoh.com/products');
+    expect((await run('/products?search=livestock')).status).toBe(308);
+  });
+
+  it('keeps the rest of the request while dropping the offending filter', async () => {
+    expect((await run('/products?search=cat&category=bulk')).location).toBe(
+      'https://himalayankoh.com/products?category=bulk'
+    );
+  });
+
+  it('drops a retired shelf value', async () => {
+    expect((await run('/products?category=salt-lick-horses')).location).toBe(
+      'https://himalayankoh.com/products'
+    );
+    expect((await run('/products?category=animal-feed')).status).toBe(308);
+  });
+
+  it('normalises a live shelf addressed with padding or different casing', async () => {
+    expect((await run('/products?category=Bulk')).location).toBe('https://himalayankoh.com/products?category=bulk');
+  });
+
+  it('keeps a category slug the edge does not know, so a new WooCommerce category works', async () => {
+    // The shop's categories are built from its products, and the edge has no
+    // catalogue — so a well-formed slug is passed through and the page resolves it
+    // against the products it is showing.
+    const res = await run('/products?category=gift-sets-and-samplers');
+    expect(res.passesThrough).toBe(false);
+    expect(res.rewriteTo).toBe('/products/shelf/gift-sets-and-samplers');
+    expect(res.rewriteSearch).toBe('?category=gift-sets-and-samplers');
+  });
+
+  it('passes the bare catalogue through untouched, so it stays prerenderable', async () => {
+    // `/products` is the page that must remain free of `searchParams`: it is
+    // prerendered and edge-cached, and any query string is answered by the shelf
+    // route below instead. See src/app/(main)/products/page.tsx.
+    const bare = await run('/products');
+    expect(bare.passesThrough).toBe(true);
+    expect(bare.rewriteTo).toBe(null);
+  });
+
+  it('answers a query-bearing catalogue request on the shelf route, without changing the URL', async () => {
+    // A rewrite, not a redirect: the shopper's address bar keeps
+    // `/products?category=bulk`, which is the URL the canonical names, while the
+    // shelf route renders the per-shelf title and breadcrumb.
+    const shelf = await run('/products?category=bulk');
+    expect(shelf.passesThrough).toBe(false);
+    expect(shelf.status).toBe(200);
+    expect(shelf.rewriteTo).toBe('/products/shelf/bulk');
+    // The query rides along, so the client still reads the shelf off the URL it
+    // was given and the address bar is untouched.
+    expect(shelf.rewriteSearch).toBe('?category=bulk');
+
+    // Anything else — a search, a sort, a page — is the whole catalogue under the
+    // plain `/products` metadata, so it lands on `all` rather than creating one
+    // edge cache entry per term.
+    expect((await run('/products?page=2&sort=price')).rewriteTo).toBe('/products/shelf/all');
+    expect((await run('/products?search=salt')).rewriteTo).toBe('/products/shelf/all');
+  });
+
+  it('applies the same rule to the blog index', async () => {
+    expect((await run('/blog?search=cows')).location).toBe('https://himalayankoh.com/blog');
+    expect((await run('/blog?page=2')).passesThrough).toBe(true);
+  });
+});
+/* ------------------------------------------------------------------ */
+/* One canonical hostname                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Both the apex and `www` are attached to this Worker, so without the host rule the same
+ * page answers 200 at two hostnames. The judgement lives in `lib/http/canonicalHost` (with
+ * its own suite); these cases prove the middleware applies it to real requests and, just as
+ * importantly, in the right order relative to the callback relay.
+ */
+describe('middleware — one canonical hostname', () => {
+  /** The same helper, with the arrival host a browser would send. */
+  async function runOn(host: string, url: string, method = 'GET') {
+    const response = await middleware(new NextRequest(url, { method, headers: { host } }));
+    return { status: response.status, location: response.headers.get('location') };
+  }
+
+  it('permanently redirects www to the apex, keeping path and query', async () => {
+    const res = await runOn('www.himalayankoh.com', 'https://www.himalayankoh.com/products?category=live-stock');
+    expect(res.status).toBe(301);
+    expect(res.location).toBe('https://himalayankoh.com/products?category=live-stock');
+  });
+
+  it('does not redirect the apex, so the redirect cannot loop', async () => {
+    const res = await runOn('himalayankoh.com', 'https://himalayankoh.com/products?category=live-stock');
+    expect(res.status).toBe(200);
+    expect(res.location).toBeNull();
+  });
+
+  it('leaves the staging hostname on its own origin', async () => {
+    const res = await runOn('preview.himalayankoh.com', 'https://preview.himalayankoh.com/products');
+    expect(res.status).toBe(200);
+    expect(res.location).toBeNull();
+  });
+
+  it('delivers a legacy payment callback that arrives on www rather than redirecting it', async () => {
+    // The relay owns this surface: a 301 on a webhook is a lost payment event, which is
+    // why the callback rule runs before the host rule.
+    const response = await middleware(
+      new NextRequest('https://www.himalayankoh.com/?wc-api=wc_stripe', {
+        headers: { host: 'www.himalayankoh.com' },
+      }),
+    );
+    // No backend is configured in the test environment, so the relay answers with its own
+    // refusal — the point is that it is the *relay* answering, not a redirect.
+    expect(response.status).not.toBe(301);
+    expect(response.headers.get('location')).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The pre-cutover access gate                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The gate as it is actually enforced. `previewAccess.ts` owns the judgement and has its
+ * own unit tests; this section proves the middleware wires it to real requests and adds the
+ * two behaviours the judgement cannot express on its own — the cookie exchange, and leaving
+ * everything untouched when the gate is off.
+ *
+ * Every case above this section runs on a production host and no token, which is why the
+ * gate does not alter any of them. That is worth stating rather than leaving implicit: it is
+ * the property the cutover depends on.
+ */
+
+const GATE_TOKEN = 'preview-token-0123456789abcdef';
+const GATE_HOST = 'https://himalayan-koh-ecommerce-prod.himalayankoh-pk.workers.dev';
+
+function gateRequest(url: string, headers: Record<string, string> = {}) {
+  // `NextRequest` does not synthesise a Host header, and the gate keys on it. A real request
+  // always carries one, so the helper supplies it rather than letting every gated case pass
+  // for the accidental reason of a missing host.
+  return new NextRequest(url, { headers: { host: new URL(url).host, ...headers } });
+}
+
+describe('middleware — the pre-cutover access gate is off where it must be', () => {
+  it('serves the storefront normally when no token is configured', async () => {
+    const response = await middleware(gateRequest(`${GATE_HOST}/products`));
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('does not touch an API route when no token is configured', async () => {
+    const response = await middleware(gateRequest(`${GATE_HOST}/api/shippo/rates`));
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+});
+
+describe('middleware — the pre-cutover access gate', () => {
+  afterEach(() => {
+    delete process.env.PREVIEW_ACCESS_TOKEN;
+    delete process.env.NEXT_PHASE;
+  });
+
+  async function withToken(url: string, headers: Record<string, string> = {}) {
+    process.env.PREVIEW_ACCESS_TOKEN = GATE_TOKEN;
+    return middleware(gateRequest(url, headers));
+  }
+
+  it('refuses an unauthenticated page, and the refusal leaks nothing', async () => {
+    const response = await withToken(`${GATE_HOST}/products`);
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('www-authenticate')).toBe('Bearer');
+
+    const body = await response.text();
+    expect(body).not.toContain(GATE_TOKEN);
+    expect(body).not.toContain('workers.dev');
+  });
+
+  it('refuses an unauthenticated API request too — that is where the credentials are', async () => {
+    expect((await withToken(`${GATE_HOST}/api/shippo/rates`)).status).toBe(401);
+    expect((await withToken(`${GATE_HOST}/api/version`)).status).toBe(401);
+  });
+
+  it('admits a bearer token, which is what a script or a probe sends', async () => {
+    const response = await withToken(`${GATE_HOST}/api/version`, { authorization: `Bearer ${GATE_TOKEN}` });
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('exchanges a correct ?hk_preview= for a cookie and redirects without the parameter', async () => {
+    const response = await withToken(`${GATE_HOST}/products?hk_preview=${GATE_TOKEN}`);
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe(`${GATE_HOST}/products`);
+
+    const cookie = response.headers.get('set-cookie') || '';
+    expect(cookie).toContain('hk_preview=');
+    expect(cookie.toLowerCase()).toContain('httponly');
+    expect(cookie.toLowerCase()).toContain('secure');
+    expect(cookie.toLowerCase()).toContain('samesite=lax');
+  });
+
+  it('admits the cookie the exchange just set, so the browser is not asked again', async () => {
+    const response = await withToken(`${GATE_HOST}/products`, { cookie: `hk_preview=${GATE_TOKEN}` });
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('refuses a wrong or empty ?hk_preview= instead of redirecting on it', async () => {
+    expect((await withToken(`${GATE_HOST}/products?hk_preview=wrong`)).status).toBe(401);
+    expect((await withToken(`${GATE_HOST}/products?hk_preview=`)).status).toBe(401);
+    expect((await withToken(`${GATE_HOST}/products?hk_preview=${GATE_TOKEN.slice(0, -1)}`)).status).toBe(401);
+  });
+
+  it('leaves the production hosts ungated, which is what the cutover depends on', async () => {
+    // The apex is served, and `www` is answered by the *canonical host* rule (a permanent
+    // redirect to the apex) rather than by this gate — which is the assertion that matters
+    // here: neither host is refused, and neither is asked for a token. The old form of this
+    // case expected both hosts to pass straight through, which stopped being true when the
+    // host rule landed; what it was protecting is that the gate does not apply to a
+    // production hostname, and that is what it now pins.
+    const apex = await withToken('https://himalayankoh.com/products');
+    expect(apex.headers.get('x-middleware-next')).toBe('1');
+
+    const www = await withToken('https://www.himalayankoh.com/products');
+    expect(www.status).not.toBe(401);
+    expect(www.headers.get('location')).toBe('https://himalayankoh.com/products');
+    for (const host of ['himalayankoh.com', 'www.himalayankoh.com']) {
+      const response = await withToken(`https://${host}/products`);
+      expect(response.status, host).not.toBe(401);
+    }
+  });
+
+  it('keeps the URL rules working for an authenticated request', async () => {
+    // The gate must not have replaced the normalisation it runs in front of.
+    const response = await withToken(`${GATE_HOST}/blog/why-do-dairy-cows-need-trace-minerals`, {
+      authorization: `Bearer ${GATE_TOKEN}`,
+    });
+    expect(response.status).toBe(308);
+  });
+
+});
+
+describe('middleware — the gate stays out of the build’s and the developer’s way', () => {
+  afterEach(() => {
+    delete process.env.PREVIEW_ACCESS_TOKEN;
+    delete process.env.NEXT_PHASE;
+  });
+
+  it('is inert for a request with no host — which is how a build reaches it', async () => {
+    process.env.PREVIEW_ACCESS_TOKEN = GATE_TOKEN;
+    // No `host` header at all. This is the shape `next build` uses to prerender
+    // `/_not-found` through the middleware, and gating it failed the build with an opaque
+    // webpack-runtime `TypeError` — measured, then fixed here.
+    const response = await middleware(new NextRequest(`${GATE_HOST}/products`));
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('is inert during a production build, so a prerender is never gated', async () => {
+    process.env.PREVIEW_ACCESS_TOKEN = GATE_TOKEN;
+    process.env.NEXT_PHASE = 'phase-production-build';
+    const response = await middleware(gateRequest(`${GATE_HOST}/products`));
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('is inert on loopback, so a developer holding the deploy token can still run next dev', async () => {
+    process.env.PREVIEW_ACCESS_TOKEN = GATE_TOKEN;
+    for (const url of ['http://localhost:3000/products', 'http://127.0.0.1:8787/api/version']) {
+      const response = await middleware(new NextRequest(url, { headers: { host: new URL(url).host } }));
+      expect(response.headers.get('x-middleware-next'), `expected ${url} to be served`).toBe('1');
+    }
+  });
+
+  it('and yet a real public host with no token is still refused', async () => {
+    // The three exemptions above must not add up to a bypass: this is the case the gate is for.
+    process.env.PREVIEW_ACCESS_TOKEN = GATE_TOKEN;
+    expect((await middleware(gateRequest(`${GATE_HOST}/products`))).status).toBe(401);
+  });
+});
+
+describe('middleware — the matcher', () => {
+  it('covers every route, not only the two browse paths it used to', () => {
+    const [pattern] = config.matcher;
+    expect(pattern).toBe('/((?!_next/static|_next/image|favicon.ico).*)');
+    // The gate's own assets can never be behind the gate, or a 401 renders blank.
+    for (const asset of ['_next/static', '_next/image', 'favicon.ico']) expect(pattern).toContain(asset);
+  });
+});

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * One-time migration: download the nine images that still live on the old
+ * One-time migration: download the images that still live on the old
  * WordPress site and write them into public/images/legacy/ under stable names.
  *
  *   node scripts/fetch-legacy-images.mjs
@@ -23,14 +23,18 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(ROOT, 'public', 'images', 'legacy');
 const WP_BASE = 'https://himalayankoh.com/wp-content/uploads';
 
-/** Original WordPress path -> filename to save it as. */
+/**
+ * Original WordPress path -> filename to save it as.
+ *
+ * This list mirrors `src/lib/images/legacyAssets.ts` exactly, and
+ * scripts/check-legacy-images.mjs fails the build if the two drift. It is kept
+ * to the images the approved public pages actually render: the homepage hero
+ * uses the horse shot, so it belongs here, and the paddock/banner/cattle shots
+ * that nothing references do not.
+ */
 const IMAGES = [
-  ['2021/03/horse-lick-himalayan-salt5-600x450.jpg', 'horse-salt-lick-paddock.jpg'],
-  ['2017/10/slat-licking-horse.jpg', 'horse-licking-salt.jpg'],
-  ['2019/08/horses-1300x200.jpg', 'horses-grazing-banner.jpg'],
-  ['2017/10/blog9.jpg', 'cattle-grazing.jpg'],
-  ['2020/10/1-600x450.jpeg', 'cattle-salt-bag.jpg'],
   ['2017/10/bowl-of-salt.jpg', 'bowl-of-salt.jpg'],
+  ['2017/10/slat-licking-horse.jpg', 'horse-licking-salt.jpg'],
   ['2025/07/6-lbs-pouche.webp', 'salt-pouch-6lb.webp'],
   ['2024/08/WhatsApp-Image-2024-08-02-at-11.31.07-PM-500x500.jpeg', 'pink-salt-16oz-jar.jpg'],
   ['2023/08/S6-600x450.jpg', 'salt-rock-bag.jpg'],

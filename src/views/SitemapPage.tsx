@@ -1,0 +1,208 @@
+import Link from 'next/link';
+import {
+  BookOpen,
+  FolderTree,
+  Home,
+  Package,
+  Shield,
+} from 'lucide-react';
+import { buildProductsCategoryPath, productsCategoryTabs } from '@/lib/categoryContent/keys';
+
+interface SitemapProduct {
+  name: string;
+  slug: string;
+  category?: string;
+}
+
+/** A published guide, as the blog index lists it. */
+interface SitemapArticle {
+  title: string;
+  slug: string;
+}
+
+interface SitemapPageProps {
+  products?: SitemapProduct[];
+  articles?: SitemapArticle[];
+}
+
+export const STATIC_PAGES = [
+  { name: 'Home', href: '/' },
+  { name: 'About Himalayan Koh', href: '/about' },
+  { name: 'All Products Shop', href: '/products' },
+  { name: 'Guides & Articles', href: '/blog' },
+  { name: 'Salt Resource Library', href: '/resources' },
+  { name: 'Visual Gallery', href: '/gallery' },
+  { name: 'Frequently Asked Questions (FAQs)', href: '/faqs' },
+  { name: 'Contact & Warehouse Support', href: '/contact' },
+];
+
+export const POLICY_PAGES = [
+  { name: 'Product, Veterinary & Health Disclaimer', href: '/disclaimer' },
+  { name: 'Editorial Policy', href: '/editorial-policy' },
+  { name: 'Privacy Policy & Google AdSense Disclosures', href: '/privacy' },
+  { name: 'Terms of Service', href: '/terms' },
+  { name: 'Shipping & Delivery Policy', href: '/shipping' },
+  { name: 'Return Policy & RMA Instructions', href: '/returns' },
+  { name: 'Google ads.txt Verification Record', href: '/ads.txt' },
+  { name: 'Machine-Readable XML Sitemap', href: '/sitemap.xml' },
+];
+
+const DEFAULT_PRODUCTS: SitemapProduct[] = [
+  { name: 'Himalayan Rock Salt — 45 lbs (2–3 large chunks)', slug: 'himalayan-rock-salt-45-lbs-large-chunks' },
+  { name: 'Himalayan Salt Fine & Coarse Grain — 6 lbs', slug: 'himalayan-salt-6-lbs' },
+  { name: 'Himalayan Salt Fine Grain — 3 lbs', slug: 'himalayan-salt-fine-grain-3-lbs' },
+  { name: 'Himalayan Salt Lick — 12 to 14 lbs', slug: 'himalayan-salt-lick-12-to-14-lbs' },
+  { name: 'Himalayan Salt Lick — 5 to 6 lbs', slug: 'himalayan-salt-lick-5-to-6-lbs' },
+  { name: 'Himalayan Salt Lick — 1 to 2 lbs', slug: 'himalayan-salt-lick-1-to-2-lbs' },
+  { name: 'Himalayan Pink Edible Salt Fine Grain Pouch — 6 lbs', slug: 'himalayan-pink-edible-salt-fine-grain-pouch-6-lbs' },
+  { name: 'Himalayan Pink Edible Salt Fine Grain Pouch — 3 lbs', slug: 'himalayan-pink-edible-salt-fine-grain-pouch-3-lbs' },
+  { name: 'Himalayan Pink Edible Salt Fine & Coarse Grain — 16 oz Jar', slug: 'himalayan-pink-edible-salt-16-oz-jar' },
+];
+
+export default function SitemapPage({ products = DEFAULT_PRODUCTS, articles = [] }: SitemapPageProps) {
+  const categories = productsCategoryTabs(products)
+    .filter((tab) => tab.key)
+    .map((tab) => ({ name: tab.label, href: buildProductsCategoryPath(tab.key) }));
+
+  return (
+    <div className="min-h-screen bg-warm-white">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
+          <span className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3">
+            Navigation Index
+          </span>
+          <h1 className="font-serif text-3xl sm:text-4xl font-bold mb-3">
+            Sitemap
+          </h1>
+          <p className="text-white/80 text-base max-w-2xl mx-auto">
+            A complete index of all public catalog products, educational guides, policy disclosures, and commercial hubs.
+          </p>
+        </div>
+      </div>
+
+      {/* Main Directory Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          
+          {/* Main Pages */}
+          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4">
+            <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
+              <Home className="w-5 h-5 text-himalayan" /> Core Website Pages
+            </h2>
+            <ul className="space-y-2.5 text-sm">
+              {STATIC_PAGES.map((page) => (
+                <li key={page.href}>
+                  <Link
+                    href={page.href}
+                    className="text-charcoal-light hover:text-himalayan transition-colors flex items-center gap-1.5"
+                  >
+                    <span className="text-himalayan/60">•</span>
+                    <span>{page.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Legal & Policies */}
+          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4">
+            <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
+              <Shield className="w-5 h-5 text-himalayan" /> Policies & Disclosures
+            </h2>
+            <ul className="space-y-2.5 text-sm">
+              {POLICY_PAGES.map((policy) => (
+                <li key={policy.href}>
+                  <Link
+                    href={policy.href}
+                    className="text-charcoal-light hover:text-himalayan transition-colors flex items-center gap-1.5"
+                  >
+                    <span className="text-himalayan/60">•</span>
+                    <span>{policy.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Catalog Categories */}
+          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4">
+            <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
+              <FolderTree className="w-5 h-5 text-himalayan" /> Catalog Shelves
+            </h2>
+            <ul className="space-y-2.5 text-sm">
+              {categories.map((cat) => (
+                <li key={cat.href}>
+                  <Link
+                    href={cat.href}
+                    className="text-charcoal-light hover:text-himalayan transition-colors flex items-center gap-1.5"
+                  >
+                    <span className="text-himalayan/60">•</span>
+                    <span>{cat.name}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/*
+            * Published guides. This section was previously rendered behind a
+            * `false &&` for the retired `/resources` library, so the HTML sitemap
+            * carried no link to the blog or to any article — the one crawlable
+            * index the site publishes quietly omitted its only educational
+            * content. It now lists the guides the blog index actually serves.
+            */}
+          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4 md:col-span-2 lg:col-span-2">
+            <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-himalayan" /> Guides &amp; Articles ({articles.length})
+            </h2>
+            {articles.length === 0 ? (
+              <p className="text-sm text-charcoal-light">
+                Guides are published on the{' '}
+                <Link href="/blog" className="text-himalayan hover:underline font-semibold">
+                  blog
+                </Link>
+                .
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
+                {articles.map((art) => (
+                  <div key={art.slug}>
+                    <Link
+                      href={`/blog/${art.slug}`}
+                      className="text-charcoal-light hover:text-himalayan transition-colors flex items-start gap-1.5"
+                    >
+                      <span className="text-himalayan/60 mt-1">•</span>
+                      <span className="leading-snug">{art.title}</span>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Published Products */}
+          <div className="bg-white rounded-2xl p-6 sm:p-8 border border-gray-100 shadow-sm space-y-4 md:col-span-2 lg:col-span-3">
+            <h2 className="font-serif text-xl font-bold text-charcoal flex items-center gap-2">
+              <Package className="w-5 h-5 text-himalayan" /> Verified Catalog Products ({products.length})
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2.5 text-sm">
+              {products.map((prod) => (
+                <div key={prod.slug}>
+                  <Link
+                    href={`/products/${prod.slug}`}
+                    className="text-charcoal-light hover:text-himalayan transition-colors flex items-start gap-1.5"
+                  >
+                    <span className="text-himalayan/60 mt-1">•</span>
+                    <span className="leading-snug">{prod.name}</span>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}

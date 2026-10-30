@@ -1,139 +1,106 @@
 import type { Metadata } from 'next';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { breadcrumbJsonLd, aggregateOfferJsonLd } from '@/lib/seo/jsonLd';
-import { getSeoSupabase, seoFetchDeadline } from '@/lib/seo/server';
-import {
-  buildProductsCategoryPath,
-  filterLabelFromKey,
-  getCategoryContent,
-  normalizeCategoryQueryValue,
-  CATEGORY_PRODUCT_LABELS,
-  CATEGORY_QUERY_PARAM,
-} from '@/lib/categoryContent';
+import { getCatalogProducts } from '@/lib/backend/serverCatalog';
 import JsonLd from '@/components/seo/JsonLd';
 import ProductsClient from './ProductsClient';
 
-type SearchParams = Promise<Record<string, string | string[] | undefined>>;
-
-/** First value of a possibly-repeated query param. */
-function firstValue(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return value ?? null;
-}
+/**
+ * The default catalogue — the page `/products` with no query string.
+ *
+ * ## Why this route reads no `searchParams`
+ *
+ * It used to. `searchParams` is a request-scoped value, so reading it made the
+ * route dynamic, and a dynamic route is never prerendered and never cached at
+ * the edge: measured 2026-09-29 on the preview Worker, `/products` took 899 ms
+ * with `Cache-Control: no-store, must-revalidate` while `/` and `/faqs` — the
+ * same layout, the same components, statically rendered — answered in 60 ms.
+ * Every visitor paid a full WooCommerce round trip for a page whose content is
+ * identical for all of them.
+ *
+ * So the query string moved out of this module. `middleware.ts` rewrites a
+ * query-bearing `/products` request to the shelf route
+ * (`src/app/(main)/products/shelf/[key]/page.tsx`), which is where
+ * `?category=` gets its own title, canonical and breadcrumb, and where a search
+ * or sort term is answered. Both routes render the same `ProductsClient` over
+ * the same catalog read, so there is exactly one catalogue implementation.
+ *
+ * The address bar is untouched by that rewrite: `/products?category=edible`
+ * stays `/products?category=edible` for the shopper, for links and for
+ * crawlers, and its canonical is still built by `buildProductsCategoryPath`.
+ *
+ * ## Freshness
+ *
+ * One minute, the same window `STOREFRONT_READ_TTL_SECONDS` documents: browsing
+ * may be a minute stale, buying never is. Add-to-cart, cart recalculation and
+ * checkout read WooCommerce directly and uncached, and WooCommerce refuses a
+ * quantity it cannot stock, so a stale listing cannot oversell. A price
+ * correction reaches this page within a minute, or immediately when the admin
+ * console saves a product (`revalidateTag` purges the edge entry — see
+ * `lib/backend/cacheTags.ts`).
+ */
+export const revalidate = 60;
 
 const DEFAULT_PRODUCTS_SEO = {
-  title: 'Shop Himalayan Pink Salt Products - Himalayan Koh',
+  // Names only what the catalogue actually stocks: the five active products
+  // are an edible jar, horse licks, cattle rock salt and livestock bags and
+  // pouches. Lamps, serving plates and cooking blocks are not for sale, so
+  // the shop title must not advertise them.
+  title: 'Shop Himalayan Pink Salt — Edible Jar, Licks & Livestock | Himalayan Koh',
   description:
-    'Shop premium Himalayan pink salt for horses, cattle, deer, and cooking. Natural mineral-rich salt licks, blocks, and edible grades.',
+    'Shop Himalayan pink salt: fine-grain edible jar, horse licks, cattle rock salt, and livestock bags and pouches. Unrefined and mineral-rich.',
 };
 
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}): Promise<Metadata> {
-  const params = await searchParams;
-  const categoryKey = normalizeCategoryQueryValue(firstValue(params[CATEGORY_QUERY_PARAM]));
-  const category = getCategoryContent(categoryKey);
-
-  // Each category hub is its own landing page — give it server-rendered title,
-  // description and canonical instead of inheriting the generic /products ones.
-  if (category && categoryKey) {
-    // A category hub with zero purchasable products is a real page (gallery,
-    // guides) but nothing to buy — noindex it so it doesn't rank for a
-    // product search and disappoint the shopper who clicks through. Drop the
-    // noindex the moment a matching SKU goes active. products.category is a
-    // display label resolved client-side from categories.name via
-    // category_id — the raw table has no `category` column, so the id has
-    // to be looked up first.
-    let hasProducts = true;
-    try {
-      const supabase = getSeoSupabase();
-      const { data: categoryRows } = await supabase
-        .from('categories')
-        .select('id')
-        .in('name', [...CATEGORY_PRODUCT_LABELS[categoryKey]])
-        .abortSignal(seoFetchDeadline());
-      const categoryIds = ((categoryRows ?? []) as { id: string }[]).map((row) => row.id);
-
-      if (categoryIds.length > 0) {
-        const { count } = await supabase
-          .from('products')
-          .select('id', { count: 'exact', head: true })
-          .eq('is_active', true)
-          .in('category_id', categoryIds)
-          .abortSignal(seoFetchDeadline());
-        hasProducts = Boolean(count && count > 0);
-      } else {
-        hasProducts = false;
-      }
-    } catch (err) {
-      console.error('Could not check category product count for robots meta:', err);
-    }
-
-    return buildMetadata({
-      title: category.seo.title,
-      description: category.seo.description,
-      path: buildProductsCategoryPath(categoryKey),
-      noindex: !hasProducts,
-    });
-  }
-
+export function generateMetadata(): Metadata {
   return buildMetadata({ ...DEFAULT_PRODUCTS_SEO, path: '/products' });
 }
 
-export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  const params = await searchParams;
-  const categoryKey = normalizeCategoryQueryValue(firstValue(params[CATEGORY_QUERY_PARAM]));
-  const category = getCategoryContent(categoryKey);
-
-  const breadcrumb = [
-    { name: 'Home', path: '/' },
-    { name: 'Products', path: '/products' },
-  ];
-
-  if (category && categoryKey) {
-    breadcrumb.push({
-      name: filterLabelFromKey(categoryKey),
-      path: buildProductsCategoryPath(categoryKey),
-    });
-  }
-
-  // Fetch price range for AggregateOffer schema on main listing
+export default async function Page() {
+  // One catalogue read serves the page, the schema below and the client grid.
+  //
+  // The read goes through the catalog seam — the same source the grid renders —
+  // so schema can never advertise a price the shop is not actually showing, and
+  // the client is handed the products this render was built from instead of
+  // asking the backend for the whole catalogue again on mount.
+  //
+  // When the source cannot report prices no AggregateOffer is emitted at all,
+  // which is why this is silent rather than an error, and why `availability` is
+  // omitted unless the source reported stock we can stand behind.
+  let catalogProducts: Awaited<ReturnType<typeof getCatalogProducts>>['products'] | null = null;
   let aggregateOffer = null;
-  if (!category) {
-    try {
-      const supabase = getSeoSupabase();
-      const { data: products } = await supabase
-        .from('products')
-        .select('price')
-        .eq('is_active', true)
-        .abortSignal(seoFetchDeadline());
+  try {
+    const read = await getCatalogProducts();
+    catalogProducts = read.products;
 
-      if (products && products.length > 0) {
-        const prices = (products as { price: number }[]).map((p) => Number(p.price)).filter(Boolean);
-        if (prices.length > 0) {
-          const minPrice = Math.min(...prices);
-          const maxPrice = Math.max(...prices);
-          aggregateOffer = aggregateOfferJsonLd({
-            minPrice,
-            maxPrice,
-            priceCurrency: 'USD',
-            offerCount: prices.length,
-            availability: 'InStock',
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Could not fetch product prices for schema:', err);
+    const priced = read.products.filter(
+      (product) => typeof product.priceMin === 'number' && Number.isFinite(product.priceMin)
+    );
+    if (priced.length > 0) {
+      const prices = priced.map((product) => product.priceMin as number);
+      aggregateOffer = aggregateOfferJsonLd({
+        minPrice: Math.min(...prices),
+        maxPrice: Math.max(...prices),
+        priceCurrency: 'USD',
+        offerCount: priced.length,
+        availability: priced.some((product) => product.inStock) ? 'InStock' : 'OutOfStock',
+      });
     }
+  } catch (err) {
+    // A failed read costs the page its schema and its first paint data, not the
+    // page: the grid then reads for itself and reports the failure there.
+    console.error('Could not read the catalog for /products:', err);
   }
 
   return (
     <>
-      <JsonLd data={breadcrumbJsonLd(breadcrumb)} />
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: 'Home', path: '/' },
+          { name: 'Products', path: '/products' },
+        ])}
+      />
       {aggregateOffer && <JsonLd data={aggregateOffer} />}
-      <ProductsClient />
+      <ProductsClient initialProducts={catalogProducts} initialCategoryKey={null} />
     </>
   );
 }

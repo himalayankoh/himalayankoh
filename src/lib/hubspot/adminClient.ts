@@ -1,8 +1,7 @@
-import { supabase } from '@/lib/supabase/client';
+import { getAccessToken } from '@/services/wordpressAdminAuth';
 
 async function authHeaders(): Promise<Record<string, string> | null> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = getAccessToken();
   if (!token) return null;
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }

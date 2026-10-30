@@ -10,9 +10,7 @@ import {
   orderStatusBadgeClass,
 } from '../lib/orders/status';
 import { useAuthContext } from '../context/AuthContext';
-import { ordersApi } from '../lib/supabase/api';
-import { isSupabaseConfigured } from '../lib/supabase/client';
-import type { Json, OrderWithItems } from '../lib/supabase/database.types';
+import type { Json, OrderWithItems } from '../lib/commerce/types';
 import { useCart } from '../store/cartStore';
 
 interface ShippingAddress {
@@ -27,7 +25,7 @@ interface ShippingAddress {
 
 export default function OrderDetailPage() {
   const { orderId } = useParams();
-  const { user, profile } = useAuthContext();
+  const { user, profile, session } = useAuthContext();
   const { addItem } = useCart();
   const [order, setOrder] = useState<OrderWithItems | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,13 +33,28 @@ export default function OrderDetailPage() {
 
   useEffect(() => {
     const fetchOrder = async () => {
-      if (!orderId || !user?.id || !isSupabaseConfigured()) {
+      const token = session?.access_token;
+      if (!orderId || !user || !token) {
         setLoading(false);
         return;
       }
 
       try {
-        setOrder(await ordersApi.getOrderById(orderId, user.id));
+        const response = await fetch(`/api/account/orders/${orderId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        });
+        if (response.status === 404) {
+          setError('Order not found.');
+          return;
+        }
+        if (!response.ok) {
+          throw new Error(`Unable to load order (${response.status})`);
+        }
+        const data = await response.json();
+        setOrder(data.order);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load order');
       } finally {
@@ -50,7 +63,7 @@ export default function OrderDetailPage() {
     };
 
     fetchOrder();
-  }, [orderId, user?.id]);
+  }, [orderId, user, session?.access_token]);
 
   const handleReorder = async () => {
     if (!order) return;
@@ -72,7 +85,7 @@ export default function OrderDetailPage() {
     <div className="min-h-screen bg-warm-white">
       <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-12 md:py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <Link to="/orders" className="inline-flex items-center gap-2 text-white/70 hover:text-white mb-4 text-sm">
+          <Link to="/account?tab=orders" className="inline-flex items-center gap-2 text-white/70 hover:text-white mb-4 text-sm">
             <ArrowLeft size={16} />
             Back to Orders
           </Link>

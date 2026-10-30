@@ -5,8 +5,9 @@ export interface ShippoPublicConfig {
 }
 
 /**
- * Runtime Shippo status. Falls back to disabled if the endpoint is unreachable
- * so checkout still works with flat-rate shipping.
+ * Runtime Shippo status. Falls back to disabled if the endpoint is unreachable, so a
+ * checkout whose rate lookup cannot be trusted prices delivery from the store's own
+ * flat table instead of showing nothing.
  */
 export async function loadShippoConfig(): Promise<ShippoPublicConfig> {
   try {

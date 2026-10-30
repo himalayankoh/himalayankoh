@@ -1,0 +1,8 @@
+{
+  "workflowId": "rxIGjn6VQmn6MA8h",
+  "workflowName": "HK LeadOS 3.2 — Autonomous Market Discovery Worker",
+  "active": true,
+  "credentialId": "oYoVRM96cFDB5zsl",
+  "installedAt": "2026-10-15T19:47:53.577Z",
+  "scheduleIntervalHours": 6
+}

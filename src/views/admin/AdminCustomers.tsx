@@ -1,154 +1,334 @@
-﻿import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Mail, Phone, Search, Users } from 'lucide-react';
-import { Button } from '../../components/ui';
-import { SkeletonTable } from '../../components/ui/Skeleton';
-import EmptyState from '../../components/ui/EmptyState';
-import { adminApi } from '../../lib/supabase/api/admin';
-import { isSupabaseConfigured } from '../../lib/supabase/client';
-import { getErrorMessage } from '../../lib/errors';
-import type { Profile } from '../../lib/supabase/database.types';
+'use client';
 
+import { useCallback, useEffect, useState } from 'react';
+import { Mail, Phone, Search, Users } from 'lucide-react';
+import {
+  ADMIN_TD,
+  AdminButton,
+  AdminChip,
+  AdminNotice,
+  AdminPageHeader,
+  AdminPanel,
+  AdminTable,
+  AdminTableSkeleton,
+} from '../../components/admin/AdminUI';
+import { ICON_TILE, ICON_TILE_TONES, INPUT } from '../../components/admin/adminTheme';
+import {
+  fetchAdminCustomers,
+  type AdminCustomer,
+  type AdminCustomerKind,
+} from '../../lib/admin/consoleApi';
+import { getErrorMessage } from '../../lib/errors';
+
+/**
+ * The kinds of account this screen can be narrowed to.
+ *
+ * "Guest orders" is here because leaving it out would hide a real part of the order
+ * book: those orders carry no account at all, so they cannot appear in a list of
+ * accounts. Choosing it shows the guest panel rather than silently returning every
+ * account as if that were the answer.
+ *
+ * "Suspicious (review)" is the census's review list — reserved domains, and nameless
+ * records with a machine-generated address — and it is a way to *look* at rows, never a
+ * way to remove them. Choosing it changes what is listed and nothing else.
+ */
+const KIND_OPTIONS: { value: AdminCustomerKind; label: string }[] = [
+  { value: 'all', label: 'All accounts' },
+  { value: 'buyer', label: 'Verified buyers' },
+  { value: 'registered', label: 'Registered, no order' },
+  { value: 'administrative', label: 'Staff accounts' },
+  { value: 'suspicious', label: 'Suspicious (review)' },
+  { value: 'guest', label: 'Guest orders (no account)' },
+];
+
+/** The chip a row carries, so a row's kind is never implied by its position. */
+const KIND_LABEL: Record<AdminCustomerKind, string> = {
+  all: 'Account',
+  buyer: 'Verified buyer',
+  registered: 'No order',
+  administrative: 'Staff',
+  suspicious: 'Suspicious',
+  guest: 'Guest order',
+};
+
+const COLUMNS = [
+  { key: 'customer', label: 'Customer', width: '32%' },
+  { key: 'contact', label: 'Contact' },
+  { key: 'orders', label: 'Orders', align: 'right' as const },
+  { key: 'spend', label: 'Spend', align: 'right' as const },
+  { key: 'last', label: 'Last order', align: 'right' as const },
+];
+
+/**
+ * Customers — the store's own customer records.
+ *
+ * This screen used to read signup profiles from the authentication provider, which
+ * meant it could not answer the only question a commerce console's customer page
+ * exists for: who bought something. It now reads WooCommerce, which counts each
+ * customer's orders and spend itself; those figures are shown as the store reports
+ * them rather than summed here, because a second implementation of WooCommerce's
+ * accounting would disagree with it the first time an order was refunded.
+ *
+ * A customer with no orders is still a customer — WooCommerce holds the account —
+ * and the "buyers only" toggle narrows to people who have actually bought.
+ * Identity and roles stay on Users; the two screens do not overlap.
+ *
+ * The list asks for *every* role the store holds, not just `customer`. The store's
+ * default answer is 2,704 accounts where it holds 2,707, and the three it withholds
+ * are staff accounts — one of them the owner's own administrator account, which made
+ * two completed orders in 2023. A buyer list that cannot show a paying account is a
+ * wrong list, so the role is fetched and shown as a chip on any non-customer row
+ * instead of the row being quietly dropped or passed off as a shopper.
+ */
 export default function AdminCustomers() {
-  const [customers, setCustomers] = useState<Profile[]>([]);
+  const [customers, setCustomers] = useState<AdminCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [buyersOnly, setBuyersOnly] = useState(false);
+  const [kind, setKind] = useState<AdminCustomerKind>('all');
+  /** Per-page counts by kind from the same read. */
+  const [kinds, setKinds] = useState<Record<string, number> | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
-    if (!isSupabaseConfigured()) {
-      setCustomers([]);
-      setLoading(false);
-      return;
-    }
-
     try {
       setFetchError(null);
-      const result = await adminApi.getCustomers({ search: search || undefined, page, limit: 12 });
+      const result = await fetchAdminCustomers({
+        search: search || undefined,
+        page,
+        limit: 25,
+        payingOnly: buyersOnly,
+        kind,
+      });
       setCustomers(result.customers);
-      setTotalPages(result.totalPages);
+      setKinds(result.kinds ?? null);
+      setTotalPages(result.totalPages || 1);
       setTotalCount(result.count);
     } catch (err) {
-      setFetchError(getErrorMessage(err, 'Failed to load customers.'));
+      setCustomers([]);
+      setFetchError(getErrorMessage(err, 'The store’s customers could not be read.'));
     } finally {
       setLoading(false);
     }
-  }, [search, page]);
+  }, [search, page, buyersOnly, kind]);
 
   useEffect(() => {
-    fetchCustomers();
+    void fetchCustomers();
   }, [fetchCustomers]);
 
-  return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-charcoal">Customers</h1>
-        <p className="text-charcoal-light">Manage registered customer accounts</p>
-      </div>
+  // Verified against the store's order records. `ordersCount` is absent from every
+  // customer record on this store, so counting it here answered zero on every page.
+  const buyers = customers.filter((customer) => (customer.verifiedOrders ?? 0) > 0).length;
 
-      <div className="bg-white rounded-2xl shadow-sm p-4">
-        <div className="relative max-w-md">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search by name, email, or phone..."
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan"
-          />
-        </div>
-      </div>
+  return (
+    <>
+      <AdminPageHeader
+        eyebrow="Commerce"
+        title="Customers"
+        actions={
+          <AdminButton icon={Users} onClick={fetchCustomers} disabled={loading}>
+            Refresh
+          </AdminButton>
+        }
+      />
 
       {fetchError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          <p className="font-semibold">Customers could not be loaded.</p>
-          <p className="mt-1">{fetchError}</p>
-          <Button variant="destructive" size="sm" onClick={fetchCustomers} className="mt-2">
-            Retry
-          </Button>
-        </div>
+        <AdminNotice tone="danger" title="Customers could not be loaded">
+          {fetchError}
+        </AdminNotice>
       )}
 
-      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-charcoal-light uppercase tracking-wide">Customer</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-charcoal-light uppercase tracking-wide hidden sm:table-cell">Contact</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-charcoal-light uppercase tracking-wide hidden sm:table-cell">Joined</th>
-                </tr>
-              </thead>
-              <SkeletonTable rows={5} />
-            </table>
+      <AdminPanel bodyClassName="px-0 py-0">
+        <div className="flex flex-wrap items-center gap-3 border-b border-admin-line px-5 py-4">
+          {/*
+            The search field keeps its 320px floor only from `sm` up, and only takes
+            `flex-1` there too. Below that the floor was wider than the phone: with
+            three items on one nowrap row the panel could not fit, so the whole
+            console pane scrolled sideways to reach the customer count. Wrapping the
+            row and giving the field the full line (`w-full`, no grow) keeps every
+            control on screen without shrinking the field to its icon; `sm:` restores
+            the exact desktop layout.
+          */}
+          <div className="relative w-full min-w-0 sm:w-auto sm:min-w-[320px] sm:flex-1">
+            <Search
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-admin-muted"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Search the store by name, email, or username…"
+              aria-label="Search customers"
+              className={`${INPUT} w-full pl-10`}
+            />
           </div>
-        ) : customers.length === 0 ? (
-          <EmptyState
-            icon={<Users size={40} />}
-            title="No customers found"
-            description={search ? 'No customers match your search' : 'Customer accounts will appear here after sign-up'}
-            size="compact"
-            className="border-0 shadow-none rounded-none py-16"
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-charcoal-light uppercase tracking-wide">Customer</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-charcoal-light uppercase tracking-wide hidden sm:table-cell">Contact</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-charcoal-light uppercase tracking-wide hidden sm:table-cell">Joined</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {customers.map((customer) => (
-                  <tr key={customer.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-himalayan/10 flex items-center justify-center flex-shrink-0">
-                          <Users size={18} className="text-himalayan" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-charcoal">{customer.full_name || 'Unnamed customer'}</p>
-                          <p className="text-xs text-charcoal-light capitalize">{customer.role}</p>
-                          <p className="text-xs text-charcoal-light mt-0.5 truncate sm:hidden">{customer.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-charcoal-light hidden sm:table-cell">
-                      <p className="flex items-center gap-1.5"><Mail size={14} className="flex-shrink-0" /><span className="truncate">{customer.email}</span></p>
-                      {customer.phone && <p className="flex items-center gap-1.5 mt-1"><Phone size={14} className="flex-shrink-0" />{customer.phone}</p>}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-charcoal-light hidden sm:table-cell">
-                      {new Date(customer.created_at).toLocaleDateString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <label className="flex items-center gap-2 text-sm text-admin-ink">
+            <input
+              type="checkbox"
+              checked={kind === 'buyer'}
+              onChange={(event) => {
+                setBuyersOnly(event.target.checked);
+                setKind(event.target.checked ? 'buyer' : 'all');
+                setPage(1);
+              }}
+            />
+            Buyers only
+          </label>
+          <label className="flex items-center gap-2 text-sm text-admin-ink">
+            <span className="text-admin-muted">Show</span>
+            <select
+              value={kind}
+              onChange={(event) => {
+                const next = event.target.value as AdminCustomerKind;
+                setKind(next);
+                setBuyersOnly(next === 'buyer');
+                setPage(1);
+              }}
+              aria-label="Filter accounts by kind"
+              className="rounded-lg border border-admin-line bg-white px-2 py-1 text-sm text-admin-ink"
+            >
+              {KIND_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="ml-auto text-[11px] font-semibold uppercase tracking-[0.08em] text-admin-muted">
+            {loading
+              ? 'Reading…'
+              : `${totalCount} account${totalCount === 1 ? '' : 's'} in the store` +
+                (kind !== 'all' && kinds
+                  ? ` · ${kinds[kind] ?? 0} of ${customers.length} on this page match "${KIND_LABEL[kind]}"`
+                  : kinds
+                    ? ` · this page: ${kinds.buyer ?? 0} buyer(s), ${kinds.registered ?? 0} no order, ${kinds.administrative ?? 0} staff, ${kinds.suspicious ?? 0} suspicious`
+                    : '')}
+          </span>
+        </div>
+
+        <AdminTable columns={COLUMNS}>
+          {loading ? (
+            <AdminTableSkeleton rows={5} columns={COLUMNS.length} />
+          ) : customers.length === 0 ? (
+            <tr>
+              <td className={ADMIN_TD} colSpan={COLUMNS.length}>
+                <div className="flex flex-col items-center gap-2 py-16 text-center">
+                  <span className={`${ICON_TILE} ${ICON_TILE_TONES.slate} h-11 w-11`}>
+                    <Users size={20} />
+                  </span>
+                  <p className="text-sm font-semibold text-admin-ink">
+                    {search || buyersOnly || kind !== 'all'
+                      ? 'No account in the store matches this'
+                      : 'The store reports no accounts yet'}
+                  </p>
+                  <p className="text-sm text-admin-muted">
+                    {search || buyersOnly || kind !== 'all'
+                      ? 'Try a different name or email, or set the filter back to All accounts.'
+                      : 'Customer records appear here as accounts are created in WooCommerce.'}
+                  </p>
+                </div>
+              </td>
+            </tr>
+          ) : (
+            customers.map((customer) => (
+              <tr key={customer.id}>
+                <td className={ADMIN_TD}>
+                  <div className="flex items-center gap-3">
+                    <span className={`${ICON_TILE} ${ICON_TILE_TONES.brand}`}>
+                      {customer.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-admin-ink">{customer.name}</p>
+                      <p className="flex items-center gap-2 text-[11px] text-admin-muted">
+                        <span>#{customer.id}</span>
+                        <AdminChip tone="muted">{KIND_LABEL[customer.accountKind] ?? 'Account'}</AdminChip>
+                        {customer.role && customer.role !== 'customer' && (
+                          <AdminChip tone="muted">{customer.role}</AdminChip>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </td>
+                <td className={`${ADMIN_TD} text-admin-muted`}>
+                  <p className="flex items-center gap-1.5">
+                    <Mail size={14} className="shrink-0" />
+                    <span className="truncate">{customer.email ?? 'No email on the record'}</span>
+                  </p>
+                  {customer.phone && (
+                    <p className="mt-1 flex items-center gap-1.5">
+                      <Phone size={14} className="shrink-0" />
+                      {customer.phone}
+                    </p>
+                  )}
+                </td>
+                <td className={`${ADMIN_TD} text-right`}>
+                  {customer.verifiedOrders !== null ? (
+                    customer.verifiedOrders > 0 ? (
+                      <>
+                        <span className="font-semibold text-admin-ink">{customer.verifiedOrders}</span>
+                        <p className="text-[11px] text-admin-muted">
+                          {customer.activityBasis === 'billing-email' ? 'from a guest order' : 'from the order book'}
+                        </p>
+                      </>
+                    ) : (
+                      <AdminChip tone="muted">No orders found</AdminChip>
+                    )
+                  ) : customer.ordersCount !== null ? (
+                    <span className="font-semibold text-admin-ink">{customer.ordersCount}</span>
+                  ) : (
+                    <AdminChip tone="muted">Not reported</AdminChip>
+                  )}
+                </td>
+                <td className={`${ADMIN_TD} text-right`}>
+                  {customer.totalSpent === null ? (
+                    <AdminChip tone="muted">Not reported</AdminChip>
+                  ) : (
+                    <span className="font-semibold text-admin-ink">${customer.totalSpent.toFixed(2)}</span>
+                  )}
+                </td>
+                <td className={`${ADMIN_TD} text-right text-admin-muted`}>
+                  {customer.lastOrderAt ? (
+                    <>
+                      <p>{new Date(customer.lastOrderAt).toLocaleDateString()}</p>
+                      <p className="text-[11px]">{customer.lastOrderStatus ?? ''}</p>
+                    </>
+                  ) : (
+                    <AdminChip tone="muted">No orders</AdminChip>
+                  )}
+                </td>
+              </tr>
+            ))
+          )}
+        </AdminTable>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-admin-line px-5 py-3">
+            <p className="text-sm text-admin-muted">
+              Page {page} of {totalPages} · {totalCount} in the store
+              {!loading && buyers !== customers.length ? ` · ${buyers} on this page have bought` : ''}
+            </p>
+            <div className="flex gap-2">
+              <AdminButton onClick={() => setPage((current) => current - 1)} disabled={page === 1}>
+                Previous
+              </AdminButton>
+              <AdminButton
+                onClick={() => setPage((current) => current + 1)}
+                disabled={page === totalPages}
+              >
+                Next
+              </AdminButton>
+            </div>
           </div>
         )}
-      </div>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-charcoal-light">
-          <span>Showing page {page} of {totalPages} ({totalCount} customers)</span>
-          <div className="flex gap-2">
-            <button type="button" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="px-3 py-1.5 border rounded-lg disabled:opacity-50">Previous</button>
-            <button type="button" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)} className="px-3 py-1.5 border rounded-lg disabled:opacity-50">Next</button>
-          </div>
-        </div>
-      )}
-
-      <p className="text-sm text-charcoal-light">
-        View order history from the <Link to="/admin/orders" className="text-himalayan font-semibold hover:underline">Orders</Link> page.
-      </p>
-    </div>
+      </AdminPanel>
+    </>
   );
 }
-

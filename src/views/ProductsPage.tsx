@@ -1,41 +1,78 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Loader2, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { SkeletonProductGrid } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
-import { products as fallbackProducts, Product } from '../data/products';
+import type { Product } from '../data/products';
 import ProductCard from '../components/ProductCard';
-import ProductModal from '../components/ProductModal';
+import { listingCards, productCardKey } from '../features/catalog/listingCards';
+// Deferred: the quick-view modal is only ever shown after a shopper presses
+// "Quick view", and it drags in the whole product page view. Loading it in the
+// route's own chunk meant every visit to a listing paid for a dialog most
+// visitors never open — measured 2026-09-30, it and its dependencies were ~10 KB
+// of the ~269 KB gzipped JavaScript a listing downloaded before it could paint.
+const ProductModal = lazy(() => import('../components/ProductModal'));
 import CategoryEducationPanel from '../components/category/CategoryEducationPanel';
 import CategoryFilterNav from '../components/category/CategoryFilterNav';
 import CategoryHubLayout from '../components/category/CategoryHubLayout';
 import CategoryShopPanel from '../components/category/CategoryShopPanel';
-import { productMatchesCategoryFilter } from '../lib/categoryContent';
-import { getCatalogProducts, isSupabaseDataSource } from '../lib/backend';
-import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
-
-/**
- * The bundled demo catalog is a Supabase-source-only safety net: it exists so a
- * Supabase outage does not blank the page. On the WooCommerce source an empty
- * catalog is a genuine answer, so demo products must never be substituted.
- * Module scope keeps it out of the effect's dependency array.
- */
-const USES_SUPABASE_SOURCE = isSupabaseDataSource();
+import {
+  ALL_LABEL,
+  categoryGalleryFromProducts,
+  filterLabelFromKey,
+  productMatchesCategoryFilter,
+  productsCategoryTabs,
+  toCategoryContentKey,
+} from '../lib/categoryContent';
+import { getCatalogProducts } from '../lib/backend/catalogClient';
 import { useCategoryBlogArticles } from '../hooks/useCategoryBlogArticles';
 import { useCategoryHubContent } from '../hooks/useCategoryHubContent';
 import { useProductsCategoryFilter } from '../hooks/useProductsCategoryFilter';
 
-export default function ProductsPage() {
-  const { activeFilter, categoryKey } = useProductsCategoryFilter();
+/**
+ * The catalogue the server already read for this request, when there is one.
+ *
+ * Passing it in removes the browser's own catalogue read on first paint: the grid
+ * renders the products the page was rendered with, and only a later invalidation
+ * (a realtime change) asks the backend again. That read then goes through the
+ * shared cache in `lib/backend/catalogClient.ts` rather than issuing a fresh
+ * full-catalogue request per mount.
+ */
+export interface ProductsPageProps {
+  initialProducts?: Product[] | null;
+  initialCategoryKey?: string | null;
+}
+
+export default function ProductsPage({
+  initialProducts,
+  initialCategoryKey,
+}: ProductsPageProps = {}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
-  const [products, setProducts] = useState<Product[]>(fallbackProducts);
-  const [loading, setLoading] = useState(USES_SUPABASE_SOURCE ? isSupabaseConfigured() : true);
-  const prevCategoryKey = useRef<string | null>(null);
-  const hasLoadedOnce = useRef(false);
-  const fetchSeq = useRef(0);
+  // No bundled catalogue as the initial value: the store's read is the only
+  // source, and the server already sent this request's products when it has them.
+  const [products, setProducts] = useState<Product[]>(initialProducts ?? []);
+  // A server-rendered list is already on screen; anything else is loading until
+  // the catalog read answers. There is no credential to consult: the read goes
+  // through the backend on every source.
+  const [loading, setLoading] = useState(!initialProducts);
 
-  const { content: categoryContent, loading: hubContentLoading } = useCategoryHubContent(categoryKey);
+  // The pills are the categories the catalogue actually carries, so a category
+  // the owner adds in WooCommerce shows up here with no code change — and the
+  // filter hook validates `?category=` against the same list.
+  const tabs = useMemo(() => productsCategoryTabs(products), [products]);
+  const { categoryKey } = useProductsCategoryFilter(initialCategoryKey, products);
+  const contentKey = toCategoryContentKey(categoryKey);
+  const activeFilter = useMemo(
+    () => tabs.find((tab) => tab.key === categoryKey)?.label
+      ?? (contentKey ? filterLabelFromKey(contentKey) : ALL_LABEL),
+    [tabs, categoryKey, contentKey]
+  );
+  const prevCategoryKey = useRef<string | null>(null);
+  const fetchSeq = useRef(0);
+  const serverCatalogRef = useRef(Boolean(initialProducts));
+
+  const { content: categoryContent } = useCategoryHubContent(categoryKey);
 
   const isCategoryHub = Boolean(categoryKey && categoryContent);
 
@@ -55,16 +92,7 @@ export default function ProductsPage() {
   }, [categoryKey]);
 
   useEffect(() => {
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
     const fetchProducts = async () => {
-      if (USES_SUPABASE_SOURCE && !isSupabaseConfigured()) {
-        setProducts(fallbackProducts);
-        setLoading(false);
-        hasLoadedOnce.current = true;
-        return;
-      }
-
       // Guard against out-of-order responses: only the latest request may
       // commit state. Prevents an older/slower fetch from overwriting a newer
       // one and causing the list to flip between results.
@@ -74,60 +102,48 @@ export default function ProductsPage() {
         const { products: catalogProducts } = await getCatalogProducts();
         if (seq !== fetchSeq.current) return;
         setProducts(catalogProducts);
-        hasLoadedOnce.current = true;
       } catch (err) {
         console.error('Failed to fetch products:', err);
         if (seq !== fetchSeq.current) return;
-        // Only fall back to the bundled catalog on the FIRST load. A failed
-        // background refetch (e.g. a realtime-triggered one) must NOT replace
-        // the products already on screen — that swap is what made the grid
-        // flicker between the live list and the fallback list.
-        if (!hasLoadedOnce.current && USES_SUPABASE_SOURCE) {
-          setProducts(fallbackProducts);
-        }
+        // A failed refetch leaves the products already on screen alone. There is
+        // no bundled catalogue to fall back to: an empty or failed read from the
+        // store is a genuine answer, and substituting someone else's inventory
+        // for it would advertise products this store cannot sell.
       } finally {
         if (seq === fetchSeq.current) setLoading(false);
       }
     };
 
-    // Coalesce bursts of realtime events into a single refetch so the grid
-    // doesn't re-render (and re-animate) on every individual row change.
-    const scheduleFetch = () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        fetchProducts();
-      }, 400);
-    };
-
-    fetchProducts();
-
-    // Realtime invalidation is a Supabase feature; the WooCommerce source
-    // refetches through the backend instead.
-    if (!USES_SUPABASE_SOURCE || !isSupabaseConfigured()) {
-      return () => {
-        if (debounceTimer) clearTimeout(debounceTimer);
-      };
+    // The server already sent this request's catalogue, so there is nothing to
+    // fetch on mount.
+    if (!serverCatalogRef.current) {
+      fetchProducts();
     }
 
-    const channel = supabase
-      .channel('shop-products-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => scheduleFetch())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => scheduleFetch())
-      .subscribe();
-
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      channel.unsubscribe();
-    };
+    // No realtime channel: the catalog is read from the store through the backend
+    // on demand, so a changed price arrives on the next read rather than as a
+    // database row event. The Supabase subscription that used to live here only
+    // ever fired for the source that no longer serves this page.
   }, []);
 
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      const matchesCategory = productMatchesCategoryFilter(p.category, categoryKey, activeFilter);
+    return listingCards(products).filter((p) => {
+      const matchesCategory = productMatchesCategoryFilter(p, categoryKey, activeFilter);
       const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
   }, [activeFilter, categoryKey, searchQuery, products]);
+
+  // The hub's gallery is about the shelf, not the search box, so it is built from
+  // the shelf's products before the search term is applied: searching "pouch"
+  // must not empty the category's photographs. See `categoryGalleryFromProducts`.
+  const hubGallery = useMemo(
+    () =>
+      categoryGalleryFromProducts(
+        products.filter((p) => productMatchesCategoryFilter(p, categoryKey, activeFilter))
+      ),
+    [activeFilter, categoryKey, products]
+  );
 
   const productList = (
     <>
@@ -145,17 +161,21 @@ export default function ProductsPage() {
         <div
           className={
             isCategoryHub
-              ? 'grid grid-cols-1 gap-4'
-              : 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5'
+              ? 'grid grid-cols-1 gap-3'
+              : 'grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4'
           }
         >
           {filteredProducts.map((product, i) => (
             <ProductCard
-              key={product.id}
+              key={productCardKey(product)}
               product={product}
               index={i}
               onQuickView={setQuickViewProduct}
               shopHighlight={isCategoryHub}
+              // The first card is the largest contentful paint on this page, so
+              // its photo is fetched at high priority instead of waiting for
+              // layout to discover it.
+              priority={i === 0}
             />
           ))}
         </div>
@@ -168,12 +188,6 @@ export default function ProductsPage() {
       categoryLabel={activeFilter}
       productCount={filteredProducts.length}
     >
-      {hubContentLoading && (
-        <div className="flex items-center gap-2 text-xs text-charcoal-light">
-          <Loader2 size={14} className="animate-spin text-himalayan" />
-          Updating…
-        </div>
-      )}
       {productList}
     </CategoryShopPanel>
   ) : (
@@ -184,9 +198,8 @@ export default function ProductsPage() {
     <div className="min-h-screen bg-warm-white">
       <div
         className={
-          isCategoryHub
-            ? 'bg-charcoal py-10 md:py-12 border-b border-white/10'
-            : 'bg-gradient-to-r from-charcoal to-charcoal-light py-20 md:py-28'
+          isCategoryHub              ? 'bg-charcoal py-6 md:py-7 border-b border-white/10'
+              : 'bg-cream py-5 md:py-6 border-b border-himalayan-line'
         }
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
@@ -201,13 +214,13 @@ export default function ProductsPage() {
             </>
           ) : (
             <>
-              <span className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-5">
+              <span className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-3">
                 Shop Now
               </span>
-              <h1 className="font-serif text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-5 leading-tight">
+              <h1 className="font-serif text-2xl sm:text-3xl font-bold text-charcoal mb-2 leading-tight">
                 Premium Salt Products
               </h1>
-              <p className="text-white/75 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
+              <p className="text-charcoal-light text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
                 Handpicked from the heart of the Himalayas — pure, natural, and mineral-rich
               </p>
             </>
@@ -216,21 +229,22 @@ export default function ProductsPage() {
       </div>
 
       <div
-        className={`mx-auto px-4 sm:px-6 py-10 md:py-12 ${
+        className={`mx-auto px-4 sm:px-6 py-6 md:py-8 ${
           isCategoryHub ? 'max-w-[100rem]' : 'max-w-7xl'
         }`}
       >
-        <div className="mb-8">
+        <div className="mb-5">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <CategoryFilterNav activeFilter={activeFilter} products={products} />
+            <CategoryFilterNav activeKey={categoryKey} tabs={tabs} />
             <div className="relative w-full md:w-72">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="search"
+                aria-label="Search the catalogue"
                 placeholder="Search products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+                className="w-full pl-11 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
               />
             </div>
           </div>
@@ -244,6 +258,7 @@ export default function ProductsPage() {
               <AnimatePresence mode="wait">
                 <CategoryEducationPanel
                   content={categoryContent}
+                  galleryImages={hubGallery}
                   articles={categoryArticles}
                   articlesLoading={articlesLoading}
                   articlesSource={articlesSource}
@@ -257,10 +272,12 @@ export default function ProductsPage() {
       </div>
 
       {quickViewProduct && (
-        <ProductModal
-          product={quickViewProduct}
-          onClose={() => setQuickViewProduct(null)}
-        />
+        <Suspense fallback={null}>
+          <ProductModal
+            product={quickViewProduct}
+            onClose={() => setQuickViewProduct(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

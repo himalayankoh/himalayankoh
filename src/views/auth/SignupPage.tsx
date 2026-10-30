@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, Loader2, ArrowLeft, User, Check } from 'lucide-react';
 import { useAuthContext } from '../../context/AuthContext';
+import { CUSTOMER_HOME } from '../../lib/auth/roleRouting';
 
 const passwordRequirements = [
   { regex: /.{8,}/, label: 'At least 8 characters' },
@@ -28,7 +29,9 @@ export default function SignupPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/', { replace: true });
+      // A new account is a customer account, and the customer's home is the
+      // account portal (which opens on My Orders) — not the storefront.
+      navigate(CUSTOMER_HOME, { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
@@ -84,16 +87,22 @@ export default function SignupPage() {
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Check size={32} className="text-green-600" />
           </div>
-          <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Check Your Email</h1>
+          <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Welcome to Himalayan Koh</h1>
           <p className="text-charcoal-light mb-6">
-            We&apos;ve sent a verification link to <strong>{formData.email}</strong>.
-            Please check your inbox and click the link to verify your account.
+            Your account is ready, and you are signed in. We&apos;ve also emailed{' '}
+            <strong>{formData.email}</strong> a confirmation for your records.
           </p>
+          {/*
+            * "Go to My Account", not "Go to Login": creating the account *is*
+            * signing in here (see `signUp` in AuthContext), so a button labelled
+            * "Login" would send a customer who is already signed in back to a form
+            * asking for the password they just chose.
+            */}
           <Link
-            to="/login"
+            to="/account"
             className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors"
           >
-            Go to Login
+            Go to My Account
           </Link>
         </motion.div>
       </div>
@@ -191,7 +200,8 @@ export default function SignupPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -244,12 +254,12 @@ export default function SignupPage() {
               )}
             </div>
 
-            <label className="flex items-start gap-3 cursor-pointer">
+            <label className="flex items-start gap-3 cursor-pointer py-1.5">
               <input
                 type="checkbox"
                 checked={acceptTerms}
                 onChange={(e) => setAcceptTerms(e.target.checked)}
-                className="w-4 h-4 mt-0.5 rounded border-gray-300 text-himalayan focus:ring-himalayan"
+                className="h-5 w-5 mt-0.5 rounded border-gray-300 text-himalayan focus:ring-himalayan"
               />
               <span className="text-sm text-charcoal-light">
                 I agree to the{' '}

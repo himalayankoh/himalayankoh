@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  backendConfig,
-  describeBackendReadiness,
-  describeReadiness,
-  isSupabaseDataSource,
-  isWooCommerceDataSource,
-  resolveDataSource,
-} from './config';
+import { backendConfig, describeReadiness } from './config';
+import { describeBackendReadiness, wooCredentials } from './credentials';
 import { buildQueryString, toBodySnippet, WordPressApiError } from './wordpress';
 import { looksLikeHtml, looksLikeWordPressFatal } from './wordpressFatal.mjs';
 import {
@@ -22,8 +16,6 @@ import {
   type StoreApiProduct,
   type WpCoreProduct,
 } from './woocommerce';
-import { mapSupabaseProduct } from '../products/mapProduct';
-import type { ProductWithCategory } from '../supabase/database.types';
 
 /** The real body staging returns for /wc/store/v1/products. */
 const WORDPRESS_FATAL_BODY = `<!DOCTYPE html>
@@ -87,83 +79,28 @@ describe('isPurchasable', () => {
 });
 
 describe('htmlToText', () => {
+  it('decodes WooCommerce product-name dashes in cart display text', () => {
+    expect(htmlToText('Salt 2 lbs &#8211; Himalayan Koh')).toBe('Salt 2 lbs – Himalayan Koh');
+    expect(htmlToText('Salt &ndash; jar &mdash; fine')).toBe('Salt – jar — fine');
+  });
   it('strips tags and decodes the entities WordPress emits', () => {
     expect(htmlToText('<p>Salt &amp; Pepper</p>')).toBe('Salt & Pepper');
     expect(htmlToText('<div>a</div>\n<div>b</div>')).toBe('a b');
     expect(htmlToText('&nbsp; spaced ')).toBe('spaced');
+  });
+
+  it('reduces a product description to the sentence it carries', () => {
+    // The product page renders the description as text, so WooCommerce's markup must
+    // not survive into it: `<p>` used to appear verbatim in the copy on every PDP that
+    // had one, which is the shape the store's descriptions all have.
+    const fromWoo =
+      '<p>Himalayan pink salt, fine 0.5–1.0 mm grain, 45 lb pack. Unrefined and additive-free.</p>';
+    expect(htmlToText(fromWoo)).toBe(
+      'Himalayan pink salt, fine 0.5–1.0 mm grain, 45 lb pack. Unrefined and additive-free.'
+    );
     expect(htmlToText(undefined)).toBe('');
-  });
-});
-
-describe('Product view model — one definition, one price meaning', () => {
-  function supabaseRow(over: Partial<ProductWithCategory> = {}): ProductWithCategory {
-    return {
-      id: 'p1',
-      name: 'Himalayan Salt Block 30 lbs',
-      slug: 'himalayan-salt-block-30-lbs',
-      description: 'A natural block.',
-      short_description: 'Big block.',
-      price: 49.95,
-      compare_at_price: null,
-      cost_price: 12,
-      sku: 'HK-LB-30LBS',
-      barcode: null,
-      weight: 30,
-      weight_unit: 'lbs',
-      category_id: 'c1',
-      images: ['https://example.test/block.webp'],
-      thumbnail: 'https://example.test/block-thumb.webp',
-      is_active: true,
-      is_featured: true,
-      grain_sizes: ['Coarse'],
-      tags: ['packing_profile:x'],
-      meta_title: 'Salt Block',
-      meta_description: 'A block of salt.',
-      pack_size: null,
-      lead_time_days: null,
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-08-19T11:56:27Z',
-      category: { id: 'c1', name: 'Salt Lumps for Cattle' } as ProductWithCategory['category'],
-      inventory: null,
-      ...over,
-    } as ProductWithCategory;
-  }
-
-  it('reads compare_at_price as the top of a VARIANT RANGE, never a discount', () => {
-    const product = mapSupabaseProduct(supabaseRow({ price: 9.95, compare_at_price: 17.95 }));
-
-    expect(product.priceRange).toBe(true);
-    expect(product.priceMin).toBe(9.95);
-    expect(product.priceMax).toBe(17.95);
-    // The range separator and shape are the long-standing storefront output.
-    expect(product.price).toBe('$9.95 - $17.95');
-  });
-
-  it('does not invent a sale when there is no compare_at_price', () => {
-    const product = mapSupabaseProduct(supabaseRow());
-
-    expect(product.priceRange).toBe(false);
-    expect(product.priceMax).toBeUndefined();
-    expect(product.price).toBe('$49.95');
-    expect(product.priceMin).toBe(49.95);
-  });
-
-  it('surfaces the real SKU and stock the row already had', () => {
-    const product = mapSupabaseProduct(supabaseRow());
-
-    expect(product.sku).toBe('HK-LB-30LBS');
-    expect(product.stockStatus).toBe('in_stock');
-    expect(product.updatedAt).toBe('2026-08-19T11:56:27Z');
-    // SKU is present, so it must not be reported as missing (the old adapter
-    // hardcoded `missing: []` while emitting `sku: null`).
-    expect(product.missing).not.toContain('sku');
-  });
-
-  it('deliberately does not populate `images`, preserving the single-image PDP', () => {
-    // ProductDetailView renders `product.images?.length ? product.images : [product.image]`,
-    // so populating this would change the rendered gallery.
-    expect(mapSupabaseProduct(supabaseRow()).images).toBeUndefined();
-    expect(mapSupabaseProduct(supabaseRow()).image).toBe('https://example.test/block-thumb.webp');
+    expect(htmlToText('<ul><li>Fine</li><li>Coarse</li></ul>')).toBe('Fine Coarse');
+    expect(htmlToText(undefined)).toBe('');
   });
 });
 
@@ -188,6 +125,34 @@ describe('mapStoreProduct', () => {
     expect(product.priceMin).toBe(19.95);
     expect(product.price).toBe('$19.95');
     expect(product.missing).not.toContain('price');
+  });
+
+  it('keeps the responsive sizes the store publishes, keyed by image url', () => {
+    const product = mapStoreProduct({
+      ...base,
+      images: [
+        {
+          id: 2462,
+          src: 'https://example.test/uploads/6-lbs-pouche.webp',
+          alt: '',
+          srcset:
+            'https://example.test/uploads/6-lbs-pouche.webp 573w, ' +
+            'https://example.test/uploads/6-lbs-pouche-300x300.webp 300w, ' +
+            'https://example.test/uploads/6-lbs-pouche-500x500.webp 500w',
+        },
+      ],
+    });
+
+    expect(product.imageResponsive).toEqual({
+      'https://example.test/uploads/6-lbs-pouche.webp': {
+        width: 573,
+        tokens: ['300x300'],
+      },
+    });
+  });
+
+  it('omits responsive sizes entirely when the store publishes none', () => {
+    expect(mapStoreProduct(base).imageResponsive).toBeUndefined();
   });
 
   it('never turns a discount into a variant price range', () => {
@@ -222,6 +187,14 @@ describe('mapStoreProduct', () => {
     expect(backorder.inStock).toBe(true);
   });
 
+  it('carries the unit count only when WooCommerce reports one', () => {
+    expect(mapStoreProduct({ ...base, stock_availability: { remaining: 7 } }).stockQuantity).toBe(7);
+    // A status without a count is not a count: an untracked product must not
+    // come through as zero available.
+    expect(mapStoreProduct({ ...base, stock_availability: { text: 'In stock' } }).stockQuantity).toBeNull();
+    expect(mapStoreProduct(base).stockQuantity).toBeNull();
+  });
+
   it('carries images and the category name through', () => {
     const product = mapStoreProduct(base);
     expect(product.images).toEqual(['https://example.test/uploads/6-lbs-pouche.webp']);
@@ -233,26 +206,34 @@ describe('mapStoreProduct', () => {
 describe('mapRestV3Product', () => {
   it('reads price, stock and sku — the fields the fatal Store API cannot return', () => {
     const product = mapRestV3Product({
-      id: 2352,
-      name: 'Salt Licks',
-      slug: 'salt-licks',
-      sku: 'HK-LICK',
+      id: 2372,
+      name: 'Himalayan Rock Salt Bag 18 lbs',
+      slug: 'himalayan-rock-salt-bag',
+      sku: 'HK-ROCK-18',
       price: '24.99',
       regular_price: '29.99',
       sale_price: '24.99',
       stock_status: 'instock',
       stock_quantity: 42,
-      images: [{ id: 1, src: 'https://example.test/lick.webp' }],
-      categories: [{ id: 58, name: 'animal feed', slug: 'animal-feed' }],
-      short_description: '<p>For horses.</p>',
+      images: [{ id: 1, src: 'https://example.test/rock-salt.webp' }],
+      categories: [{ id: 105, name: 'Bulk Order', slug: 'bulk-order' }],
+      short_description: '<p>Coarse rock salt in a bulk bag.</p>',
     });
 
     expect(product.priceMin).toBe(24.99);
-    expect(product.sku).toBe('HK-LICK');
+    expect(product.sku).toBe('HK-ROCK-18');
     expect(product.stockStatus).toBe('in_stock');
     expect(product.inStock).toBe(true);
-    expect(product.category).toBe('animal feed');
+    // REST v3 is the route that actually reports units, so the storefront's
+    // quantity ceiling and the console's stock column read the same number.
+    expect(product.stockQuantity).toBe(42);
+    expect(product.category).toBe('Bulk Order');
     expect(product.missing).not.toContain('price');
+  });
+
+  it('keeps an untracked product count-less rather than zero', () => {
+    expect(mapRestV3Product({ stock_quantity: null }).stockQuantity).toBeNull();
+    expect(mapRestV3Product({}).stockQuantity).toBeNull();
   });
 
   it('falls back through price -> sale -> regular', () => {
@@ -339,44 +320,45 @@ describe('WordPress fatal detection', () => {
 });
 
 describe('buildQueryString', () => {
-  it('drops empty values and repeats arrays', () => {
+  it('drops empty values and brackets arrays', () => {
     expect(buildQueryString({ per_page: 24, page: 1 })).toBe('?per_page=24&page=1');
     expect(buildQueryString({ a: undefined, b: null, c: '' })).toBe('');
-    expect(buildQueryString({ tag: ['a', 'b'] })).toBe('?tag=a&tag=b');
     expect(buildQueryString({})).toBe('');
+  });
+
+  it('sends an array as `key[]` so the server reads every value, not the last one', () => {
+    // Measured against the store: `/wc/v3/products?include=2721&include=2752` answers
+    // with one product because PHP keeps the last value of a repeated key, while
+    // `include[]=2721&include[]=2752` answers with both. A silently truncated filter is
+    // worse than a rejected one — the shipping read treated the missing id as an
+    // unknown product and refused to price the cart.
+    expect(buildQueryString({ include: [2721, 2752] })).toBe('?include%5B%5D=2721&include%5B%5D=2752');
+    expect(new URLSearchParams(buildQueryString({ include: [2721, 2752] })).getAll('include[]')).toEqual([
+      '2721',
+      '2752',
+    ]);
   });
 });
 
-describe('backend source flag', () => {
-  it('defaults to Supabase unless the flag explicitly selects woocommerce', () => {
-    // Pinned against explicit inputs rather than the ambient environment, so it
-    // holds whether or not NEXT_PUBLIC_DATA_SOURCE is set. The previous version
-    // asserted the ambient default, which failed for anyone who followed the
-    // migration doc and turned the flag on.
-    expect(resolveDataSource(undefined)).toBe('supabase');
-    expect(resolveDataSource('')).toBe('supabase');
-    expect(resolveDataSource('   ')).toBe('supabase');
-    expect(resolveDataSource('supabase')).toBe('supabase');
-    expect(resolveDataSource('garbage')).toBe('supabase');
-    expect(resolveDataSource('woocommerce')).toBe('woocommerce');
-    expect(resolveDataSource('  WooCommerce ')).toBe('woocommerce');
-  });
-
-  it('mirrors the configured flag onto the running app source', () => {
-    // What the old ambient assertion was really pinning: the app's source is
-    // exactly what the flag resolves to, whichever way it is set.
-    const expected = resolveDataSource(process.env.NEXT_PUBLIC_DATA_SOURCE);
-    expect(backendConfig.dataSource).toBe(expected);
-    expect(isSupabaseDataSource()).toBe(expected === 'supabase');
-    expect(isWooCommerceDataSource()).toBe(expected === 'woocommerce');
+describe('backend configuration', () => {
+  it('names one origin for the store, and no Supabase one', () => {
+    // There is no data-source flag any more, so the only thing left to pin is
+    // that the configuration speaks about WordPress and nothing else.
+    expect(backendConfig).not.toHaveProperty('dataSource');
+    expect(backendConfig.woocommerceBaseUrl).toBe(backendConfig.wordpressBaseUrl);
   });
 
   it('reports blockers instead of claiming the backend is ready', () => {
     const blocked = describeReadiness({ wordpressApiRoot: '', consumerKey: '', consumerSecret: '' });
     expect(blocked.ready).toBe(false);
     expect(blocked.blockers).toHaveLength(2);
-    expect(blocked.blockers.join(' ')).toContain('WORDPRESS_BASE_URL');
-    expect(blocked.blockers.join(' ')).toContain('WOOCOMMERCE_CONSUMER_KEY');
+    // Each blocker names the missing capability in owner-facing words. None of
+    // them ships a server credential variable name: this string is rendered in
+    // the admin console, so it is browser-bound.
+    expect(blocked.blockers.join(' ')).toContain('origin');
+    expect(blocked.blockers.join(' ')).toContain('WooCommerce REST credentials');
+    expect(blocked.blockers.join(' ')).not.toContain('WOOCOMMERCE_CONSUMER');
+    expect(blocked.blockers.join(' ')).not.toContain('WORDPRESS_BASE_URL');
 
     // Credentials alone are not enough: with no origin there is nothing to call.
     const halfConfigured = describeReadiness({
@@ -396,11 +378,14 @@ describe('backend source flag', () => {
     expect(ready.blockers).toEqual([]);
 
     // The ambient wrapper must delegate to that same rule, not re-derive it.
+    // It reads the credentials itself (they are no longer on `backendConfig`,
+    // which browser code imports), so the expectation supplies the same pair.
+    const credentials = wooCredentials();
     expect(describeBackendReadiness()).toEqual(
       describeReadiness({
         wordpressApiRoot: backendConfig.wordpressApiRoot,
-        consumerKey: backendConfig.consumerKey,
-        consumerSecret: backendConfig.consumerSecret,
+        consumerKey: credentials?.username ?? '',
+        consumerSecret: credentials?.password ?? '',
       })
     );
   });

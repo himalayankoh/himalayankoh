@@ -1,6 +1,10 @@
 # Supabase → WordPress + WooCommerce migration
 
-Status: **Phases 0–1 complete · Phase 3 product read paths ROUTED through the backend layer · real price/stock still BLOCKED on a staging fault**
+Status: **Phases 0–1 complete · Phase 3 product read paths ROUTED through the backend layer · cart and wishlist persistence MOVED off Supabase · real price/stock still BLOCKED on a staging fault**
+
+Latest: the storefront cart is WooCommerce's (`wc/store/v1`) and the wishlist is a
+WordPress table — see `STOREFRONT-WORDPRESS-CONTRACT.md`, which also re-measures
+exactly what the Store API product fatal still blocks now that the cart is off it.
 
 Target architecture:
 
@@ -20,9 +24,35 @@ GitHub Next.js frontend  →  Cloudflare preview / production frontend
 
 ## 1. Summary of the blocker
 
-Every WooCommerce **Store API product** route on staging returns a WordPress PHP
-fatal error. Until that is resolved, **no public endpoint on staging reports
-product price, sale price, SKU or stock status**, so the storefront cannot show
+> **Resolved 2026-09-23.** The fatal was the active **FarmAgrico theme**, not
+> WooCommerce: `farmagrico_woocommerce_add_to_cart_text()`
+> (`inc/woocommerce.php:842`) reads the global `$product` from inside the
+> `woocommerce_product_add_to_cart_text` filter, and WooCommerce's Store API
+> serialiser calls that filter while building a product response — a context where
+> no such global is populated. Empty result sets never reach the per-product
+> builder, which is why `include=99999999` answered `200 []` while every query that
+> matched a product fataled.
+>
+> Staging now runs a small, removable compatibility plugin —
+> `wordpress/hk-store-api-compat` v1.0.1, **active**, packaged by
+> `npm run pack:plugins` (sha256 `197d8c74b241d7f302125c2bc5ccfa6dbcf5ff2022aa1d48939ef934bda92e00`) —
+> that detaches that one callback for `/wc/store/v1/products*` requests only. A
+> Store API request returns JSON, so the theme's HTML button label is meaningless
+> there; ordinary theme pages keep it. `npm run diagnose:store-products` now
+> reports **pattern: healthy**: the whole published catalogue, every parameterised
+> query (`per_page`, `orderby`, `search`, `_fields`, `include`) and all ten
+> per-product routes answer HTTP 200.
+>
+> This is a compatibility shim, not the permanent fix: when the theme guards its
+> global (or uses the filter's product argument), deactivate and delete the plugin
+> and nothing else changes.
+>
+> Everything below this note is the pre-fix record of the same fault, kept because
+> it is the measurement the fix was chosen from.
+
+Every WooCommerce **Store API product** route on staging returned a WordPress PHP
+fatal error. Until that was resolved, **no public endpoint on staging reported
+product price, sale price, SKU or stock status**, so the storefront could not show
 real commercial data.
 
 | Endpoint | Result |
@@ -62,10 +92,19 @@ a cache artefact.
 **Why this is a server-side problem, not a client bug:** WooCommerce is clearly
 loaded and healthy — `cart`, `categories`, `attributes`, `collection-data`,
 `reviews` and the whole `wc/v3`, `wc-analytics` and `wc-admin` namespaces all
-register and respond. Only the product **response** pipeline fatals, which
-points at a filter/hook on WooCommerce product data — typically a plugin
-returning the wrong type, most often an image, gallery or page-builder plugin
-mutating product payloads.
+register and respond. Only the product **response** pipeline fatals.
+
+**Narrowed further by `npm run diagnose:store-products`** (read-only, GET only,
+idempotent): the trigger is the per-product response builder, shown as a pair rather
+than argued — queries that match no products answer `200 []` while every query that
+matches at least one fails, including `_fields=id`. All 10 published products fail,
+across `simple` and `variable`, so it is not one bad record; `collection-data` runs
+the same query and price aggregation and answers 200, so it is not the query. That
+leaves **WooCommerce 7.7.0 on WordPress 6.7.2 (PHP 7.4.33)** as one candidate and **a
+filter on product data** as the other, and the error log is what separates them.
+The `Content-Type: text/html` in the body above is the rendering for a request that
+does not ask for JSON — the same failure returns the REST JSON envelope when `Accept:
+application/json`, so a probe's `Accept` header decides which shape gets reported.
 
 ### Resolving it (owner action — not done by this migration)
 
@@ -77,10 +116,16 @@ Two options, neither of which this repository can perform safely on its own:
    `/wc/v3/products` then returns price, regular/sale price, SKU and
    `stock_status`/`stock_quantity` immediately, and the adapter pivots to it
    automatically — it is already implemented and is tried first.
-2. **Fix the fatal at the source.** Enable `WP_DEBUG_LOG`, read
-   `wp-content/debug.log` right after hitting the route, and bisect the plugins
-   listed in §5. This restores the public Store API, which is the correct
-   long-term source for a headless storefront.
+2. **Fix the fatal at the source.** One request, then
+   `grep -n "PHP Fatal" wp-content/debug.log` (needs `WP_DEBUG` + `WP_DEBUG_LOG`) or
+   the host's PHP error log — that names the file and line, and it is the only step
+   that distinguishes WooCommerce's own code from a plugin filtering product data.
+   Then either **update WooCommerce** (a path under `plugins/woocommerce/`; take a
+   database backup) or **update the plugin the log names** — rather than bisecting the
+   44 active plugins, of which about 11 touch product output at all. This restores the
+   public Store API, which is the correct long-term source for a headless storefront.
+   `npm run diagnose:store-products` prints this order and re-checks the result;
+   re-run it after any change.
 
 Per the migration safety rules, **no fake or placeholder data has been
 introduced to work around this.** Price and stock are reported as `unknown`.
@@ -181,6 +226,34 @@ mattered for the first milestone were concentrated in three modules:
 
 ---
 
+### 2.4 Retired: email verification and notifications
+
+Two Supabase-era features had **no live path at all** after the identity move, so
+they were removed rather than ported — porting dead code would have built a backend
+for a feature nobody could reach.
+
+**Email verification.** Supabase sent the confirmation link; the storefront route
+was `/verify-email`. Customer sign-in now goes through the `hk-storefront` plugin
+and WordPress owns the account, so there is no confirmation link for this app to
+consume, and nothing could ever arrive at that page. The page, its client and the
+Supabase flow were deleted, and `/verify-email` is now a legacy redirect. WordPress's
+own account tooling covers verification if it is ever wanted; this app has no
+replacement endpoint, deliberately.
+
+**Notifications.** `notifications` rows were written only by admin actions and were
+read only by admins — a customer never had a `user_id` matching the profile id the
+app now signs in with, so the customer-facing bell could not fire. The in-app path
+(`src/lib/supabase/api/notifications.ts`, `lib/notifications/adminNotify.ts`) and
+the table's reader were removed. The delivered alert for a customer is now the
+**order email** (see `lib/email/orderEmails.ts`), which reaches them where they
+already look. If an in-app inbox is wanted later it should be built fresh on the
+customer session, not restored from the inert path.
+
+Both retirements are recorded in the feature table that `npm run audit:supabase`
+prints (`retired`, never `remaining`).
+
+---
+
 ## 3. Phase 1 — backend adapter layer (implemented)
 
 `src/lib/backend/` is the seam. Views should import from here rather than from
@@ -193,7 +266,8 @@ mattered for the first milestone were concentrated in three modules:
 | `wordpressFatal.mjs` | The **single owner** of PHP-fatal / HTML-body detection, shared by `wordpress.ts` and `scripts/check-wordpress-setup.mjs` (plain ESM because the no-build script imports it directly) |
 | `woocommerce.ts` | Store API + REST v3 clients and **pure** raw→`Product` mappers |
 | `products.ts` | Catalog adapter with a documented, explicitly *degraded* fallback chain |
-| `index.ts` | Barrel — only the names the app imports: `isSupabaseDataSource`, `getCatalogProducts`, `getFeaturedCatalogProducts`, `lookupCatalogProduct`, plus their types |
+| `adminCatalog.ts` | **Admin-facing read model.** The admin list, its filters/facets/stats and the dashboard's product counts all read through here, so `/admin` and the storefront cannot disagree about which products exist |
+| `index.ts` | Barrel — only the names the app imports: `isSupabaseDataSource`, `getCatalogProducts`, `getFeaturedCatalogProducts`, `lookupCatalogProduct`, `readAdminCatalogPage`, `readAdminCatalogStats`, plus their types |
 
 ### Design commitments
 
@@ -207,6 +281,39 @@ mattered for the first milestone were concentrated in three modules:
    failed to supply, so the UI can render "unknown" deliberately.
 4. **Degradation is visible.** `CatalogResult.degraded` and `.warnings` record
    the exact backend error that forced a fallback.
+
+### Admin catalog reads — one catalog for both surfaces
+
+The storefront read WooCommerce (11 products) while `/admin` read the old Supabase
+rows (7), so the catalog had two owners and the panel edited one while the site
+served the other. `adminCatalog.ts` closes that split-brain:
+
+| Surface | Reads through |
+| --- | --- |
+| `/admin/products` list, filters, category facets, stat cards | `readAdminCatalogPage()`, `readAdminCatalogStats()` |
+| `/admin` product and category counts | `readAdminCatalogStats()` |
+| Product detail, Supabase source | the row's `record`, opened in the existing editor |
+| Product detail, WooCommerce source | the live product page — read-only, because no WooCommerce write path exists yet |
+
+Rules the module holds to:
+
+1. **`null` means "the source did not report it".** Price, SKU, stock, inventory
+   count, listing state and weight are null where the active source cannot answer,
+   and the UI says so. `statsFromRows()` counts those into `priceUnavailable` /
+   `skuUnavailable` / `stockUnknown` rather than showing zeros.
+2. **Stats are a union.** The WooCommerce source has no active/inactive or
+   low-stock figures, so its variant does not carry them and the view renders that
+   source's cards. Nothing falls back to another source's numbers — the dashboard's
+   Supabase inventory panels are hidden when WooCommerce is the catalog.
+3. **Writes stay on the source that can accept them.** A row carrying `record`
+   opens the editor; a row without one offers *View* instead, so a WooCommerce row
+   can never be edited into Supabase.
+4. **Facets come from the source too.** Category options are
+   `AdminCatalogPage.facets`; the model's `Uncategorized` placeholder
+   (`UNCATEGORIZED_CATEGORY`) counts as unreported, not as a category.
+5. **No fabricated catalog.** The bundled demo products are no longer substituted
+   when the configured source is unreachable — the panel shows an empty list and
+   why.
 
 ### Read order (WooCommerce source)
 
@@ -350,6 +457,29 @@ endpoint, then states plainly whether price and stock are obtainable and prints
 the remediation steps. Exits non-zero when no endpoint can serve commercial
 data, so it is safe to wire into CI.
 
+Both flag values can be exercised from one checkout by overriding the four
+non-secret variables for a single dev server (never edit `.env.local` for this):
+
+```bash
+NEXT_PUBLIC_DATA_SOURCE=woocommerce \
+NEXT_PUBLIC_WORDPRESS_BASE_URL=https://himalayankoh.com/staging \
+WORDPRESS_BASE_URL=https://himalayankoh.com/staging \
+NEXT_PUBLIC_WOOCOMMERCE_BASE_URL=https://himalayankoh.com/staging \
+WOOCOMMERCE_BASE_URL=https://himalayankoh.com/staging \
+npm run dev -- -p 3021
+```
+
+With no override the app runs the `supabase` default. What to expect on each:
+
+| Check | `supabase` | `woocommerce` |
+| --- | --- | --- |
+| `/admin/products` rows | every Supabase product, active and inactive | the published WooCommerce catalog, 10 per page |
+| Price column | the stored price | `Price unavailable` (no public route reports price) |
+| Stock column | units, or `Unknown` when untracked | `Unknown` + `Stock unknown` |
+| Row action | `Edit` (opens the editor) | `View` (opens the live product page) |
+| Stat cards | Total / Active / Inactive / Featured / Low Stock / Out of Stock | Total / Featured / Price Unavailable / SKU Unavailable / Stock Unknown |
+| Supabase inventory panels on `/admin` | shown | hidden |
+
 ---
 
 ## 8. Phase tracker
@@ -358,19 +488,161 @@ data, so it is safe to wire into CI.
 | --- | --- | --- |
 | 0 | Repo audit → this document | ✅ Done |
 | 1 | `src/lib/backend/` adapter layer | ✅ Done |
-| 2 | WordPress staging connectivity | ⚠️ Content OK · **Store API products fatal** |
-| 3 | Products first, behind a flag | ✅ Read paths wired and verified on both flag values · ⛔ price/stock blocked by §1 |
+| 2 | WordPress staging connectivity | ✅ Content OK · **Store API products fixed 2026-09-23** via `hk-store-api-compat` v1.0.1 (FarmAgrico theme callback scoped out of Store API product requests) — see §1 |
+| 3 | Products first, behind a flag | ✅ Read paths wired and verified on both flag values — storefront **and admin** (`adminCatalog.ts`); the two surfaces now serve the same catalog · ⛔ price/stock blocked by §1 |
 | 4 | WordPress content pages | ⏸ Not started — no code written. The speculative WordPress page/post mapper was removed as unused surface rather than left as untested groundwork. |
 | 5 | SEO from WordPress + Yoast | ⏸ Not started |
 | 6 | Images from WordPress media | ✅ Real staging images render. No `next.config.ts` change is actually needed: the storefront never uses `next/image` (40 plain `<img>` elements), so absolute staging URLs load directly. `images.remotePatterns` only matters if the app later migrates to `next/image`. |
-| 7 | Cart & checkout | ⏸ Not started — **existing Stripe/Shippo untouched** |
+| 7 | Cart & checkout | ✅ **Cart** to `wc/store/v1`, **wishlist** to the `hk-storefront/v1` plugin, and **orders** to WooCommerce: the checkout reserves the Woo order before the PaymentIntent (its id travels in Stripe metadata), the webhook marks it paid, and Shippo tracking, the emails, customer history and the admin console all read and write that order. `stripe_checkout_sessions` is deleted. See `ORDERS-WOOCOMMERCE-MIGRATION.md` §7 for what is implemented and what is not (the historical import). |
 | 8 | Customer accounts / CRM | ⏸ Not started — **production customers untouched** |
-| 9 | Supabase removal | ⏸ Not started — **Supabase fully intact, nothing deleted** |
+| 9 | Supabase removal | ✅ **Runtime imports: 0.** `npm run audit:supabase` reports browser 0, server 0 and raw PostgREST runtime calls 0; `npm run check:client-supabase` against a production build reports 0 of 73 routes shipping the SDK or its config. The legacy admin catalog (`features/catalog/repository.ts`, `services/db.ts`) now writes WooCommerce and the plugin's record store through `/api/admin/*`, `lib/supabase/*` is deleted, and the historical orders are carried by a static archive. What remains is type-only (`lib/commerce/databaseTypes.ts`). Earlier in the migration: runtime imports **11 modules** (from 33; 24 before that), server-side 9, and the two browser modules left are `/admin/categories` and `/admin/category-hubs`. The whole site-content block — **settings, category-hub overrides, first-party events, newsletter, contact submissions, blog admin writes, blog media, product/media uploads, the label worklist and the dashboard analytics** — now reads and writes WordPress/WooCommerce (`hk-storefront/v1`, `wp/v2/posts`, `wp/v2/media`, `wc/v3`); see §10. What is left is the legacy admin catalog (`features/catalog/repository.ts`, `lib/backend/adminCatalog.ts`, `lib/backend/products.ts` Supabase branches), `lib/seo/server.ts`, `lib/hermes/evidenceStore.ts`, `lib/shippo/server/rates.ts`'s packing lookup, and the read-only historical-orders adapter — each named in §10.3. Earlier steps: Runtime imports **24 modules** (from 33), server-side 19. **Blog reads** moved to WordPress (`/wp/v2/posts`); blog *admin writes* and Storage are the remaining half. **Orders** are off Supabase for the new-order lifecycle; only a read-only legacy adapter for pre-migration orders remains. Detail: The cart, wishlist, YouTube, admin auth, LeadOS/CRM, **customer accounts, saved addresses, password reset and traffic events** have left the app. The **storefront no longer ships the Supabase SDK or its config, on any route** — `npm run check:client-supabase` against a production build reports **5 of 73 routes**, down from 31, and every one of the 5 is `/admin/*`, which the owner asked to leave alone (`/products/[slug]` was the last storefront leak: the campaign path reached `lib/marketing` → `services/siteEvents`, which POSTed to Supabase with the anon key; it now posts to `/api/events`). `orders`, `order_items`, `products`, `profiles`, `blog_posts` and the rest are still read and written **server-side**. The `carts`/`cart_items`/`wishlists`/`addresses`/`notifications` tables are now unused but **kept** until the WordPress path has run in production — they hold the only copy of existing data. What is left is server-side and the admin console; orders is the bulk of it, designed in `ORDERS-WOOCOMMERCE-MIGRATION.md`. |
 | 10 | Demo-data separation | ⏸ Not started |
 | 11 | Cloudflare hosting | ⏸ Not started |
 | 12 | Environment configuration | ⚠️ Documented in §6, needs manual file edit |
 | 13 | Safety rules | ✅ Observed throughout |
-| 14 | First milestone | ⛔ Blocked on §1 |
+| 14 | First milestone | ✅ Unblocked — §1 fixed 2026-09-23 (Store API healthy) |
+
+---
+
+## 10. Site content, settings and telemetry are WordPress's now (this pass)
+
+### 10.1 The WordPress surface, and where each piece lives
+
+One new module talks to it: `src/lib/wordpress/siteContent.ts`. Its endpoints are
+registered by the **existing** `hk-storefront` plugin (version 1.3.0, one deploy
+step, no third plugin):
+
+| What | WordPress home | Endpoint |
+| --- | --- | --- |
+| Admin settings the console edits | WordPress options, one option per category | `hk-storefront/v1/settings` |
+| Category-hub overrides | WordPress options, one per category key | `hk-storefront/v1/category-hubs` |
+| First-party storefront events | new `hk_site_events` table | `hk-storefront/v1/events`, `/events/summary` |
+| Newsletter subscribers | new `hk_newsletter_subscribers` table (UNIQUE on email) | `hk-storefront/v1/newsletter` |
+| Contact submissions | new `hk_contact_submissions` table | `hk-storefront/v1/contact` |
+| HK blog fields (SEO, hero image, tags, FAQ) | registered post meta | read/written through `wp/v2/posts` |
+| Blog posts, revisions | WordPress posts and its own revisions | `wp/v2/posts`, `/revisions` |
+| Blog hero images, product images | WordPress Media Library | `wp/v2/media` |
+
+Options rather than tables for settings and hubs because both are small whole-value
+documents read as a unit — and that inherits WordPress's caching and backup path
+instead of inventing a parallel one. A table for events because traffic is
+append-only and read in aggregate; tables for newsletter and contact because losing
+a subscriber or a customer's message is the one failure those endpoints exist to
+prevent.
+
+What the app calls, and the route that fronts it:
+
+| App route | WordPress call |
+| --- | --- |
+| `POST /api/events` | `hk-storefront/v1/events` (public write, rate-limited, field-allowlisted) |
+| `GET /api/events` | the same namespace, admin-only, for the traffic dashboard |
+| `POST /api/newsletter`, `POST /api/contact` | the plugin's tables |
+| `/api/category-hub` | `hk-storefront/v1/category-hubs/one` (published filter applied in the app) |
+| `/api/admin/blog/posts[/…]` | `wp/v2/posts` with the administrator application password |
+| `/api/upload-image`, `/api/admin/media/import-url` | `wp/v2/media` |
+| `/api/admin/labels` | `wc/v3/orders` |
+| `/api/admin/analytics` | `wc/v3/orders`, `wc/v3/customers`, the inventory report |
+| `POST /api/admin/hubspot/import` | `crm/v1/leads` (it wrote to Supabase while the inbox read WordPress) |
+
+### 10.2 Two real defects this fixed
+
+- **HubSpot imports went somewhere the console could not see.** The route inserted
+  into a Supabase `crm_leads` while the CRM inbox read the LeadOS plugin. It writes
+  through the plugin now, deduping against the leads the inbox actually holds.
+- **A paid WooCommerce order could be missing from the label bench.** The worklist
+  read the app's own `orders` table; it reads WooCommerce now, so an order paid in
+  the store is on the bench. `shipping_carrier` and `tracking_number` come from the
+  meta the label step writes, so a label bought here appears immediately.
+
+### 10.3 What is still on Supabase, individually
+
+**Nothing in the application.** `npm run audit:supabase` measures the source and
+reports `importing Supabase at runtime: 0` — browser 0, server 0 — plus
+`RAW SUPABASE CALLS (no SDK import): 0`, the second half of the acceptance rule,
+because the hand-rolled PostgREST client this repository used to carry imported
+nothing from the SDK and would have read as "no dependency" in an import-only scan.
+
+This pass closed the block §10.1 named as the largest and then deleted what it had
+been keeping alive:
+
+| Was on Supabase | Now |
+| --- | --- |
+| `features/catalog/repository.ts` — the legacy admin catalog CRUD behind every `/admin` product screen | The same exported functions, with WooCommerce underneath: `/api/admin/products`, `/api/admin/categories`, `/api/admin/coupons`, `/api/admin/catalog`. `CatalogAdmin`, `AdminSection`, `AIImportPanel`, `ListingTaskAdmin` and `HermesIntel` are unchanged |
+| `services/db.ts` — a PostgREST adapter built in the browser from `VITE_SUPABASE_*` | WordPress: the same `DbAdapter` interface over `/api/admin/records` and the plugin's `hk_admin_records` table. It holds the console's *own* working state (Scout candidates, scores, suppliers, agent jobs, offers, settings blobs); products, coupons and inventory are refused by the plugin's allowlist because WooCommerce owns them |
+| `lib/backend/products.ts`, `lib/backend/adminCatalog.ts` Supabase branches and `NEXT_PUBLIC_DATA_SOURCE` | Deleted in the previous pass; WooCommerce is the only catalog source. The deleted modules now read WooCommerce only |
+| `views/admin/AdminCategories.tsx` Supabase editor | Deleted (841 → 383 lines); the Woo editor already existed in the same file |
+| `lib/seo/server.ts` | Its Supabase read had no callers left — dead code carrying a live client. Deleted |
+| `lib/hermes/evidenceStore.ts` | Plugin table `hk_hermes_evidence`, reached through `lib/wordpress/storefrontClient.ts`; dedupe is the table's UNIQUE key |
+| `lib/shippo/server/rates.ts` packing lookup | WooCommerce product weight/dimensions plus `_hk_packing_profile` product meta, read by `lib/woo/packingProfile.ts` — which also resolves the store's weight unit from Woo settings instead of assuming pounds |
+| `lib/orders/legacyOrders.ts`, `/api/admin/orders/legacy` | **Deleted.** The 14 historical orders were imported into WooCommerce (`npm run migrate:orders -- --apply`: 14 created, re-run created 0) and now render from `lib/woo/orders` like any other order — no adapter, no archive read at runtime. The archive file stays as the offline record — see §10.5 |
+| `lib/stripe/server/supabaseAdmin.ts`, `lib/supabase/*` | Deleted: `client.ts`, `adminClient.ts`, `config.ts` and all four `api/` modules. `@supabase/supabase-js` stays in `package.json` because the *scripts* still use it (backup, RLS verification, the order export) — tooling, not runtime |
+
+### 10.5 The historical orders are imported, not carried
+
+Both blockers that held the import — the plugin on the target, and the administrator
+application password — are resolved, so `npm run migrate:orders -- --apply` has run:
+**14 orders, 23 line items, 0 failed, 0 duplicates on re-run.** They are ordinary Woo
+orders now, each tagged `_hk_legacy_supabase_order_id` and carrying its original
+date and totals, with WooCommerce email silenced for the request and line items
+written free-standing so nothing touched inventory.
+
+The archive is the fallback for a target that has **no** WordPress write credential,
+not a runtime path — it is exported once:
+
+```
+npm run migrate:orders -- --export-archive   # writes supabase-backup/legacy-orders.archive.json
+```
+
+`migrate:orders` reads that file when it cannot read Supabase. It is untracked on
+purpose: it carries customers' own addresses and order details, which do not belong
+in git history. Now that the import has run, the archive's only job is to let the
+importer re-run against a target that has lost its Supabase credentials — the
+application no longer reads it at all.
+
+### 10.4 Phase L — the plugin blocker, measured
+
+`npm run check:wordpress` (read-only) now probes both HK namespaces and the public
+namespace index, so "the plugin is not active" is a stated fact rather than an
+inference from scattered feature failures:
+
+The same command sweeps **every route the application calls** on those namespaces
+(19 on `hk-storefront/v1`, 1 on `crm/v1`) and, when the administrator credential is
+present, lists the installed HK plugins with the version that is actually active —
+the plugin file on the server *is* the deployment, and nothing else records which
+build is running. Registration is judged from the response's error code rather than
+its status, so a route that wants a parameter (400) or is POST-only (404 with a
+different code) still counts as present; only `rest_no_route` means missing.
+
+```
+HK WordPress plugins
+  credential: absent
+  registered: hk-storefront/v1 = no · crm/v1 = no
+  ABSENT GET /hk-storefront/v1/events — HTTP 404
+         The hk-storefront/v1 namespace is not registered on this site.
+         Blocks: wishlist, saved addresses, cart across devices, customer sign-in and password resets
+  ABSENT GET /crm/v1/leads — HTTP 404
+         Blocks: the CRM inbox and LeadOS
+```
+
+**Resolved.** The plugin files now reach the WordPress host through the normal
+bucket: `npm run pack:plugins` builds a ZIP per header version and
+`scripts/install-wordpress-plugins.mjs` drives the authenticated upload and activation
+for an operator, staging only. Two obstacles are worth recording because both are
+invisible from the code:
+
+- `POST /wp/v2/plugins` installs from the wordpress.org directory only, so a private
+  plugin cannot be installed through REST. It has to go through the upload endpoint.
+- **WordPress names the destination folder from the uploaded filename**, and an
+  archive written by `Compress-Archive` on Windows uses backslash path separators —
+  which Linux reads as one file with a backslash in its name. The plugin then appears
+  in the list and refuses to activate ("Plugin file does not exist"). `pack-plugins.mjs`
+  therefore writes folder separators that are forward slashes on every platform, and
+  names the archive after the plugin slug.
+
+After the upload, `npm run check:wordpress` reports both namespaces registered and
+**20 of 20** routes present with the method each is registered for — the probe uses
+the route's real method, because probing a POST-only route with GET reports a present
+route as missing.
 
 ---
 
@@ -389,3 +661,79 @@ The follow-on decision that will need owner input: whether all 11 staging
 products should be publicly sellable, or whether WooCommerce needs its own
 "is this ready to sell" marker to mirror the Supabase `packing_profile:` gate
 (see §4).
+
+---
+
+## 11. The verified build is deployed to staging
+
+Measured, three ways, in this order — the invariant is that a deployment is never
+ahead of the code it claims to be:
+
+| Where | SHA |
+| --- | --- |
+| Local working tree (`git rev-parse HEAD`) | `c13bd0e` |
+| Staging Worker (`GET /api/version`) | `c13bd0e` |
+| `origin/integration/cloudflare-workers-migration` | `31c9998` — **16 commits behind** |
+
+Local and staging agree. The GitHub branch does not, and **could not be updated from
+this environment**: the configured credential helper stores nothing, `gh` reports an
+invalid token, and there is no SSH key, so `git push` fails at authentication. Nothing
+was force-pushed and no history was rewritten; the commits are local until a working
+GitHub credential is available. That is a real, external blocker and the only reason
+the three SHAs above are not all equal.
+
+Deployment used the existing staging mechanism — `npm run build:deploy` (writes
+`.env.production.local` with the staging origin and the commit, then builds and runs
+both artifact gates) followed by `npm run deploy:staging` (Worker
+`himalayan-koh-ecommerce`, origin `preview.himalayankoh.com`). **Production was not
+touched.** Worker secrets are managed with `wrangler secret put`, not by the deploy, so
+they survive it; the live sign-in and write flows below are the proof.
+
+### Live regression on the deployed origin
+
+| Suite | Result |
+| --- | --- |
+| Customer journey (signup, login, account, wishlist, addresses, password change, reset, cross-account isolation) | **21/21** |
+| LeadOS + CRM (stats, projects, lead save, dedupe, scoring, CRM, outreach **simulation**) | **18/18** |
+| Admin catalog write (draft → edit → publish → trash → purge) | **18/18** |
+| Storefront + cart | **14/14** |
+| Admin sign-in through the app's own route | PASS (role `admin`) |
+| Admin APIs on a real session | products 31 · orders 25 of 28 (14 imported historical + 14 new) · inventory 57 · analytics · LeadOS stats |
+| Woo Store API `/wc/store/v1/products` (catalogue, parameters, per-product, variable) | healthy — `hk-store-api-compat` 1.0.1 active |
+| Client Supabase scan | 73 routes: 0 SDK, 0 config; the 3 dynamic routes measured with real ids → **76/76 clean** |
+| `audit:supabase` | 667 modules, **0** runtime imports (browser 0, server 0, types 0, raw calls 0) |
+
+### QA debris, and the tool that removed it
+
+The storefront tables are append-only behind the administrator application password
+and no delete route covers them, so QA rows accumulate next to real ones. This pass
+added `wordpress/hk-staging-cleanup/` — a **staging-only, marker-scoped** tool:
+
+- it refuses to run unless the site URL is the staging install (`/staging` path or a
+  `preview.` host), so shipping it to production is inert rather than dangerous;
+- it accepts no table, column, id or pattern from the caller — the markers are
+  constants in the file, and the most a caller can ask for is a dry run;
+- it required an explicit `confirm` token and `manage_options`.
+
+Dry run, then delete: **50 rows** removed — 11 newsletter subscribers, 9 contact
+submissions, 9 site events, 9 Hermes evidence records, 6 CRM leads, 6 LeadOS projects —
+leaving **0** matched rows and the one real LeadOS project (`Himalayan Koh — B2B Salt`)
+untouched. Every row removed was synthetic: the newsletter table held only
+`cutover-verify-*` and `probe-*` rows, which is why its count reached 11 rather than
+the two the previous pass assumed.
+
+The tool was then deactivated **and deleted from staging** (its route now answers
+404), so the deletion surface does not outlive the cleanup. Its source stays in the
+repository, packaged by `pack:plugins` like `hk-store-api-compat`, because the next QA
+pass will produce the same debris.
+
+### Stripe and Shippo, closed honestly
+
+- **Stripe**: no test keys exist in any environment. Both routes fail closed on the
+deployed app — `create-payment-intent` → 503 "Stripe payments are not configured",
+webhook → 503 "STRIPE_WEBHOOK_SECRET is not configured". Live payment E2E is
+**BLOCKED on test credentials**, not on code.
+- **Shippo**: the only configured key is a **live** one, so no rate or label was
+requested. The safe path was measured instead (an incomplete address answers 400 with
+no provider call), and the packing logic is read from WooCommerce product meta.
+Live shipping E2E is **BLOCKED on a test credential**, deliberately not exercised.

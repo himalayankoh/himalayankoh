@@ -1,13 +1,29 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import { buildMetadata } from '@/lib/seo/metadata';
-import { breadcrumbJsonLd, faqJsonLd } from '@/lib/seo/jsonLd';
-import { fetchSeoProductModel } from '@/lib/seo/server';
+import { breadcrumbJsonLd } from '@/lib/seo/jsonLd';
+import { fetchSeoProductModel, seoFetchDeadline } from '@/lib/seo/server';
+import { lookupCatalogProduct } from '@/lib/backend/serverCatalog';
 import { buildProductStructuredData } from '@/lib/products/productSchema';
 import { buildProductPageSeo, getProductDisplayName } from '@/lib/products/productSeo';
 import JsonLd from '@/components/seo/JsonLd';
 import ProductDetailClient from './ProductDetailClient';
 
 type Params = { slug: string };
+
+/**
+ * Product pages are cached at the edge for a minute.
+ *
+ * Measured 2026-09-29: an uncached product page took 865–885 ms on the preview
+ * Worker, and the origin read behind it ~730 ms, for a page that is identical
+ * for every visitor. One minute is the window `STOREFRONT_READ_TTL_SECONDS`
+ * already documents — browsing may be a minute stale, buying never is:
+ * add-to-cart, cart recalculation and checkout read WooCommerce directly and
+ * uncached, and WooCommerce refuses a quantity it cannot stock, so a cached
+ * listing cannot oversell. Saving a product in the admin console purges the
+ * page immediately rather than waiting out the window.
+ */
+export const revalidate = 60;
 
 export async function generateMetadata({
   params,
@@ -17,12 +33,16 @@ export async function generateMetadata({
   const { slug } = await params;
   const product = await fetchSeoProductModel(slug).catch(() => null);
 
+  // No canonical, no OpenGraph URL and an explicit noindex for a slug that
+  // resolves no product. Emitting `canonical: /products/<slug>` here is how a
+  // withheld or non-existent product announced itself to a crawler, and the copy
+  // of a withheld product (staging still carries animal-feed listings) must not be
+  // advertised under any URL. The page itself answers 404 — see `Page` below.
   if (!product) {
-    return buildMetadata({
-      title: 'Product - Himalayan Koh',
-      description: 'Premium Himalayan pink salt products for livestock and cooking.',
-      path: `/products/${slug}`,
-    });
+    return {
+      title: 'Product not found — Himalayan Koh',
+      robots: { index: false, follow: false },
+    } satisfies Metadata;
   }
 
   // Same helper the client view uses, so the server HTML title/description
@@ -38,50 +58,59 @@ export async function generateMetadata({
   });
 }
 
-// Generic FAQs for salt products (can be customized per product in future)
-const PRODUCT_FAQs = faqJsonLd([
-  {
-    question: 'What are the health benefits of Himalayan pink salt?',
-    answer: 'Himalayan pink salt is naturally mineral-rich, containing trace minerals like potassium, magnesium, and calcium. It supports hydration, mineral balance, and can help maintain healthy blood pressure levels.',
-  },
-  {
-    question: 'How should I use this salt?',
-    answer: 'Usage depends on the product type. Salt licks can be offered free-choice to livestock. Edible salt can be used for cooking and food preparation. Always follow recommended serving sizes and consult your veterinarian for livestock nutrition guidance.',
-  },
-  {
-    question: 'Is this salt food-grade safe?',
-    answer: 'Yes, our Himalayan pink salt is natural, unrefined, and contains no additives or anti-caking agents. It is safe for both humans and animals.',
-  },
-  {
-    question: 'How long does a salt lick last?',
-    answer: 'The lifespan of a salt lick depends on consumption rates and weather conditions. Most quality salt licks last several weeks to months with regular use.',
-  },
-]);
-
-export default async function Page({ params }: { params: Promise<Params> }) {
+/**
+ * A slug that resolves no product is a real 404, not a page that says so.
+ *
+ * It used to answer 200 with the generic title "Product - Himalayan Koh", a
+ * canonical pointing at itself and `robots: index, follow` — a soft 404 that
+ * invited indexing of a URL whose whole content was the words "Product Not
+ * Found". Staging's off-niche products (animal-feed listings, whose own copy is
+ * withheld from the storefront) each had such a page. The not-found response
+ * carries the shop's 404 page instead, and `generateMetadata` above emits no
+ * canonical for it.
+ */
+export default async function Page({ params, searchParams }: {
+  params: Promise<Params>;
+  searchParams?: Promise<{ variation?: string }>;
+}) {
   const { slug } = await params;
-  const product = await fetchSeoProductModel(slug).catch(() => null);
+  const lookup = await lookupCatalogProduct(slug, seoFetchDeadline()).catch(() => null);
+  const product = lookup?.product ?? null;
+  const related = lookup?.related ?? [];
+
+  // A withheld record (`lookup.withheld`) and a slug that was never a product both
+  // answer the shop's 404 here; the decision lives at this seam, not in middleware,
+  // because it depends on the product's own facts — including the owner's recorded
+  // niche approval — which no URL-text rule at the edge can know.
+  //
+  // A redirect would be the tidier answer for the withheld case, and there is a
+  // `redirect()` call for it in the other pages of this app — but that call throws
+  // on this deployment runtime (measured: `/return` and `/admin/api-keys` both
+  // answer 500 on the preview Worker). Until it works, the 404 is the honest
+  // response: the product is not served, and the URL is not advertised.
+  if (!product) notFound();
+  const requestedId = Number((await searchParams)?.variation);
+  const selectedVariationId = product.variations?.options.find(option => option.id === requestedId)?.id;
 
   return (
     <>
-      {product && (
-        <>
-          {/* Full Product + Offer + FAQPage + WebPage graph, server-rendered so
-              crawlers get it without executing the client bundle. */}
-          <JsonLd data={buildProductStructuredData(product)} />
-          <JsonLd
-            data={breadcrumbJsonLd([
-              { name: 'Home', path: '/' },
-              { name: 'Products', path: '/products' },
-              { name: getProductDisplayName(product), path: `/products/${product.slug}` },
-            ])}
-          />
-          <JsonLd data={PRODUCT_FAQs} />
-        </>
-      )}
+      {/* Full Product + Offer + FAQPage + WebPage graph, server-rendered so
+          crawlers get it without executing the client bundle. */}
+      <JsonLd data={buildProductStructuredData(product)} />
+      <JsonLd
+        data={breadcrumbJsonLd([
+          { name: 'Home', path: '/' },
+          { name: 'Products', path: '/products' },
+          { name: getProductDisplayName(product), path: `/products/${product.slug}` },
+        ])}
+      />
       {/* key remounts the view when navigating product-to-product, so the
           seeded server data is picked up instead of the previous product's. */}
-      <ProductDetailClient key={product?.slug ?? slug} initialProduct={product} />
+      <ProductDetailClient
+        key={`${product.slug}:${selectedVariationId ?? 'parent'}`}
+        initialProduct={selectedVariationId ? { ...product, selectedVariationId } : product}
+        initialRelated={related}
+      />
     </>
   );
 }

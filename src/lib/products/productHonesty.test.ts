@@ -10,6 +10,12 @@ import {
 } from './price';
 import { buildProductPageSeo } from './productSeo';
 import { buildProductStructuredData } from './productSchema';
+import { hasProhibitedClaim } from './claims';
+import {
+  isNicheProduct,
+  isOwnerApprovedSku,
+  isOwnerRejectedProduct,
+} from '../catalog/niche';
 
 /** A product whose price the source could not report. */
 const unknownPriceProduct: Product = {
@@ -87,7 +93,7 @@ describe('meta description honesty', () => {
     const { description } = buildProductPageSeo(unknownPriceProduct);
 
     expect(description).toBe(
-      'Salt Block — unrefined Himalayan pink salt with 84+ trace minerals. Free U.S. shipping on orders over $50.'
+      'Salt Block — a Himalayan pink salt block for grilling and serving. Unrefined, additive-free salt from Himalayan Koh.'
     );
     expect(description).not.toMatch(MONEY);
     expect(description).not.toMatch(/nan|NaN|null|undefined/);
@@ -96,11 +102,112 @@ describe('meta description honesty', () => {
   it('keeps the known-price description byte-identical to the legacy output', () => {
     const { description } = buildProductPageSeo(knownPriceProduct);
 
-    // Exactly what this helper produced before the price became nullable.
+    // The price clause is unchanged; only the shelf sentence moved, because the
+    // description now follows the shelf the product is actually listed under.
     expect(description).toBe(
-      'Salt Block — unrefined Himalayan pink salt with 84+ trace minerals. $49.95. Free U.S. shipping on orders over $50.'
+      'Salt Block — a Himalayan pink salt block for grilling and serving. $49.95. Unrefined, additive-free salt from Himalayan Koh.'
     );
     expect(description).not.toMatch(/nan|NaN|null|undefined/);
+  });
+
+  it('describes an edible product as edible, not as a block', () => {
+    // Placement comes from the shelf taxonomy, so the meta sentence and the hub
+    // the product appears on cannot disagree about what kind of salt this is.
+    const jar: Product = {
+      ...knownPriceProduct,
+      name: 'Himalayan Pink Salt Jar 1 lb',
+      category: 'Edible Cooking Salt',
+    };
+
+    expect(buildProductPageSeo(jar).description).toContain(
+      'unrefined Himalayan pink salt with its natural trace minerals'
+    );
+  });
+
+  it('makes no claim the salt cannot support, for any product', () => {
+    const { description } = buildProductPageSeo({ ...knownPriceProduct, name: 'Salt Block 30 lbs' });
+
+    // The rule this replaced banned the words livestock/horse/cattle/deer, which
+    // refused the owner's own salt licks and salt blocks while still letting a
+    // fabricated certification through. Claims are what has to be refused; the
+    // subject matter is legitimate (see claims.test.ts).
+    expect(hasProhibitedClaim(description)).toBe(false);
+  });
+});
+
+/**
+ * Owner-approved Salt Lick and Salt Block products are the reason this store
+ * exists, and a previous rule refused them for naming their animals. These are
+ * the regression tests for that: the approved copy has to pass every generated
+ * surface, and the catalog guard has to keep the product.
+ */
+describe('owner-approved Salt Lick products', () => {
+  const approvedLicks = [
+    { sku: 'HK-LFH-2lbs', name: 'Himalayan Salt Lick — 1 to 2 lbs', price: '$12.95', priceMin: 12.95 },
+    { sku: 'HK-LFH-4lbs', name: 'Himalayan Salt Lick — 3 to 4 lbs', price: '$14.95', priceMin: 14.95 },
+    { sku: 'HK-LFH-14lbs', name: 'Himalayan Salt Lick — 12 to 14 lbs', price: '$29.95', priceMin: 29.95 },
+    { sku: 'HK-LFH-30lbs', name: 'Himalayan Salt Lick — 30 lbs', price: '$39.95', priceMin: 39.95 },
+    { sku: 'HK-LB-30LBS', name: 'Himalayan Salt Block — 30 lbs', price: '$49.95', priceMin: 49.95 },
+    { sku: 'HK-BFD-8-4-1', name: 'Himalayan Salt Block — Rectangular 8 x 4 x 1 in', price: '$14.95', priceMin: 14.95 },
+  ];
+
+  it.each(approvedLicks)('keeps the catalog entry for $sku', ({ sku, name }) => {
+    expect(isOwnerApprovedSku(sku)).toBe(true);
+    expect(isNicheProduct({ id: 9999, name, sku, category: 'Salt Licks' })).toBe(true);
+  });
+
+  it.each(approvedLicks)('publishes honest SEO copy for $sku', ({ sku, name, price, priceMin }) => {
+    const product: Product = {
+      ...knownPriceProduct,
+      id: sku,
+      slug: 'himalayan-salt-lick',
+      name,
+      sku,
+      price,
+      priceMin,
+      category: 'Salt Licks',
+    };
+
+    const { title, description } = buildProductPageSeo(product);
+
+    // Nothing is invented and nothing is refused for naming the animal it is for.
+    // The title is compared as a prefix because the SEO title budget truncates a
+    // long product name — that is length control, not a lost product.
+    expect(title.startsWith(name.slice(0, 24))).toBe(true);
+    expect(title).toContain('Himalayan Koh');
+    expect(description).toContain(price);
+    expect(hasProhibitedClaim(description)).toBe(false);
+
+    const graph = buildProductStructuredData(product)['@graph'] as Record<string, unknown>[];
+    const node = graph.find((entry) => entry['@type'] === 'Product')!;
+    expect(node.sku).toBe(sku);
+    expect((node.offers as Record<string, unknown>).price).toBe(priceMin);
+  });
+
+  it('still refuses the records the owner rejected, whatever they are called', () => {
+    // The three records the owner explicitly does not want on the new storefront.
+    expect(isOwnerRejectedProduct(2185)).toBe(true);
+    expect(isOwnerRejectedProduct(2192)).toBe(true);
+    expect(isOwnerRejectedProduct(2295)).toBe(true);
+    expect(isOwnerRejectedProduct(2294)).toBe(true);
+
+    // Animal-feed records name their animal and are not owner-approved SKUs, so a
+    // record the owner has not named is refused however it is priced or filed.
+    expect(isOwnerApprovedSku('5483976372749')).toBe(false);
+    expect(
+      isNicheProduct({ id: null, name: 'Himalayan Pink Salt Licks for Horses', sku: null, category: 'animal feed' })
+    ).toBe(false);
+    expect(
+      isNicheProduct({ id: 286, name: 'Himalayan Pink Salt Block for Deer', sku: null, category: 'animal feed' })
+    ).toBe(false);
+
+    // The owner's live-launch admission is what admits the two live livestock
+    // records, and it is the record that is admitted — not the wording. The same
+    // name and category with no admitted id is still refused, which is asserted
+    // above; this is the same product *with* its id.
+    expect(
+      isNicheProduct({ id: 281, name: 'Himalayan Pink Salt Licks for Horses', sku: null, category: 'animal feed' })
+    ).toBe(true);
   });
 });
 

@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { FileText, Eye } from 'lucide-react';
-import type { PdpPdfResource } from '../../lib/products/pdpContent';
-import { formatPdfPublishedLabel } from '../../lib/products/pdpContent';
+import type { ContentPdfResource } from '../../lib/content/types';
+import { formatPublishedMonthYear } from '../../lib/content/publishedDate';
 import PdfViewerModal from './PdfViewerModal';
 
 interface Props {
-  resources: PdpPdfResource[];
+  resources: ContentPdfResource[];
   /** Dev/admin preview: show hidden resources with a badge. */
   showHidden?: boolean;
   /** Category hub: no duplicate heading / outer card chrome. */
@@ -17,7 +17,7 @@ export default function ProductPdfLibrary({
   showHidden = false,
   embedded = false,
 }: Props) {
-  const [activeResource, setActiveResource] = useState<PdpPdfResource | null>(null);
+  const [activeResource, setActiveResource] = useState<ContentPdfResource | null>(null);
 
   const visibleResources = showHidden
     ? resources
@@ -49,7 +49,7 @@ export default function ProductPdfLibrary({
                     {resource.description}
                   </p>
                   <p className="text-[11px] text-charcoal-light/80 mb-3">
-                    {resource.fileSize} · {formatPdfPublishedLabel(resource.publishedAt)}
+                    {resource.fileSize} · {formatPublishedMonthYear(resource.publishedAt)}
                   </p>
                   <button
                     type="button"

@@ -3,49 +3,45 @@ import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-do
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, Loader2, ArrowLeft, UserRound } from 'lucide-react';
 import { useAuthContext } from '../../context/AuthContext';
-import { isSupabaseConfigured } from '../../lib/supabase/client';
+import { resolvePostLoginDestination } from '../../lib/auth/roleRouting';
 
-type DemoAccount = { label: string; email: string; password: string; redirectTo: string };
-
-// Demo credentials only exist at all in a development build. Checking
-// process.env.NODE_ENV directly (not through the isDev re-export) lets the
-// production minifier prove this function always returns null and strip the
-// credential literals below as dead code — not just skip rendering them, so
-// they can't be scraped out of the shipped production JS either.
-function getDemoAccounts(): { customer: DemoAccount; admin: DemoAccount } | null {
+/**
+ * The development convenience — and only the part of it that is true.
+ *
+ * This used to advertise two pairs of demo credentials, and both were false. The
+ * customer account was never seeded, and the admin password printed here was not
+ * the configured account's password: "Use Demo Admin" filled a credential that
+ * answered 401, so the page told you to sign in with something that could not
+ * work.
+ *
+ * A password belongs in the account's own record, not in page source, so the
+ * honest thing to prefill is the admin *email* — that much is true and public —
+ * and to leave the password to whoever holds it.
+ *
+ * Development builds only. Checking `process.env.NODE_ENV` directly lets the
+ * production minifier prove this returns null and strip it.
+ */
+function devAdminEmail(): string | null {
   if (process.env.NODE_ENV !== 'development') return null;
-  return {
-    customer: {
-      label: 'Use Demo Customer',
-      email: 'customer@himalayankoh.com',
-      password: 'Customer@123',
-      redirectTo: '/account',
-    },
-    admin: {
-      label: 'Use Demo Admin',
-      email: 'admin@himalayankoh.com',
-      password: 'Admin@123',
-      redirectTo: '/admin',
-    },
-  };
+  return 'admin@himalayankoh.com';
 }
 
-const demoAccounts = getDemoAccounts();
+const devAdmin = devAdminEmail();
 
 export default function LoginPage() {
-  const [email, setEmail] = useState(demoAccounts?.customer.email ?? '');
-  const [password, setPassword] = useState(demoAccounts?.customer.password ?? '');
+  // Prefilled with the admin email in development, and never with a password.
+  // The form used to arrive holding a demo customer's password, so the first
+  // click of Sign In always failed against Supabase.
+  const [email, setEmail] = useState(devAdmin ?? '');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState('');
-  const [demoRedirect, setDemoRedirect] = useState<string | null>(null);
-  const [redirectTarget, setRedirectTarget] = useState<string | null>(null);
-  
-  const { signIn, isAuthenticated } = useAuthContext();
+
+  const { signIn, isAuthenticated, isAdmin, profileLoading } = useAuthContext();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const supabaseReady = isSupabaseConfigured();
 
   // `from` arrives as a ?from= query param (see ProtectedRoute/AdminRoute) —
   // falls back to router state for any caller that still passes it that way.
@@ -63,33 +59,38 @@ export default function LoginPage() {
     : from;
 
   useEffect(() => {
-    if (demoAccounts && from.startsWith('/admin')) {
-      fillDemoAccount('admin');
+    if (devAdmin && from.startsWith('/admin')) {
+      setEmail(devAdmin);
     }
   }, [from]);
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate(redirectTarget || from, { replace: true });
-    }
-  }, [isAuthenticated, navigate, from, redirectTarget]);
+  /**
+   * Where this sign-in lands, decided by role — never by the address typed.
+   *
+   * The previous rule compared the email against the *demo* admin address and
+   * otherwise fell back to `from`, so a real administrator signed in and
+   * arrived at the storefront, while a demo admin only worked in a development
+   * build. The role is the only thing that decides it (lib/auth/roleRouting).
+   */
+  const destination = resolvePostLoginDestination({ isAdmin, from });
 
-  const getRedirectForEmail = (loginEmail: string) => {
-    if (demoRedirect) return demoRedirect;
-    if (demoAccounts && loginEmail.trim().toLowerCase() === demoAccounts.admin.email) return '/admin';
-    return from;
-  };
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    // The role arrives with the profile row (or the session's role claim).
+    // Navigating before it does is how an admin ends up in the customer
+    // portal: `isAdmin` is briefly false for everyone.
+    if (profileLoading) return;
+    navigate(destination, { replace: true });
+  }, [isAuthenticated, navigate, destination, profileLoading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
     setIsSubmitting(true);
-    const nextRedirect = getRedirectForEmail(email);
-    setRedirectTarget(nextRedirect);
 
     try {
       await signIn({ email, password });
-      navigate(nextRedirect, { replace: true });
+      // The effect above performs the redirect once the role is known.
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Login failed. Please try again.');
     } finally {
@@ -99,13 +100,9 @@ export default function LoginPage() {
 
   const isSigningIn = isSubmitting;
 
-  const fillDemoAccount = (type: 'customer' | 'admin') => {
-    if (!demoAccounts) return;
-    const account = demoAccounts[type];
-    setEmail(account.email);
-    setPassword(account.password);
-    setDemoRedirect(account.redirectTo);
-    setRedirectTarget(account.redirectTo);
+  const fillAdminEmail = () => {
+    if (!devAdmin) return;
+    setEmail(devAdmin);
     setFormError('');
   };
 
@@ -134,9 +131,7 @@ export default function LoginPage() {
               className="h-14 mx-auto mb-4"
             />
             <h1 className="font-serif text-2xl font-bold text-charcoal">Welcome Back</h1>
-            <p className="text-charcoal-light text-sm mt-1">
-              {demoAccounts ? 'Sign in to your account or use a demo login' : 'Sign in to your account'}
-            </p>
+            <p className="text-charcoal-light text-sm mt-1">Sign in to your account</p>
           </div>
 
           <button
@@ -151,38 +146,14 @@ export default function LoginPage() {
             No account needed to shop or check out — you can create one later to track orders faster.
           </p>
 
-          {demoAccounts && (
-            <>
-              <div className="grid grid-cols-2 gap-3 mb-6">
-                <button
-                  type="button"
-                  onClick={() => fillDemoAccount('customer')}
-                  className="p-3 rounded-xl bg-himalayan-lighter text-himalayan text-sm font-semibold hover:bg-himalayan/15 transition-colors"
-                >
-                  {demoAccounts.customer.label}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fillDemoAccount('admin')}
-                  className="p-3 rounded-xl bg-charcoal text-white text-sm font-semibold hover:bg-charcoal-light transition-colors"
-                >
-                  {demoAccounts.admin.label}
-                </button>
-              </div>
-
-              <div className="mb-6 rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs text-charcoal-light space-y-1">
-                <p><span className="font-semibold text-charcoal">Customer:</span> {demoAccounts.customer.email} / {demoAccounts.customer.password}</p>
-                <p><span className="font-semibold text-charcoal">Admin:</span> {demoAccounts.admin.email} / {demoAccounts.admin.password}</p>
-              </div>
-            </>
-          )}
-
-          {!supabaseReady && (
-            <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-              {demoAccounts
-                ? 'Supabase environment variables are missing. Demo login will work after `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are added in Vercel and the demo accounts are seeded.'
-                : 'Supabase environment variables are missing. Sign-in is unavailable until they are configured.'}
-            </div>
+          {devAdmin && (
+            <button
+              type="button"
+              onClick={fillAdminEmail}
+              className="w-full p-3 mb-6 rounded-xl bg-charcoal text-white text-sm font-semibold hover:bg-charcoal-light transition-colors"
+            >
+              Fill in the admin email
+            </button>
           )}
 
           {/* Form */}
@@ -199,17 +170,21 @@ export default function LoginPage() {
 
             <div>
               <label className="block text-sm font-medium text-charcoal mb-1.5">
-                Email Address
+                Email or WordPress username
               </label>
               <div className="relative">
                 <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
-                  type="email"
+                  // Deliberately not type="email": WordPress admins sign in with a
+                  // username, which the browser's native email validation would refuse.
+                  type="text"
+                  name="email"
+                  autoComplete="username"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
-                  placeholder="john@example.com"
+                  placeholder="you@example.com or your WordPress username"
                 />
               </div>
             </div>
@@ -231,7 +206,8 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
@@ -239,10 +215,10 @@ export default function LoginPage() {
             </div>
 
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-center gap-2 cursor-pointer py-1.5">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded border-gray-300 text-himalayan focus:ring-himalayan"
+                  className="h-5 w-5 rounded border-gray-300 text-himalayan focus:ring-himalayan"
                 />
                 <span className="text-sm text-charcoal-light">Remember me</span>
               </label>

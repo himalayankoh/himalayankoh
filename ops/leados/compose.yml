@@ -1,0 +1,31 @@
+# Loopback-only services on the owner's existing Docker host. No DNS changes.
+# Pin SEARXNG_IMAGE and CADDY_IMAGE to the tested registry digests before release.
+services:
+  search:
+    image: ${SEARXNG_IMAGE:?Set the verified official SearXNG image digest}
+    restart: unless-stopped
+    volumes:
+      - ${LEADOS_SEARXNG_CONFIG:?Private settings directory}:/etc/searxng:ro
+    networks: [research]
+    mem_limit: 768m
+    cpus: 1
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  gateway:
+    image: ${CADDY_IMAGE:?Set the verified official Caddy image digest}
+    restart: unless-stopped
+    environment:
+      LEADOS_RESEARCH_TOKEN: ${LEADOS_RESEARCH_TOKEN:?Provide a private random token}
+    ports: ["127.0.0.1:8890:8890"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    networks: [research]
+    mem_limit: 128m
+    cpus: 0.5
+    cap_drop: [ALL]
+    # Official Caddy binary carries this file capability, even on a high port.
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+networks:
+  research:
+    driver: bridge

@@ -1,28 +1,34 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Bell, Heart, LayoutDashboard, MapPin, Package, Shield, User, BarChart3, ShoppingBag, Truck } from 'lucide-react';
-import type { Profile } from '../../lib/supabase/database.types';
-import type { User as SupabaseUser } from '@supabase/supabase-js';
+import { Heart, LayoutDashboard, MapPin, Package, Shield, User, BarChart3, ShoppingBag, Truck } from 'lucide-react';
+import type { Profile } from '../../lib/commerce/types';
+import type { SessionUser } from '../../lib/auth/sessionShape';
 
+/**
+ * Customer nav — every entry is a tab of the one account portal (`/account`).
+ * `/orders` no longer has its own screen; it redirects into the portal's My
+ * Orders tab, so this list aims at the canonical route only.
+ */
 const customerNavItems = [
-  { label: 'Dashboard', path: '/account', icon: LayoutDashboard },
-  { label: 'My Purchases', path: '/orders', icon: Package },
+  { label: 'My Orders', path: '/account?tab=orders', icon: Package },
+  { label: 'Account Details', path: '/account?tab=profile', icon: User },
+  { label: 'Addresses', path: '/account?tab=addresses', icon: MapPin },
+  { label: 'Password', path: '/account?tab=security', icon: Shield },
+  { label: 'Dashboard', path: '/account?tab=dashboard', icon: LayoutDashboard },
   { label: 'Track a Package', path: '/track', icon: Truck },
   { label: 'Wishlist', path: '/wishlist', icon: Heart },
-  { label: 'Addresses', path: '/account?tab=addresses', icon: MapPin },
-  { label: 'Notifications', path: '/account?tab=notifications', icon: Bell },
-  { label: 'Settings', path: '/account?tab=profile', icon: Shield },
 ];
 
+/** Admin nav — the console owns these, so nothing here points at a customer page. */
 const adminNavItems = [
   { label: 'Admin Dashboard', path: '/admin', icon: BarChart3 },
   { label: 'Manage Store Orders', path: '/admin/orders', icon: ShoppingBag },
   { label: 'Track Order Lookup', path: '/track', icon: Truck },
-  { label: 'Account Settings', path: '/account?tab=profile', icon: Shield },
+  { label: 'Store Settings', path: '/admin/settings', icon: Shield },
 ];
 
 interface DashboardSidebarProps {
   profile: Profile | null;
-  user: SupabaseUser | null;
+  user: SessionUser | null;
 }
 
 export default function DashboardSidebar({ profile, user }: DashboardSidebarProps) {
@@ -74,11 +80,12 @@ export default function DashboardSidebar({ profile, user }: DashboardSidebarProp
       <nav className="bg-white rounded-2xl p-3 shadow-md space-y-1">
         {navItems.map((item) => {
           const isActive =
-            item.path === '/account'
-              ? location.pathname === '/account' && !location.search
-              : currentPath === item.path ||
-                (item.path === '/orders' && location.pathname.startsWith('/orders')) ||
-                (item.path === '/admin/orders' && location.pathname.startsWith('/admin/orders'));
+            // The portal's own tab, so `/account` with no tab highlights My
+            // Orders — the tab it opens on — rather than nothing.
+            (item.path === '/account?tab=orders' &&
+              (location.pathname === '/account' ? location.search === '' || location.search === '?tab=orders' : location.pathname.startsWith('/orders/'))) ||
+            currentPath === item.path ||
+            (item.path === '/admin/orders' && location.pathname.startsWith('/admin/orders'));
 
           return (
             <Link

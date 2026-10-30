@@ -1,11 +1,14 @@
-import { publicEnv } from '@/lib/env';
+import { SITE_ORIGIN } from '@/lib/site/origin';
 
-/** Public site origin for Stripe return URLs (set in production on Vercel). */
+/**
+ * Public site origin for Stripe return URLs.
+ *
+ * Uses the one resolved origin rather than a local copy: a second resolution
+ * here could disagree with the canonical tags, which is precisely the class of
+ * bug `@/lib/site/origin` was introduced to end.
+ */
 function siteOrigin(): string {
-  const configured = publicEnv.siteUrl?.trim();
-  if (configured) return configured.replace(/\/$/, '');
-  if (typeof window !== 'undefined') return window.location.origin;
-  return '';
+  return SITE_ORIGIN;
 }
 
 export function getStripeSuccessUrl(): string {

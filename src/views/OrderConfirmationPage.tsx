@@ -11,8 +11,8 @@ import {
   orderStatusBadgeClass,
 } from '../lib/orders/status';
 import { trackOrderPageUrl } from '../lib/orders/tracking';
-import { ordersApi } from '../lib/supabase/api/orders';
-import type { Json, OrderWithItems } from '../lib/supabase/database.types';
+import { ordersApi } from '../lib/orders/client';
+import type { Json, OrderWithItems } from '../lib/commerce/types';
 
 interface LocationState {
   order?: OrderWithItems;
@@ -54,7 +54,7 @@ export default function OrderConfirmationPage() {
     setLoadError(null);
 
     void ordersApi
-      .getOrderById(orderId, user?.id)
+      .getOrderById(orderId)
       .then((fetched) => {
         if (cancelled) return;
         if (fetched) {
@@ -134,7 +134,7 @@ export default function OrderConfirmationPage() {
         {order.payment_status === 'paid' && (
           <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4 text-sm text-green-950">
             <p className="font-semibold">Payment received — thank you!</p>
-            <p className="mt-1">Your card payment was successful. We will process and ship your order soon.</p>
+            <p className="mt-1">Your payment was successful. We will process and ship your order soon.</p>
           </div>
         )}
         <div className="grid lg:grid-cols-3 gap-8">
@@ -192,7 +192,9 @@ export default function OrderConfirmationPage() {
             </p>
 
             <section className="bg-white rounded-2xl shadow-md p-6">
-              <h3 className="font-serif text-lg font-bold text-charcoal mb-4">Invoice Summary</h3>
+              {/* "Order Summary", not "Invoice Summary": there is no invoice step for a
+                  retail order, and the confirmation should not imply one. */}
+              <h3 className="font-serif text-lg font-bold text-charcoal mb-4">Order Summary</h3>
               <div className="space-y-2">
                 <SummaryRow label="Subtotal" value={order.subtotal} />
                 {order.discount_amount > 0 && <SummaryRow label="Discount" value={-order.discount_amount} />}
@@ -211,7 +213,11 @@ export default function OrderConfirmationPage() {
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-charcoal-light">Method</span>
                   <span className="font-medium text-charcoal capitalize">
-                    {order.payment_method === 'stripe_card' ? 'Credit / debit card' : order.payment_method || 'invoice'}
+                    {order.payment_method === 'stripe_card'
+                      ? 'Credit / debit card'
+                      : order.payment_method === 'staging_test_card'
+                        ? 'Staging Test Card'
+                        : order.payment_method || 'invoice'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
@@ -236,7 +242,7 @@ export default function OrderConfirmationPage() {
 
             <div className="flex flex-col gap-3">
               {user && (
-                <Link to="/orders" className="w-full flex items-center justify-center px-6 py-3 bg-charcoal hover:bg-charcoal-light text-white font-semibold rounded-xl transition-colors">
+                <Link to="/account?tab=orders" className="w-full flex items-center justify-center px-6 py-3 bg-charcoal hover:bg-charcoal-light text-white font-semibold rounded-xl transition-colors">
                   View in My Purchases
                 </Link>
               )}

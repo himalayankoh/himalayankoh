@@ -4,9 +4,12 @@ import AboutClient from './AboutClient';
 
 export function generateMetadata(): Metadata {
   return buildMetadata({
-    title: 'About Himalayan Koh - Premium Natural Pink Salt',
+    title: 'About Himalayan Koh — Unrefined Himalayan Pink Salt',
+    // Names only the ranges the catalogue actually carries. The previous version
+    // advertised "lamps", which the storefront does not sell, so the description
+    // promised a product line a shopper could not find.
     description:
-      'Learn about Himalayan Koh and our premium, all-natural Himalayan pink salt for livestock, wildlife, and the kitchen.',
+      'Himalayan Koh packs unrefined Himalayan pink salt: fine and coarse edible grades, salt licks for horses and cattle, and 45 lb livestock bags — shipped from Houston, Texas.',
     path: '/about',
   });
 }

@@ -1,0 +1,100 @@
+import { describe, expect, it } from 'vitest';
+import {
+  UNCATEGORIZED_CATEGORY,
+  cleanProductName,
+  normalizeWeightUnits,
+  reportedCategoryName,
+} from './displayName';
+
+describe('normalizeWeightUnits', () => {
+  it('reduces every store spelling of pounds to `lb`', () => {
+    expect(normalizeWeightUnits('Himalayan Salt Block — 30 lbs')).toBe('Himalayan Salt Block — 30 lb');
+    expect(normalizeWeightUnits('Bag of Salt (45 lbs.)')).toBe('Bag of Salt (45 lb)');
+    expect(normalizeWeightUnits('Fine Grain 3 lb.')).toBe('Fine Grain 3 lb');
+    expect(normalizeWeightUnits('Pouch — 6 lb')).toBe('Pouch — 6 lb');
+    expect(normalizeWeightUnits('Lick 2 lbs')).toBe('Lick 2 lb');
+  });
+
+  it('leaves content with no weight unit untouched', () => {
+    expect(normalizeWeightUnits('Himalayan Pink Edible Salt Coarse Grain — 16 oz jar')).toBe(
+      'Himalayan Pink Edible Salt Coarse Grain — 16 oz jar',
+    );
+    expect(normalizeWeightUnits('0.5–1.0 mm fine grain')).toBe('0.5–1.0 mm fine grain');
+  });
+});
+
+describe('cleanProductName', () => {
+  it('does not promise an unselectable grain for the single 6 lb livestock SKU', () => {
+    expect(cleanProductName('Himalayan Pink Salt for Livestock - 6 lb Fine or Coarse Grain Pouches', 'himalayan-rock-salt-pouches-in-fine-and-coarse-grain-sizes-6-lbs-himalayan-koh'))
+      .toBe('Himalayan Pink Salt for Livestock - 6 lb Pouch');
+  });
+  it('removes a brand suffix appended to the end of the visible name', () => {
+    expect(cleanProductName('Himalayan Salt Rock for Cattle (30 lbs) Bag - Himalayan Koh')).toBe(
+      'Himalayan Salt Rock for Cattle (30 lb) Bag',
+    );
+    expect(cleanProductName('Himalayan Rock Salt Pouches — 6 lbs | Himalayan Koh')).toBe(
+      'Himalayan Rock Salt Pouches — 6 lb',
+    );
+  });
+
+  it('does not strip a leading brand, only a trailing one', () => {
+    expect(cleanProductName('Himalayan Koh Authentic Pure Natural Pink Cooking Salt')).toBe(
+      'Himalayan Koh Authentic Pure Natural Pink Cooking Salt',
+    );
+  });
+
+  it('never touches a name that is already clean', () => {
+    expect(cleanProductName('Himalayan Salt Block — 30 lb')).toBe('Himalayan Salt Block — 30 lb');
+  });
+
+  it("applies the owner's approved title for the 45 lb livestock product by its stable slug", () => {
+    expect(
+      cleanProductName(
+        'Bag of Himalayan Pink Salt for Livestock (45 lbs.) - Himalayan Koh',
+        'bag-of-himalayan-pink-salt-for-livestock-45-lbs-himalayan-koh',
+      ),
+    ).toBe('Himalayan Rock Salt for Livestock (45 lb)');
+    // The slug is what identifies the product, so the same name without the slug is
+    // only cleaned, not renamed.
+    expect(cleanProductName('Bag of Himalayan Pink Salt for Livestock (45 lbs.) - Himalayan Koh')).toBe(
+      'Bag of Himalayan Pink Salt for Livestock (45 lb)',
+    );
+  });
+
+  it("applies the approved title for the salt licks with rope by slug", () => {
+    expect(
+      cleanProductName(
+        'Himalayan Pink Salt Licks for Horses 2 lbs - Himalayan Koh',
+        'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh',
+      ),
+    ).toBe('Himalayan Pink Salt Lick with Rope');
+  });
+
+  it('handles empty input without inventing a name', () => {
+    expect(cleanProductName('')).toBe('');
+    expect(cleanProductName('   ')).toBe('');
+  });
+});
+
+describe('reportedCategoryName', () => {
+  it('returns the category the store published, as published', () => {
+    expect(reportedCategoryName('Edible Pink Salt')).toBe('Edible Pink Salt');
+    expect(reportedCategoryName('Live Stock')).toBe('Live Stock');
+    // A category this build's shelf taxonomy has no copy for is still a fact the source
+    // reported, so it is shown rather than hidden or rewritten.
+    expect(reportedCategoryName('Salt Licks')).toBe('Salt Licks');
+  });
+
+  it('treats the model’s placeholder as "not reported", in any spelling', () => {
+    expect(reportedCategoryName(UNCATEGORIZED_CATEGORY)).toBeNull();
+    expect(reportedCategoryName('uncategorized')).toBeNull();
+    expect(reportedCategoryName('  Uncategorized  ')).toBeNull();
+  });
+
+  it('treats an empty category as not reported', () => {
+    expect(reportedCategoryName('')).toBeNull();
+    expect(reportedCategoryName('   ')).toBeNull();
+    expect(reportedCategoryName(null)).toBeNull();
+    expect(reportedCategoryName(undefined)).toBeNull();
+  });
+});

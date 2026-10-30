@@ -1,12 +1,36 @@
+/**
+ * Creates an order that is not waiting on a card payment.
+ *
+ * ## What is left on this route
+ *
+ * Stripe orders are no longer created here. The card checkout reserves its
+ * WooCommerce order before the PaymentIntent exists — the store's order id is what
+ * Stripe's metadata carries — so this route would only ever be a second, competing
+ * creation path for the same order. It refuses Stripe outright rather than letting
+ * one be created without a payment behind it.
+ *
+ * What remains is the **invoice** checkout: an order the owner bills separately.
+ * It has no payment to wait for, so the order is created (pending) and the customer
+ * is sent to its confirmation.
+ *
+ * ## Identity
+ *
+ * The customer id comes from the caller's verified session, never from the body —
+ * a body-supplied id is one a browser can choose. A guest checkout simply has no
+ * session, and the order is written with the billing email it was given.
+ */
+
 import { NextResponse } from 'next/server';
 import { getErrorMessage } from '@/lib/errors';
-import { serverCreateOrder } from '@/lib/orders/serverCreateOrder';
-import { getSupabaseAdmin } from '@/lib/stripe/server/supabaseAdmin';
-import type { CreateOrderData, ShippingMethod } from '@/lib/supabase/api/orders';
+import { publicMessage } from '@/lib/http/publicError';
+import { readCartSession } from '@/lib/cart/cookies';
+import { optionalCustomerRequest } from '@/lib/auth/customerRequest';
+import { reserveOrderForCheckout, clearReservedCart } from '@/lib/orders/serverCreateOrder';
+import { dispatchOrderCreatedNotifications } from '@/lib/orders/notifyOrderEvents';
+import { ORDERS_PAUSED_MESSAGE, isOrderingPaused } from '@/lib/storefront/ordering';
+import type { CreateOrderData, ShippingMethod } from '@/lib/orders/totals';
 
-type CreateOrderBody = CreateOrderData & {
-  cartSessionId?: string;
-};
+type CreateOrderBody = CreateOrderData;
 
 function parseBody(body: unknown): { ok: true; data: CreateOrderBody } | { ok: false; error: string } {
   if (!body || typeof body !== 'object') {
@@ -27,25 +51,19 @@ function parseBody(body: unknown): { ok: true; data: CreateOrderBody } | { ok: f
   return { ok: true, data: body as CreateOrderBody };
 }
 
-async function resolveUserId(request: Request, bodyUserId?: string): Promise<string | null> {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return bodyUserId || null;
-  }
-
-  const token = authHeader.slice(7).trim();
-  if (!token) return bodyUserId || null;
-
-  const supabase = getSupabaseAdmin();
-  const { data: userData, error } = await supabase.auth.getUser(token);
-  if (error || !userData.user) {
-    return null;
-  }
-
-  return userData.user.id;
-}
-
 export async function POST(request: Request) {
+  // First, before the body is even read: is this deployment accepting orders at all?
+  //
+  // This is the server-side half of a catalogue-only launch. The checkout screen
+  // already refuses to submit when no payment path exists, but a screen is not a
+  // control — a hand-written POST reaches this route directly, and this route is the
+  // one that writes to the store's order table. Refusing here is what makes "no
+  // customer orders are accepted" true of the deployment rather than true of the
+  // buttons. Nothing above this line has touched WooCommerce.
+  if (isOrderingPaused()) {
+    return NextResponse.json({ error: ORDERS_PAUSED_MESSAGE }, { status: 503 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -58,30 +76,89 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const { cartSessionId, ...orderData } = parsed.data;
-  const userId = await resolveUserId(request, (parsed.data as { userId?: string }).userId);
+  const orderData = parsed.data;
 
-  if (!userId && !cartSessionId?.trim()) {
+  // Only invoice orders and 100% discounted free orders write an order here. A Stripe order
+  // is reserved by the card checkout, against the PaymentIntent that pays it.
+  const isFreeOrder = orderData.paymentProvider === 'free';
+  if (orderData.paymentProvider !== 'invoice' && !isFreeOrder) {
     return NextResponse.json(
-      { error: 'Cart session missing. Refresh the page and try again.' },
-      { status: 400 }
+      {
+        error:
+          'Card orders are created by the card checkout, against the payment that pays them. Use the card payment flow.',
+      },
+      { status: 402 },
     );
   }
 
+  const customer = await optionalCustomerRequest(request);
+  const { cartToken } = await readCartSession();
+
   try {
-    const order = await serverCreateOrder(
+    const reserved = await reserveOrderForCheckout(
       {
         ...orderData,
         shippingMethod: (orderData.shippingMethod || 'standard') as ShippingMethod,
       },
-      { userId, cartSessionId: cartSessionId?.trim() || null }
+      {
+        customerId: customer?.id ?? null,
+        cartToken,
+        paymentMethod: isFreeOrder ? 'free' : 'invoice',
+        paymentMethodTitle: isFreeOrder ? 'Free Order (100% Discount)' : 'Invoice',
+      }
     );
 
-    return NextResponse.json(order);
+    // CRITICAL SECURITY GUARD: Verify server-side that the authoritative WooCommerce final
+    // total is exactly $0.00 before permitting free order completion.
+    // Client-supplied totals and paymentProvider claims are NEVER trusted.
+    if (isFreeOrder) {
+      const verifiedTotal = Number(reserved.raw?.total ?? reserved.order.total ?? 0);
+      if (verifiedTotal > 0 || Math.abs(verifiedTotal) > 0.001) {
+        return NextResponse.json(
+          {
+            error: `Order total is $${verifiedTotal.toFixed(2)}. Free checkout is only permitted when the authoritative final total is exactly $0.00. Please complete payment using card checkout.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Mark the verified $0.00 order as paid in WooCommerce
+      if (reserved.order.payment_status !== 'paid') {
+        try {
+          const { markWooOrderPaid } = await import('@/lib/woo/orders');
+          await markWooOrderPaid(Number(reserved.order.id), {
+            paymentMethod: 'free',
+            paymentMethodTitle: 'Free Order (100% Discount)',
+          });
+          reserved.order.payment_status = 'paid';
+        } catch (err) {
+          console.warn('[Orders] Could not mark $0.00 order as paid in WooCommerce:', err);
+        }
+      }
+    }
+
+    // Only for a genuinely new order: a reused reservation has already announced
+    // itself, and a retried invoice submit must not email the buyer twice.
+    if (!reserved.reused) {
+      dispatchOrderCreatedNotifications(reserved.order.id);
+    }
+    await clearReservedCart(reserved.cartToken);
+
+    return NextResponse.json(reserved.order);
   } catch (error) {
     console.error('Create order failed:', error);
+    // Guest checkout is reachable by anyone, so the message is the shopper's: an
+    // internal failure keeps its diagnostic in the log above and answers with the
+    // sentence `getErrorMessage` would have fallen back to anyway
+    // (see `@/lib/http/publicError`).
     return NextResponse.json(
-      { error: getErrorMessage(error, 'Unable to place order.') },
+      {
+        error: publicMessage({
+          internal: getErrorMessage(error, 'Unable to place order.'),
+          fallback: 'Unable to place order. Please try again, or email sales@himalayankoh.com.',
+          context: 'create-order',
+        }),
+      },
       { status: 500 }
     );
   }

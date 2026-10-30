@@ -1,8 +1,8 @@
 import type {
-  PdpAccordionArticle,
-  PdpGalleryImage,
-  PdpPdfResource,
-} from '../products/pdpContent/types';
+  ContentAccordionArticle,
+  ContentGalleryImage,
+  ContentPdfResource,
+} from '../content/types';
 
 export interface CategoryTrustPoint {
   label: string;
@@ -41,10 +41,10 @@ export interface CategoryContentBundle {
   hero: CategoryHero;
   seo: CategorySeo;
   trustPoints: CategoryTrustPoint[];
-  gallery: PdpGalleryImage[];
-  guides: PdpAccordionArticle[];
+  gallery: ContentGalleryImage[];
+  guides: ContentAccordionArticle[];
   articles: CategoryArticleCard[];
-  pdfs: PdpPdfResource[];
+  pdfs: ContentPdfResource[];
   emptyStates: {
     gallery?: string;
     guides?: string;

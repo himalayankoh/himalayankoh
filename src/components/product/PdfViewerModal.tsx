@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { Download, ExternalLink, X } from 'lucide-react';
-import type { PdpPdfResource } from '../../lib/products/pdpContent';
+import type { ContentPdfResource } from '../../lib/content/types';
 
 interface Props {
-  resource: PdpPdfResource | null;
+  resource: ContentPdfResource | null;
   onClose: () => void;
 }
 

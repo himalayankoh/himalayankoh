@@ -110,12 +110,7 @@ export default function CategoryArticlesSection({
     ) : null;
   }
 
-  const sourceLabel =
-    source === 'blog'
-      ? 'Live from blog'
-      : source === 'demo'
-        ? 'Editorial library'
-        : 'Category guides';
+  const sourceLabel = source === 'blog' ? 'Live from blog' : 'Category guides';
 
   return (
     <section aria-labelledby="category-articles-heading">

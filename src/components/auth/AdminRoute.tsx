@@ -1,29 +1,44 @@
-import { Link, Navigate, useLocation } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthContext } from '../../context/AuthContext';
+import { CUSTOMER_HOME } from '../../lib/auth/roleRouting';
+import AdminShellSkeleton from '../admin/AdminShellSkeleton';
 
 interface AdminRouteProps {
   children: React.ReactNode;
 }
 
 export default function AdminRoute({ children }: AdminRouteProps) {
-  const { isAuthenticated, loading, isAdmin, profileLoading, profileError, refreshProfile } = useAuthContext();
+  const { isAuthenticated, loading, isAdmin, profileLoading, profileError } = useAuthContext();
   const location = useLocation();
 
-  // `loading` clears as soon as the session itself is known — before the
-  // profiles-table row has actually arrived, by design, so sign-in never
-  // looks hung. isAdmin reads that row, so a role-gated route has to wait on
-  // it too: checking isAdmin before the profile loads judged a real admin
-  // "not admin" from a profile that was simply still in flight.
-  if (loading || (isAuthenticated && profileLoading)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-charcoal">
-        <div className="text-center">
-          <Loader2 size={40} className="animate-spin text-himalayan mx-auto mb-4" />
-          <p className="text-white/70">Loading admin panel...</p>
-        </div>
-      </div>
-    );
+  /**
+   * Whether this is a client render rather than the prerendered document.
+   *
+   * `/admin` is prerendered, and the server has no session, so the document it
+   * produced holds whatever the no-identity branch renders. The browser, by
+   * contrast, reads the stored session while rendering — so a signed-in admin's
+   * first client render already knows who they are and would replace that
+   * document with the console on the very first paint. That mismatch is the
+   * "old page first, then the dashboard" flash: two different screens, one after
+   * the other.
+   *
+   * Holding the pending state until after mount makes the first client render
+   * agree with the document it hydrates, and the swap happens once — skeleton to
+   * console — instead of twice.
+   */
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // A confirmed admin keeps the console, and never waits on a background profile
+  // fetch — but only once we are rendering in the browser.
+  if (isAdmin && mounted) {
+    return <>{children}</>;
+  }
+
+  // Pending: either the document's own render, or an unresolved session/role.
+  if (!mounted || loading || (isAuthenticated && profileLoading && !isAdmin)) {
+    return <AdminShellSkeleton />;
   }
 
   // `from` travels as a query param, not router state — see ProtectedRoute
@@ -32,39 +47,18 @@ export default function AdminRoute({ children }: AdminRouteProps) {
     return <Navigate to={`/login?from=${encodeURIComponent(location.pathname)}`} replace />;
   }
 
+  // A confirmed-customer, or anyone whose profile could not be read, is sent to
+  // their own account page rather than shown an admin-themed dead end: the
+  // console is not a place a customer can be, and telling them so in the
+  // console's own visual language was the confusion this replaces. When the
+  // profile request itself failed (rather than reporting a non-admin role), the
+  // verdict is not trustworthy, so it is surfaced on the account page instead
+  // of a redirect loop against a role that was never really read.
   if (!isAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-charcoal p-4">
-        <div className="text-center max-w-md">
-          <div className="text-6xl mb-4">🛡️</div>
-          <h1 className="font-serif text-2xl font-bold text-white mb-2">
-            Admin Access Required
-          </h1>
-          <p className="text-white/70 mb-6">
-            {profileError
-              ? "We couldn't confirm your admin access — your profile failed to load. This is usually temporary."
-              : 'This area is restricted to administrators only. Please contact support if you believe this is an error.'}
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            {profileError && (
-              <button
-                type="button"
-                onClick={() => void refreshProfile()}
-                className="inline-flex items-center justify-center px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors"
-              >
-                Try again
-              </button>
-            )}
-            <Link
-              to="/"
-              className="inline-flex items-center justify-center px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-xl transition-colors"
-            >
-              Go to Homepage
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
+    const retry = profileError
+      ? `?notice=${encodeURIComponent('admin-role-unconfirmed')}`
+      : '';
+    return <Navigate to={`${CUSTOMER_HOME}${retry}`} replace />;
   }
 
   return <>{children}</>;

@@ -1,17 +1,42 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, CheckCircle, CreditCard, Loader2, MapPin, PackageCheck, ShieldCheck, Truck } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  CheckCircle,
+  ChevronDown,
+  CreditCard,
+  Loader2,
+  Lock,
+  MapPin,
+  PackageCheck,
+  ShieldCheck,
+  Truck,
+} from 'lucide-react';
 import { useAuthContext } from '../context/AuthContext';
 import StripePaymentForm from '../components/checkout/StripePaymentForm';
+import StagingTestPaymentForm from '../components/checkout/StagingTestPaymentForm';
+import PayOverTimeOptions from '../components/checkout/PayOverTimeOptions';
+import { checkoutPaymentKey, checkoutPaymentPrompt } from '../lib/payments/checkoutState';
+import type { OrderTotals } from '../lib/orders/totals';
+import { submitStagingSimulatorPayment } from '../lib/payments/stagingSimulatorClient';
+import {
+  STAGING_SIMULATOR_UNAVAILABLE_MESSAGE,
+  STAGING_TEST_CUSTOMER_NAME,
+  STAGING_TEST_EMAIL,
+  type StagingTestOutcome,
+} from '../lib/payments/stagingSimulator';
 import {
   calculateOrderTotals,
-  ordersApi,
   supportedCoupons,
+  FREE_SHIPPING_THRESHOLD,
+  STANDARD_SHIPPING_COST,
+  EXPEDITED_SHIPPING_COST,
   type ShippingMethod,
-} from '../lib/supabase/api/orders';
-import type { OrderWithItems } from '../lib/supabase/database.types';
-import { isSupabaseConfigured } from '../lib/supabase/client';
+} from '../lib/orders/totals';
+import { ordersApi } from '../lib/orders/client';
+import type { OrderWithItems } from '../lib/commerce/types';
 import { publicEnv } from '../lib/env';
 import { useCart } from '../store/cartStore';
 import { getStripeClientConfig, type StripePublicConfig } from '../lib/stripe/clientConfig';
@@ -36,8 +61,11 @@ function pickDefaultShippoRateId(rates: ShippoRate[]): string | null {
   const usps = rates.find((rate) => /usps/i.test(rate.provider));
   return usps?.objectId ?? rates[0]?.objectId ?? null;
 }
-const inputClass = 'w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all';
-const labelClass = 'block text-sm font-semibold text-charcoal mb-1.5';
+// Compact by design: the checkout is dense so an order is reviewable without a
+// long scroll. Fields keep a comfortable 40px hit area and 14px text — the
+// savings come from padding, not from shrinking anything a finger has to hit.
+const inputClass = 'w-full min-h-11 px-3 py-2 bg-white border border-gray-200 rounded-lg text-base sm:text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all';
+const labelClass = 'block text-xs font-semibold text-charcoal mb-1';
 
 const initialForm = {
   email: '',
@@ -67,12 +95,25 @@ interface StripeCheckoutSession {
   order: OrderWithItems;
   clientSecret: string;
   paymentIntentId: string;
+  checkoutKey: string;
+  totals: OrderTotals;
 }
 
 export default function CheckoutPage({ retailOnly = false }: { retailOnly?: boolean }) {
   const navigate = useNavigate();
   const { user, profile } = useAuthContext();
-  const { items, clearCart } = useCart();
+  const {
+    items,
+    clearCart,
+    isLoaded,
+    isLoading,
+    updateCustomerAddress,
+    serverTax,
+    setCoupon,
+    serverDiscount,
+    serverFreeShipping,
+    appliedCoupons,
+  } = useCart();
   const toast = useToast();
   const [form, setForm] = useState({
     ...initialForm,
@@ -85,6 +126,20 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [couponInput, setCouponInput] = useState('');
   const [couponCode, setCouponCode] = useState('');
+  const [couponApplying, setCouponApplying] = useState(false);
+  /** Whether the summary's promo-code box is unfolded (the reference layout's "Enter"). */
+  const [promoOpen, setPromoOpen] = useState(true);
+  const [shippingOptionsExpanded, setShippingOptionsExpanded] = useState(false);
+  /**
+   * The delivery method recorded on the order. Only a deployment without Shippo lets
+   * the customer choose it.
+   *
+   * With Shippo in play the delivery *service* is a carrier rate, which the order
+   * records separately as `shippingService`, so the method stays `standard` and its
+   * flat cost is never used — a live rate overrides it. With Shippo switched off there
+   * is no carrier to ask, `calculateOrderTotals` charges this deployment's own flat
+   * table, and the two rows that table prices are offered below.
+   */
   const [shippingMethod, setShippingMethod] = useState<ShippingMethod>('standard');
   const [shippoRates, setShippoRates] = useState<ShippoRate[]>([]);
   const [selectedShippoRateId, setSelectedShippoRateId] = useState<string | null>(null);
@@ -94,16 +149,63 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [addressValidation, setAddressValidation] = useState<AddressValidationResponse | null>(null);
   const [addressValidating, setAddressValidating] = useState(false);
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
+  /**
+   * Whether the shipping-address fields are open.
+   *
+   * The card shows the address the shopper entered, with a `Change` control,
+   * rather than eight inputs they have to read past on every visit — that is the
+   * reviewed-address shape of the checkout this layout follows. It starts open
+   * (there is nothing to show yet) and closes itself the first time the address
+   * becomes complete; `Change` opens it again, and it stays open while any field
+   * is missing, because a summary of an incomplete address is a dead end.
+   */
+  const [addressEditing, setAddressEditing] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(() =>
-    publicEnv.stripePublishableKey ? 'stripe' : 'invoice'
+    // Retail is online-payment-only, so it must never *hold* `invoice` as its
+    // selection even before the Stripe config has loaded. The legacy checkout
+    // keeps the old default.
+    retailOnly || publicEnv.stripePublishableKey ? 'stripe' : 'invoice'
   );
   const [stripeSession, setStripeSession] = useState<StripeCheckoutSession | null>(null);
   const [paymentCompleting, setPaymentCompleting] = useState(false);
   const [stripeConfig, setStripeConfig] = useState<StripePublicConfig | null>(null);
+  /** False until the server has answered — a payment form must not mount before that. */
+  const [stripeConfigLoaded, setStripeConfigLoaded] = useState(false);
   const [shippoRuntimeEnabled, setShippoRuntimeEnabled] = useState<boolean | null>(null);
   const [shippingSelected, setShippingSelected] = useState(false);
+  /** Bumped by the retry control to re-run the rate lookup for the same address. */
+  const [ratesReloadKey, setRatesReloadKey] = useState(0);
+  const [authoritativeTax, setAuthoritativeTax] = useState<number | null>(null);
   const stripePaymentRef = useRef<HTMLDivElement>(null);
   const preparingPaymentRef = useRef(false);
+
+  const normalizedState = normalizeUsState(form.state);
+
+  useEffect(() => {
+    if (!normalizedState) {
+      setAuthoritativeTax(null);
+      return;
+    }
+    let cancelled = false;
+    updateCustomerAddress({
+      country: form.country === 'United States' ? 'US' : form.country,
+      state: normalizedState,
+      city: form.city,
+      postalCode: form.postalCode,
+    })
+      .then((res) => {
+        if (!cancelled && res && typeof res.totalTax === 'number' && res.totalTax >= 0) {
+          setAuthoritativeTax(res.totalTax);
+        } else if (!cancelled) {
+          setAuthoritativeTax(null);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedState, form.city, form.postalCode, form.country, couponCode, updateCustomerAddress]);
 
   const shippoEnabled = shippoRuntimeEnabled ?? publicEnv.shippoEnabled;
   const showShippoPanel = shippoEnabled && (
@@ -114,9 +216,24 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   );
   const selectedShippoRate = shippoRates.find((rate) => rate.objectId === selectedShippoRateId) || null;
   const useLiveShippoRates = shippoEnabled && shippoRates.length > 0 && Boolean(selectedShippoRate);
-  const stripeEnabled = stripeConfig?.configured ?? Boolean(publicEnv.stripePublishableKey);
-  const stripePublishableKey = stripeConfig?.publishableKey ?? publicEnv.stripePublishableKey;
-  const stripeMode = stripeConfig?.mode ?? (stripePublishableKey.startsWith('pk_live_') ? 'live' : 'test');
+  // The server decides, and it is the only thing that may decide.
+  //
+  // `configured` means "both keys are present AND from the same Stripe mode", which
+  // is the only answer that guarantees the card form can confirm the PaymentIntent
+  // this deployment created. A baked-in publishable key is NOT evidence of that: a
+  // `pk_live_` compiled into a test deployment would load Stripe.js in live mode
+  // against a test intent — the broken checkout `readiness.ts` exists to prevent.
+  // So there is deliberately no fallback to `publicEnv` here; the page stays
+  // fail-closed until the server has answered.
+  const stripeEnabled = stripeConfig?.configured === true;
+  const stripePublishableKey = stripeConfig?.publishableKey ?? '';
+  const stripeMode = stripeConfig?.mode ?? 'test';
+  // The payment priority, decided by the server in `/api/stripe/config`: real Stripe
+  // form when Stripe may charge, the staging-only simulator when it may not, and an
+  // honest refusal otherwise. Reading one field rather than combining `configured`
+  // with a simulator flag is deliberate — the order is the server's answer, so this
+  // screen cannot mount a form the routes would refuse. An invoice is never an option.
+  const stagingSimulatorEnabled = stripeConfig?.checkoutPaymentOption === 'staging_simulator';
 
   const totals = useMemo(
     () => calculateOrderTotals(
@@ -127,10 +244,28 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       {
         couponCode,
         shippingMethod,
-        shippingCostOverride: useLiveShippoRates ? selectedShippoRate?.amount : undefined,
+        freeShipping: Boolean(serverFreeShipping),
+        // With Shippo in play, delivery is priced only by a carrier, so until one answers
+        // there is no delivery amount in this sum. Handing the store's flat table in here
+        // instead is what put a charge on screen that no carrier had quoted — and, because
+        // that table is what the order would have been billed from, the two agreed on a
+        // price nobody had offered. With Shippo switched off there is no carrier to ask,
+        // so there the table is this deployment's own pricing and stays.
+        shippingCostOverride: Boolean(serverFreeShipping)
+          ? 0
+          : useLiveShippoRates
+            ? selectedShippoRate?.amount
+            : shippoEnabled
+              ? 0
+              : undefined,
+        discountAmountOverride: typeof serverDiscount === 'number' && serverDiscount > 0
+          ? serverDiscount
+          : undefined,
+        taxAmountOverride: authoritativeTax ?? (serverTax ?? undefined),
+        destinationState: normalizedState || undefined,
       }
     ),
-    [couponCode, items, shippingMethod, useLiveShippoRates, selectedShippoRate?.amount]
+    [couponCode, items, shippingMethod, serverFreeShipping, useLiveShippoRates, selectedShippoRate?.amount, authoritativeTax, serverTax, serverDiscount, normalizedState]
   );
 
   const paymentDetailsReady = Boolean(
@@ -151,7 +286,17 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       form.billingCountry.trim()
     ))
   );
-  const shippingReadyForPayment = !shippoEnabled || useLiveShippoRates || shippoRatesAttempted;
+  /**
+   * Payment waits for a rate the customer actually picked.
+   *
+   * This used to accept `shippoRatesAttempted`, so a lookup that failed still unlocked
+   * payment and the order was charged the store's flat fallback — a price that was never
+   * offered as a choice, only highlighted as a default. Delivery is now priced from the
+   * real parcels by the carrier, so the charge has to come from a carrier rate the
+   * customer selected. With Shippo unconfigured there is no rate to pick and this
+   * deployment's own pricing stands, so that path is unchanged.
+   */
+  const shippingReadyForPayment = !shippoEnabled || useLiveShippoRates;
   const addressReady = Boolean(
     form.fullName.trim() &&
     form.addressLine1.trim() &&
@@ -160,25 +305,77 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     form.postalCode.trim() &&
     form.country.trim()
   );
-  const canAutoPreparePayment =
-    retailOnly &&
-    paymentMethod === 'stripe' &&
-    stripeEnabled &&
-    isSupabaseConfigured() &&
-    items.length > 0 &&
-    shippingSelected &&
-    shippingReadyForPayment &&
-    paymentDetailsReady;
+  /**
+   * The street address as one readable line, for the collapsed shipping card.
+   *
+   * Deliberately without the name: that is printed above it, and `formatAddressLines`
+   * (which leads with the name, because the "did you mean" block needs it) would
+   * otherwise say it twice.
+   */
+  const shippingAddressSummary = useMemo(() => {
+    const address = buildShippingAddress(form);
+    return [
+      address.addressLine1,
+      address.addressLine2,
+      `${address.city}, ${address.state} ${address.postalCode}`,
+      address.country,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }, [form]);
+
+  const checkoutPayload = useMemo(() => ({
+    email: form.email,
+    phone: form.phone || undefined,
+    shippingAddress: buildShippingAddress(form),
+    billingAddress: billingSameAsShipping ? buildShippingAddress(form) : buildBillingAddress(form),
+    couponCode,
+    shippingMethod,
+    shippoRateId: useLiveShippoRates ? selectedShippoRate?.objectId : undefined,
+    shippingCarrier: useLiveShippoRates ? selectedShippoRate?.provider : undefined,
+    shippingService: useLiveShippoRates ? selectedShippoRate?.serviceName : undefined,
+    notes: form.notes || undefined,
+    userId: user?.id,
+    items,
+  }), [form, billingSameAsShipping, couponCode, shippingMethod, useLiveShippoRates, selectedShippoRate, user?.id, items]);
+  const checkoutInputKey = checkoutPaymentKey(checkoutPayload);
+  // A coupon, address, rate or quantity edit immediately unmounts the old intent.
+  const activeStripeSession = !couponApplying && !shippoRatesLoading && paymentDetailsReady && shippingReadyForPayment && stripeSession?.checkoutKey === checkoutInputKey ? stripeSession : null;
+  const displayTotals = activeStripeSession?.totals ?? totals;
+  const paymentPrompt = checkoutPaymentPrompt({ email: form.email, addressReady, billingReady: paymentDetailsReady || billingSameAsShipping, shippingReady: shippingSelected && shippingReadyForPayment });
+
+  useEffect(() => {
+    const onCartWarning = (event: Event) => {
+      // The store's own words. It no longer claims the line was removed, because
+      // nothing removes it: WooCommerce refuses the line when the order is written,
+      // and the customer can still see and adjust it in their cart.
+      const detail = (event as CustomEvent<Array<{ message: string }>>).detail || [];
+      if (detail.length > 0) setError(detail.map((item) => item.message).join(' '));
+    };
+    window.addEventListener('cart-validation-warning', onCartWarning);
+    return () => window.removeEventListener('cart-validation-warning', onCartWarning);
+  }, []);
 
   useEffect(() => {
     getStripeClientConfig()
       .then((config) => setStripeConfig(config))
-      .catch((error) => console.error('Unable to load Stripe config:', error));
+      .catch((error) => {
+        console.error('Unable to load Stripe config:', error);
+        setStripeConfig(null);
+      })
+      // Loaded either way: a failed config fetch means "Stripe is not usable here",
+      // not "keep waiting". `finally` is what lets the payment section stop saying
+      // "checking…" and say the honest thing instead.
+      .finally(() => setStripeConfigLoaded(true));
   }, []);
 
   useEffect(() => {
-    if (retailOnly && stripeEnabled) setPaymentMethod('stripe');
-  }, [retailOnly, stripeEnabled]);
+    // Retail is online-payment-only. An invoice is never a retail payment method, so the
+    // retail page must not hold `invoice` as its selection even while Stripe is
+    // unconfigured — otherwise the submit path would still be an invoice path that
+    // only the render layer hides, which is exactly the fallback this replaced.
+    if (retailOnly) setPaymentMethod('stripe');
+  }, [retailOnly]);
 
   useEffect(() => {
     getShippoClientConfig()
@@ -315,20 +512,26 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     form.postalCode,
     form.country,
     form.email,
+    ratesReloadKey,
   ]);
 
-  // Whenever a live Shippo rate isn't in play (Shippo disabled, still
-  // loading, or fell back after an error), the flat Standard/Expedited
-  // cards render with one already visually highlighted — but that's a
-  // different flag (shippingSelected) than the auto-pick above only
-  // handles for the live-rate path. Keep it in sync with the flat-rate
-  // fallback too, so Payment doesn't stay stuck on "select a shipping
-  // method" once a real address is entered, matching what the shopper
-  // already sees selected on screen.
+  // A deployment with Shippo switched off has no carrier lookup to mark a delivery
+  // service as chosen, and `calculateOrderTotals` prices its shipping from the flat
+  // table regardless. Nothing else selects one of the two rows rendered for that
+  // case, so without this the order would carry a shipping charge the customer never
+  // picked — which is exactly what the flat pair used to auto-highlight.
   useEffect(() => {
-    if (useLiveShippoRates) return;
+    if (shippoEnabled) return;
     setShippingSelected(addressReady);
-  }, [useLiveShippoRates, addressReady]);
+  }, [shippoEnabled, addressReady]);
+
+  // Collapse the address card the first time there is a complete address to show.
+  // Keyed on the transition, not on `addressReady` itself: opening the form with
+  // `Change` while the address is already valid must not slam it shut again on the
+  // next render.
+  useEffect(() => {
+    if (addressValidation?.isValid && !addressValidation.recommendedAddress) setAddressEditing(false);
+  }, [addressValidation?.isValid, addressValidation?.recommendedAddress]);
 
   const applySuggestedAddress = () => {
     if (!addressValidation?.recommendedAddress) return;
@@ -371,23 +574,77 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     }
   };
 
-  const applyCoupon = () => {
-    const nextCoupon = couponInput.trim().toUpperCase();
-    if (!nextCoupon) {
-      setCouponCode('');
+  const applyCoupon = useCallback(
+    async (codeToApply?: string) => {
+      const raw = typeof codeToApply === 'string' ? codeToApply : couponInput;
+      const nextCoupon = raw.trim();
+      if (!nextCoupon) {
+        setCouponCode('');
+        setFieldErrors((current) => ({ ...current, coupon: undefined }));
+        try {
+          await setCoupon(null);
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      setCouponApplying(true);
       setFieldErrors((current) => ({ ...current, coupon: undefined }));
-      return;
-    }
 
-    if (!supportedCoupons[nextCoupon]) {
-      setFieldErrors((current) => ({ ...current, coupon: 'Coupon code is not valid.' }));
-      setCouponCode('');
-      return;
-    }
+      try {
+        // 1. Validate and apply with WooCommerce Store API (handles private codes, restrictions, usage limits)
+        await setCoupon(nextCoupon);
+        setCouponCode(nextCoupon);
+        setFieldErrors((current) => ({ ...current, coupon: undefined }));
+      } catch (err: unknown) {
+        // 2. Fallback for offline demo coupon (HKWELCOME10) if store API is local/unavailable
+        const upper = nextCoupon.toUpperCase();
+        if (!retailOnly && supportedCoupons[upper]) {
+          setCouponCode(upper);
+          setFieldErrors((current) => ({ ...current, coupon: undefined }));
+        } else {
+          const message = getErrorMessage(err, 'Coupon code is not valid or cannot be applied.');
+          setFieldErrors((current) => ({ ...current, coupon: message }));
+          setCouponCode('');
+        }
+      } finally {
+        setCouponApplying(false);
+      }
+    },
+    [couponInput, setCoupon, retailOnly]
+  );
 
-    setCouponCode(nextCoupon);
+  const removeCoupon = useCallback(async () => {
+    setCouponInput('');
+    setCouponCode('');
     setFieldErrors((current) => ({ ...current, coupon: undefined }));
-  };
+    try {
+      await setCoupon(null);
+    } catch {
+      // ignore
+    }
+  }, [setCoupon]);
+
+  // Read direct 1-click coupon URL parameter (?coupon=CODE) and auto-apply
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramCoupon = urlParams.get('coupon')?.trim();
+    if (paramCoupon) {
+      setCouponInput(paramCoupon);
+      setPromoOpen(true);
+      void applyCoupon(paramCoupon);
+    }
+  }, [applyCoupon]);
+
+  // Sync applied coupons from active cart session
+  useEffect(() => {
+    if (!couponCode && appliedCoupons && appliedCoupons.length > 0) {
+      setCouponCode(appliedCoupons[0]);
+      setCouponInput(appliedCoupons[0]);
+    }
+  }, [appliedCoupons, couponCode]);
 
   const validateForm = () => {
     const nextErrors: FieldErrors = {};
@@ -422,9 +679,11 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       });
     }
 
-    if (paymentMethod === 'stripe' && !stripeEnabled) {
+    // Only when there is genuinely no way to pay: the simulator is a real payment
+    // path here, so blocking submit would contradict the form the page just mounted.
+    if (paymentMethod === 'stripe' && !stripeEnabled && !stagingSimulatorEnabled) {
       nextErrors.coupon =
-        'Card payments need a Stripe publishable key and secret key configured in environment variables or Supabase settings.';
+        'Online payments are not available yet. An administrator can add the Stripe keys under Admin → Settings → Service & API Keys.';
     }
 
     setFieldErrors(nextErrors);
@@ -432,49 +691,37 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   };
 
   const prepareStripePayment = useCallback(async () => {
-    if (stripeSession || preparingPaymentRef.current) return;
+    if (activeStripeSession || preparingPaymentRef.current || couponApplying) return;
+
+    if (totals.total > 0 && totals.total < 0.50) {
+      setError('Stripe requires a minimum card payment of $0.50. Please add an item or adjust your coupon.');
+      return;
+    }
 
     preparingPaymentRef.current = true;
     setSubmitting(true);
     setError(null);
 
     try {
-      const shippingAddress = buildShippingAddress(form);
-      const billingAddress = billingSameAsShipping
-        ? shippingAddress
-        : buildBillingAddress(form);
-      const order = await ordersApi.createOrder({
-        email: form.email,
-        phone: form.phone || undefined,
-        shippingAddress,
-        billingAddress,
-        couponCode,
-        shippingMethod,
-        shippingCostOverride: useLiveShippoRates ? selectedShippoRate?.amount : undefined,
-        shippoRateId: useLiveShippoRates ? selectedShippoRate?.objectId : undefined,
-        shippingCarrier: useLiveShippoRates ? selectedShippoRate?.provider : undefined,
-        shippingService: useLiveShippoRates ? selectedShippoRate?.serviceName : undefined,
-        notes: form.notes || undefined,
-        paymentProvider: 'stripe',
-        paymentMethod: 'stripe_card',
-        paymentStatus: 'pending',
-        clearCart: false,
-      }, user?.id);
-      const paymentIntent = await createStripePaymentIntent({
-        email: form.email,
-        orderId: order.id,
-        couponCode,
-        shippingMethod,
-        items,
-      });
+      const paymentIntent = await createStripePaymentIntent(checkoutPayload);
 
+      // The order is the store's own, reserved before this payment — so the id
+      // shown here is already the real one, not a placeholder the webhook swaps
+      // for a different one later.
+      const pendingOrder = {
+        id: paymentIntent.reservedOrderId,
+        order_number: paymentIntent.reservedOrderId,
+        total: paymentIntent.amount / 100,
+      } as OrderWithItems;
       setStripeSession({
-        order,
+        order: pendingOrder,
         clientSecret: paymentIntent.clientSecret,
         paymentIntentId: paymentIntent.paymentIntentId,
+        checkoutKey: checkoutInputKey,
+        totals: { ...(paymentIntent.totals ?? totals), total: paymentIntent.amount / 100 },
       });
       savePendingStripeCheckout({
-        orderId: order.id,
+        reservedOrderId: paymentIntent.reservedOrderId,
         paymentIntentId: paymentIntent.paymentIntentId,
       });
       requestAnimationFrame(() => {
@@ -487,33 +734,50 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       setSubmitting(false);
     }
   }, [
-    billingSameAsShipping,
-    couponCode,
-    form,
-    items,
-    selectedShippoRate?.amount,
-    selectedShippoRate?.objectId,
-    selectedShippoRate?.provider,
-    selectedShippoRate?.serviceName,
-    shippingMethod,
-    stripeSession,
-    useLiveShippoRates,
-    user?.id,
+    activeStripeSession, checkoutPayload, checkoutInputKey, couponApplying, totals,
   ]);
 
-  useEffect(() => {
-    if (!canAutoPreparePayment || stripeSession || submitting) return;
-    void prepareStripePayment();
-  }, [canAutoPreparePayment, prepareStripePayment, stripeSession, submitting]);
+  const handleCompleteFreeOrder = useCallback(async () => {
+    if (submitting || paymentCompleting) return;
+    if (!validateForm()) {
+      document.querySelector<HTMLInputElement>('input:invalid')?.focus();
+      return;
+    }
+    if (!shippingSelected || !shippingReadyForPayment) {
+      setError('Choose a shipping option to continue.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const order = await ordersApi.createOrder({
+        ...checkoutPayload,
+        paymentProvider: 'free',
+        paymentMethod: 'free',
+        paymentStatus: 'paid',
+      });
+      await clearCart();
+      navigate(orderConfirmationUrl(order.id), { state: { order } });
+    } catch (err) {
+      setError(getErrorMessage(err, 'Unable to place free order.'));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [
+    submitting,
+    paymentCompleting,
+    validateForm,
+    shippingSelected,
+    shippingReadyForPayment,
+    checkoutPayload,
+    clearCart,
+    navigate,
+  ]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
-
-    if (!isSupabaseConfigured()) {
-      setError('Checkout requires Supabase configuration.');
-      return;
-    }
 
     if (items.length === 0) {
       setError('Your cart is empty.');
@@ -525,7 +789,27 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       return;
     }
 
-    if (retailOnly) return;
+    // Retail pays from the payment section's own button — the Stripe Element's Pay
+    // button, or the simulator's Test pay button. Reaching here means there is no
+    // payment path at all, which is the one case that must say so.
+    if (retailOnly) {
+      if (totals.total === 0) {
+        await handleCompleteFreeOrder();
+        return;
+      }
+      if (totals.total < 0.50) {
+        setError('Stripe requires a minimum card payment of $0.50. Please add an item to meet the minimum.');
+        return;
+      }
+      if (stripeEnabled) {
+        if (!shippingSelected || !shippingReadyForPayment) { setError('Choose a shipping option to continue.'); return; }
+        await prepareStripePayment();
+        return;
+      }
+      if (stagingSimulatorEnabled) return;
+      setError(STAGING_SIMULATOR_UNAVAILABLE_MESSAGE);
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -548,20 +832,20 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
         notes: form.notes || undefined,
       };
 
-      if (paymentMethod === 'invoice') {
+      if (!retailOnly && paymentMethod === 'invoice') {
         const order = await ordersApi.createOrder({
           ...orderPayload,
           paymentProvider: 'invoice',
           paymentMethod: 'invoice',
           paymentStatus: 'pending',
-        }, user?.id);
+        });
         await clearCart();
         navigate(orderConfirmationUrl(order.id), { state: { order } });
         return;
       }
 
       if (stripeSession) {
-        setError('Complete card payment below, or switch to invoice checkout.');
+        setError('Complete card payment below.');
         return;
       }
       await prepareStripePayment();
@@ -579,19 +863,21 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     setSubmitting(true);
     setError(null);
     try {
-      await verifyStripeOrderPayment({
-        orderId: stripeSession.order.id,
+      let verification = await verifyStripeOrderPayment({
         paymentIntentId: stripeSession.paymentIntentId,
       });
-
-      const paidOrder: OrderWithItems = {
-        ...stripeSession.order,
-        payment_status: 'paid',
-        payment_method: 'stripe_card',
-      };
-
+      for (let attempt = 0; attempt < 5 && !verification.orderId; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        verification = await verifyStripeOrderPayment({ paymentIntentId: stripeSession.paymentIntentId });
+      }
+      if (!verification.orderId) {
+        navigate(`/checkout/success?payment_intent=${encodeURIComponent(stripeSession.paymentIntentId)}`);
+        return;
+      }
       clearPendingStripeCheckout();
-      navigate(orderConfirmationUrl(paidOrder.id), { state: { order: paidOrder } });
+      // Load the completed Woo order on the confirmation page. The checkout only
+      // holds a reservation summary, not its line items or final payment method.
+      navigate(orderConfirmationUrl(verification.orderId));
       await clearCart();
     } catch (err) {
       setPaymentCompleting(false);
@@ -600,6 +886,84 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       setSubmitting(false);
     }
   };
+
+  /**
+   * The staging-only simulated payment.
+   *
+   * The same checkout payload the card path sends, plus the simulated outcome — and
+   * no card data at all. A decline is handled as the expected QA result it is: the
+   * error is shown and the shopper stays on the page with their cart and their
+   * reserved order, so the retry test is the same flow as the success test.
+   */
+  const handleStagingTestPayment = async (outcome: StagingTestOutcome) => {
+    if (items.length === 0) {
+      setError('Your cart is empty.');
+      return;
+    }
+    if (!validateForm()) {
+      setError('Please fix the highlighted checkout fields.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const shippingAddress = buildShippingAddress(form);
+      const billingAddress = billingSameAsShipping ? shippingAddress : buildBillingAddress(form);
+
+      const result = await submitStagingSimulatorPayment({
+        email: form.email,
+        phone: form.phone || undefined,
+        shippingAddress,
+        billingAddress,
+        couponCode,
+        shippingMethod,
+        shippoRateId: useLiveShippoRates ? selectedShippoRate?.objectId : undefined,
+        shippingCarrier: useLiveShippoRates ? selectedShippoRate?.provider : undefined,
+        shippingService: useLiveShippoRates ? selectedShippoRate?.serviceName : undefined,
+        notes: form.notes || undefined,
+        userId: user?.id,
+        items,
+        outcome,
+      });
+
+      if (result.declined) {
+        // The order is untouched and unpaid, and the cart is still full: nothing to
+        // navigate to, and the shopper can pay again with the success test card.
+        setError(result.message);
+        return;
+      }
+
+      // The server has already marked the store's order paid, so the confirmation is
+      // rendered from the store's own record rather than a client-side placeholder.
+      navigate(orderConfirmationUrl(result.orderId), { state: { order: result.order } });
+      await clearCart();
+    } catch (err) {
+      setError(getErrorMessage(err, 'The simulated payment could not be completed.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /** A clearly fake customer, so a QA order is never attributed to a real person. */
+  const useStagingTestCustomer = () => {
+    setForm((prev) => ({ ...prev, fullName: STAGING_TEST_CUSTOMER_NAME, email: STAGING_TEST_EMAIL }));
+    setFieldErrors({});
+  };
+
+  if (!isLoaded || (isLoading && items.length === 0)) {
+    return (
+      <div className="min-h-screen bg-warm-white py-24">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
+          <div className="bg-white rounded-2xl shadow-md p-12">
+            <Loader2 size={48} className="animate-spin mx-auto mb-5 text-himalayan" />
+            <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Preparing your checkout…</h1>
+            <p className="text-charcoal-light text-sm">Loading your cart and securing your items from Himalayan Koh.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (items.length === 0 && !submitting && !stripeSession && !paymentCompleting) {
     return (
@@ -619,92 +983,142 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   }
 
   return (
-    <div className="min-h-screen bg-warm-white">
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-12 md:py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <Link to="/products" className="inline-flex items-center gap-2 text-white/70 hover:text-white mb-4 text-sm">
+    <div className="bg-warm-white">
+      {/*
+        One slim bar with the shop's own identity on it — the shape the owner
+        asked for, minus the marketplace: the wordmark is Himalayan Koh's, the
+        colour is this store's, and the "Secure checkout" claim is the one the
+        payment section below actually keeps (Stripe hosts the card fields).
+      */}
+      <header className="border-b border-himalayan-line bg-cream">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <Link
+            to="/products"
+            className="inline-flex items-center gap-2 text-sm font-medium text-charcoal-light transition-colors hover:text-charcoal"
+          >
             <ArrowLeft size={16} />
-            Continue Shopping
+            Continue shopping
           </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/" aria-label="Himalayan Koh home"><img src="/logo.svg" alt="Himalayan Koh" className="h-9 w-auto max-w-[145px]" /></Link>
+            <span className="hidden items-center gap-1 rounded-full border border-himalayan-line bg-white px-2.5 py-1 text-[11px] font-semibold text-charcoal-light sm:inline-flex">
+              <Lock size={11} />
+              Secure checkout
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <div className="border-b border-himalayan-line/70 bg-white">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-6">
           <motion.h1
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            className="font-serif text-3xl md:text-4xl font-bold text-white"
+            className="font-serif text-xl font-bold text-charcoal md:text-2xl"
           >
             Checkout
           </motion.h1>
-          <p className="text-white/70 mt-2 max-w-2xl">
-            Secure order review, shipping details, and payment preparation for Himalayan Koh products.
-          </p>
+          <ol aria-label="Checkout steps" className="flex items-center gap-3 text-xs text-charcoal-light sm:text-sm"><li>1. Address</li><li>2. Shipping</li><li className={activeStripeSession ? 'font-semibold text-himalayan' : ''}>3. Payment</li></ol>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
-        {(!isSupabaseConfigured() || (paymentMethod === 'stripe' && !stripeEnabled)) && (
+      <form onSubmit={handleSubmit} className="mx-auto max-w-6xl px-4 py-4 sm:px-6 md:py-6">
+        {/*
+          Legacy checkout only. Retail has exactly one payment path, so the Payment
+          section owns that message rather than two banners saying it at once.
+        */}
+        {!retailOnly && paymentMethod === 'stripe' && !stripeEnabled && (
           <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            <p className="font-semibold">Payments not configured on this machine</p>
-            <ul className="mt-2 list-disc pl-5 space-y-1">
-              {!isSupabaseConfigured() && (
-                <li>
-                  Add Supabase keys to <code className="text-xs">.env.local</code> (URL + anon key + service role).
-                </li>
-              )}
-              {paymentMethod === 'stripe' && !stripeEnabled && (
-                <li>
-                  Add Stripe test keys to <code className="text-xs">.env.local</code> or Supabase site settings, then restart with{' '}
-                  <code className="text-xs">npm run dev:clean</code>.
-                </li>
-              )}
-            </ul>
+            <p className="font-semibold">Card payments are currently unavailable.</p>
+            <p className="mt-2">Please choose another available payment method or contact our team for help.</p>
           </div>
         )}
-        <div className="grid lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <section className="bg-white rounded-2xl shadow-md p-6">
-              <h2 className="font-serif text-xl font-bold text-charcoal mb-2">Contact Information</h2>
+        <div className="grid items-start gap-4 lg:grid-cols-3 lg:gap-6">
+          <div className="space-y-3 lg:col-span-2">
+            <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+              <h2 className="mb-1 font-serif text-base font-bold text-charcoal sm:text-lg">Contact information</h2>
               {!user && (
-                <p className="mb-5 text-sm text-charcoal-light">
-                  Checking out as a guest — no account needed. You&rsquo;ll get an email confirmation and order tracking link once you pay.
+                <p className="mb-3 text-xs text-charcoal-light">
+                  Guest checkout · No account needed.
                 </p>
               )}
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label="Email address" error={fieldErrors.email}>
-                  <input required type="email" value={form.email} onChange={(event) => handleChange('email', event.target.value)} placeholder="you@example.com" className={inputClass} />
+                  <input required type="email" name="email" autoComplete="email" value={form.email} onChange={(event) => handleChange('email', event.target.value)} placeholder="you@example.com" className={inputClass} />
                 </Field>
-                <Field label="Phone number">
-                  <input value={form.phone} onChange={(event) => handleChange('phone', event.target.value)} placeholder="(832) 224-6466" className={inputClass} />
+                <Field label="Phone number (optional)">
+                  <input type="tel" name="phone" autoComplete="tel" value={form.phone} onChange={(event) => handleChange('phone', event.target.value)} placeholder="(832) 224-6466" className={inputClass} />
                 </Field>
               </div>
             </section>
 
-            <section className="bg-white rounded-2xl shadow-md p-6">
-              <div className="flex items-center gap-2 mb-5">
-                <Truck size={20} className="text-himalayan" />
-                <h2 className="font-serif text-xl font-bold text-charcoal">Shipping Address</h2>
+            {/* Shipping choices appear after an address, without a premature error. */}
+            <div className="flex flex-col gap-3">
+
+            {/*
+              1 — Delivery service. The choice this shop really has is which carrier
+              service delivers the order. Once there is an address to price, Shippo
+              quotes each parcel this order makes up and those quotes are the only
+              delivery prices on the page. Nothing here is priced by hand, and no
+              transit window is promised that a carrier did not give us.
+            */}
+            {/*
+              2 — Shipping address. The fields collapse to the address they
+              produced once it is complete, with `Change` to reopen them, which is
+              the reviewed-address shape of the reference page.
+            */}
+            <section className="order-1 rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <MapPin size={18} className="text-himalayan" />
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Shipping address</h2>
+                </div>
+                {addressReady && (
+                  <button
+                    type="button"
+                    onClick={() => setAddressEditing((open) => !open)}
+                    className="text-sm font-semibold text-himalayan transition-colors hover:text-himalayan-dark"
+                  >
+                    {addressEditing ? 'Done' : 'Change'}
+                  </button>
+                )}
               </div>
+
+              {addressReady && !addressEditing && (
+                <div className="rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3">
+                  <p className="text-sm font-semibold text-charcoal">
+                    {form.fullName}
+                    {form.phone ? <span className="font-normal text-charcoal-light"> · {form.phone}</span> : null}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-charcoal-light">{shippingAddressSummary}</p>
+                </div>
+              )}
+
+              {(addressEditing || !addressReady) && (
               <div className="grid md:grid-cols-2 gap-4">
                 <Field label="Full name" error={fieldErrors.fullName}>
-                  <input required value={form.fullName} onChange={(event) => handleChange('fullName', event.target.value)} placeholder="Full name" className={inputClass} />
+                  <input required name="fullName" autoComplete="shipping name" value={form.fullName} onChange={(event) => handleChange('fullName', event.target.value)} placeholder="Full name" className={inputClass} />
                 </Field>
                 <Field label="Address line 1" error={fieldErrors.addressLine1}>
-                  <input required value={form.addressLine1} onChange={(event) => handleChange('addressLine1', event.target.value)} placeholder="Street address" className={inputClass} />
+                  <input required name="addressLine1" autoComplete="shipping address-line1" value={form.addressLine1} onChange={(event) => handleChange('addressLine1', event.target.value)} placeholder="Street address" className={inputClass} />
                 </Field>
                 <Field label="Address line 2">
-                  <input value={form.addressLine2} onChange={(event) => handleChange('addressLine2', event.target.value)} placeholder="Suite, building, ranch name" className={inputClass} />
+                  <input name="addressLine2" autoComplete="shipping address-line2" value={form.addressLine2} onChange={(event) => handleChange('addressLine2', event.target.value)} placeholder="Suite, building, ranch name" className={inputClass} />
                 </Field>
                 <Field label="City" error={fieldErrors.city}>
-                  <input required value={form.city} onChange={(event) => handleChange('city', event.target.value)} placeholder="City" className={inputClass} />
+                  <input required name="city" autoComplete="shipping address-level2" value={form.city} onChange={(event) => handleChange('city', event.target.value)} placeholder="City" className={inputClass} />
                 </Field>
                 <Field label="State" error={fieldErrors.state}>
-                  <input required value={form.state} onChange={(event) => handleChange('state', event.target.value)} placeholder="State" className={inputClass} />
+                  <input required name="state" autoComplete="shipping address-level1" value={form.state} onChange={(event) => handleChange('state', event.target.value)} placeholder="State" className={inputClass} />
                 </Field>
                 <Field label="Postal code" error={fieldErrors.postalCode}>
-                  <input required value={form.postalCode} onChange={(event) => handleChange('postalCode', event.target.value)} placeholder="Postal code" className={inputClass} />
+                  <input required name="postalCode" autoComplete="shipping postal-code" value={form.postalCode} onChange={(event) => handleChange('postalCode', event.target.value)} placeholder="Postal code" className={inputClass} />
                 </Field>
                 <Field label="Country" error={fieldErrors.country}>
-                  <input required value={form.country} onChange={(event) => handleChange('country', event.target.value)} placeholder="Country" className={inputClass} />
+                  <input required name="country" autoComplete="shipping country-name" value={form.country} onChange={(event) => handleChange('country', event.target.value)} placeholder="Country" className={inputClass} />
                 </Field>
               </div>
+              )}
 
               {(addressValidating || addressValidation) && (
                 <div className="mt-4">
@@ -719,9 +1133,6 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       <CheckCircle size={18} className="text-green-600 flex-shrink-0 mt-0.5" />
                       <div>
                         <p className="font-semibold">Address verified</p>
-                        <p className="mt-1 text-green-800/90">
-                          Your shipping address is confirmed{addressValidation.source === 'shippo' ? ' with USPS' : ''}. Live carrier rates use this address.
-                        </p>
                       </div>
                     </div>
                   )}
@@ -763,329 +1174,575 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 </div>
               )}
             </section>
-
-            <section className="bg-white rounded-2xl shadow-md p-6">
-              <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Shipping Method</h2>
+            {addressReady && <section className="order-2 rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Truck size={18} className="text-himalayan" />
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Shipping</h2>
+                </div>
+                {useLiveShippoRates && (
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-light">
+                    {shippoRates.length > 1 && <button type="button" onClick={() => setShippingOptionsExpanded(value => !value)} aria-expanded={shippingOptionsExpanded} className="min-h-10 text-xs font-semibold normal-case text-himalayan">{shippingOptionsExpanded ? 'Show selected option' : 'Change shipping'}</button>}
+                  </span>
+                )}
+              </div>
 
               {showShippoPanel && (
-                <div className="mb-4 rounded-xl border border-himalayan/20 bg-himalayan/5 px-4 py-3 text-sm">
+                <div className="mb-4 rounded-xl border border-himalayan/20 bg-himalayan-lighter/60 px-4 py-3 text-sm">
                   {shippoRatesLoading && (
-                    <p className="text-charcoal-light mt-1 flex items-center gap-2">
+                    <p className="mt-1 flex items-center gap-2 text-charcoal-light">
                       <Loader2 size={14} className="animate-spin" />
                       Fetching rates for your address...
                     </p>
                   )}
-                  {!shippoRatesLoading && shippoRatesError && (
-                    <p className="text-amber-800 mt-1">{shippoRatesError} Using standard flat rates below.</p>
-                  )}
-                  {!shippoRatesLoading && shippoRates.length > 0 && (
-                    <div className="mt-3 space-y-2">
-                      {shippoRates.map((rate) => (
-                        <button
-                          key={rate.objectId}
-                          type="button"
-                          onClick={() => {
-                            setSelectedShippoRateId(rate.objectId);
-                            setShippingSelected(true);
-                          }}
-                          className={`w-full text-left rounded-xl border p-3 transition-colors ${
-                            selectedShippoRateId === rate.objectId
-                              ? 'border-himalayan bg-white'
-                              : 'border-gray-200 hover:border-himalayan/40'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-charcoal">{rate.provider} — {rate.serviceName}</p>
-                              <p className="text-xs text-charcoal-light mt-0.5">
-                                {rate.estimatedDays ? `${rate.estimatedDays} business days` : 'Estimated delivery varies'}
-                              </p>
-                            </div>
-                            <span className="font-bold text-himalayan">${rate.amount.toFixed(2)}</span>
-                          </div>
-                        </button>
-                      ))}
+                  {!shippoRatesLoading && shippoRatesAttempted && (shippoRatesError || shippoRates.length === 0) && (
+                    <div role="alert" className="space-y-2">
+                      <p className="text-amber-800">Shipping rates are unavailable. Check your address and try again.</p>
+                      <button type="button" onClick={() => setRatesReloadKey((key) => key + 1)} className="min-h-10 rounded-full border border-himalayan-line bg-white px-4 py-1.5 text-xs font-semibold text-charcoal">
+                        Try again
+                      </button>
                     </div>
                   )}
-                  {!shippoRatesLoading && shippoRates.length === 0 && !shippoRatesError && shippoRatesAttempted && (
-                    <p className="text-charcoal-light mt-1">
-                      Live carrier rates are unavailable for this address — flat rates apply below.
-                    </p>
+                  {!shippoRatesLoading && shippoRates.length > 0 && (
+                    <div className="space-y-3">
+                      {(shippingOptionsExpanded ? shippoRates : selectedShippoRate ? [selectedShippoRate] : shippoRates.slice(0, 1)).map((rate) => {
+                        const selected = selectedShippoRateId === rate.objectId;
+                        return (
+                          <button
+                            key={rate.objectId}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            onClick={() => {
+                              setSelectedShippoRateId(rate.objectId);
+                              setShippingSelected(true);
+                              setShippingOptionsExpanded(false);
+                            }}
+                            className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                              selected
+                                ? 'border-himalayan bg-white ring-1 ring-himalayan/30'
+                                : 'border-himalayan-line/70 bg-white hover:border-himalayan/40'
+                            }`}
+                          >
+                            <RadioDot selected={selected} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-semibold text-charcoal">{rate.provider} — {rate.serviceName}</span>
+                              <span className="mt-0.5 block text-xs text-charcoal-light">
+                                {rate.estimatedDays ? `Estimated ${rate.estimatedDays} business days` : 'Estimated delivery varies'}
+                              </span>
+                            </span>
+                            <span className="flex-shrink-0 font-bold text-himalayan">${rate.amount.toFixed(2)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               )}
 
-              {!useLiveShippoRates && (
-              <div className="grid md:grid-cols-2 gap-4">
-                <ShippingOption
-                  active={shippingMethod === 'standard'}
-                  title={totals.subtotal >= 50 ? 'Standard Shipping (Free)' : 'Standard Shipping'}
-                  detail={totals.subtotal >= 50 ? 'Free over $50' : '3-7 business days'}
-                  price={totals.subtotal >= 50 ? '$0.00' : '$9.95'}
-                  onClick={() => {
-                    setShippingMethod('standard');
-                    setShippingSelected(true);
-                  }}
-                />
-                <ShippingOption
-                  active={shippingMethod === 'expedited'}
-                  title="Expedited Shipping"
-                  detail="2-4 business days"
-                  price="$18.95"
-                  onClick={() => {
-                    setShippingMethod('expedited');
-                    setShippingSelected(true);
-                  }}
-                />
-              </div>
-              )}
-            </section>
-            <section className="bg-white rounded-2xl shadow-md p-6">
-              <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Billing Details</h2>
-              <label className="flex items-center gap-2 cursor-pointer mb-5">
-                <input
-                  type="checkbox"
-                  checked={billingSameAsShipping}
-                  onChange={(event) => setBillingSameAsShipping(event.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-himalayan focus:ring-himalayan"
-                />
-                <span className="text-sm text-charcoal">Billing address is the same as shipping</span>
-              </label>
+              {/*
+                Shippo switched off: no carrier can be asked, and `calculateOrderTotals`
+                prices delivery from this deployment's own flat table instead. These two
+                rows show exactly the amounts that table charges — read from the same
+                constants, so a row cannot quote a different number than the order is
+                billed — which is what keeps the summary from presenting a shipping price
+                the customer was never offered.
 
-              {!billingSameAsShipping && (
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Field label="Billing full name" error={fieldErrors.billingFullName}>
-                    <input value={form.billingFullName} onChange={(event) => handleChange('billingFullName', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing address line 1" error={fieldErrors.billingAddressLine1}>
-                    <input value={form.billingAddressLine1} onChange={(event) => handleChange('billingAddressLine1', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing address line 2">
-                    <input value={form.billingAddressLine2} onChange={(event) => handleChange('billingAddressLine2', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing city" error={fieldErrors.billingCity}>
-                    <input value={form.billingCity} onChange={(event) => handleChange('billingCity', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing state" error={fieldErrors.billingState}>
-                    <input value={form.billingState} onChange={(event) => handleChange('billingState', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing postal code" error={fieldErrors.billingPostalCode}>
-                    <input value={form.billingPostalCode} onChange={(event) => handleChange('billingPostalCode', event.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Billing country" error={fieldErrors.billingCountry}>
-                    <input value={form.billingCountry} onChange={(event) => handleChange('billingCountry', event.target.value)} className={inputClass} />
-                  </Field>
+                The transit windows these used to promise ("3-7 business days", "2-4
+                business days") are gone deliberately: they were written by hand and read
+                as a delivery commitment no carrier had made. With Shippo off there is no
+                estimate to give, so none is given.
+              */}
+              {!shippoEnabled && (
+                <div className="space-y-3">
+                  <ShippingOption
+                    active={shippingMethod === 'standard'}
+                    title="Standard delivery"
+                    detail={
+                      serverFreeShipping
+                        ? 'Free shipping applied with coupon'
+                        : totals.subtotal >= FREE_SHIPPING_THRESHOLD
+                          ? 'Free on orders over $50'
+                          : 'Packed and shipped from our warehouse'
+                    }
+                    price={
+                      serverFreeShipping || totals.subtotal >= FREE_SHIPPING_THRESHOLD
+                        ? 'Free'
+                        : `$${STANDARD_SHIPPING_COST.toFixed(2)}`
+                    }
+                    onClick={() => {
+                      setShippingMethod('standard');
+                      setShippingSelected(true);
+                    }}
+                  />
+                  <ShippingOption
+                    active={shippingMethod === 'expedited'}
+                    title="Expedited delivery"
+                    detail="Faster service where the carrier offers it"
+                    price={`$${EXPEDITED_SHIPPING_COST.toFixed(2)}`}
+                    onClick={() => {
+                      setShippingMethod('expedited');
+                      setShippingSelected(true);
+                    }}
+                  />
                 </div>
               )}
-            </section>
+            </section>}
 
-            <section className="bg-white rounded-2xl shadow-md p-6">
-              <h2 className={`font-serif text-xl font-bold text-charcoal ${retailOnly ? '' : 'mb-2'}`}>Payment</h2>
+            </div>
+
+            {/* One Stripe form presents the methods available for this order. */}
+            <section className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <CreditCard size={18} className="text-himalayan" />
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Payment</h2>
+                </div>
+                <span className="hidden items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-charcoal-light sm:inline-flex">
+                  <ShieldCheck size={12} /> Encrypted
+                </span>
+              </div>
               {retailOnly ? (
-                stripeSession ? (
+                <div className="space-y-3">
+                  {/*
+                    The live row. Its inner branches are the payment paths this
+                    deployment actually has — a real Stripe form, the staging-only
+                    simulator, or the honest refusal when neither is configured.
+                  */}
                   <div
-                    ref={stripePaymentRef}
-                    className="mt-5 rounded-2xl border-2 border-himalayan/50 bg-white p-5 shadow-lg shadow-himalayan/10"
+                    className={`rounded-xl border p-3 ${
+                      stripeEnabled || stagingSimulatorEnabled
+                        ? 'border-himalayan bg-himalayan-lighter/50 ring-1 ring-himalayan/25'
+                        : 'border-himalayan-line/70 bg-warm-white'
+                    }`}
                   >
-                    <p className="text-sm text-charcoal-light mb-4">
-                      Secure payment for order {stripeSession.order.order_number} ·{' '}
-                      <strong className="text-charcoal">${totals.total.toFixed(2)}</strong>
-                    </p>
-                    <StripePaymentForm
-                      clientSecret={stripeSession.clientSecret}
-                      publishableKey={stripePublishableKey}
-                      amountLabel={`$${totals.total.toFixed(2)}`}
-                      disabled={submitting || paymentCompleting}
-                      onSuccess={handleStripePaymentSuccess}
-                      onError={(message) => toast.error(message)}
-                    />
+                    <div className="flex items-center gap-3">
+                      <RadioDot selected={stripeEnabled || stagingSimulatorEnabled} />
+                      <CreditCard size={18} className="flex-shrink-0 text-himalayan" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-charcoal">Card or other payment method</p>
+                        <p className="mt-0.5 text-xs text-charcoal-light">
+                          {stagingSimulatorEnabled
+                            ? 'Test checkout — no charge.'
+                            : stripeMode === 'test'
+                            ? 'Test mode — Stripe test cards only. No real money is charged.'
+                            : 'Secure checkout with Stripe.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {totals.total === 0 ? (
+                      <div className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50/80 p-5 text-sm text-charcoal">
+                        <div className="flex items-start gap-3">
+                          <CheckCircle size={20} className="text-emerald-600 flex-shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <h4 className="font-bold text-emerald-950">100% Discount Applied — Order Total $0.00</h4>
+                            <p className="text-xs text-emerald-800">
+                              No payment card required. Click below to place your order immediately.
+                            </p>
+                          </div>
+                        </div>
+                        {error && (
+                          <div className="mt-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900">
+                            {error}
+                          </div>
+                        )}
+                        <div className="mt-4">
+                          <button
+                            type="button"
+                            disabled={submitting || couponApplying || shippoRatesLoading}
+                            onClick={() => void handleCompleteFreeOrder()}
+                            className="min-h-11 w-full rounded-lg bg-emerald-600 px-4 py-3 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition shadow-sm cursor-pointer flex items-center justify-center gap-2"
+                          >
+                            {submitting ? (
+                              <>
+                                <Loader2 size={16} className="animate-spin" />
+                                Placing your order…
+                              </>
+                            ) : (
+                              'Complete Free Order ($0.00)'
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ) : totals.total > 0 && totals.total < 0.50 ? (
+                      <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-charcoal">
+                        <div className="flex items-start gap-2.5">
+                          <AlertCircle size={20} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                            <h4 className="font-bold text-amber-950">Minimum Card Payment is $0.50</h4>
+                            <p className="text-xs text-amber-800">
+                              Your discounted total is <strong>${totals.total.toFixed(2)}</strong>. Stripe requires a minimum charge of $0.50 for credit/debit card processing. Please add an item to your cart or adjust your discount code to proceed.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            disabled
+                            className="min-h-11 w-full rounded-lg bg-gray-200 px-4 py-3 font-semibold text-gray-500 cursor-not-allowed opacity-60"
+                          >
+                            Minimum $0.50 required for card payment
+                          </button>
+                        </div>
+                      </div>
+                    ) : activeStripeSession ? (
+                      <div
+                        ref={stripePaymentRef}
+                        className="mt-3 bg-white"
+                      >
+                        <p className="mb-4 text-sm text-charcoal-light">
+                          Total to pay <strong className="text-charcoal">${displayTotals.total.toFixed(2)}</strong>
+                        </p>
+                        <StripePaymentForm
+                          clientSecret={activeStripeSession.clientSecret}
+                          publishableKey={stripePublishableKey}
+                          amountLabel={`$${displayTotals.total.toFixed(2)}`}
+                          disabled={submitting || paymentCompleting || couponApplying}
+                          onSuccess={handleStripePaymentSuccess}
+                          onError={(message) => toast.error(message)}
+                        />
+                      </div>
+                    ) : stagingSimulatorEnabled ? (
+                      <div className="mt-4">
+                        <StagingTestPaymentForm
+                          amountLabel={`$${totals.total.toFixed(2)}`}
+                          disabled={submitting || paymentCompleting}
+                          onPay={handleStagingTestPayment}
+                          onUseTestCustomer={useStagingTestCustomer}
+                        />
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-xl border border-himalayan/30 bg-himalayan/5 p-4 text-sm text-charcoal-light">
+                        {submitting ? (
+                          <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Preparing secure payment…</span>
+                        ) : !stripeConfigLoaded ? (
+                          <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Checking payment options…</span>
+                        ) : !stripeEnabled ? (
+                          <div className="space-y-1.5">
+                            <p className="flex items-center gap-2 font-semibold text-charcoal">
+                              <CreditCard size={18} className="text-himalayan" />
+                              Online payment is temporarily unavailable
+                            </p>
+                            <p className="text-xs text-charcoal-light">
+                              Secure payment methods are being configured. Please contact us to complete your purchase.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <p>{error || paymentPrompt}</p>
+                            <button type="button" disabled={submitting || couponApplying || shippoRatesLoading} onClick={() => {
+                              if (!validateForm()) { document.querySelector<HTMLInputElement>('input:invalid')?.focus(); return; }
+                              if (!shippingSelected || !shippingReadyForPayment) { setError('Choose a shipping option to continue.'); return; }
+                              void prepareStripePayment();
+                            }} className="min-h-11 w-full rounded-lg bg-himalayan px-4 py-3 font-semibold text-white hover:bg-himalayan-dark disabled:opacity-50">Continue to payment</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="mt-5 rounded-2xl border border-himalayan/30 bg-himalayan/5 p-5 text-sm text-charcoal-light">
-                    {submitting
-                      ? <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Preparing secure payment…</span>
-                      : !stripeEnabled
-                        ? 'Card payments are not configured on this site. Add your Stripe keys to enable secure checkout.'
-                        : 'Complete your shipping address and select a shipping method to load payment options.'}
-                  </div>
-                )
+
+                </div>
               ) : (
                 <>
-                <p className="text-sm text-charcoal-light mb-5">
-                {stripeEnabled
-                  ? 'Pay securely with your card at checkout. Invoice billing is available on request.'
-                  : 'Card payments are not configured on this site. Place your order and pay by invoice.'}
-              </p>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  disabled={!stripeEnabled}
-                  onClick={() => {
-                    setPaymentMethod('stripe');
-                    setStripeSession(null);
-                  }}
-                  className={`relative text-left rounded-2xl border p-4 transition-colors ${
-                    paymentMethod === 'stripe'
-                      ? 'border-himalayan bg-himalayan/10 ring-2 ring-himalayan/30'
-                      : stripeEnabled
-                        ? 'border-gray-200 hover:border-himalayan/40'
-                        : 'border-gray-200 bg-gray-50 cursor-not-allowed opacity-80'
-                  }`}
-                >
-                  {stripeEnabled && (
-                    <span className="absolute top-3 right-3 rounded-full bg-himalayan px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                      Recommended
-                    </span>
-                  )}
-                  <CreditCard size={20} className="text-himalayan mb-2" />
-                  <p className="font-semibold text-charcoal">Pay with Card</p>
-                  <p className="text-sm text-charcoal-light mt-1">
+                  <p className="mb-5 text-sm text-charcoal-light">
                     {stripeEnabled
-                      ? stripeMode === 'test'
-                        ? 'Enter card details after clicking Continue — test card 4242 4242 4242 4242.'
-                        : 'Secure card payment via Stripe. Enter card number, expiry, and CVC on the next step.'
-                      : 'Add Stripe keys to enable online card payment.'}
+                      ? 'Choose an available secure payment method at checkout.'
+                      : 'Online payments are not configured on this site.'}
                   </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPaymentMethod('invoice');
-                    setStripeSession(null);
-                  }}
-                  className={`text-left rounded-2xl border p-4 transition-colors ${paymentMethod === 'invoice' ? 'border-charcoal/30 bg-gray-50' : 'border-gray-200 hover:border-gray-300'}`}
-                >
-                  <PackageCheck size={20} className="text-charcoal-light mb-2" />
-                  <p className="font-semibold text-charcoal">Pay by Invoice</p>
-                  <p className="text-sm text-charcoal-light mt-1">
-                    No card required now. We will email you to arrange payment before shipping.
-                  </p>
-                </button>
-              </div>
 
-              {paymentMethod === 'stripe' && stripeEnabled && !stripeSession && (
-                <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-charcoal-light">
-                  <p className="font-semibold text-charcoal mb-1">How card checkout works</p>
-                  <ol className="list-decimal pl-5 space-y-1">
-                    <li>Click <strong>Continue to payment</strong> to save your order.</li>
-                    <li>Enter your card number, expiry date, and security code in the secure form below.</li>
-                    <li>Click <strong>Pay ${totals.total.toFixed(2)}</strong> — your order is confirmed when payment succeeds.</li>
-                  </ol>
-                </div>
-              )}
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      disabled={!stripeEnabled}
+                      aria-pressed={paymentMethod === 'stripe'}
+                      onClick={() => {
+                        setPaymentMethod('stripe');
+                        setStripeSession(null);
+                      }}
+                      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                        paymentMethod === 'stripe'
+                          ? 'border-himalayan bg-himalayan-lighter/50 ring-1 ring-himalayan/25'
+                          : stripeEnabled
+                            ? 'border-himalayan-line/70 hover:border-himalayan/40'
+                            : 'cursor-not-allowed border-himalayan-line/70 bg-warm-white opacity-80'
+                      }`}
+                    >
+                      <RadioDot selected={paymentMethod === 'stripe' && stripeEnabled} />
+                      <CreditCard size={18} className="flex-shrink-0 text-himalayan" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold text-charcoal">Secure online payment</span>
+                        <span className="mt-0.5 block text-sm text-charcoal-light">
+                          {stripeEnabled
+                            ? stripeMode === 'test'
+                              ? 'Continue to enter your payment details securely.'
+                              : 'Stripe will show the methods available for your order and location.'
+                            : 'Online payment is currently unavailable.'}
+                        </span>
+                      </span>
+                      {stripeEnabled && (
+                        <span className="hidden flex-shrink-0 rounded-full bg-himalayan px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white sm:inline">
+                          Recommended
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {paymentMethod === 'stripe' && stripeEnabled && !activeStripeSession && (
+                    <div className="mt-4 rounded-xl border border-himalayan-line/70 bg-warm-white px-4 py-3 text-sm text-charcoal-light">
+                      <p className="mb-1 font-semibold text-charcoal">How secure checkout works</p>
+                      <ol className="list-decimal space-y-1 pl-5">
+                        <li>Click <strong>Continue to payment</strong> to save your order.</li>
+                        <li>Choose one of the payment methods Stripe makes available for this order.</li>
+                        <li>Continue securely — your order is confirmed after the payment succeeds.</li>
+                      </ol>
+                    </div>
+                  )}
                 </>
               )}
+
+              {/* Named here rather than promised here: Stripe decides which of
+                  these an order may use, so the strip says which of the three
+                  situations this checkout is in instead of listing them as if
+                  they were all selectable. */}
+              {!retailOnly && paymentMethod === 'stripe' && (
+                <PayOverTimeOptions
+                  stripeEnabled={stripeEnabled}
+                  simulatorEnabled={stagingSimulatorEnabled}
+                />
+              )}
+
+              {/* Billing sits with the payment it belongs to, rather than as a card
+                  of its own between the address and the card fields. */}
+              <div className="mt-5 border-t border-himalayan-line/60 pt-4">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={billingSameAsShipping}
+                    onChange={(event) => setBillingSameAsShipping(event.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-himalayan focus:ring-himalayan"
+                  />
+                  <span className="text-sm text-charcoal">Billing address is the same as shipping</span>
+                </label>
+
+                {!billingSameAsShipping && (
+                  <div className="mt-4 grid md:grid-cols-2 gap-4">
+                    <Field label="Billing full name" error={fieldErrors.billingFullName}>
+                      <input value={form.billingFullName} onChange={(event) => handleChange('billingFullName', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing address line 1" error={fieldErrors.billingAddressLine1}>
+                      <input value={form.billingAddressLine1} onChange={(event) => handleChange('billingAddressLine1', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing address line 2">
+                      <input value={form.billingAddressLine2} onChange={(event) => handleChange('billingAddressLine2', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing city" error={fieldErrors.billingCity}>
+                      <input value={form.billingCity} onChange={(event) => handleChange('billingCity', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing state" error={fieldErrors.billingState}>
+                      <input value={form.billingState} onChange={(event) => handleChange('billingState', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing postal code" error={fieldErrors.billingPostalCode}>
+                      <input value={form.billingPostalCode} onChange={(event) => handleChange('billingPostalCode', event.target.value)} className={inputClass} />
+                    </Field>
+                    <Field label="Billing country" error={fieldErrors.billingCountry}>
+                      <input value={form.billingCountry} onChange={(event) => handleChange('billingCountry', event.target.value)} className={inputClass} />
+                    </Field>
+                  </div>
+                )}
+              </div>
             </section>
 
-            <section className="bg-white rounded-2xl shadow-md p-6">
-              <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Delivery Notes</h2>
+            <details className="rounded-xl border border-himalayan-line/60 bg-white px-3 sm:px-4">
+              <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-charcoal">Delivery notes (optional)</summary>
               <textarea
                 value={form.notes}
                 onChange={(event) => handleChange('notes', event.target.value)}
-                placeholder="Gate code, delivery instructions, ranch drop-off notes, or product preferences"
-                className={`${inputClass} min-h-28 resize-none`}
+                aria-label="Delivery notes" name="deliveryNotes" placeholder="Gate code or delivery instructions"
+                className={`${inputClass} min-h-20 resize-none`}
               />
-            </section>
+            </details>
+
+            {/* The cross-sell row from the reference layout, fed by this shop's own
+                published catalogue rather than a stranger's. See CheckoutAddOns. */}
           </div>
 
           <aside className="lg:col-span-1">
-            <div className="bg-white rounded-2xl shadow-md p-6 sticky top-[var(--header-height)]">
-              <h2 className="font-serif text-xl font-bold text-charcoal mb-5">Order Summary</h2>
-              <div className="space-y-4 mb-5">
-                {items.map((item) => (
-                  <div key={`${item.id}-${item.grainSize || ''}`} className="flex gap-3">
-                    <img src={item.image} alt={item.name} className="w-14 h-14 rounded-lg object-cover bg-gray-100" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-charcoal line-clamp-2">{item.name}</p>
-                      <p className="text-xs text-charcoal-light">Qty {item.quantity}{item.grainSize ? ` · ${item.grainSize}` : ''}</p>
+            <div className="space-y-4 lg:sticky lg:top-[var(--header-height)]">
+              <div className="rounded-xl border border-himalayan-line/60 bg-white p-3 shadow-sm sm:p-4">
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                  <h2 className="font-serif text-base font-bold text-charcoal sm:text-lg">Summary</h2>
+                  <span className="text-xs text-charcoal-light">
+                    {items.length} {items.length === 1 ? 'item' : 'items'}
+                  </span>
+                </div>
+
+                <div className="mb-3 max-h-44 space-y-2 overflow-y-auto pr-1">
+                  {items.map((item) => (
+                    <div key={`${item.id}-${item.grainSize || ''}`} className="flex gap-3">
+                      <img src={item.image} alt={item.name} className="h-14 w-14 rounded-lg bg-warm-white object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 text-sm font-medium text-charcoal">{item.name}</p>
+                        <p className="text-xs text-charcoal-light">Qty {item.quantity}{item.grainSize ? ` · ${item.grainSize}` : ''}</p>
+                      </div>
+                      <span className="text-sm font-semibold text-charcoal">${(item.price * item.quantity).toFixed(2)}</span>
                     </div>
-                    <span className="text-sm font-semibold text-charcoal">${(item.price * item.quantity).toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
 
-              <div className="border-t border-gray-100 pt-4 mb-4">
-                <label className={labelClass}>Coupon Code</label>
-                <div className="flex gap-2">
-                  <input
-                    value={couponInput}
-                    onChange={(event) => setCouponInput(event.target.value)}
-                    placeholder="Enter coupon code"
-                    className={inputClass}
-                  />
-                  <button type="button" onClick={applyCoupon} className="px-4 bg-charcoal text-white rounded-xl text-sm font-semibold hover:bg-charcoal-light">
-                    Apply
+                {/*
+                  The reference layout keeps the code box folded behind "Enter"
+                  and shows the applied one in place. Same here — and an applied or
+                  rejected code opens it, because a hidden error is not an error the
+                  shopper can act on.
+                */}
+                <div className="border-t border-himalayan-line/60 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setPromoOpen((open) => !open)}
+                    aria-expanded={promoOpen || Boolean(couponCode) || Boolean(fieldErrors.coupon)}
+                    className="flex w-full items-center justify-between text-sm"
+                  >
+                    <span className="text-charcoal-light">Promo codes</span>
+                    {couponCode ? (
+                      <span className="inline-flex items-center gap-1 font-semibold text-green-700">
+                        <CheckCircle size={14} />
+                        {couponCode}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-semibold text-himalayan">
+                        Enter
+                        <ChevronDown size={14} className={promoOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+                      </span>
+                    )}
                   </button>
+
+                  {(promoOpen || couponCode || fieldErrors.coupon) && (
+                    <div className="mt-3">
+                      <div className="flex gap-2">
+                        <input
+                          value={couponInput}
+                          onChange={(event) => setCouponInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              void applyCoupon();
+                            }
+                          }}
+                          aria-label="Coupon code"
+                          name="coupon"
+                          placeholder="Enter coupon code"
+                          className={inputClass}
+                          disabled={couponApplying}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void applyCoupon()}
+                          disabled={couponApplying}
+                          className="rounded-xl bg-charcoal px-4 text-sm font-semibold text-white hover:bg-charcoal-light disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {couponApplying ? <Loader2 size={14} className="animate-spin" /> : 'Apply'}
+                        </button>
+                      </div>
+                      {fieldErrors.coupon && <p className="mt-1 text-xs text-red-600">{fieldErrors.coupon}</p>}
+                      {couponCode && (
+                        <div className="mt-2 flex items-center justify-between text-xs text-green-700 bg-green-50/80 px-2.5 py-1.5 rounded-lg border border-green-200/60">
+                          <span className="flex items-center gap-1 font-medium">
+                            <CheckCircle size={14} />
+                            {supportedCoupons[couponCode]?.label || `Coupon "${couponCode}" applied`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void removeCoupon()}
+                            className="text-xs text-red-600 hover:text-red-700 font-semibold underline ml-2"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {fieldErrors.coupon && <p className="text-xs text-red-600 mt-1">{fieldErrors.coupon}</p>}
-                {couponCode && (
-                  <p className="text-xs text-green-700 mt-2 flex items-center gap-1">
-                    <CheckCircle size={14} />
-                    {supportedCoupons[couponCode].label} applied
-                  </p>
+
+                <div className="space-y-2 border-t border-himalayan-line/60 pt-4">
+                  <SummaryRow label="Subtotal" value={displayTotals.subtotal} />
+                  {displayTotals.discountAmount > 0 && (
+                    <SummaryRow
+                      label={`Discount ${couponCode ? `(${couponCode})` : ''}`}
+                      value={-displayTotals.discountAmount}
+                    />
+                  )}
+                  {/* A single line, two truths: a priced delivery reads as a number, and an
+                      unpriced one says so rather than reading as a free delivery. */}
+                  <SummaryRow
+                    label="Delivery"
+                    value={displayTotals.shippingCost}
+                    text={
+                      serverFreeShipping
+                        ? 'Free (Coupon)'
+                        : shippoEnabled && !useLiveShippoRates
+                          ? 'Priced by the carrier'
+                          : displayTotals.shippingCost === 0
+                            ? 'Free'
+                            : undefined
+                    }
+                  />
+                  <SummaryRow label="Tax" value={displayTotals.taxAmount} />
+                  <div className="flex items-baseline justify-between border-t border-himalayan-line/60 pt-3">
+                    <span className="font-bold text-charcoal">Total</span>
+                    <span className="text-lg font-bold text-himalayan">${displayTotals.total.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+
+                {(!retailOnly || (!stripeEnabled && !stagingSimulatorEnabled)) && (
+                  <button
+                    type="submit"
+                    disabled={submitting || (retailOnly && !stripeEnabled && !stagingSimulatorEnabled) || (paymentMethod === 'stripe' && Boolean(activeStripeSession))}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-himalayan py-3 font-semibold text-white shadow-lg shadow-himalayan/25 transition-colors hover:bg-himalayan-dark disabled:bg-gray-300"
+                  >
+                    {submitting && <Loader2 size={18} className="animate-spin" />}
+                    {submitting
+                      ? paymentMethod === 'stripe' ? 'Preparing payment…' : 'Placing order…'
+                      : retailOnly
+                        ? !stripeConfigLoaded
+                          ? 'Checking payment options…'
+                          : !stripeEnabled
+                            ? 'Online payment unavailable'
+                            : activeStripeSession
+                              ? 'Choose a payment method above'
+                              : `Pay $${displayTotals.total.toFixed(2)}`
+                        : paymentMethod === 'stripe'
+                          ? activeStripeSession ? 'Enter card details above' : 'Continue to payment'
+                          : 'Place order (invoice)'}
+                  </button>
                 )}
-              </div>
 
-              <div className="border-t border-gray-100 pt-4 space-y-2">
-                <SummaryRow label="Subtotal" value={totals.subtotal} />
-                {totals.discountAmount > 0 && <SummaryRow label="Discount" value={-totals.discountAmount} />}
-                <SummaryRow label="Shipping" value={totals.shippingCost} />
-                <SummaryRow label="Tax" value={totals.taxAmount} />
-                <div className="flex justify-between font-bold text-lg pt-3 border-t border-gray-100">
-                  <span className="text-charcoal">Total</span>
-                  <span className="text-himalayan">${totals.total.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div className="mt-5 flex items-start gap-2 text-xs text-charcoal-light">
-                <ShieldCheck size={16} className="text-himalayan flex-shrink-0 mt-0.5" />
-                <p>
-                  {retailOnly
-                    ? stripeSession
-                      ? 'Enter your payment details in the Payment section to confirm your order.'
-                      : 'Choose Enter secure payment details in the Payment section to continue.'
-                    : paymentMethod === 'stripe' && stripeEnabled
-                    ? stripeSession
-                      ? 'Complete card payment below to confirm your order.'
-                      : 'Step 1: Continue to payment, then enter your card details on this page.'
-                    : 'Invoice order — no card needed. Payment will be arranged by email before shipping.'}
+                <p className="mt-3 text-center text-[11px] leading-5 text-charcoal-light">
+                  By placing this order you confirm you have read and accepted the{' '}
+                  <Link to="/terms" className="font-semibold text-himalayan hover:text-himalayan-dark">terms</Link>,{' '}
+                  <Link to="/privacy" className="font-semibold text-himalayan hover:text-himalayan-dark">privacy policy</Link>{' '}
+                  and{' '}
+                  <Link to="/returns" className="font-semibold text-himalayan hover:text-himalayan-dark">returns policy</Link>.
                 </p>
               </div>
 
-              {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-
-              {!retailOnly && (
-              <button
-                type="submit"
-                disabled={submitting || (paymentMethod === 'stripe' && Boolean(stripeSession))}
-                className="w-full mt-6 flex items-center justify-center gap-2 py-4 bg-himalayan hover:bg-himalayan-dark disabled:bg-gray-300 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-himalayan/25"
-              >
-                {submitting && <Loader2 size={18} className="animate-spin" />}
-                {submitting
-                  ? paymentMethod === 'stripe' ? 'Preparing payment...' : 'Placing Order...'
-                  : paymentMethod === 'stripe'
-                    ? stripeSession
-                      ? 'Enter card details above'
-                      : retailOnly ? 'Proceed to secure payment' : 'Continue to payment'
-                    : 'Place order (invoice)'}
-              </button>
-              )}
             </div>
           </aside>
         </div>
       </form>
 
-      {!retailOnly && paymentMethod === 'stripe' && stripeSession && (
+      {!retailOnly && paymentMethod === 'stripe' && activeStripeSession && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-12">
           <div ref={stripePaymentRef} className="max-w-3xl rounded-2xl border-2 border-himalayan/50 bg-white p-6 shadow-xl shadow-himalayan/10">
             <h2 className="font-serif text-2xl font-bold text-charcoal mb-1">Secure payment</h2>
             <p className="text-sm text-charcoal-light mb-5">
-              Order {stripeSession.order.order_number} · Total due now:{' '}
+              Order {activeStripeSession.order.order_number} · Total due now:{' '}
               <strong className="text-charcoal">${totals.total.toFixed(2)}</strong>
             </p>
             <StripePaymentForm
-              clientSecret={stripeSession.clientSecret}
+              clientSecret={activeStripeSession.clientSecret}
               publishableKey={stripePublishableKey}
               amountLabel={`$${totals.total.toFixed(2)}`}
               disabled={submitting || paymentCompleting}
@@ -1104,11 +1761,25 @@ function Field({ label, error, children }: { label: string; error?: string; chil
     <label className="block">
       <span className={labelClass}>{label}</span>
       {children}
-      {error && <span className="text-xs text-red-600 mt-1 block">{error}</span>}
+      {error && <span role="alert" className="text-xs text-red-600 mt-1 block">{error}</span>}
     </label>
   );
 }
 
+/**
+ * The selected/empty dot the delivery and payment rows share.
+ *
+ * Purely decorative — the row it sits in already carries the selection state as
+ * `aria-checked`/`aria-pressed`, so the dot is hidden from assistive tech rather
+ * than announced as a second, wordless control.
+ */
+/**
+ * A delivery option for a deployment priced without Shippo, as a radio row.
+ *
+ * Only ever rendered when Shippo is switched off — with live rates in play the rows
+ * are carrier quotes, not these. Neither row states a delivery window: the transit
+ * time belongs to the carrier, and without one there is nothing honest to promise.
+ */
 function ShippingOption({ active, title, detail, price, onClick }: {
   active: boolean;
   title: string;
@@ -1120,16 +1791,34 @@ function ShippingOption({ active, title, detail, price, onClick }: {
     <button
       type="button"
       onClick={onClick}
-      className={`text-left rounded-2xl border p-4 transition-colors ${active ? 'border-himalayan bg-himalayan/10' : 'border-gray-200 hover:border-himalayan/40'}`}
+      role="radio"
+      aria-checked={active}
+      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+        active
+          ? 'border-himalayan bg-himalayan-lighter/50 ring-1 ring-himalayan/25'
+          : 'border-himalayan-line/70 hover:border-himalayan/40'
+      }`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-semibold text-charcoal">{title}</p>
-          <p className="text-sm text-charcoal-light mt-1">{detail}</p>
-        </div>
-        <span className="font-bold text-himalayan">{price}</span>
-      </div>
+      <RadioDot selected={active} />
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold text-charcoal">{title}</span>
+        <span className="mt-0.5 block text-sm text-charcoal-light">{detail}</span>
+      </span>
+      <span className="flex-shrink-0 font-bold text-himalayan">{price}</span>
     </button>
+  );
+}
+
+function RadioDot({ selected }: { selected: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`grid h-5 w-5 flex-shrink-0 place-items-center rounded-full border-2 ${
+        selected ? 'border-himalayan' : 'border-himalayan-line'
+      }`}
+    >
+      {selected && <span className="h-2.5 w-2.5 rounded-full bg-himalayan" />}
+    </span>
   );
 }
 
@@ -1172,12 +1861,13 @@ function buildBillingAddress(form: CheckoutForm) {
   };
 }
 
-function SummaryRow({ label, value }: { label: string; value: number }) {
+/** `text` replaces the amount for a line that has no price yet, e.g. undelivered delivery. */
+function SummaryRow({ label, value, text }: { label: string; value: number; text?: string }) {
   return (
     <div className="flex justify-between text-sm">
       <span className="text-charcoal-light">{label}</span>
-      <span className={value < 0 ? 'text-green-700' : 'text-charcoal'}>
-        {value < 0 ? '-' : ''}${Math.abs(value).toFixed(2)}
+      <span className={text ? 'text-charcoal-light' : value < 0 ? 'text-green-700' : 'text-charcoal'}>
+        {text ?? `${value < 0 ? '-' : ''}$${Math.abs(value).toFixed(2)}`}
       </span>
     </div>
   );

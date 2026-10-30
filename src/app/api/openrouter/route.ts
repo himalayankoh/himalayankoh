@@ -3,7 +3,7 @@
 
 import { getSetting } from '@/lib/settings/serverSettings';
 import { checkRateLimit } from '@/lib/rateLimit';
-import { publicEnv } from '@/lib/env';
+import { isAllowedRequestOrigin } from '@/lib/http/originAllowlist';
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -11,25 +11,28 @@ interface ChatMessage {
 }
 
 const stableFreeModels = [
-  'deepseek/deepseek-v4-flash:free',
-  'qwen/qwen3-next-80b-a3b-instruct:free',
+  'google/gemini-2.5-flash',
+  'google/gemini-2.5-flash-lite',
+  'openrouter/free',
+  'deepseek/deepseek-v4-flash-0731:free',
   'meta-llama/llama-3.3-70b-instruct:free',
-  'meta-llama/llama-3.2-3b-instruct:free',
+  'qwen/qwen3-next-80b-a3b-instruct:free',
 ];
 
 async function resolveModelCandidates(): Promise<string[]> {
   const dbModel = await getSetting('openrouter', 'model');
   const envModel = process.env.OPENROUTER_MODEL;
-  return Array.from(new Set([...stableFreeModels, dbModel || envModel].filter(Boolean))) as string[];
+  const preferred = dbModel || envModel || 'google/gemini-2.5-flash';
+  return Array.from(new Set([preferred, ...stableFreeModels].filter(Boolean))) as string[];
 }
 
 const maxMessages = 12;
 const maxMessageLength = 2000;
 
 const systemPrompt = `You are the Himalayan Koh customer support assistant.
-Help customers with product recommendations, livestock salt guidance, product comparisons, FAQs, and order/support questions.
-Keep answers concise, practical, and safe. Do not provide veterinary diagnosis; recommend contacting a veterinarian for medical issues.
-Relevant product categories include edible Himalayan pink cooking salt, horse salt licks, cattle salt rocks, livestock salt bags, and deer salt blocks.
+This shop sells Himalayan pink salt and nothing else. Help customers with pink salt guidance, product comparisons, recipes and use, FAQs, and order/support questions.
+Keep answers concise, practical, and safe. Do not offer medical or dietary treatment advice; suggest the customer speak to a qualified professional for health questions.
+The shop's shelves are edible pink salt (fine and coarse grain, jars, pouches, bags), cooking and serving (salt blocks and plates), salt lamps and décor, and bulk and wholesale salt. Do not recommend products from outside these shelves, and never suggest a product, price or stock level that was not given to you.
 When unsure about inventory, pricing, shipping, order status, or account details, tell the customer to contact support or check their account.`;
 
 export async function OPTIONS(request: Request) {
@@ -55,7 +58,7 @@ export async function POST(request: Request) {
     || process.env.OPEN_ROUTER_API_KEY;
   if (!apiKey) {
     return jsonResponse(
-      { error: 'AI assistant is not configured yet. Please add OPENROUTER_API_KEY in Vercel.' },
+      { error: 'AI assistant is not configured yet. Please add OPENROUTER_API_KEY as a Cloudflare Worker secret or server environment variable.' },
       503,
       responseHeaders
     );
@@ -217,33 +220,14 @@ function jsonResponse(body: unknown, status: number, headers: Record<string, str
   });
 }
 
-// Real allowlist, not a blind reflection of whatever Origin a caller sends
-// (that pattern lets any third-party site ride this API and its rate limit/
-// cost budget). `hostname.endsWith('.vercel.app')` would accept any Vercel
-// deployment on the shared domain, not just this project's — so the Vercel
-// checks are scoped to this project's own deployment domains only
-// (VERCEL_URL is the current deployment's generated URL; a preview build's
-// own domain), plus the configured production site and localhost in dev.
-function isAllowedOrigin(origin: string): boolean {
-  if (!origin) return false;
-  try {
-    const { hostname, protocol } = new URL(origin);
-    if (process.env.NODE_ENV === 'development' && (hostname === 'localhost' || hostname === '127.0.0.1')) {
-      return true;
-    }
-    if (process.env.VERCEL_URL && hostname === process.env.VERCEL_URL) return true;
-    if (process.env.VERCEL_PROJECT_PRODUCTION_URL && hostname === process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-      return true;
-    }
-    return protocol === 'https:' && hostname === new URL(publicEnv.siteUrl || 'https://himalayan-koh.vercel.app').hostname;
-  } catch {
-    return false;
-  }
-}
-
 function corsHeaders(request: Request) {
   const requestOrigin = request.headers.get('origin') || '';
-  const origin = isAllowedOrigin(requestOrigin) ? requestOrigin : '';
+  // A real allowlist, not a blind reflection of whatever Origin a caller sends —
+  // that pattern lets any third-party site ride this API and its rate limit and
+  // cost budget. The rule itself lives in `@/lib/http/originAllowlist` so it can be
+  // unit-tested and so it names no deployment (see that module for why
+  // a stale-host fallback is worse than none).
+  const origin = isAllowedRequestOrigin(requestOrigin, request.url) ? requestOrigin : '';
   return {
     ...(origin ? { 'Access-Control-Allow-Origin': origin } : {}),
     Vary: 'Origin',

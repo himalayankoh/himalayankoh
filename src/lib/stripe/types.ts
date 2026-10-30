@@ -1,7 +1,9 @@
+import type { OrderTotals } from '../orders/totals';
 /** Stripe + order payment metadata stored on PaymentIntent and orders table. */
 export interface StripePaymentMetadata {
   email: string;
   order_id?: string;
+  checkout_session_id?: string;
   coupon_code?: string;
   shipping_method?: 'standard' | 'expedited';
   cart_item_count?: string;
@@ -14,11 +16,16 @@ export interface StripePaymentIntentResult {
   amount: number;
   currency: 'usd';
   mode: 'test' | 'live';
+  /** The WooCommerce order this payment is for — reserved before the payment. */
+  reservedOrderId: string;
+  /** Breakdown saved by WooCommerce; the amount remains Stripe's minor units. */
+  totals?: OrderTotals;
 }
 
 export interface StripeVerifyPaymentResult {
   ok: boolean;
-  orderId: string;
+  orderId?: string;
+  reservedOrderId?: string;
   paymentIntentId: string;
   // 'paid' for cards/synchronous methods; 'pending' for async BNPL (Klarna,
   // Afterpay/Clearpay, Affirm) where the webhook finalizes the order shortly after.
@@ -34,6 +41,6 @@ export interface OrderPaymentRecord {
   orderId: string;
   paymentIntentId: string;
   paymentStatus: OrderPaymentStatus;
-  paymentMethod: 'stripe_card' | 'invoice';
-  paymentProvider: 'stripe' | 'invoice';
+  paymentMethod: 'stripe_card' | 'invoice' | 'free';
+  paymentProvider: 'stripe' | 'invoice' | 'free';
 }

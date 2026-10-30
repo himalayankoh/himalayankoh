@@ -1,96 +1,60 @@
-import { createClient } from '@supabase/supabase-js';
-import type {
-  BlogPost,
-  Database,
-  ProductWithCategory,
-  Profile,
-} from '@/lib/supabase/database.types';
 import type { Product } from '@/data/products';
-import { lookupCatalogProduct } from '@/lib/backend';
-import { isRealCatalogProduct } from '@/lib/supabase/api/products';
-import { publicEnv } from '@/lib/env';
-
-/**
- * Server-only Supabase client for SEO/metadata fetches during server render.
- * Uses the public anon key (respects RLS — only published/active rows are
- * returned) and no session persistence. Separate from the browser client so
- * server components can fetch data without shipping it through the client.
- */
-let cached: ReturnType<typeof createClient<Database>> | null = null;
-
-export function getSeoSupabase() {
-  if (cached) return cached;
-  cached = createClient<Database>(
-    publicEnv.supabaseUrl || 'https://disabled.supabase.co',
-    publicEnv.supabaseAnonKey || 'disabled-anon-key',
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  );
-  return cached;
-}
+import { lookupCatalogProduct } from '@/lib/backend/serverCatalog';
+import { filterNicheBlogPosts } from '@/lib/catalog/nicheBlog';
+import type { BlogPostWithAuthor } from '@/lib/blog/types';
+import { wordpressBlog } from '@/lib/blog/wordpressBlog';
+import { SITE_ORIGIN } from '@/lib/site/origin';
+import { getAllResourceArticles } from '@/data/resources';
+import { AUTHORS } from '@/data/authors';
 
 /**
  * Every server-rendered route (Products, product detail, blog) awaits one of
  * the fetches below before Next can send the page, and client-side
  * navigation waits for that same render to finish before the URL changes —
  * with no loading.tsx in (main), the old page just sits there in the
- * meantime. A Supabase request that stalls (cold serverless network blip,
+ * meantime. A store request that stalls (cold serverless network blip,
  * DNS hiccup) used to hang that render indefinitely, which reads as
  * navigation being stuck until the visitor manually reloads. Bounding every
  * such request lets a stall fail fast instead: the page still renders, just
  * without that one piece of data, the same way a not-found row is handled.
  */
-const SEO_FETCH_TIMEOUT_MS = 6_000;
+const SEO_FETCH_TIMEOUT_MS = 20_000;
 
 export function seoFetchDeadline(): AbortSignal {
   return AbortSignal.timeout(SEO_FETCH_TIMEOUT_MS);
 }
 
 /**
- * Absolute site origin for canonical URLs / OG tags. Prefers the configured
- * NEXT_PUBLIC_SITE_URL; falls back to the production domain (never a
- * vercel.app preview URL, which would leak into search results).
+ * Absolute site origin for canonical URLs / OG tags.
+ *
+ * Delegates to `@/lib/site/origin`, which owns the decision and refuses a
+ * loopback origin in a production build; this function exists so the many SEO
+ * call sites keep one import path.
  */
+/**
+ * Runs a server-side store read, degrading instead of throwing.
+ *
+ * The store is a network dependency on a server render: a WordPress origin that
+ * is down or slow would otherwise fail a whole deployment build through the
+ * sitemap's prerender. A missing store must cost the page its links, not the site
+ * its build.
+ */
+async function safeSeoRead<T>(label: string, run: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    console.error(`SEO read failed (${label}); rendering without it.`, error);
+    return fallback;
+  }
+}
+
 export function siteOrigin(): string {
-  const configured = publicEnv.siteUrl?.trim();
-  if (configured) return configured.replace(/\/$/, '');
-  return 'https://himalayankoh.com';
+  return SITE_ORIGIN;
 }
 
 export function absoluteUrl(path: string): string {
   const origin = siteOrigin();
   return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
-}
-
-export interface SeoProduct {
-  name: string;
-  slug: string;
-  description: string | null;
-  short_description: string | null;
-  price: number;
-  images: string[] | null;
-  thumbnail: string | null;
-  sku: string | null;
-  meta_title: string | null;
-  meta_description: string | null;
-}
-
-/** Server-side product-by-slug fetch for metadata + JSON-LD. Returns null if not found. */
-export async function fetchSeoProduct(slug: string): Promise<SeoProduct | null> {
-  const normalized = normalizeSlugParam(slug);
-  if (!normalized) return null;
-
-  const { data } = await getSeoSupabase()
-    .from('products')
-    .select(
-      'name, slug, description, short_description, price, images, thumbnail, sku, meta_title, meta_description, tags'
-    )
-    .eq('slug', normalized)
-    .eq('is_active', true)
-    .abortSignal(seoFetchDeadline())
-    .maybeSingle();
-
-  if (!data || !isRealCatalogProduct(data as { tags?: string[] | null })) return null;
-  return data as SeoProduct;
 }
 
 /** Route params arrive URL-encoded and case-inconsistent; slugs are stored lowercase. */
@@ -106,8 +70,8 @@ function normalizeSlugParam(slug: string): string {
  * Full product row mapped to the same `Product` shape the client views use, so
  * server metadata and structured data are built by exactly the same helpers the
  * page renders with (no title/description drift between server HTML and the
- * hydrated page). Falls back to the bundled catalog when Supabase has no match,
- * which mirrors the client resolver.
+ * hydrated page). The store is the only catalog, so there is nothing to fall back
+ * to when it has no match.
  */
 export async function fetchSeoProductModel(slug: string): Promise<Product | null> {
   const normalized = normalizeSlugParam(slug);
@@ -134,46 +98,82 @@ export interface SeoBlogPost {
   updated_at: string | null;
 }
 
-/** Server-side published blog-post-by-slug fetch for metadata + JSON-LD. */
+/**
+ * Server-side published blog-post-by-slug fetch for metadata + JSON-LD.
+ *
+ * Read from WordPress; only the metadata fields are taken from the fuller post, so
+ * this stays the light read it always was rather than pulling a whole article body
+ * into a `<head>`.
+ */
 export async function fetchSeoBlogPost(slug: string): Promise<SeoBlogPost | null> {
-  const normalized = slug?.trim().toLowerCase();
+  const normalized = slug?.trim();
   if (!normalized) return null;
 
-  const { data } = await getSeoSupabase()
-    .from('blog_posts')
-    .select(
-      'title, slug, excerpt, featured_image, meta_title, meta_description, published_at, updated_at'
-    )
-    .eq('slug', normalized)
-    .eq('is_published', true)
-    .abortSignal(seoFetchDeadline())
-    .maybeSingle();
-
-  return (data as SeoBlogPost | null) ?? null;
+  return safeSeoRead(
+    `blog post ${normalized}`,
+    async () => {
+      const post = await wordpressBlog.getPostBySlug(normalized);
+      if (!post) return null;
+      return {
+        title: post.title,
+        slug: post.slug,
+        excerpt: post.excerpt,
+        featured_image: post.featured_image,
+        meta_title: post.meta_title,
+        meta_description: post.meta_description,
+        published_at: post.published_at,
+        updated_at: post.updated_at,
+      };
+    },
+    null
+  );
 }
 
 /** Same shape the client blog API returns, so the view can be seeded with it directly. */
-export type SeoBlogPostFull = BlogPost & {
-  author: Pick<Profile, 'id' | 'full_name' | 'avatar_url'> | null;
-};
+export type SeoBlogPostFull = BlogPostWithAuthor;
 
 /**
- * Full published post including body content and author, for server rendering
- * the article into the initial HTML. Returns null when unpublished or missing.
+ * What the article route needs to know about one slug: three answers, not two.
+ *
+ *  - `found` — the store answered and the post is published. Render it.
+ *  - `missing` — the store answered that it has no such published post. That is a
+ *    fact about the URL, so the route answers 404.
+ *  - `unavailable` — the read itself failed (timeout, HTTP error, HTML fatal).
+ *    Nothing is known about the URL. Answering 404 here would deindex a real
+ *    article because the origin was slow for one request, and answering with a
+ *    blank 200 (what this route used to do for both cases) leaves a thin page
+ *    where an article should be.
+ *
+ * The distinction is already in the read: `getPostBySlug` resolves to `null` only
+ * when WordPress answered with an empty list, and throws when the request could
+ * not be made. Collapsing the two into one nullable value is what hid the
+ * difference, so this function returns the three states instead.
  */
-export async function fetchSeoBlogPostFull(slug: string): Promise<SeoBlogPostFull | null> {
-  const normalized = slug?.trim().toLowerCase();
-  if (!normalized) return null;
+export type SeoBlogPostLookup =
+  | { state: 'found'; post: SeoBlogPostFull }
+  | { state: 'missing' }
+  | { state: 'unavailable' };
 
-  const { data } = await getSeoSupabase()
-    .from('blog_posts')
-    .select('*, author:profiles(id, full_name, avatar_url)')
-    .eq('slug', normalized)
-    .eq('is_published', true)
-    .abortSignal(seoFetchDeadline())
-    .maybeSingle();
+/**
+ * Full published post including body content and author, for server rendering the
+ * article into the initial HTML, or the reason there is none.
+ *
+ * Read from WordPress, which owns the blog — see `lib/blog/wordpressBlog.ts`.
+ */
+export async function lookupSeoBlogPostFull(slug: string): Promise<SeoBlogPostLookup> {
+  const normalized = slug?.trim();
+  if (!normalized) return { state: 'missing' };
 
-  return (data as unknown as SeoBlogPostFull | null) ?? null;
+  try {
+    const post = await wordpressBlog.getPostBySlug(normalized);
+    return post ? { state: 'found', post } : { state: 'missing' };
+  } catch (error) {
+    // Logged, not swallowed: this is the case an operator needs to see in the
+    // Worker logs, because it is the only one that means "the store is in
+    // trouble" rather than "that URL does not exist".
+    console.error(`Blog article read failed for "${normalized}"; rendering a retryable state.`, error);
+    return { state: 'unavailable' };
+  }
 }
 
 /**
@@ -181,14 +181,60 @@ export async function fetchSeoBlogPostFull(slug: string): Promise<SeoBlogPostFul
  * this the listing ships as an empty grid and crawlers find no internal links
  * to the individual articles.
  */
-export async function fetchSeoBlogPosts(limit = 24): Promise<SeoBlogPostFull[]> {
-  const { data } = await getSeoSupabase()
-    .from('blog_posts')
-    .select('*, author:profiles(id, full_name, avatar_url)')
-    .eq('is_published', true)
-    .order('published_at', { ascending: false })
-    .limit(limit)
-    .abortSignal(seoFetchDeadline());
+export async function fetchSeoBlogPosts(limit = 36): Promise<SeoBlogPostFull[]> {
+  return safeSeoRead(
+    'blog index',
+    async () => {
+      const posts = await wordpressBlog.getFeaturedPosts(limit);
 
-  return (data as unknown as SeoBlogPostFull[] | null) ?? [];
+      // The store is Himalayan pink salt. Articles written for the livestock and
+      // pet trade are still in the blog store from the old site, and listing them
+      // here — or handing their URLs to crawlers through the sitemap, which reads
+      // this same function — advertises a business this storefront no longer is.
+      // The judgement lives in `lib/catalog/nicheBlog.ts`; the admin blog console
+      // still reads the store unfiltered, because the owner is who decides what to
+      // do with those posts.
+      const niche = filterNicheBlogPosts(posts);
+      const withheld = posts.length - niche.length;
+      if (withheld > 0) {
+        console.info(
+          `${withheld} blog post${withheld === 1 ? '' : 's'} outside the Himalayan pink salt niche ${withheld === 1 ? 'was' : 'were'} withheld from public listings and the sitemap.`
+        );
+      }
+
+      // Merge comprehensive educational resource guides so /blog features the complete
+      // knowledge base (13+ articles across culinary, livestock, and mineral science).
+      const resources = getAllResourceArticles();
+      const mappedResources: SeoBlogPostFull[] = resources.map((r) => {
+        const author = AUTHORS[r.authorId];
+        return {
+          id: `res-${r.id}`,
+          title: r.title,
+          slug: r.slug,
+          excerpt: r.summary,
+          content: r.sections?.map((s) => s.body.join('\n\n')).join('\n\n') || null,
+          featured_image: r.featuredImage || '/images/hk_salt_crystal.webp',
+          author_id: r.authorId,
+          category: r.category,
+          tags: [r.category],
+          is_published: true,
+          published_at: r.publishedAt,
+          meta_title: `${r.title} | Himalayan Koh`,
+          meta_description: r.metaDescription || r.summary,
+          read_time: parseInt(r.readTime, 10) || 6,
+          view_count: 0,
+          created_at: r.publishedAt,
+          updated_at: r.updatedAt || r.publishedAt,
+          author: {
+            id: r.authorId,
+            full_name: author?.name || 'Himalayan Koh Editorial Team',
+            avatar_url: author?.avatar || null,
+          },
+        };
+      });
+
+      return [...niche, ...mappedResources].slice(0, limit);
+    },
+    []
+  );
 }

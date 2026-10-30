@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2, CheckCircle } from 'lucide-react';
 import { useAuthContext } from '../context/AuthContext';
-import { ordersApi } from '../lib/supabase/api/orders';
+import { ordersApi } from '../lib/orders/client';
 import { verifyStripeOrderPayment } from '../lib/payments/stripe';
 import {
   clearPendingStripeCheckout,
@@ -11,7 +11,7 @@ import {
 import { orderConfirmationUrl } from '../lib/orders/paths';
 import { useCart } from '../store/cartStore';
 
-type Status = 'loading' | 'error';
+type Status = 'loading' | 'pending' | 'error';
 
 export default function CheckoutSuccessPage() {
   const navigate = useNavigate();
@@ -20,6 +20,7 @@ export default function CheckoutSuccessPage() {
   const { clearCart } = useCart();
   const [status, setStatus] = useState<Status>('loading');
   const [message, setMessage] = useState<string | null>(null);
+  const [orderReference, setOrderReference] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,10 +38,9 @@ export default function CheckoutSuccessPage() {
       }
 
       const pending = loadPendingStripeCheckout();
-      const orderId = pending?.orderId;
       const intentId = paymentIntentId || pending?.paymentIntentId;
 
-      if (!orderId || !intentId) {
+      if (!intentId) {
         if (!cancelled) {
           setStatus('error');
           setMessage('We could not match this payment to an order. Return to checkout or contact support.');
@@ -57,24 +57,38 @@ export default function CheckoutSuccessPage() {
       }
 
       try {
-        const verifyResult = await verifyStripeOrderPayment({ orderId, paymentIntentId: intentId });
+        let verifyResult = await verifyStripeOrderPayment({ paymentIntentId: intentId });
+        for (let attempt = 0; attempt < 5 && !verifyResult.orderId && verifyResult.status !== 'processing'; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+          if (cancelled) return;
+          verifyResult = await verifyStripeOrderPayment({ paymentIntentId: intentId });
+        }
+        if (!verifyResult.orderId) {
+          if (verifyResult.pending) {
+            if (!cancelled) {
+              setOrderReference(verifyResult.reservedOrderId ?? pending?.reservedOrderId ?? null);
+              setMessage(verifyResult.status === 'processing'
+                ? 'Your payment is still processing. Please do not submit it again. Check back shortly for the final order status.'
+                : 'Your payment is being finalized with the store. Please do not submit it again. Check back shortly.');
+              setStatus('pending');
+            }
+            return;
+          }
+          throw new Error('We could not confirm this payment. Please contact support with your order reference.');
+        }
         clearPendingStripeCheckout();
         await clearCart();
 
         if (cancelled) return;
 
-        // Async BNPL (Klarna/Afterpay/Affirm) returns paymentStatus 'pending' — the
-        // order is placed and the webhook will flip it to paid once the provider
-        // settles. Reflect that instead of falsely showing it as paid.
-        const isPending = verifyResult.paymentStatus === 'pending';
-        const order = await ordersApi.getOrderById(orderId, user?.id);
-        navigate(orderConfirmationUrl(orderId), {
+        const order = await ordersApi.getOrderById(verifyResult.orderId);
+        navigate(orderConfirmationUrl(verifyResult.orderId), {
           replace: true,
           state: {
             order: order
               ? {
                   ...order,
-                  payment_status: isPending ? ('pending' as const) : ('paid' as const),
+                  payment_status: verifyResult.paymentStatus === 'pending' ? ('pending' as const) : ('paid' as const),
                 }
               : undefined,
           },
@@ -104,6 +118,27 @@ export default function CheckoutSuccessPage() {
           <Loader2 size={40} className="animate-spin text-himalayan mx-auto mb-4" />
           <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Confirming your payment</h1>
           <p className="text-charcoal-light text-sm">Please keep this tab open for a moment.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'pending') {
+    return (
+      <div className="min-h-screen bg-warm-white px-4 py-16 sm:px-6">
+        <div role="status" className="mx-auto max-w-lg rounded-2xl border border-himalayan-line/70 bg-white p-6 text-center shadow-sm sm:p-8">
+          <Loader2 size={36} aria-hidden="true" className="mx-auto mb-4 text-himalayan" />
+          <h1 className="font-serif text-2xl font-bold text-charcoal">Payment is processing</h1>
+          <p className="mt-3 text-sm leading-relaxed text-charcoal-light">{message}</p>
+          {orderReference && <p className="mt-3 text-sm font-semibold text-charcoal">Order reference: {orderReference}</p>}
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <button type="button" onClick={() => window.location.reload()} className="rounded-xl bg-himalayan px-5 py-3 text-sm font-semibold text-white hover:bg-himalayan-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-himalayan">
+              Check payment status
+            </button>
+            <Link to="/contact" className="rounded-xl border border-himalayan-line px-5 py-3 text-sm font-semibold text-charcoal hover:bg-warm-white">
+              Contact support
+            </Link>
+          </div>
         </div>
       </div>
     );

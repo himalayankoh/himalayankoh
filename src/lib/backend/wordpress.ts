@@ -12,6 +12,7 @@
  */
 
 import { backendConfig } from './config';
+import { wooCredentials } from './credentials';
 import { looksLikeHtml, looksLikeWordPressFatal } from './wordpressFatal.mjs';
 
 /** A structured backend failure. Never wraps the raw HTML body in the message. */
@@ -48,8 +49,16 @@ export class WordPressApiError extends Error {
 
 export type QueryValue = string | number | boolean | undefined | null | Array<string | number>;
 
+/**
+ * The most rows the WordPress REST API returns in one request (`per_page`
+ * ceiling, enforced by WordPress itself). Callers that need a whole collection
+ * read at this width and must say so when they hit it, rather than presenting a
+ * truncated collection as the complete one.
+ */
+export const WORDPRESS_MAX_PER_PAGE = 100;
+
 export interface WordPressRequestOptions {
-  /** Query string params. Arrays become repeated keys. Undefined/null are dropped. */
+  /** Query string params. Arrays become `key[]` params. Undefined/null are dropped. */
   params?: Record<string, QueryValue>;
   /** Abort after this many ms. Defaults to backendConfig.requestTimeoutMs. */
   timeoutMs?: number;
@@ -64,6 +73,10 @@ export interface WordPressRequestOptions {
   credentials?: { username: string; password: string } | null;
   /** Shorthand: use the configured WooCommerce consumer key/secret. */
   useCredentials?: boolean;
+  /** HTTP method. Anything other than GET is a write and is never cached. */
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** JSON request body, for writes. */
+  body?: unknown;
   headers?: Record<string, string>;
 }
 
@@ -79,13 +92,23 @@ export function toBodySnippet(body: string, maxLength = 220): string {
  * that drift. See that module for the response shape it recognises.
  */
 
-/** Serialises params the way the WordPress REST API expects. */
+/**
+ * Serialises params the way the WordPress REST API expects.
+ *
+ * An array becomes `key[]=a&key[]=b`, **not** `key=a&key=b`. WordPress reads the
+ * query through PHP, and PHP keeps only the last value of a repeated key, so the
+ * repeated form silently truncates a multi-value filter to its final value instead
+ * of failing. That is how it failed here: `/wc/v3/products?include=2721&include=2752`
+ * came back with one product, so every other product in the request was graded as an
+ * unknown product. The bracketed form is what WordPress parses back into an array,
+ * and both forms were measured against the store itself before this was changed.
+ */
 export function buildQueryString(params: Record<string, QueryValue> = {}): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === null || value === '') continue;
     if (Array.isArray(value)) {
-      for (const item of value) search.append(key, String(item));
+      for (const item of value) search.append(`${key}[]`, String(item));
     } else {
       search.append(key, String(value));
     }
@@ -101,14 +124,64 @@ export function buildWordPressUrl(path: string, base = backendConfig.wordpressAp
 }
 
 /**
- * Performs a JSON read against the WordPress/WooCommerce REST API.
- * Throws WordPressApiError on any non-2xx, timeout, fatal page or bad payload.
+ * The same request, with the response envelope kept.
+ *
+ * Paginated admin reads need WordPress's own row counts (`X-WP-Total` /
+ * `X-WP-TotalPages`) to render "page 2 of 7" honestly. Those live in headers, so
+ * the plain `wordpressRequest` throws them away and every caller that needed a
+ * count would have had to re-implement this client — including its fatal-page
+ * detection and timeout. Callers that only want the body use the wrapper below.
  */
-export async function wordpressRequest<T>(
+export interface WordPressResponse<T> {
+  data: T;
+  status: number;
+  /** `X-WP-Total`: rows matching the query, not rows in this page. Null when absent. */
+  total: number | null;
+  /** `X-WP-TotalPages`. Null when absent. */
+  totalPages: number | null;
+}
+
+function headerCount(headers: Headers, name: string): number | null {
+  const raw = headers.get(name);
+  if (raw === null || raw === '') return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** Performs a JSON read against the WordPress/WooCommerce REST API, keeping counts. */
+export async function wordpressRequestWithMeta<T>(
   path: string,
   options: WordPressRequestOptions = {}
-): Promise<T> {
+): Promise<WordPressResponse<T>> {
+  const method = options.method ?? 'GET';
+  const isWrite = method !== 'GET';
+  const isTest =
+    typeof process !== 'undefined' &&
+    (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST));
+
+  try {
+    return await executeWordPressRequestWithMeta<T>(path, options);
+  } catch (error) {
+    const isTransient =
+      error instanceof WordPressApiError &&
+      (error.status === 0 || error.status === 500 || error.status === 502 || error.status === 503 || error.status === 504) &&
+      !error.message.includes('WORDPRESS_BASE_URL is empty') &&
+      !error.message.includes('timed out');
+    if (!isWrite && !isTest && !options.signal?.aborted && isTransient) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      return executeWordPressRequestWithMeta<T>(path, options);
+    }
+    throw error;
+  }
+}
+
+async function executeWordPressRequestWithMeta<T>(
+  path: string,
+  options: WordPressRequestOptions = {}
+): Promise<WordPressResponse<T>> {
   const { params, revalidate, signal, headers } = options;
+  const method = options.method ?? 'GET';
+  const isWrite = method !== 'GET';
   const timeoutMs = options.timeoutMs ?? backendConfig.requestTimeoutMs;
   const base = backendConfig.wordpressApiRoot;
 
@@ -133,10 +206,7 @@ export async function wordpressRequest<T>(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   const credentials =
-    options.credentials ??
-    (options.useCredentials && backendConfig.consumerKey
-      ? { username: backendConfig.consumerKey, password: backendConfig.consumerSecret }
-      : null);
+    options.credentials ?? (options.useCredentials ? wooCredentials() : null);
 
   const requestHeaders: Record<string, string> = {
     Accept: 'application/json',
@@ -147,12 +217,22 @@ export async function wordpressRequest<T>(
     requestHeaders.Authorization = `Basic ${token}`;
   }
 
+  const requestBody =
+    options.body === undefined ? undefined : JSON.stringify(options.body);
+  if (requestBody !== undefined) requestHeaders['Content-Type'] = 'application/json';
+
   let response: Response;
   try {
     response = await fetch(url, {
+      method,
       headers: requestHeaders,
       signal: controller.signal,
-      ...(revalidate === undefined ? { cache: 'no-store' as RequestCache } : { next: { revalidate } }),
+      // A write is never cached, and never revalidated into a cache entry: the
+      // next read must see the store's own answer, not ours.
+      ...(isWrite || revalidate === undefined
+        ? { cache: 'no-store' as RequestCache }
+        : { next: { revalidate } }),
+      ...(requestBody === undefined ? {} : { body: requestBody }),
     });
   } catch (error) {
     const aborted = error instanceof Error && error.name === 'AbortError';
@@ -215,7 +295,12 @@ export async function wordpressRequest<T>(
   }
 
   try {
-    return JSON.parse(rawBody) as T;
+    return {
+      data: JSON.parse(rawBody) as T,
+      status: response.status,
+      total: headerCount(response.headers, 'x-wp-total'),
+      totalPages: headerCount(response.headers, 'x-wp-totalpages'),
+    };
   } catch {
     throw new WordPressApiError({
       message: `WordPress returned HTTP ${response.status} for ${path} but the body was not valid JSON.`,
@@ -225,6 +310,17 @@ export async function wordpressRequest<T>(
       isHtmlResponse: isHtml,
     });
   }
+}
+
+/**
+ * Performs a JSON read against the WordPress/WooCommerce REST API.
+ * Throws WordPressApiError on any non-2xx, timeout, fatal page or bad payload.
+ */
+export async function wordpressRequest<T>(
+  path: string,
+  options: WordPressRequestOptions = {}
+): Promise<T> {
+  return (await wordpressRequestWithMeta<T>(path, options)).data;
 }
 
 /**

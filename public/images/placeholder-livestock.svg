@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
-  <rect width="800" height="450" fill="#2c2825"/>
-  <rect x="0" y="300" width="800" height="150" fill="#1a1614" opacity="0.8"/>
-  <ellipse cx="400" cy="260" rx="180" ry="60" fill="#3d3530" opacity="0.5"/>
-  <text x="400" y="210" font-family="Georgia, serif" font-size="22" fill="#c8a882" text-anchor="middle" opacity="0.8">Himalayan Koh</text>
-  <text x="400" y="238" font-family="Georgia, serif" font-size="13" fill="#8b6f47" text-anchor="middle" opacity="0.7">World's Best for Livestock</text>
-</svg>

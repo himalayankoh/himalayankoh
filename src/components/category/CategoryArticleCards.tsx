@@ -46,12 +46,7 @@ export default function CategoryArticleCards({
     ) : null;
   }
 
-  const sourceLabel =
-    source === 'blog'
-      ? 'From the blog'
-      : source === 'demo'
-        ? 'Editorial highlights'
-        : null;
+  const sourceLabel = source === 'blog' ? 'From the blog' : null;
 
   return (
     <div>

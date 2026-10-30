@@ -1,208 +1,155 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowRight, Star, Award } from 'lucide-react';
-import { legacyImage } from '@/lib/images/legacyAssets';
-import { products as fallbackProducts, Product } from '@/data/products';
+import { ArrowRight, Check, Truck, RotateCcw, Phone } from 'lucide-react';
+import { legacyHeroImage } from '@/lib/images/legacyAssets';
+import type { Product } from '@/data/products';
 import ProductCard from '@/components/ProductCard';
 import { SkeletonProductCard } from '@/components/ui/Skeleton';
-import { getFeaturedCatalogProducts, isSupabaseDataSource } from '@/lib/backend';
-import { isSupabaseConfigured } from '@/lib/supabase/client';
+import { getCatalogProducts } from '@/lib/backend/catalogClient';
+import { selectHomeFeatured } from '@/features/catalog/homeFeatured';
+import { productCardKey } from '@/features/catalog/listingCards';
 
-/** Module scope so it stays out of the effect's dependency array. */
-const USES_SUPABASE_SOURCE = isSupabaseDataSource();
-
-const livestockBenefits = [
-  'Himalayan pink rock salt has up to 84 nutritious minerals and trace elements for cattle, horses, deer, and other animals.',
-  'Livestock need sodium and chloride to maintain appetite, weight, milk production, and healthy growth.',
-  'Pure Himalayan pink salt provides natural magnesium and mineral support that helps animals stay stronger and healthier.',
-  'Our Himalayan salt licks and rock salt are a natural improvement over livestock salts with added mineral supplements.',
+const saltBenefits = [
+  'Naturally dense Himalayan rock salt provides essential sodium and chloride for horses, cattle, and livestock.',
+  'Sodium and chloride are vital electrolytes required to maintain proper fluid balance and encourage normal feed intake.',
+  'Solid rock salt licks are easy to see and check, and they do not blow away.',
+  'Unrefined pink rock salt contains naturally occurring trace elements like iron, potassium, and magnesium with zero chemical binders.',
 ];
 
+/*
+ * Card titles carry the claim on this page, so they say what the product is
+ * rather than what it is for. "Essential Electrolyte Support" read as a benefit
+ * claim over defensible body copy; "Weather-Resistant Durability" and
+ * "Naturally Sourced Minerals" both leaned on an outcome. The replacement titles
+ * name the nutrient and the product, and the outdoor card now says how to make a
+ * block last instead of claiming a saving.
+ */
 const healthCards = [
   {
-    title: 'Better Livestock Health',
-    text: 'Quality sodium and chloride support appetite, body weight, hydration, and daily herd performance.',
+    title: 'Sodium and Chloride',
+    text: 'Sodium and chloride are fundamental nutrients required for normal osmotic balance, cellular function, and feed consumption.',
   },
   {
-    title: 'Milk Production Support',
-    text: 'Good salt intake helps mothers maintain the mineral balance needed for stronger milk production.',
+    title: 'For Outdoor Placement',
+    text: 'Rock salt dissolves in water, so a block kept off the ground and out of standing rain lasts longer.',
   },
   {
-    title: 'Magnesium & Nutrition',
-    text: 'Natural Himalayan minerals support recovery, strength, and overall wellness for working animals.',
+    title: 'Unrefined Rock Salt',
+    text: 'Mined from ancient geologic salt seams, our unrefined rock salt retains naturally occurring trace elements with zero added binders.',
   },
 ];
 
-export default function HomePage() {
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>(() =>
-    fallbackProducts.filter((product) => product.isFeatured).slice(0, 4)
-  );
-  const [featuredLoading, setFeaturedLoading] = useState(isSupabaseConfigured());
 
+interface HomePageProps {
+  /**
+   * The featured cards the server already rendered, when it could read them.
+   *
+   * Present means the markup above is already on screen, so this component
+   * renders it and issues no catalogue request of its own; the browser used to
+   * fetch the same four products again immediately after hydration, which delayed
+   * the first product photo on the shop's most-visited page. Absent means the
+   * server read failed, and the client reads for itself so the page still works.
+   */
+  initialProducts?: Product[];
+}
+
+export default function HomePage({ initialProducts }: HomePageProps = {}) {
+  const [products, setProducts] = useState<Product[]>(initialProducts ?? []);
+  const [loading, setLoading] = useState(!initialProducts);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
+    // The server already read the catalogue for this render; only a page that
+    // arrived without it has anything to fetch.
+    if (initialProducts) return;
     let active = true;
-    if (USES_SUPABASE_SOURCE && !isSupabaseConfigured()) {
-      setFeaturedLoading(false);
-      return;
-    }
-
-    getFeaturedCatalogProducts(4)
-      .then((rows) => {
-        // Keep the bundled demo entries on screen unless the source actually
-        // returned something — including on the WooCommerce source, where the
-        // seeded demo list is the correct empty-state for now.
-        if (active && rows.length > 0) {
-          setFeaturedProducts(rows);
-        }
-      })
-      .catch((error) => {
-        console.error('Failed to load featured products:', error);
-      })
-      .finally(() => {
-        if (active) setFeaturedLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
+    getCatalogProducts().then(({ products }) => {
+      if (!active) return;
+      setProducts(selectHomeFeatured(products));
+    }).catch(() => { if (active) setFailed(true); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [initialProducts]);
   return (
-    <div className="min-h-[calc(100vh-140px)] flex flex-col bg-warm-white">
-
-      {/* Livestock Salt Story */}
-      <section className="py-16 md:py-28 bg-white">
-        <div className="max-w-[88rem] mx-auto px-4 sm:px-8 lg:px-6">
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-            >
-              <div className="flex justify-center mb-6">
-                <span className="inline-block px-5 py-1.5 bg-himalayan-lighter text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full text-center">
-                  World&apos;s Best for Livestock
-                </span>
-              </div>
-              {/* h1, not h2: this is the homepage's main heading — the page had
-                  no h1 at all, so search engines had no primary topic signal.
-                  Styling lives in the className, so the visual size is unchanged. */}
-              <h1 className="font-serif text-4xl md:text-5xl font-bold text-charcoal mb-6 leading-tight">
-                Rich All Natural Himalayan Pink Salt
-              </h1>
-              <div className="space-y-5 text-charcoal-light leading-relaxed text-base md:text-lg mb-8">
-                <p>
-                  Pristine pink Himalayan crystal salt has long been the premium standard for cooking. It&apos;s a favorite with top chefs and countless gourmet cooks. But livestock can also recognize and benefit from a better quality product.
-                </p>
-                <p>
-                  Himalayan pink rock salt not only tastes its salty best, but gives cattle, horses, deer, and other animals the quality NaCl they need to stay healthy and be more productive.
-                </p>
-                <p>
-                  Ensure your herd is healthy and happy. Shop our convenient premium Himalayan Pink Salt products and enjoy friendly customer service from Himalayan Koh.
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row justify-center lg:justify-start gap-4 mb-8">
-                <Link to="/products" className="btn-hk-primary">
-                  Shop Now
-                  <ArrowRight size={16} className="ml-2" />
-                </Link>
-                <Link to="/about" className="btn-hk-ghost">
-                  Learn More
-                </Link>
-              </div>
-              <div className="grid sm:grid-cols-2 gap-4">
-                {livestockBenefits.map((benefit) => (
-                  <div key={benefit} className="p-4 bg-warm-white rounded-2xl text-sm text-charcoal-light border border-himalayan/10">
-                    <Star size={16} className="text-himalayan mb-2.5" />
-                    <p className="leading-relaxed">{benefit}</p>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              className="grid grid-cols-2 gap-5"
-            >
-              <img
-                src={legacyImage('horseLicking')}
-                alt="Horse licking Himalayan salt"
-                className="rounded-2xl shadow-lg object-cover w-full aspect-square"
-                loading="lazy"
-                onError={(e) => { (e.target as HTMLImageElement).src = '/images/placeholder-livestock.svg'; }}
-              />
-              <img
-                src={legacyImage('bowlOfSalt')}
-                alt="Bowls of Himalayan salt"
-                className="rounded-2xl shadow-lg object-cover w-full aspect-square"
-                loading="lazy"
-                onError={(e) => { (e.target as HTMLImageElement).src = '/images/placeholder-livestock.svg'; }}
-              />
-            </motion.div>
+    <div className="bg-warm-white">
+      <section className="border-b border-himalayan-line/60 bg-cream">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 lg:py-10 grid lg:grid-cols-2 gap-6 lg:gap-10 items-center">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-himalayan-dark mb-2">For your herd.</p>
+            <h1 className="font-serif text-2xl sm:text-3xl lg:text-4xl font-bold text-charcoal leading-tight max-w-xl">Rich All Natural Himalayan Pink Salt</h1>
+            {/*
+              The first sentence here promised that a herd would be "healthy and
+              happy" — an outcome no salt product can guarantee, and the same claim
+              shape the owner already removed from the testimonial and the header
+              alt text. What remains is what the shop actually offers.
+            */}
+            <p className="mt-3 text-sm sm:text-base text-charcoal-light leading-relaxed max-w-xl">Shop our convenient premium Himalayan Pink Salt products, with friendly customer service from Himalayan Koh.</p>
+            <div className="flex flex-wrap gap-3 mt-4">
+              <Link to="/products" className="btn-hk-primary">Shop all salt <ArrowRight size={17} className="ml-2" /></Link>
+              <Link to="/about" className="btn-hk-ghost">Quality & sourcing</Link>
+            </div>
+            {/*
+              The two shelves the live catalogue actually fills. This row used to
+              offer "Salt licks & blocks", pointing at `licks-blocks` — a shelf the
+              live install holds no product for, so the link opened an empty grid
+              under a real heading. The owner's `animal feed` category is the
+              livestock range, which is the Live Stock shelf; see `NICHE_SECTIONS`.
+              The shelf returns to this row as soon as a product is filed under it.
+            */}
+            <nav aria-label="Shop by use" className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-charcoal-light">
+              <Link to="/products?category=live-stock" className="underline underline-offset-4 hover:text-himalayan-dark">Salt for livestock</Link>
+              <Link to="/products?category=edible-pink-salt" className="underline underline-offset-4 hover:text-himalayan-dark">Edible pink salt</Link>
+            </nav>
           </div>
-
-          <div className="mt-14 grid md:grid-cols-3 gap-6">
-            {healthCards.map((card, index) => (
-              <motion.div
-                key={card.title}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.08 }}
-                className="relative overflow-hidden rounded-2xl bg-charcoal p-7 text-white shadow-lg"
-              >
-                <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-himalayan/20" />
-                <div className="relative">
-                  <div className="w-11 h-11 rounded-xl bg-himalayan text-white flex items-center justify-center mb-5">
-                    <Award size={20} />
-                  </div>
-                  <h3 className="font-serif text-2xl font-bold mb-3 text-white">{card.title}</h3>
-                  <p className="text-white/85 leading-relaxed">{card.text}</p>
-                </div>
-              </motion.div>
-            ))}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <img {...legacyHeroImage('horseLicking')} alt="Horse licking Himalayan salt" fetchPriority="high" className="aspect-[5/4] w-full rounded-xl object-cover" />
+            <img {...legacyHeroImage('bowlOfSalt')} alt="Bowls of Himalayan salt" fetchPriority="high" decoding="async" className="aspect-[5/4] w-full rounded-xl object-cover" />
           </div>
         </div>
       </section>
-
-      {/* Featured Products — real catalog data (Supabase), bundled fallback in demo mode. */}
-      <section className="py-16 md:py-20 bg-warm-white border-t border-himalayan-line/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-himalayan mb-2">Best Sellers</p>
-              <h2 className="font-serif text-3xl md:text-4xl font-bold text-charcoal">
-                Featured Salt Products
-              </h2>
-            </div>
-            <Link
-              to="/products"
-              className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-himalayan hover:text-himalayan-dark transition-colors"
-            >
-              View all products
-              <ArrowRight size={16} />
-            </Link>
+      <nav aria-label="Shopping support" className="max-w-7xl mx-auto px-4 sm:px-6 grid sm:grid-cols-3 border-b border-himalayan-line/70 py-1 gap-x-6 text-sm text-charcoal-light">
+        <Link to="/shipping" className="flex items-center gap-3 py-2"><Truck size={18} className="text-himalayan-dark" />Shipping & delivery details</Link>
+        <Link to="/returns" className="flex items-center gap-3 py-2"><RotateCcw size={18} className="text-himalayan-dark" />Returns & eligibility</Link>
+        <Link to="/contact" className="flex items-center gap-3 py-2"><Phone size={18} className="text-himalayan-dark" />Questions? Contact our team</Link>
+      </nav>
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-8" aria-labelledby="home-collection">
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+          <div><p className="text-xs uppercase tracking-[0.16em] text-himalayan-dark mb-1">Explore the collection</p><h2 id="home-collection" className="text-xl sm:text-2xl font-bold">Salt for everyday use</h2></div>
+          <Link to="/products" className="inline-flex items-center gap-2 text-sm font-semibold text-himalayan-dark py-2">View all products <ArrowRight size={16} /></Link>
+        </div>
+        <div aria-busy={loading} className="grid grid-cols-1 min-[400px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+          {loading ? Array.from({length:4},(_,i)=><SkeletonProductCard key={i}/>) : products.map((p,i)=><ProductCard key={productCardKey(p)} product={p} index={i} priority={i === 0}/>)}
+        </div>
+        {!loading && !products.length && <p role="status" className="rounded-xl border border-himalayan-line p-6 text-charcoal-light">{failed ? 'Products could not be loaded right now.' : 'Explore available products in our catalogue.'} <Link to="/products" className="underline">Browse the shop</Link></p>}
+      </section>
+      <section className="bg-white border-t border-himalayan-line/60">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-8">
+          <div className="grid lg:grid-cols-2 gap-6 lg:gap-10">
+            {/*
+              This used to open with a culinary pitch — "For your kitchen. For your
+              herd.", a "From kitchen to pasture" heading and a paragraph about top
+              chefs — on a page whose catalogue is licks, blocks, bags and pouches.
+              The owner asked for the kitchen marketing off the site, so the section
+              now says only what the store actually sells for. Nothing here was
+              rewritten to sell something else; the culinary half was removed.
+            */}
+            <div><h2 className="text-xl sm:text-2xl font-bold mb-3">From the Salt Range to your pasture</h2><div className="space-y-3 text-charcoal-light leading-relaxed">
+              {/*
+                This sentence used to read "gives cattle, horses, deer, and other
+                animals the quality NaCl they need to stay healthy and be more
+                productive". Two problems with one line on the front page: it
+                promised a health and productivity outcome no salt product can
+                support, and it named deer, an animal the catalogue has no product
+                for. It now states what the rock salt supplies and to whom, which is
+                the whole of the supported claim.
+              */}
+              <p>Himalayan pink rock salt supplies sodium and chloride, the two nutrients a livestock ration has to keep supplying every day.</p>
+              <Link to="/about" className="inline-flex py-2 items-center gap-2 text-himalayan-dark font-semibold">About Himalayan Koh <ArrowRight size={16}/></Link>
+            </div></div>
+            <ul className="space-y-2.5">{saltBenefits.map(b=><li key={b} className="flex gap-3 text-sm leading-relaxed text-charcoal-light"><Check size={18} className="shrink-0 text-himalayan-green mt-0.5"/>{b}</li>)}</ul>
           </div>
-
-          {featuredLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <SkeletonProductCard key={index} />
-              ))}
-            </div>
-          ) : featuredProducts.length === 0 ? null : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-              {featuredProducts.map((product, index) => (
-                <ProductCard key={product.id} product={product} index={index} />
-              ))}
-            </div>
-          )}
+          <div className="mt-6 grid md:grid-cols-3 gap-5 border-t border-himalayan-line pt-6">{healthCards.map(c=><div key={c.title}><h3 className="text-base font-semibold mb-1">{c.title}</h3><p className="text-sm leading-relaxed text-charcoal-light">{c.text}</p></div>)}</div>
+          <p className="mt-5 text-xs text-charcoal-light leading-relaxed max-w-4xl">*Nutritional Note: Free-choice salt licks supply vital dietary sodium and chloride. They are not a substitute for a tailored, complete livestock mineral and vitamin program. Always consult your veterinarian or animal nutritionist for herd-specific dietary formulation.</p>
         </div>
       </section>
-
     </div>
   );
 }

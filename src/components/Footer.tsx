@@ -1,26 +1,70 @@
-import { useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Phone, ArrowRight, Send } from 'lucide-react';
-import { productsPathForCategoryTitle } from '../lib/categoryContent';
+import { Mail, Phone, ArrowRight, Send, ChevronDown } from 'lucide-react';
+import { buildProductsCategoryPath } from '../lib/categoryContent';
+import { setConsent } from '../lib/consent';
 
+/**
+ * Business pages, all of which are real routes carrying the store's own content,
+ * so every link resolves to a page that exists rather than to an anchor
+ * placeholder.
+ *
+ * This is the list the approved public footer links, in its order. The migrated
+ * `/faqs` and `/shipping` pages are still live routes; the footer does not link
+ * them because the approved footer does not. Adding them back is a one-line
+ * change to this array.
+ */
 const aboutLinks = [
   { label: 'About Himalayan Koh', to: '/about' },
   { label: 'Shop Products', to: '/products' },
-  { label: 'Customer Login', to: '/login' },
+  { label: 'Guides & Articles', to: '/blog' },
+  { label: 'Salt Resource Library', to: '/resources' },
   { label: 'Contact Us', to: '/contact' },
-  { label: 'Return Policy', to: '/return' },
-  { label: 'Privacy Policy', to: '/privacy' },
+  { label: 'FAQs', to: '/faqs' },
 ];
 
+/**
+ * The shop's shelves, taken from the same taxonomy the catalogue uses.
+ *
+ * Each link is the shelf's own hub URL (`/products?category=<key>`), built from
+ * `lib/catalog/niche.ts` through `categoryContent` rather than written out here,
+ * so a shelf key can never drift from the filter the grid reads —
+ * `lib/categoryContent/shelves.test.ts` walks these calls and checks every key
+ * against the taxonomy.
+ *
+ * The two shelves listed are the ones the live catalogue actually fills: the
+ * owner's own `animal feed` category is the livestock range (that name joins the
+ * Live Stock shelf in `NICHE_SECTIONS`), and the two edible records — the 16 oz jar
+ * and the 6 lb pouches — reach Edible Pink Salt. A shelf with nothing filed under
+ * it is deliberately not linked: this list used to offer `Salt Licks`, which the
+ * live catalogue holds no product for, and the link opened a filter that rendered
+ * an empty grid. It belongs back here the moment the owner files a product under
+ * `Salt Licks` in WooCommerce — which also puts the pill back on /products, with no
+ * code change at all.
+ */
 const productLinks = [
-  { label: 'Edible Cooking Salt', to: productsPathForCategoryTitle('Edible Cooking Salt') },
-  { label: 'Salt Lick for Horses', to: productsPathForCategoryTitle('Salt Lick for Horses') },
-  { label: 'Salt for Cattle', to: productsPathForCategoryTitle('Salt for Cattle') },
-  { label: 'Salt Blocks for Deer', to: productsPathForCategoryTitle('Salt Blocks for Deer') },
+  { label: 'Salt Licks', to: buildProductsCategoryPath('licks-blocks') },
+  // The shelf's public label, one word — the footer was the last surface still
+  // printing the owner's WooCommerce category spelling (`Live Stock`) as a link.
+  { label: 'Livestock', to: buildProductsCategoryPath('live-stock') },
+  { label: 'Edible Pink Salt', to: buildProductsCategoryPath('edible-pink-salt') },
 ];
 
-export default function Footer() {
+function FooterSection({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return <section className="border-b border-white/15 sm:border-0">
+    <button type="button" className="sm:hidden min-h-11 w-full flex items-center justify-between gap-3 py-2 text-sm font-semibold text-white cursor-pointer"
+      aria-expanded={open} aria-controls={id} onClick={() => setOpen(value => !value)}>
+      {title}<ChevronDown size={18} className={`transition-transform duration-200 ${open ? 'rotate-180 text-himalayan' : 'text-white/70'}`} />
+    </button>
+    <h4 className="hidden sm:block font-serif font-bold text-base mb-3 text-white">{title}</h4>
+    <div id={id} className={`${open ? 'block' : 'hidden'} sm:block pb-3 sm:pb-0`}>{children}</div>
+  </section>;
+}
+
+export default function Footer({ compact = false }: { compact?: boolean }) {
   const [email, setEmail] = useState('');
   const [subscribing, setSubscribing] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
@@ -57,26 +101,42 @@ export default function Footer() {
     }
   };
 
+  if (compact) return (
+    <footer className="border-t border-himalayan-line bg-white px-4 py-4 text-xs text-charcoal-light">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-wrap items-center justify-center gap-x-4">
+          <a href="mailto:sales@himalayankoh.com" className="inline-flex min-h-11 items-center">sales@himalayankoh.com</a>
+          <a href="tel:8322246466" className="inline-flex min-h-11 items-center">(832) 224-6466</a>
+        </div>
+        <nav aria-label="Checkout policies" className="flex flex-wrap items-center justify-center gap-x-4">
+          {[['/terms','Terms'],['/privacy','Privacy'],['/returns','Returns'],['/shipping','Shipping'],['/disclaimer','Disclaimer'],['/editorial-policy','Editorial policy'],['/sitemap','Sitemap']].map(([to,label])=><Link key={to} prefetch={false} to={to} className="inline-flex min-h-11 items-center hover:text-himalayan">{label}</Link>)}
+          <button type="button" onClick={() => setConsent(null)} className="min-h-11">Cookie settings</button>
+        </nav>
+        <p className="mt-1 text-center">© 2026 Himalayan Koh</p>
+      </div>
+    </footer>
+  );
   return (
     <footer id="contact" className="bg-charcoal text-cream">
       {/* Newsletter Strip */}
       <div className="border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-14 md:py-16">
-          <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-1 sm:py-5 md:py-6">
+          <FooterSection title="Newsletter">
+          <div className="grid md:grid-cols-2 gap-4 md:gap-10 items-center">
             <div>
-              <h3 className="font-serif text-2xl md:text-3xl font-bold mb-4 text-white">
+              <h3 className="hidden sm:block font-serif text-xl md:text-2xl font-bold mb-2 text-white">
                 Stay Updated
               </h3>
-              <p className="text-white/90 text-base md:text-lg leading-relaxed">
-                Subscribe for exclusive offers, livestock health tips, and product updates.
+              <p className="text-white/90 text-sm md:text-base leading-relaxed">
+                Subscribe for product updates, salt handling guides, and seasonal offers.
               </p>
             </div>
             <div>
-              <form onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-3">
+              <form onSubmit={handleSubscribe} className="flex flex-wrap sm:flex-nowrap gap-2">
                 <div className="flex-1 relative">
                   <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-charcoal-light" />
                   <input
-                    type="email"
+                    type="email" name="newsletterEmail" autoComplete="email"
                     placeholder="Enter your email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -91,7 +151,7 @@ export default function Footer() {
                   whileTap={{ scale: 0.98 }}
                   type="submit"
                   disabled={subscribing}
-                  className={`px-7 min-h-11 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-himalayan/30 transition-all duration-300 disabled:opacity-70 ${
+                  className={`px-4 min-h-11 rounded-xl font-bold flex items-center justify-center gap-2 transition-all duration-150 disabled:opacity-70 ${
                     subscribed
                       ? 'bg-himalayan-green text-cream'
                       : 'bg-himalayan hover:bg-himalayan-dark text-cream'
@@ -109,17 +169,25 @@ export default function Footer() {
                   )}
                 </motion.button>
               </form>
+              <p className="mt-2 text-xs text-white/75 leading-relaxed">
+                By subscribing, you agree to receive commercial and educational emails from Himalayan Koh. You may unsubscribe at any time. Read our{' '}
+                <Link prefetch={false} to="/privacy" className="underline hover:text-white">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
               {subscribeError && (
-                <p className="mt-2 text-sm text-amber-300">{subscribeError}</p>
+                <p role="alert" className="mt-2 text-sm text-amber-300">{subscribeError}</p>
               )}
             </div>
           </div>
+          </FooterSection>
         </div>
       </div>
 
       {/* Main Footer */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-14 md:py-16">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 md:gap-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-7">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1 sm:gap-6 md:gap-8">
           {/* Brand */}
           <div className="sm:col-span-2 lg:col-span-1">
             <img
@@ -127,77 +195,78 @@ export default function Footer() {
               alt="Himalayan Koh"
               loading="lazy"
               decoding="async"
-              className="h-12 mb-5 brightness-0 invert"
+              className="h-8 mb-2 brightness-0 invert"
             />
-            <p className="text-white/60 text-sm leading-relaxed mb-6 max-w-xs">
-              Premium Himalayan Pink Salt products for livestock, horses, cattle, deer, and gourmet cooking. Trusted by ranchers across America.
+            <p className="text-white/80 text-xs sm:text-sm leading-relaxed mb-4 max-w-sm">
+              Himalayan pink salt for animals and the kitchen. Sourced from Khewra, Pakistan and distributed from Houston, Texas.
             </p>
 
           </div>
 
           {/* Quick Links */}
-          <div>
-            <h4 className="font-serif font-bold text-lg mb-6 text-white">Quick Links</h4>
-            <ul className="space-y-3">
+          <FooterSection title="Quick Links">
+            <ul className="space-y-2">
               {aboutLinks.map((link) => (
                 <li key={link.label}>
-                  <Link to={link.to} state={'state' in link ? link.state : undefined} className="text-white/60 text-sm hover:text-himalayan transition-colors flex items-center gap-1 group">
+                  <Link prefetch={false} to={link.to} state={'state' in link ? link.state : undefined} className="text-white/75 text-sm hover:text-himalayan transition-colors flex items-center gap-1 group">
                     <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
                     {link.label}
                   </Link>
                 </li>
               ))}
             </ul>
-          </div>
+          </FooterSection>
 
           {/* Products */}
-          <div>
-            <h4 className="font-serif font-bold text-lg mb-6 text-white">Products</h4>
-            <ul className="space-y-3">
+          <FooterSection title="Products">
+            <ul className="space-y-2">
               {productLinks.map((link) => (
                 <li key={link.label}>
-                  <Link to={link.to} className="text-white/60 text-sm hover:text-himalayan transition-colors flex items-center gap-1 group">
+                  <Link prefetch={false} to={link.to} className="text-white/75 text-sm hover:text-himalayan transition-colors flex items-center gap-1 group">
                     <ArrowRight size={14} className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
                     {link.label}
                   </Link>
                 </li>
               ))}
             </ul>
-          </div>
+          </FooterSection>
 
           {/* Contact */}
-          <div>
-            <h4 className="font-serif font-bold text-lg mb-6 text-white">Contact Us</h4>
-            <div className="space-y-4">
-              <a href="mailto:sales@himalayankoh.com" className="flex items-center gap-3 text-white/60 text-sm hover:text-himalayan transition-colors">
+          <FooterSection title="Customer Support">
+            <div className="space-y-3">
+              <a href="mailto:sales@himalayankoh.com" className="flex items-center gap-3 text-white/75 text-sm hover:text-himalayan transition-colors">
                 <Mail size={18} className="text-himalayan flex-shrink-0" />
                 sales@himalayankoh.com
               </a>
-              <a href="tel:8322246466" className="flex items-center gap-3 text-white/60 text-sm hover:text-himalayan transition-colors">
+              <a href="tel:8322246466" className="flex items-center gap-3 text-white/75 text-sm hover:text-himalayan transition-colors">
                 <Phone size={18} className="text-himalayan flex-shrink-0" />
                 (832) 224-6466
               </a>
             </div>
 
             {/* Trust badges */}
-            <div className="mt-6 flex items-center gap-3">
-              <div className="px-3 py-1.5 bg-white/10 rounded-lg text-xs text-white/60">
+            <div className="mt-4 flex items-center gap-3">
+              <div className="px-3 py-1.5 bg-white/10 rounded-lg text-xs text-white/75">
                 🔒 Secure Checkout
               </div>
             </div>
-          </div>
+          </FooterSection>
         </div>
       </div>
 
       {/* Bottom Bar */}
       <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-white/40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-white/70">
           <p>Copyright © 2026 Himalayan Koh. All rights reserved.</p>
-          <div className="flex items-center gap-4">
-            <Link to="/privacy" className="hover:text-white/60 transition-colors">Privacy Policy</Link>
-            <Link to="/terms" className="hover:text-white/60 transition-colors">Terms of Service</Link>
-            <Link to="/return" className="hover:text-white/60 transition-colors">Return Policy</Link>
-            <a href="/sitemap.xml" className="hover:text-white/60 transition-colors">Sitemap</a>
+          <div className="flex flex-wrap justify-center sm:justify-end items-center gap-x-4 gap-y-1 [&>a]:inline-flex [&>a]:min-h-11 [&>a]:items-center">
+            <Link prefetch={false} to="/disclaimer" className="hover:text-white/75 transition-colors">Disclaimer</Link>
+            <Link prefetch={false} to="/editorial-policy" className="hover:text-white/75 transition-colors">Editorial Policy</Link>
+            <Link prefetch={false} to="/privacy" className="hover:text-white/75 transition-colors">Privacy Policy</Link>
+            <Link prefetch={false} to="/terms" className="hover:text-white/75 transition-colors">Terms of Service</Link>
+            <Link prefetch={false} to="/shipping" className="hover:text-white/75 transition-colors">Shipping Policy</Link>
+            <Link prefetch={false} to="/returns" className="hover:text-white/75 transition-colors">Return Policy</Link>
+            <Link prefetch={false} to="/sitemap" className="hover:text-white/75 transition-colors">Sitemap</Link>
+            <button type="button" onClick={() => setConsent(null)} className="min-h-11 inline-flex items-center hover:text-white">Cookie settings</button>
           </div>
         </div>
       </div>

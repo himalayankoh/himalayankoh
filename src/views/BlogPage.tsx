@@ -2,8 +2,40 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowUpRight, Clock, Loader2, Search, Tag, User } from 'lucide-react';
-import { blogApi, BlogPostWithAuthor } from '../lib/supabase/api';
-import { isSupabaseConfigured } from '../lib/supabase/client';
+import type { BlogPostWithAuthor } from '../lib/blog/types';
+import { resolveLegacyImageSrc } from '../lib/images/legacyAssets';
+
+/**
+ * A post's card image, or a soft placeholder when the post has none.
+ *
+ * A WordPress featured image is optional, and the guide this store publishes has no
+ * featured image — so both listing cards rendered `<img src="">`: an image element
+ * with no source in the HTML and a blank block where a photo belonged. The eager
+ * flag is for the featured card, which is the listing's LCP candidate.
+ */
+function PostImage({
+  post,
+  className,
+  eager = false,
+}: {
+  post: BlogPostWithAuthor;
+  className: string;
+  eager?: boolean;
+}) {
+  const image = resolveLegacyImageSrc(post.featured_image).src;
+  if (!image) return <div className="w-full h-full bg-cream" aria-hidden="true" />;
+
+  return (
+    <img
+      src={image}
+      alt={post.title}
+      loading={eager ? 'eager' : 'lazy'}
+      fetchPriority={eager ? 'high' : undefined}
+      decoding="async"
+      className={className}
+    />
+  );
+}
 
 interface BlogPageProps {
   /**
@@ -21,13 +53,13 @@ export default function BlogPage({ initialPosts = [] }: BlogPageProps) {
 
   useEffect(() => {
     const fetchPosts = async () => {
-      if (!isSupabaseConfigured()) {
-        setLoading(false);
-        return;
-      }
-
       try {
-        const { posts: fetched } = await blogApi.getPosts();
+        // The server's listing, already scoped to the store's niche: the browser
+        // never reads the blog store itself, so a post written for the livestock
+        // trade is not merely dropped after it arrives.
+        const response = await fetch('/api/blog', { headers: { accept: 'application/json' } });
+        if (!response.ok) throw new Error(`The blog endpoint answered ${response.status}.`);
+        const { posts: fetched } = (await response.json()) as { posts: BlogPostWithAuthor[] };
         // Keep the server-rendered list if the refetch returns nothing.
         if (fetched.length || !initialPosts.length) {
           setPosts(fetched);
@@ -60,12 +92,12 @@ export default function BlogPage({ initialPosts = [] }: BlogPageProps) {
   return (
     <div className="min-h-screen bg-warm-white">
       {/* Header */}
-      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-20 md:py-28">
+      <div className="bg-gradient-to-r from-charcoal to-charcoal-light py-10 md:py-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
           <motion.span
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-block px-4 py-1.5 bg-himalayan/20 text-himalayan text-sm font-semibold tracking-wider uppercase rounded-full mb-5"
+            className="inline-block px-3 py-1 bg-himalayan/20 text-himalayan text-xs font-semibold tracking-wider uppercase rounded-full mb-3"
           >
             Our Blog
           </motion.span>
@@ -81,16 +113,16 @@ export default function BlogPage({ initialPosts = [] }: BlogPageProps) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-white/70 text-lg max-w-2xl mx-auto"
+            className="text-white/70 text-base max-w-2xl mx-auto"
           >
-            Expert insights on livestock health and Himalayan salt benefits
+Research guides and educational articles on Himalayan pink salt: culinary techniques, pasture management, mineral science, and bulk storage protocols
           </motion.p>
         </div>
       </div>
 
       {/* Blog Grid */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 md:py-16">
-        <div className="relative max-w-md mb-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
+        <div className="relative max-w-md mb-6">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             value={searchQuery}
@@ -106,7 +138,18 @@ export default function BlogPage({ initialPosts = [] }: BlogPageProps) {
           </div>
         ) : filteredPosts.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-md p-12 text-center text-charcoal-light">
-            No blog posts found.
+            <p className="mb-2">
+              {searchQuery.trim()
+                ? 'No articles match that search.'
+                : 'Our guides are being migrated to the new site.'}
+            </p>
+            <p className="text-sm">
+              In the meantime, the{' '}
+              <Link to="/faqs" className="text-himalayan hover:underline">
+                FAQ
+              </Link>{' '}
+              covers cooking, grain sizes, shipping and returns.
+            </p>
           </div>
         ) : (
           <>
@@ -116,16 +159,14 @@ export default function BlogPage({ initialPosts = [] }: BlogPageProps) {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="mb-12 bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-500 cursor-pointer group"
+          className="mb-8 bg-white rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-500 cursor-pointer group"
         >
-          <Link to={`/blog/${featuredPost.slug}`} className="grid md:grid-cols-2 gap-0">
+          <Link to={featuredPost.id?.startsWith('res-') ? `/resources/${featuredPost.slug}` : `/blog/${featuredPost.slug}`} className="grid md:grid-cols-2 gap-0">
             <div className="aspect-[16/10] md:aspect-auto overflow-hidden">
               {/* Featured post sits above the fold and is the LCP candidate. */}
-              <img
-                src={featuredPost.featured_image || ''}
-                alt={featuredPost.title}
-                fetchPriority="high"
-                decoding="async"
+              <PostImage
+                post={featuredPost}
+                eager
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
               />
             </div>
@@ -134,7 +175,9 @@ export default function BlogPage({ initialPosts = [] }: BlogPageProps) {
                 <span className="px-3 py-1 bg-himalayan-lighter text-himalayan text-xs font-semibold rounded-full">
                   Featured
                 </span>
-                <span className="text-sm text-charcoal-light">{featuredPost.category}</span>
+                {featuredPost.category && (
+                  <span className="text-sm text-charcoal-light">{featuredPost.category}</span>
+                )}
               </div>
               <h2 className="font-serif text-2xl md:text-3xl font-bold text-charcoal mb-4 group-hover:text-himalayan transition-colors">
                 {featuredPost.title}
@@ -172,21 +215,21 @@ export default function BlogPage({ initialPosts = [] }: BlogPageProps) {
               whileHover={{ y: -6 }}
               className="group bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-500 cursor-pointer"
             >
-              <Link to={`/blog/${post.slug}`} className="block">
+              <Link to={post.id?.startsWith('res-') ? `/resources/${post.slug}` : `/blog/${post.slug}`} className="block">
               <div className="aspect-[16/10] overflow-hidden">
-                <img
-                  src={post.featured_image || ''}
-                  alt={post.title}
+                <PostImage
+                  post={post}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                  loading="lazy"
                 />
               </div>
               <div className="p-6">
                 <div className="flex items-center gap-4 mb-3 text-xs text-charcoal-light">
-                  <span className="flex items-center gap-1">
-                    <Tag size={12} />
-                    {post.category}
-                  </span>
+                  {post.category && (
+                    <span className="flex items-center gap-1">
+                      <Tag size={12} />
+                      {post.category}
+                    </span>
+                  )}
                   <span className="flex items-center gap-1">
                     <Clock size={12} />
                     {post.read_time} min read

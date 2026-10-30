@@ -1,4 +1,5 @@
-﻿import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, lazy, Suspense } from 'react';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { Link } from 'react-router-dom';
 // usePathname instead of useLocation: useLocation reads search params, which
 // opts every route rendering this layout out of static prerendering, leaving
@@ -8,10 +9,10 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Search, ShoppingCart, User, Menu, X, Phone, MessageCircle, LogOut } from 'lucide-react';
 import { useCart } from '../store/cartStore';
 import { useAuthContext } from '../context/AuthContext';
-import { clearSupabaseSession } from '../lib/supabase/client';
+import { signOutOfBrowser } from '../lib/auth/browserSignOut';
 import CartDrawer from './CartDrawer';
 import SearchModal from './SearchModal';
-import AuthModal from './AuthModal';
+const AuthModal = lazy(() => import('./AuthModal'));
 import AIChatWidget from './AIChatWidget';
 import Footer from './Footer';
 import ScrollToTop from './ScrollToTop';
@@ -19,6 +20,14 @@ import ScrollToTop from './ScrollToTop';
 const navLinks = [
   { label: 'Home', path: '/' },
   { label: 'Products', path: '/products' },
+  // The trade door. A wholesale buyer arrives from a supplier email or a trade
+  // search, not from the shop, so the one page that explains the programme is in the
+  // header on every screen and in the mobile drawer with the other destinations.
+  { label: 'Wholesale', path: '/wholesale' },
+  // The guides were reachable only from inside the footer before this: the blog
+  // exists, is indexed, and is linked from nothing in the header, so a visitor
+  // (and a crawler walking the nav) never found it.
+  { label: 'Guides', path: '/blog' },
   { label: 'About Us', path: '/about' },
   { label: 'Contact', path: '/contact' },
 ];
@@ -33,17 +42,42 @@ export default function Layout({ children }: LayoutProps) {
   const [authOpen, setAuthOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = () => { if (desktop.matches) setMobileOpen(false); };
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
+  const mobileDialog = useDialogFocus(mobileOpen, () => setMobileOpen(false));
   const headerRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname() ?? '/';
+  const isCheckout = pathname === '/checkout';
   // Respected rather than assumed: a page that slides in is motion sickness for
   // some readers, and the transition is decoration, not information.
   const reduceMotion = useReducedMotion();
   const { totalItems } = useCart();
-  const { isAuthenticated, profile, user } = useAuthContext();
+  const { isAuthenticated, profile, user, isAdmin } = useAuthContext();
+
+  /**
+   * The signed-in menu, which is not the same menu for both roles.
+   *
+   * An administrator's account lives in the console, so offering them "My
+   * Account → /account" sent them into the customer portal and made them choose
+   * a second identity to get back. One destination per role, decided here and
+   * mirrored by the guards (`lib/auth/roleRouting`).
+   */
+  const accountMenuItems = isAdmin
+    ? [
+        { label: 'Admin Console', to: '/admin' },
+      ]
+    : [
+        { label: 'My Account', to: '/account' },
+        { label: 'My Orders', to: '/account?tab=orders' },
+      ];
 
   useEffect(() => {
     const el = headerRef.current;
-    if (!el) return;
+    if (!el) { document.documentElement.style.setProperty('--header-height', '0px'); return; }
     const observer = new ResizeObserver(([entry]) => {
       document.documentElement.style.setProperty(
         '--header-height',
@@ -52,19 +86,26 @@ export default function Layout({ children }: LayoutProps) {
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [isCheckout]);
 
   const handleSignOut = () => {
-    // Client-side sign-out: wipe the persisted session synchronously, close the
-    // menu, hard-navigate home. See AdminLayout — we don't call
-    // supabase.auth.signOut() (it can hang and can re-persist the session).
-    clearSupabaseSession();
+    // Both credentials this browser holds are cleared synchronously by their one
+    // owner (`lib/auth/browserSignOut`), then we hard-navigate home. We do not
+    // call supabase.auth.signOut(): it can hang and can re-persist the session.
+    signOutOfBrowser();
     setUserMenuOpen(false);
     window.location.assign('/');
   };
 
+  if (isCheckout) return (
+    <div className="flex min-h-screen flex-col pb-[var(--consent-space,0px)]">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:p-3">Skip to main content</a>
+      <main id="main-content" tabIndex={-1} className="flex-1">{children}</main>
+      <Footer compact />
+    </div>
+  );
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col pb-[var(--consent-space,0px)]">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-skip focus:px-4 focus:py-2 focus:bg-himalayan-green focus:text-cream focus:rounded-lg"
@@ -75,12 +116,22 @@ export default function Layout({ children }: LayoutProps) {
       <div ref={headerRef} className="sticky top-0 z-nav">
       {/* Announcement Bar */}
       <div className="bg-warm-white border-b border-himalayan-line text-sm text-charcoal">
-        <motion.div className="max-w-7xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+        <motion.div className="max-w-7xl mx-auto px-4 py-1.5 flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4">
           <p className="text-center sm:text-left text-xs sm:text-sm tracking-wide flex-1">
+            {/*
+              This line is on every page, including the cooking guide and the
+              policies, so it has to be true of the whole business rather than of
+              one shelf. It named horses, cattle and deer; the live catalogue sells
+              licks, a cattle block, livestock bags and an edible jar, and no deer
+              product exists in it, so the species list was both narrower than the
+              shop and partly unsupported. "Livestock and the kitchen" is what the
+              catalogue actually holds, with no health claim and no promise about a
+              product that is not for sale.
+            */}
             <strong className="font-semibold text-himalayan">All Natural</strong>{' '}
-            Himalayan salt for horses, cattle and deer
+            Himalayan salt for livestock and the kitchen
           </p>
-          <div className="flex items-center gap-6 sm:gap-8 text-xs sm:text-sm font-medium flex-shrink-0">
+          <div className="hidden sm:flex items-center gap-6 sm:gap-8 text-xs sm:text-sm font-medium flex-shrink-0">
             <a href="tel:8322246466" className="flex items-center gap-1.5 text-charcoal hover:text-himalayan transition-colors whitespace-nowrap">
               <Phone size={16} />
               <span>(832) 224-6466</span>
@@ -93,32 +144,42 @@ export default function Layout({ children }: LayoutProps) {
       </div>
 
       {/* Navbar */}
-      <header className="bg-cream/95 backdrop-blur-xl border-b border-himalayan-line shadow-[0_10px_30px_rgba(33,29,24,0.07)]">
+      <header className="bg-cream border-b border-himalayan-line shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-16 md:h-20">
-            {/* Logo */}
+          <div className="flex items-center justify-between h-14 md:h-16">
+            {/* Logo. The alt text is read aloud and indexed, and the previous value
+                ("Himalayan Koh — Salt that Heals") put an unsupported healing claim
+                into the header of every page. It is the brand name now. */}
             <Link to="/" className="flex items-center gap-3 shrink-0">
               <img
                 src="/logo.svg"
-                alt="Himalayan Koh — Salt that Heals"
-                className="h-11 md:h-[3.75rem] w-auto"
+                alt="Himalayan Koh"
+                className="h-8 md:h-11 w-auto max-w-[145px] sm:max-w-none"
               />
             </Link>
 
             {/* Desktop Nav */}
-            <nav className="hidden lg:flex items-center gap-0.5">
+            <nav aria-label="Main navigation" className="hidden lg:flex items-center gap-0.5">
               {navLinks.map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}
+                  prefetch={false}
+                  aria-current={
+                    pathname === link.path ||
+                    (link.path === '/products' && pathname.startsWith('/products/')) ||
+                    (link.path === '/wholesale' && pathname.startsWith('/wholesale'))
+                      ? 'page'
+                      : undefined
+                  }
                   className={`relative px-3 py-2 text-[0.82rem] font-extrabold uppercase tracking-[0.035em] transition-colors rounded-lg ${
-                    pathname === link.path
+                    pathname === link.path || (link.path === '/wholesale' && pathname.startsWith('/wholesale'))
                       ? 'text-himalayan-dark'
                       : 'text-charcoal hover:text-himalayan-dark'
                   }`}
                 >
                   {link.label}
-                  {pathname === link.path && (
+                  {(pathname === link.path || (link.path === '/wholesale' && pathname.startsWith('/wholesale'))) && (
                     <motion.div
                       layoutId="navIndicator"
                       className="absolute bottom-0 left-3 right-3 h-0.5 bg-himalayan rounded-full"
@@ -134,7 +195,7 @@ export default function Layout({ children }: LayoutProps) {
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setSearchOpen(true)}
-                className="p-2 rounded-lg border border-himalayan-line hover:border-himalayan/40 hover:bg-warm-white transition-colors"
+                className="min-w-11 min-h-11 p-2 rounded-lg border border-himalayan-line hover:border-himalayan/40 hover:bg-warm-white transition-colors"
                 aria-label="Search"
               >
                 <Search size={20} className="text-charcoal" />
@@ -144,7 +205,7 @@ export default function Layout({ children }: LayoutProps) {
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setCartOpen(true)}
-                className="p-2 rounded-lg border border-himalayan-line hover:border-himalayan/40 hover:bg-warm-white transition-colors relative"
+                className="min-w-11 min-h-11 p-2 rounded-lg border border-himalayan-line hover:border-himalayan/40 hover:bg-warm-white transition-colors relative"
                 aria-label="Cart"
               >
                 <ShoppingCart size={20} className="text-charcoal" />
@@ -167,7 +228,7 @@ export default function Layout({ children }: LayoutProps) {
                       whileHover={{ scale: 1.1 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => setUserMenuOpen(!userMenuOpen)}
-                      className="p-2 rounded-lg border border-himalayan-line bg-warm-white transition-colors"
+                      className="min-w-11 min-h-11 p-2 rounded-lg border border-himalayan-line bg-warm-white transition-colors"
                     >
                       {profile?.avatar_url ? (
                         <img
@@ -196,20 +257,16 @@ export default function Layout({ children }: LayoutProps) {
                               {user?.email}
                             </p>
                           </div>
-                          <Link
-                            to="/account"
-                            className="block px-4 py-2 text-sm text-charcoal hover:bg-gray-50"
-                            onClick={() => setUserMenuOpen(false)}
-                          >
-                            My Account
-                          </Link>
-                          <Link
-                            to="/orders"
-                            className="block px-4 py-2 text-sm text-charcoal hover:bg-gray-50"
-                            onClick={() => setUserMenuOpen(false)}
-                          >
-                            My Orders
-                          </Link>
+                          {accountMenuItems.map((item) => (
+                            <Link
+                              key={item.to}
+                              to={item.to}
+                              className="block px-4 py-2 text-sm text-charcoal hover:bg-gray-50"
+                              onClick={() => setUserMenuOpen(false)}
+                            >
+                              {item.label}
+                            </Link>
+                          ))}
                           <button
                             onClick={handleSignOut}
                             className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
@@ -240,7 +297,9 @@ export default function Layout({ children }: LayoutProps) {
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setMobileOpen(!mobileOpen)}
                 className="lg:hidden p-2 rounded-full hover:bg-himalayan-lighter transition-colors"
-                aria-label="Menu"
+                aria-label={mobileOpen ? 'Close menu' : 'Menu'}
+                aria-expanded={mobileOpen}
+                aria-controls="mobile-navigation"
               >
                 {mobileOpen ? <X size={20} /> : <Menu size={20} />}
               </motion.button>
@@ -257,15 +316,17 @@ export default function Layout({ children }: LayoutProps) {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="lg:hidden fixed top-[var(--header-height)] left-0 right-0 z-nav-overlay bg-cream border-t border-himalayan-line shadow-xl overflow-hidden"
+            id="mobile-navigation" ref={mobileDialog} role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1}
+            className="lg:hidden max-h-[calc(100dvh-var(--header-height))] overflow-y-auto fixed top-[var(--header-height)] left-0 right-0 z-nav-overlay bg-cream border-t border-himalayan-line shadow-xl"
           >
-            <nav className="max-w-7xl mx-auto px-4 py-4 space-y-1">
+            <nav aria-label="Mobile navigation" className="max-w-7xl mx-auto px-4 py-4 space-y-1">
+              <button onClick={() => setMobileOpen(false)} className="min-h-11 px-4 text-sm text-charcoal-light" aria-label="Close menu">Close menu</button>
               {navLinks.map((link, i) => (
                 <motion.div
                   key={link.path}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.12 }}
                 >
                   <Link
                     to={link.path}
@@ -280,6 +341,29 @@ export default function Layout({ children }: LayoutProps) {
                   </Link>
                 </motion.div>
               ))}
+              <div className="grid grid-cols-2 gap-2 py-3 border-y border-himalayan-line">
+                <Link to="/products?category=licks-blocks" onClick={() => setMobileOpen(false)} className="min-h-11 flex items-center px-3 rounded-lg bg-white text-sm font-semibold">Salt Licks</Link>
+                <Link to="/products?category=edible-pink-salt" onClick={() => setMobileOpen(false)} className="min-h-11 flex items-center px-3 rounded-lg bg-white text-sm font-semibold">Edible Pink Salt</Link>
+              </div>
+              {isAuthenticated && (
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.25 }}
+                  className="pt-2 border-t border-himalayan-line/40"
+                >
+                  {accountMenuItems.map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setMobileOpen(false)}
+                      className="block px-4 py-3 rounded-lg text-sm font-semibold text-charcoal hover:bg-warm-white transition-colors"
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </motion.div>
+              )}
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -322,10 +406,10 @@ export default function Layout({ children }: LayoutProps) {
           is what read as a flick. Keyed on the path only, not the query, so
           filtering the catalogue re-renders in place instead of remounting and
           refetching. */}
-      <main id="main-content" className="flex-1" tabIndex={-1}>
+      <main id="main-content" className="flex-1 w-full max-w-full overflow-x-clip" tabIndex={-1}>
         <motion.div
           key={pathname}
-          initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+          initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
         >
@@ -339,8 +423,8 @@ export default function Layout({ children }: LayoutProps) {
       {/* Modals & Drawers */}
       <CartDrawer isOpen={cartOpen} onClose={() => setCartOpen(false)} />
       <SearchModal isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
-      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
-      <AIChatWidget />
+      {authOpen && <Suspense fallback={<div role="status" className="fixed bottom-4 left-4 z-modal bg-white border rounded-lg p-4">Opening sign in…</div>}><AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} /></Suspense>}
+      {!pathname.startsWith('/checkout') && <AIChatWidget />}
       <ScrollToTop />
     </div>
   );

@@ -40,6 +40,14 @@ export const MIGRATIONS = [
   '033_scope_guest_cart_rls.sql',
   '034_newsletter_subscribers.sql',
   '035_customer_cancel_own_order.sql',
+  '036_hermes_evidence_store.sql',
+  '037_leados_schema.sql',
+  '038_stripe_checkout_sessions.sql',
+  '039_stripe_payment_intent_order_idempotency.sql',
+  '040_media_videos.sql',
+  '041_product_scout_tables.sql',
+  '042_crm_leads_extended.sql',
+  '043_site_events_analytics.sql',
 ];
 
 /** Tables every script's health/verification checks care about. */

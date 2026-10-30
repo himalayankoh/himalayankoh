@@ -1,9 +1,30 @@
 import { Download, ExternalLink, Loader2, Printer, Truck } from 'lucide-react';
-import type { AdminOrder } from '../../lib/supabase/api/admin';
 import { formatShippoLabelError } from '../../lib/shippo/carrierErrors';
+import { AdminChip, AdminNotice } from './AdminUI';
+import { BUTTON, SURFACE } from './adminTheme';
+
+/**
+ * What a label panel needs from an order — and nothing else.
+ *
+ * Declared here rather than imported from the admin order API: this block renders the
+ * payment state, the carrier and the tracking keys, so it should depend on those five
+ * fields and not on a row from whichever database used to hold orders. The WooCommerce
+ * order the routes send is a superset, so it fits without adaptation.
+ */
+export interface LabelOrder {
+  id: string;
+  status: string;
+  payment_status: string;
+  shipping_carrier: string | null;
+  tracking_number: string | null;
+  tracking_url: string | null;
+  label_url: string | null;
+  /** Present on the labels worklist; not read by this block. */
+  profile?: { full_name?: string | null } | null;
+}
 
 interface ShippingLabelPanelProps {
-  order: AdminOrder;
+  order: LabelOrder;
   shippoEnabled: boolean;
   labelCreating?: boolean;
   labelError?: string | null;
@@ -13,6 +34,15 @@ interface ShippingLabelPanelProps {
   variant?: 'full' | 'page';
 }
 
+/**
+ * The shipping-label block for one order.
+ *
+ * `variant="page"` is the compact form used inside the labels list rows (it
+ * renders nothing when there is nothing to do); `variant="full"` is the order
+ * detail form with the packing steps. Both are the same state machine — what a
+ * label needs, what exists, and what failed — so the two surfaces can never
+ * disagree about whether an order is ready to ship.
+ */
 export default function ShippingLabelPanel({
   order,
   shippoEnabled,
@@ -32,35 +62,50 @@ export default function ShippingLabelPanel({
 
   if (!shippoEnabled) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Shippo is not set up yet. Add your Shippo API key and warehouse address in <strong>Admin → Settings → Shippo</strong> to create labels.
-      </div>
+      <AdminNotice tone="warning" title="Shippo is not configured">
+        Add a Shippo API key and warehouse address in <strong>Settings → Shippo</strong> to create
+        labels. Orders can still be managed without one.
+      </AdminNotice>
     );
   }
 
   if (!hasLabel && !needsLabel && !labelError && !labelNotice) {
     if (variant === 'page') return null;
     return (
-      <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-charcoal-light">
-        No shipping label for this order yet. Labels appear here after payment is confirmed and you create one.
+      <div className={`${SURFACE} p-5 text-sm text-admin-muted`}>
+        No shipping label for this order yet. A label appears here once payment is confirmed and you
+        create one.
       </div>
     );
   }
 
+  const actionLink = 'inline-flex items-center justify-center gap-2 px-4 py-2.5';
+
   return (
-    <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50/60 px-4 py-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Truck size={18} className="text-indigo-700" />
-        <p className="font-bold text-charcoal">Shipping Labels</p>
+    <div className={`${SURFACE} p-5`}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Truck size={16} className="text-admin-muted" />
+          <p className="text-sm font-semibold text-admin-ink">Shipping label</p>
+        </div>
+        {hasLabel ? (
+          <AdminChip tone="success">Label ready</AdminChip>
+        ) : needsLabel ? (
+          <AdminChip tone="warning">Not created</AdminChip>
+        ) : (
+          <AdminChip tone="muted">Not required</AdminChip>
+        )}
       </div>
 
       {hasLabel && (
-        <div className={`grid gap-2 ${variant === 'page' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+        /* Two fixed columns, never a breakpoint stack: the console keeps its
+           desktop layout at every viewport. */
+        <div className="grid grid-cols-2 gap-2">
           <a
             href={order.label_url!}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white hover:bg-indigo-700 transition-colors"
+            className={`${BUTTON.primary} ${actionLink}`}
           >
             <Download size={16} />
             Download label (PDF)
@@ -69,7 +114,7 @@ export default function ShippingLabelPanel({
             href={order.label_url!}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-300 bg-white px-4 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 transition-colors"
+            className={`${BUTTON.secondary} ${actionLink}`}
           >
             <Printer size={16} />
             Print label
@@ -79,7 +124,7 @@ export default function ShippingLabelPanel({
               href={order.tracking_url}
               target="_blank"
               rel="noopener noreferrer"
-              className={`inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-charcoal hover:bg-gray-50 transition-colors ${variant === 'full' ? '' : 'sm:col-span-2'}`}
+              className={`${BUTTON.secondary} ${actionLink} col-span-2`}
             >
               <ExternalLink size={16} />
               Track package
@@ -89,8 +134,9 @@ export default function ShippingLabelPanel({
       )}
 
       {hasLabel && order.tracking_number && (
-        <p className="mt-3 text-xs text-charcoal-light">
-          Tracking: <span className="font-semibold text-charcoal">{order.tracking_number}</span>
+        <p className="mt-3 text-xs text-admin-muted">
+          Tracking{' '}
+          <span className="font-semibold text-admin-ink">{order.tracking_number}</span>
           {order.shipping_carrier ? ` · ${order.shipping_carrier}` : ''}
         </p>
       )}
@@ -98,15 +144,16 @@ export default function ShippingLabelPanel({
       {needsLabel && (
         <>
           {variant === 'full' && (
-            <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-charcoal-light">
+            <ol className="mb-3 list-decimal space-y-1 pl-5 text-sm text-admin-muted">
               <li>Pack the order and confirm the shipping address.</li>
               <li>Create the Shippo label — tracking is emailed to the customer.</li>
               <li>Download or print the PDF and attach it to the package.</li>
             </ol>
           )}
-          {needsLabel && order.shipping_carrier && !/usps/i.test(order.shipping_carrier) && (
-            <p className="mb-3 text-xs text-amber-800">
-              Checkout selected {order.shipping_carrier}. If that carrier is not active in Shippo, we automatically try USPS.
+          {order.shipping_carrier && !/usps/i.test(order.shipping_carrier) && (
+            <p className="mb-3 text-xs text-admin-muted">
+              Checkout selected {order.shipping_carrier}. If that carrier is not active in Shippo, USPS
+              is tried automatically.
             </p>
           )}
           {onCreateLabel && (
@@ -114,36 +161,39 @@ export default function ShippingLabelPanel({
               type="button"
               onClick={onCreateLabel}
               disabled={labelCreating}
-              className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-himalayan bg-white px-4 py-3 text-sm font-bold text-himalayan hover:bg-himalayan/5 transition-colors disabled:opacity-70"
+              className={`${BUTTON.primary} w-full`}
             >
               {labelCreating ? <Loader2 size={16} className="animate-spin" /> : <Truck size={16} />}
-              {labelCreating ? 'Creating label...' : 'Create Shippo Label'}
+              {labelCreating ? 'Creating label…' : 'Create Shippo label'}
             </button>
           )}
         </>
       )}
 
       {labelNotice && (
-        <p className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-          {labelNotice}
-        </p>
+        <div className="mt-3">
+          <AdminNotice tone="info" title="Label created">
+            {labelNotice}
+          </AdminNotice>
+        </div>
       )}
 
       {labelErrorInfo && (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800">
-          <p className="font-semibold">{labelErrorInfo.title}</p>
-          <p className="mt-1">{labelErrorInfo.detail}</p>
-          {labelErrorInfo.actionUrl && (
-            <a
-              href={labelErrorInfo.actionUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1 font-semibold text-red-900 underline"
-            >
-              {labelErrorInfo.actionLabel}
-              <ExternalLink size={14} />
-            </a>
-          )}
+        <div className="mt-3">
+          <AdminNotice tone="danger" title={labelErrorInfo.title}>
+            <p>{labelErrorInfo.detail}</p>
+            {labelErrorInfo.actionUrl && (
+              <a
+                href={labelErrorInfo.actionUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 font-semibold underline"
+              >
+                {labelErrorInfo.actionLabel}
+                <ExternalLink size={14} />
+              </a>
+            )}
+          </AdminNotice>
         </div>
       )}
     </div>

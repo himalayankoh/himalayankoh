@@ -1,0 +1,74 @@
+/**
+ * The production Worker, declared separately from the staging `wrangler.jsonc`.
+ *
+ * ## Why this is an overlay rather than a second `wrangler.jsonc`
+ *
+ * `vinext build` reads exactly one config from the project root — `wrangler.jsonc`
+ * or `wrangler.json` — and derives `dist/server/wrangler.json` from it. It has no
+ * flag for a second one, and `next.config`/`vite.config` do not select it either.
+ * So the build always starts from the staging file, and
+ * `scripts/apply-production-config.mjs` overwrites the name and variables in the
+ * build output before anything is deployed. `scripts/assert-production-config.mjs`
+ * then reads the result back and refuses it unless every value below is present and
+ * correct — a guard on the artifact, not on this file, because the artifact is what
+ * gets deployed.
+ *
+ * This file is still the declaration a human reads, and the build fails if it
+ * disagrees with `scripts/production-target.mjs`, which is the value the rest of the
+ * tooling uses. Change both, or change neither.
+ *
+ * ## What is deliberately absent
+ *
+ * - **No `routes`, no `custom_domain`.** Attaching `himalayankoh.com` or
+ *   `www.himalayankoh.com` here would move real customer traffic onto this Worker
+ *   the moment it is deployed. The apex stays on WordPress until the owner approves
+ *   the cutover; until then this Worker is reachable only at its `*.workers.dev`
+ *   name. The guard refuses any config that names either host.
+ * - **No secrets.** Everything under `vars` is world-readable from the deployment.
+ *   The WooCommerce keys, session secrets, Shippo key and Stripe keys are set with
+ *   `wrangler secret put` on the production Worker.
+ * - **No `NEXT_PUBLIC_SITE_URL` override at runtime that disagrees with the build.**
+ *   `NEXT_PUBLIC_*` is inlined when the bundle is built, so the build is given these
+ *   same values by `scripts/build-production.mjs`; they are repeated here so a
+ *   runtime read of `process.env` agrees with what was compiled in.
+ *
+ * `NEXT_PUBLIC_WORDPRESS_BASE_URL` / `NEXT_PUBLIC_WOOCOMMERCE_BASE_URL` are the
+ * *public* fallbacks, used by browser code that reads WordPress directly. Server
+ * code prefers the `WORDPRESS_BASE_URL` / `WOOCOMMERCE_BASE_URL` secrets
+ * (`src/lib/backend/config.ts`), which must be set to the same hostname.
+ *
+ * `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is here for the same reason and is public for
+ * the same reason Stripe's publishable keys always are: it is served to every visitor
+ * by `src/app/api/stripe/config/route.ts` and embedded in the browser bundle. It is
+ * declared here as well as inlined by the build so that the deployed Worker can be read
+ * back and compared — `scripts/deploy-production.mjs` verifies these variables against
+ * the running deployment, which is the only way to prove the key whose `pk_live_` value
+ * a shopper's browser receives is the one that was intended.
+ *
+ * `STOREFRONT_ORDERS_PAUSED` explicitly controls order availability. Production
+ * accepts orders after backend credentials, live Stripe keys and a signed diagnostic
+ * pass their checks. The separate payment readiness checks still refuse an invalid
+ * configuration. Keep this switch present so the production guard detects drift.
+ *
+ * `NEXT_PUBLIC_ORDERS_PAUSED` is the same fact for the browser, and it must say the same
+ * thing: the runtime variable is what the server refuses an order from, while this one is
+ * inlined into the product cards and pages that render the cart control, so a mismatch
+ * would show an "Add to Cart" button to a shopper whose order the routes would reject.
+ * Both are pinned to `PRODUCTION_ORDERS_PAUSED` in `scripts/production-target.mjs`.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "himalayan-koh-ecommerce-prod",
+  // Health probes must reach the public webhook, including when called by this
+  // Worker. The default fetch mode bypasses Workers and reaches WordPress instead.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "vars": {
+    "NEXT_PUBLIC_SITE_URL": "https://himalayankoh.com",
+    "NEXT_PUBLIC_DATA_SOURCE": "woocommerce",
+    "NEXT_PUBLIC_WORDPRESS_BASE_URL": "https://wp.himalayankoh.com",
+    "NEXT_PUBLIC_WOOCOMMERCE_BASE_URL": "https://wp.himalayankoh.com",
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_live_bScMJ0xIRFCAbr3IQJM5YWfY004PNn0fn2",
+    "STOREFRONT_ORDERS_PAUSED": "false",
+    "NEXT_PUBLIC_ORDERS_PAUSED": "false"
+  }
+}

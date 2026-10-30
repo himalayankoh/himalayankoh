@@ -3,8 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mail, Lock, User, Eye, EyeOff, Loader2, ArrowRight, UserRound } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthContext } from '../context/AuthContext';
-import { authApi } from '../lib/supabase/api';
-import { isSupabaseConfigured } from '../lib/supabase/client';
 import { useToast } from '../context/ToastContext';
 
 interface Props {
@@ -12,35 +10,46 @@ interface Props {
   onClose: () => void;
 }
 
-type AuthMode = 'login' | 'signup' | 'forgot';
+/**
+ * This modal signs in and signs up, and that is all it does.
+ *
+ * It used to carry a third mode that asked Supabase to send a reset email. With
+ * the customer path on WooCommerce there is nothing here to send it, and a
+ * modal cannot ask for a reset any more than it can hold a session, so the one
+ * owner of that flow is the `/forgot-password` page and this links to it. That
+ * link is also why this file matters beyond its own screen: the modal is in the
+ * layout, so whatever it imported was downloaded by every storefront route.
+ */
+type AuthMode = 'login' | 'signup';
 
-// Demo credentials only exist at all in a development build. Checking
-// process.env.NODE_ENV directly lets the production minifier prove this
-// function always returns null and strip the credential literals below as
-// dead code — not just skip rendering them, so they can't be scraped out of
-// the shipped production JS either.
-function getDemoAccounts(): { customer: { email: string; password: string }; admin: { email: string; password: string } } | null {
+/**
+ * The development convenience — and only the part of it that is true.
+ *
+ * The "Demo Customer" / "Demo Admin" buttons used to fill two passwords, and
+ * both were false: the customer account was never seeded, and the admin password
+ * here was not the configured account's password, so the filled credential
+ * answered 401. This modal and the sign-in page advertised the same pair; both
+ * now offer the admin email alone, which is true and public, and leave the
+ * password to whoever holds it.
+ *
+ * Development builds only — checking `process.env.NODE_ENV` directly lets the
+ * production minifier prove this returns null and strip it.
+ */
+function devAdminEmail(): string | null {
   if (process.env.NODE_ENV !== 'development') return null;
-  return {
-    customer: {
-      email: 'customer@himalayankoh.com',
-      password: 'Customer@123',
-    },
-    admin: {
-      email: 'admin@himalayankoh.com',
-      password: 'Admin@123',
-    },
-  };
+  return 'admin@himalayankoh.com';
 }
 
-const demoAccounts = getDemoAccounts();
+const devAdmin = devAdminEmail();
 
 export default function AuthModal({ isOpen, onClose }: Props) {
   const [mode, setMode] = useState<AuthMode>('login');
   const [showPassword, setShowPassword] = useState(false);
+  // The email only: this form used to open holding a demo customer's password,
+  // so the first Sign In click always failed.
   const [formData, setFormData] = useState({
-    email: demoAccounts?.customer.email ?? '',
-    password: demoAccounts?.customer.password ?? '',
+    email: devAdmin ?? '',
+    password: '',
     fullName: '',
   });
   const [localLoading, setLocalLoading] = useState(false);
@@ -48,7 +57,6 @@ export default function AuthModal({ isOpen, onClose }: Props) {
   const { signIn, signUp } = useAuthContext();
   const navigate = useNavigate();
   const toast = useToast();
-  const supabaseReady = isSupabaseConfigured();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,17 +66,13 @@ export default function AuthModal({ isOpen, onClose }: Props) {
       if (mode === 'login') {
         await signIn({ email: formData.email, password: formData.password });
         onClose();
-      } else if (mode === 'signup') {
+      } else {
         await signUp({
           email: formData.email,
           password: formData.password,
           fullName: formData.fullName,
         });
         toast.success('Account created! Please check your email to verify.');
-        onClose();
-      } else if (mode === 'forgot') {
-        await authApi.resetPassword(formData.email);
-        toast.success('Reset link sent! Check your email.');
         onClose();
       }
     } catch (err) {
@@ -82,19 +86,15 @@ export default function AuthModal({ isOpen, onClose }: Props) {
     setFormData({ email: '', password: '', fullName: '' });
   };
 
-  const goToFullPage = (page: 'login' | 'signup') => {
+  const goToFullPage = (page: 'login' | 'signup' | 'forgot-password') => {
     onClose();
     navigate(`/${page}`);
   };
 
-  const fillDemoAccount = (type: 'customer' | 'admin') => {
-    if (!demoAccounts) return;
+  const fillAdminEmail = () => {
+    if (!devAdmin) return;
     setMode('login');
-    setFormData({
-      ...formData,
-      email: demoAccounts[type].email,
-      password: demoAccounts[type].password,
-    });
+    setFormData({ ...formData, email: devAdmin });
   };
 
   return (
@@ -130,28 +130,16 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                   className="h-12 mx-auto mb-4"
                 />
                 <h2 className="font-serif text-2xl font-bold text-charcoal">
-                  {mode === 'login' && 'Welcome Back'}
-                  {mode === 'signup' && 'Create Account'}
-                  {mode === 'forgot' && 'Reset Password'}
+                  {mode === 'login' ? 'Welcome Back' : 'Create Account'}
                 </h2>
                 <p className="text-charcoal-light text-sm mt-1">
-                  {mode === 'login' && 'Sign in to your account'}
-                  {mode === 'signup' && 'Join Himalayan Koh today'}
-                  {mode === 'forgot' && 'Enter your email to reset'}
+                  {mode === 'login' ? 'Sign in to your account' : 'Join Himalayan Koh today'}
                 </p>
               </div>
             </div>
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="p-6 pt-0 space-y-4">
-              {!supabaseReady && mode === 'login' && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
-                  {demoAccounts
-                    ? 'Supabase is not configured. Add Vercel env vars before demo login will work.'
-                    : 'Supabase is not configured. Sign-in is unavailable until it is.'}
-                </div>
-              )}
-
               {mode === 'login' && (
                 <div>
                   <button
@@ -168,23 +156,14 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                 </div>
               )}
 
-              {mode === 'login' && demoAccounts && (
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('customer')}
-                    className="p-2.5 rounded-lg bg-himalayan-lighter text-himalayan text-xs font-semibold hover:bg-himalayan/15 transition-colors"
-                  >
-                    Demo Customer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fillDemoAccount('admin')}
-                    className="p-2.5 rounded-lg bg-charcoal text-white text-xs font-semibold hover:bg-charcoal-light transition-colors"
-                  >
-                    Demo Admin
-                  </button>
-                </div>
+              {mode === 'login' && devAdmin && (
+                <button
+                  type="button"
+                  onClick={fillAdminEmail}
+                  className="w-full p-2.5 rounded-lg bg-charcoal text-white text-xs font-semibold hover:bg-charcoal-light transition-colors"
+                >
+                  Fill in the admin email
+                </button>
               )}
 
               {mode === 'signup' && (
@@ -208,12 +187,14 @@ export default function AuthModal({ isOpen, onClose }: Props) {
 
               <div>
                 <label className="block text-sm font-medium text-charcoal mb-1.5">
-                  Email Address
+                  {mode === 'login' ? 'Email or WordPress username' : 'Email Address'}
                 </label>
                 <div className="relative">
                   <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
-                    type="email"
+                    // A WordPress admin signs in with a username, which the
+                    // browser's native email validation would refuse.
+                    type={mode === 'login' ? 'text' : 'email'}
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -223,38 +204,37 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                 </div>
               </div>
 
-              {mode !== 'forgot' && (
-                <div>
-                  <label className="block text-sm font-medium text-charcoal mb-1.5">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-charcoal placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
-                      placeholder="••••••••"
-                      minLength={6}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-1.5">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl text-charcoal placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+                    placeholder="••••••••"
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
                 </div>
-              )}
+              </div>
 
               {mode === 'login' && (
                 <div className="text-right">
                   <button
                     type="button"
-                    onClick={() => { setMode('forgot'); resetForm(); }}
+                    onClick={() => goToFullPage('forgot-password')}
                     className="text-sm text-himalayan hover:underline"
                   >
                     Forgot password?
@@ -270,9 +250,7 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                 className="w-full flex items-center justify-center gap-2 min-h-11 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
               >
                 {localLoading && <Loader2 size={18} className="animate-spin" />}
-                {mode === 'login' && 'Sign In'}
-                {mode === 'signup' && 'Create Account'}
-                {mode === 'forgot' && 'Send Reset Link'}
+                {mode === 'login' ? 'Sign In' : 'Create Account'}
               </motion.button>
 
               {/* Switch mode */}
@@ -301,29 +279,18 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                     </button>
                   </>
                 )}
-                {mode === 'forgot' && (
-                  <button
-                    type="button"
-                    onClick={() => { setMode('login'); resetForm(); }}
-                    className="text-himalayan font-semibold hover:underline"
-                  >
-                    Back to sign in
-                  </button>
-                )}
               </div>
 
               {/* Full page link */}
-              {mode !== 'forgot' && (
-                <div className="pt-2 text-center">
-                  <button
-                    type="button"
-                    onClick={() => goToFullPage(mode === 'login' ? 'login' : 'signup')}
-                    className="text-xs text-charcoal-light hover:text-charcoal"
-                  >
-                    Open full {mode === 'login' ? 'login' : 'signup'} page <ArrowRight size={12} className="inline" />
-                  </button>
-                </div>
-              )}
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => goToFullPage(mode === 'login' ? 'login' : 'signup')}
+                  className="text-xs text-charcoal-light hover:text-charcoal"
+                >
+                  Open full {mode === 'login' ? 'login' : 'signup'} page <ArrowRight size={12} className="inline" />
+                </button>
+              </div>
             </form>
           </motion.div>
         </motion.div>

@@ -1,0 +1,42 @@
+{
+  "name": "Himalayan Koh Admin",
+  "short_name": "HK Admin",
+  "description": "Himalayan Koh Mobile Admin & Commerce Operations Console",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "background_color": "#181411",
+  "theme_color": "#B86452",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/hk_salt_crystal.webp",
+      "sizes": "192x192 512x512",
+      "type": "image/webp",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Orders",
+      "url": "/admin/orders",
+      "description": "View and manage recent orders"
+    },
+    {
+      "name": "Inbox",
+      "url": "/admin/inbox",
+      "description": "Business mailboxes & prospect communications"
+    },
+    {
+      "name": "LeadOS",
+      "url": "/admin/leados",
+      "description": "B2B Livestock lead generation and CRM"
+    }
+  ]
+}

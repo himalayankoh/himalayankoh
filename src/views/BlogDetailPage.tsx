@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowUpRight, Clock, Loader2, Tag, User } from 'lucide-react';
-import { blogApi, BlogPostWithAuthor } from '../lib/supabase/api';
-import { isSupabaseConfigured } from '../lib/supabase/client';
+import { blogPostApi } from '../lib/blog/client';
+import type { BlogPostWithAuthor } from '../lib/blog/client';
+import { resolveLegacyImageSrc } from '../lib/images/legacyAssets';
+import AdSlot from '../components/ads/AdSlot';
 
 interface BlogDetailPageProps {
   /**
@@ -12,23 +14,31 @@ interface BlogDetailPageProps {
    * loading spinner they would otherwise get from a client-only fetch.
    */
   initialPost?: BlogPostWithAuthor | null;
+  /**
+   * The server could not read the store for this slug. Distinct from "no such
+   * post": the URL may well be a real article that one failed read could not
+   * reach, so the page says so and keeps trying instead of claiming the article
+   * does not exist.
+   */
+  unavailable?: boolean;
 }
 
-export default function BlogDetailPage({ initialPost = null }: BlogDetailPageProps) {
+export default function BlogDetailPage({ initialPost = null, unavailable = false }: BlogDetailPageProps) {
   const { slug } = useParams();
   const [post, setPost] = useState<BlogPostWithAuthor | null>(initialPost);
   const [relatedPosts, setRelatedPosts] = useState<BlogPostWithAuthor[]>([]);
   const [loading, setLoading] = useState(!initialPost);
+  const [readFailed, setReadFailed] = useState(unavailable);
 
   useEffect(() => {
     const fetchPost = async () => {
-      if (!slug || !isSupabaseConfigured()) {
+      if (!slug) {
         setLoading(false);
         return;
       }
 
       try {
-        const fetched = await blogApi.getPostBySlug(slug);
+        const fetched = await blogPostApi.getPostBySlug(slug);
 
         // Keep the server-rendered post if the client refetch comes back empty,
         // so a transient failure never blanks out content already on screen.
@@ -38,10 +48,11 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
 
         const current = fetched ?? initialPost;
         if (current) {
-          setRelatedPosts(await blogApi.getRelatedPosts(current.id, current.category, 3));
+          setRelatedPosts(await blogPostApi.getRelatedPosts(current.id, current.category, 3));
         }
       } catch (err) {
         console.error('Failed to fetch blog post:', err);
+        setReadFailed(true);
       } finally {
         setLoading(false);
       }
@@ -65,11 +76,28 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
       <div className="min-h-screen bg-warm-white py-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
           <div className="bg-white rounded-2xl shadow-md p-12">
-            <h1 className="font-serif text-3xl font-bold text-charcoal mb-3">Article Not Found</h1>
-            <p className="text-charcoal-light mb-6">This blog post is unavailable.</p>
-            <Link to="/blog" className="inline-flex items-center justify-center px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors">
-              Back to Blog
-            </Link>
+            <h1 className="font-serif text-3xl font-bold text-charcoal mb-3">
+              {readFailed ? 'This guide could not be loaded' : 'Article Not Found'}
+            </h1>
+            <p className="text-charcoal-light mb-6">
+              {readFailed
+                ? 'The guides could not be reached just now. The link itself may still be good, so please reload the page in a moment.'
+                : 'This blog post is unavailable.'}
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {readFailed && (
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="inline-flex items-center justify-center px-6 py-3 border border-himalayan-line text-charcoal font-semibold rounded-xl hover:bg-cream transition-colors"
+                >
+                  Reload
+                </button>
+              )}
+              <Link to="/blog" className="inline-flex items-center justify-center px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors">
+                Back to Blog
+              </Link>
+            </div>
           </div>
         </div>
       </div>
@@ -115,7 +143,7 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
         {/* Featured image is the LCP element for an article — eager, high priority. */}
         {post.featured_image && (
           <img
-            src={post.featured_image}
+            src={resolveLegacyImageSrc(post.featured_image).src}
             alt={post.title}
             fetchPriority="high"
             decoding="async"
@@ -135,25 +163,39 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
           />
         </div>
 
+        {post.is_published && <AdSlot key={post.slug} className="mt-10" />}
+
         {relatedPosts.length > 0 && (
           <section className="mt-12">
             <h2 className="font-serif text-2xl font-bold text-charcoal mb-6">Related Articles</h2>
             <div className="grid md:grid-cols-3 gap-6">
-              {relatedPosts.map((related) => (
+              {relatedPosts.map((related) => {
+                // A featured image is optional on a WordPress post. This used to render
+                // `<img src="">` for a post that has none, which put an image element
+                // with no source in the HTML and left a blank 16:10 block in the card.
+                const image = resolveLegacyImageSrc(related.featured_image).src;
+
+                return (
                 <Link
                   key={related.id}
                   to={`/blog/${related.slug}`}
                   className="group bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-xl transition-all duration-300"
                 >
-                  <img
-                    src={related.featured_image || ''}
-                    alt={related.title}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full aspect-[16/10] object-cover group-hover:scale-105 transition-transform duration-700"
-                  />
+                  {image ? (
+                    <img
+                      src={image}
+                      alt={related.title}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full aspect-[16/10] object-cover group-hover:scale-105 transition-transform duration-700"
+                    />
+                  ) : (
+                    <div className="w-full aspect-[16/5] bg-cream" aria-hidden="true" />
+                  )}
                   <div className="p-5">
-                    <p className="text-xs text-charcoal-light mb-2">{related.category}</p>
+                    {related.category && (
+                      <p className="text-xs text-charcoal-light mb-2">{related.category}</p>
+                    )}
                     <h3 className="font-serif font-bold text-charcoal line-clamp-2 group-hover:text-himalayan transition-colors">
                       {related.title}
                     </h3>
@@ -163,7 +205,8 @@ export default function BlogDetailPage({ initialPost = null }: BlogDetailPagePro
                     </span>
                   </div>
                 </Link>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}

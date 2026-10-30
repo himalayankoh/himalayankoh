@@ -46,7 +46,17 @@ export function buildMetadata({
     description: resolvedDescription,
     metadataBase: new URL(siteOrigin()),
     alternates: { canonical },
-    robots: noindex ? { index: false, follow: false } : { index: true, follow: true },
+    // Only ever emitted to *deny* indexing, never to permit it.
+    //
+    // A page that is indexable says so by saying nothing: absence is the default,
+    // and the two hosts that may be crawled are decided per request by
+    // `lib/seo/indexing.ts` (the `X-Robots-Tag` header and `robots.txt`, which this
+    // static tag cannot know about). Emitting `index, follow` here made every
+    // staging page carry a tag that contradicted its own response headers —
+    // crawlable in one direction and forbidden in the other. The page-level
+    // `noindex` for /login, /account and the admin routes still has to be here,
+    // because those must stay out of the index on production too.
+    robots: noindex ? { index: false, follow: false } : undefined,
     openGraph: {
       title: resolvedTitle,
       description: resolvedDescription,

@@ -1,20 +1,24 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { trackEvent, utmParams } from '../lib/marketing';
+import { useDialogFocus } from '../hooks/useDialogFocus';
+import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ShoppingCart, Heart, Check, Minus, Plus, ChevronRight } from 'lucide-react';
+import { X, ShoppingCart, Heart, Check, Minus, Plus, ChevronRight, Loader2 } from 'lucide-react';
 import type { Product } from '../data/products';
-import { formatPriceDisplay, isPriceKnown } from '../lib/products/price';
+import { findVariationOption } from '../lib/woo/variationOptions';
+import { isPriceKnown, variationPriceDisplay } from '../lib/products/price';
 import { getProductDisplayName } from '../lib/products/productSeo';
+import { reportedCategoryName } from '../lib/products/displayName';
 import { useCart } from '../store/cartStore';
 import { useAuthContext } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { wishlistApi } from '../lib/supabase/api';
-import { isSupabaseConfigured } from '../lib/supabase/client';
+import { wishlistApi } from '../lib/wishlist/client';
+import { ORDERING_ENABLED, ORDERS_PAUSED_MESSAGE } from '../lib/storefront/ordering';
 import ProductImageGallery from './ProductImageGallery';
 import {
   buildProductsCategoryPath,
-  categoryKeyFromFilterLabel,
-  filterLabelFromKey,
+  categoryFilterLabelForProduct,
+  productCategoryFilterKey,
 } from '../lib/categoryContent';
 
 interface ProductDetailViewProps {
@@ -28,73 +32,197 @@ export default function ProductDetailView({
   variant = 'page',
   onClose,
 }: ProductDetailViewProps) {
+  const location = useLocation();
+  const queryVariation = new URLSearchParams(location.search).get('variation');
+  const requestedVariation = queryVariation ? Number(queryVariation) : product.selectedVariationId;
+  const dialogRef = useDialogFocus(variant === 'modal', () => onClose?.());
   const [qty, setQty] = useState(1);
-  const [selectedGrain, setSelectedGrain] = useState(product.grainSizes?.[0] || '');
+  // The store's real variations when the product is variable, `grainSizes`
+  // otherwise — one list either way, so the selector cannot show an option the
+  // cart cannot name.
+  // A variable product's price depends on which option is chosen, so nothing is
+  // preselected and the product-level range is what shows until the shopper picks.
+  // Defaulting to the first option would present the cheapest price as *the*
+  // price, and a shopper on "2kg" would read the "1kg" figure.
+  const variationOptions = product.variations?.options ?? [];
+  const hasVariations = variationOptions.length > 0;
+  const grainChoices = hasVariations
+    ? variationOptions.map((option) => option.label)
+    : product.grainSizes ?? [];
+  const [selectedGrain, setSelectedGrain] = useState(() =>
+    product.variations?.options.find(option => option.id === requestedVariation)?.label ??
+    (hasVariations ? '' : product.grainSizes?.[0] ?? '')
+  );
   const [addedToCart, setAddedToCart] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
   const { addItem } = useCart();
   const { user } = useAuthContext();
   const toast = useToast();
   const displayName = getProductDisplayName(product);
-  const categoryKey = categoryKeyFromFilterLabel(product.category);
+  const viewedProduct = useRef('');
+  useEffect(() => {
+    const id = String(product.id);
+    if (viewedProduct.current === id) return;
+    viewedProduct.current = id;
+    trackEvent('view_item', { items: [{ item_id: id }], ...utmParams() });
+  }, [product.id]);
+  // The crumb names the category the owner filed the product under, through the
+  // same taxonomy the filter row uses — so the two can never disagree. The shelf
+  // resolver is not enough on its own: it only knows the shelves the taxonomy has
+  // copy for, and a product filed under a newer WooCommerce category (the
+  // livestock pouches under `Live Stock`) falls back to `Edible Pink Salt` while
+  // its own eyebrow, which reads the category straight, says otherwise.
+  const categoryKey = productCategoryFilterKey(product);
   const categoryShopPath = categoryKey ? buildProductsCategoryPath(categoryKey) : '/products';
-  const categoryShopLabel = categoryKey ? filterLabelFromKey(categoryKey) : 'Products';
+  const categoryShopLabel = categoryKey ? categoryFilterLabelForProduct(product, categoryKey) : 'Products';
+  // The eyebrow names the one category this page is filed under — the shelf the crumb
+  // links to, so the two cannot disagree, and so a shopper never reads a raw WooCommerce
+  // bucket (`UNCATEGORIZED`) or a filing word (`animal feed`) where a shelf name belongs.
+  // When no shelf claims the record, the store's own category is what is left to say;
+  // when it reported none either, the page says nothing rather than inventing one.
+  const eyebrowCategory = categoryKey ? categoryShopLabel : reportedCategoryName(product.category);
 
   useEffect(() => {
     setQty(1);
-    setSelectedGrain(product.grainSizes?.[0] || '');
+    // Nothing preselected for a variable product (see above); a simple product's
+    // grain list is a description, not a choice, so its first entry stands.
+    setSelectedGrain(product.variations?.options.find(option => option.id === requestedVariation)?.label ?? (product.variations?.options?.length ? '' : product.grainSizes?.[0] ?? ''));
     setAddedToCart(false);
-  }, [product.id, product.grainSizes]);
+  }, [product.id, product.grainSizes, product.variations, requestedVariation]);
 
   // No reported price means the product cannot be sold yet — the cart line
   // needs a real unit price and 0 would allow a free checkout.
   const priceKnown = isPriceKnown(product);
 
+  const selectedOption = findVariationOption(product.variations, selectedGrain);
+  const isSaltLick = product.slug === 'salt-licks-for-horses' ||
+    product.slug === 'himalayan-pink-salt-licks-for-horses-2-lbs-himalayan-koh' ||
+    product.id === 2543 ||
+    product.id === '2543' ||
+    /salt-licks?-for-horses/i.test(product.slug);
+  const activeTitle = (isSaltLick && selectedOption)
+    ? `Himalayan Pink Salt Lick — ${selectedOption.label}`
+    : displayName;
+  const selectedOutOfStock = selectedOption !== undefined && selectedOption.inStock === false;
+  /** A variable product cannot be added until the shopper names the option. */
+  const needsOption = hasVariations && selectedOption === undefined;
+
+  // The chosen option's own price once there is one, the product's range before
+  // that (see `variationPriceDisplay`).
+  const displayPrice = variationPriceDisplay(product, selectedOption);
+
+  // The option's own shot, when the store has one, ahead of the product's gallery.
+  const variationImage = selectedOption?.image?.trim() || null;
+  const galleryImages = Array.from(
+    new Set(
+      [...(variationImage ? [variationImage] : []), ...(product.images || []), product.image].filter(
+        (img): img is string => typeof img === 'string' && img.trim().length > 0
+      )
+    )
+  );
+
+  // The pause outranks stock and price: on a catalogue-only deployment there is no
+  // purchase to offer at all, and saying "Choose an option" or "Add to Cart" beside a
+  // disabled button would advertise exactly what the deployment refuses.
+  const addToCartLabel = !ORDERING_ENABLED
+    ? 'Ordering unavailable'
+    : isAdding
+      ? 'Adding…'
+      : addedToCart
+        ? 'Added to Cart!'
+        : needsOption
+          ? 'Choose an option'
+          : selectedOutOfStock
+            ? 'Out of stock'
+            : 'Add to Cart';
+
+  // Tracked units are a ceiling, not a suggestion: a customer cannot order past
+  // what the warehouse reports. No count means no ceiling, because inventing one
+  // would block an order the source never said was too large.
+  const maxQuantity =
+    typeof (selectedOption ? selectedOption.stockQuantity : product.stockQuantity) === 'number'
+      ? Math.max(0, (selectedOption ? selectedOption.stockQuantity : product.stockQuantity) as number)
+      : null;
+
+  // Switching products must not leave a quantity the new product cannot fill.
+  useEffect(() => {
+    if (maxQuantity === null) return;
+    setQty((current) => Math.min(Math.max(1, current), Math.max(1, maxQuantity)));
+  }, [maxQuantity]);
+
   const handleAddToCart = async () => {
+    if (isAdding) return;
     if (!priceKnown) {
       toast.error(`${product.name} has no price available yet.`);
       return;
     }
+    if (needsOption) {
+      toast.error(`Choose an option for ${product.name} first.`);
+      return;
+    }
+    setIsAdding(true);
     try {
+      const option = selectedOption;
       await addItem(
         {
-          id: String(product.id),
-          name: product.name,
-          price: product.priceMin as number,
-          image: product.image,
+          id: String(option?.id ?? product.id),
+          name: (isSaltLick && option) ? `Himalayan Pink Salt Lick — ${option.label}` : product.name,
+          // The option's own price when one is chosen, so the optimistic line
+          // matches what the store is about to price. WooCommerce still prices
+          // the cart line itself; this is only what is shown while it answers.
+          price: (option?.price ?? product.priceMin) as number,
+          image: option?.image || product.image,
           grainSize: selectedGrain || undefined,
+          variation: (option && (product.variations?.attributeLabel || (isSaltLick ? 'Weight' : undefined)))
+            ? { attribute: product.variations?.attributeLabel || (isSaltLick ? 'Weight' : 'Option'), value: option.label }
+            : undefined,
+          // Woo derives its own taxonomy values from this genuine child ID.
         },
         qty
       );
       setAddedToCart(true);
       setTimeout(() => setAddedToCart(false), 2000);
-    } catch {
-      toast.error('Failed to add item to cart. Please try again.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to add item to cart. Please try again.');
+    } finally {
+      setIsAdding(false);
     }
   };
 
   const handleWishlist = async () => {
-    if (!user?.id || !isSupabaseConfigured()) {
+    // Signed out, there is nothing to save to — the flip is local and the heart
+    // goes back on reload. Unchanged from before; the wishlist has always been an
+    // account feature.
+    if (!user?.id) {
       setWishlisted(!wishlisted);
       return;
     }
 
-    const nextState = await wishlistApi.toggleWishlist(user.id, String(product.id));
-    setWishlisted(nextState);
+    try {
+      // No user id is passed: the route takes the owner from the session, so this
+      // component cannot name an account other than the signed-in one.
+      setWishlisted(await wishlistApi.toggleWishlist(String(product.id)));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Your wishlist could not be updated.');
+    }
   };
 
   const details = (
-    <motion.div
-      layout
+    <div
       className={
         variant === 'modal'
           ? 'bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl'
-          : 'bg-white rounded-3xl shadow-lg overflow-hidden'
+          : // The page variant carries a fixed mobile buy bar, so it needs scroll
+            // room beneath the last control. Without it the Weight buttons sat under
+            // the bar at 390px: the page could not scroll far enough to lift them out,
+            // and the first tap on "6 lb" hit the bar's Add to Cart instead.
+            'bg-white rounded-3xl shadow-lg overflow-hidden pb-28 md:pb-0'
       }
       onClick={variant === 'modal' ? (e) => e.stopPropagation() : undefined}
     >
       {variant === 'page' && (
-        <nav className="px-6 py-4 border-b border-gray-100 text-sm text-charcoal-light" aria-label="Breadcrumb">
+        <nav className="px-4 sm:px-6 py-3 border-b border-gray-100 text-xs sm:text-sm text-charcoal-light" aria-label="Breadcrumb">
           <ol className="flex flex-wrap items-center gap-1">
             <li>
               <Link to="/" className="hover:text-himalayan transition-colors">
@@ -121,20 +249,26 @@ export default function ProductDetailView({
               </>
             )}
             <ChevronRight size={14} className="mx-0.5 shrink-0" />
-            <li className="text-charcoal font-medium line-clamp-1">{displayName}</li>
+            <li className="text-charcoal font-medium line-clamp-1">{activeTitle}</li>
           </ol>
         </nav>
       )}
 
       <div className="grid md:grid-cols-2 gap-0">
-        <div className="relative md:aspect-auto bg-gray-50 min-h-72 md:min-h-96">
+        <div className="relative md:aspect-auto bg-warm-white md:min-h-96">
           {/* The product shot is the LCP element on a PDP — fetch it eagerly and
               at high priority rather than letting it queue behind other assets. */}
           <ProductImageGallery
-            images={product.images && product.images.length > 0 ? product.images : [product.image]}
+            // The chosen option's own shot leads, so selecting an option changes
+            // the picture the way it changes the price. `key` remounts the gallery
+            // on that change, because a gallery that stays on slide 3 would keep
+            // showing a different angle of the pack the shopper just left.
+            key={variationImage ?? 'product'}
+            images={galleryImages}
             alt={displayName}
             variant={variant}
             rounded={variant === 'modal' ? 'md:rounded-l-3xl' : ''}
+            srcsets={product.imageResponsive}
           />
           {variant === 'modal' && onClose && (
             <button
@@ -148,7 +282,7 @@ export default function ProductDetailView({
           )}
         </div>
 
-        <div className="p-6 md:p-8 relative">
+        <div className="p-4 sm:p-6 md:p-8 relative">
           {variant === 'modal' && onClose && (
             <button
               type="button"
@@ -160,15 +294,34 @@ export default function ProductDetailView({
             </button>
           )}
 
-          <p className="text-xs font-bold uppercase tracking-wider text-himalayan mb-2">
-            {product.category}
-          </p>
+          {eyebrowCategory && (
+            <p className="text-xs font-bold uppercase tracking-wider text-himalayan mb-2">
+              {eyebrowCategory}
+            </p>
+          )}
 
           <h1 className="font-serif text-xl md:text-2xl font-bold text-charcoal mb-3 leading-snug pr-8">
-            {displayName}
+            {activeTitle}
           </h1>
 
-          <p className="text-himalayan font-bold text-2xl mb-4">{formatPriceDisplay(product)}</p>
+          <p className={`text-himalayan font-bold text-2xl ${hasVariations ? 'mb-1' : 'mb-4'}`}>
+            {displayPrice}
+          </p>
+          {hasVariations && (
+            <p className="text-xs text-charcoal-light mb-4">
+              {selectedOption
+                ? `${selectedOption.label}${selectedOption.sku ? ` · ${selectedOption.sku}` : ''}`
+                : 'Select an option to see its exact price.'}
+            </p>
+          )}
+
+          {/* A paused deployment says so where the price and the buy button are, and says
+              how to order instead. Without this the page shows a price, a disabled button
+              and no reason — which reads as a broken product rather than as a shop that is
+              not taking online orders yet. */}
+          {!ORDERING_ENABLED && (
+            <p className="text-sm font-semibold text-charcoal/70 mb-4">{ORDERS_PAUSED_MESSAGE}</p>
+          )}
 
           {/* Only an explicit out-of-stock report is shown. A source that
               cannot report stock at all (stockStatus 'unknown') must not be
@@ -176,54 +329,82 @@ export default function ProductDetailView({
           {product.stockStatus === 'out_of_stock' && (
             <p className="text-sm font-semibold text-red-600 mb-4">Currently out of stock</p>
           )}
-          {product.stockStatus === 'unknown' && !priceKnown && (
+          {/* An unknown stock state also disables Add to Cart, so it has to say
+              why — otherwise the button looks broken rather than honest. */}
+          {product.stockStatus === 'unknown' && (
             <p className="text-sm font-semibold text-charcoal/60 mb-4">
-              Price and availability to be confirmed
+              {priceKnown
+                ? 'Availability to be confirmed — add to cart is off until the warehouse reports stock'
+                : 'Price and availability to be confirmed'}
             </p>
           )}
 
-          {product.description && (
-            <p className="text-charcoal-light text-sm leading-relaxed mb-5">{product.description}</p>
-          )}
-
-          <div className="space-y-2 mb-5">
-            {['100% Natural & Pure', 'Rich in 84+ Minerals', 'Free Shipping on $50+'].map((feat) => (
-              <div key={feat} className="flex items-center gap-2 text-sm text-charcoal">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4">
+            {/* Three claims, each traceable to the business's own product copy
+                ("100% Natural & Unrefined", "Over 80 essential minerals", packed in
+                Houston TX). A previous line here advertised "Free Shipping on $50+",
+                which appears nowhere in production content — shipping is priced by
+                weight and destination — so it is gone rather than implied. */}
+            {['100% Natural & Unrefined', 'Naturally occurring trace minerals', 'Packed in Houston, Texas'].map((feat) => (
+              <div key={feat} className="flex items-center gap-1 text-xs text-charcoal-light">
                 <Check size={16} className="text-green-500 flex-shrink-0" />
                 {feat}
               </div>
             ))}
           </div>
 
-          {product.grainSizes && product.grainSizes.length > 0 && (
+          {grainChoices.length > 0 && (
             <div className="mb-5">
-              <label className="block text-sm font-semibold text-charcoal mb-2">Grain Size</label>
-              <div className="flex flex-wrap gap-2">
-                {product.grainSizes.map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setSelectedGrain(g)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                      selectedGrain === g
-                        ? 'border-himalayan bg-himalayan/10 text-himalayan'
-                        : 'border-gray-200 text-charcoal hover:border-himalayan/50'
-                    }`}
-                  >
-                    {g}
-                  </button>
-                ))}
+              <label className="block text-sm font-semibold text-charcoal mb-2">{isSaltLick ? 'Select Weight' : (product.variations?.attributeLabel ?? 'Grain Size')}</label>
+              <div className="flex flex-wrap gap-2" role="group" aria-label={product.variations?.attributeLabel ?? 'Grain Size'}>
+                {grainChoices.map((g) => {
+                  // An option the store cannot sell is still shown — hiding it would
+                  // hide the shape of the choice — but it is marked, so the shopper
+                  // is not left clicking into the store's own refusal.
+                  const choice = findVariationOption(product.variations, g);
+                  const unavailable = choice !== undefined && choice.inStock === false;
+                  return (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => { setSelectedGrain(g); setQty(1); }}
+                      aria-pressed={selectedGrain === g}
+                      // Leaves the option clear of the fixed buy bar when
+                      // scrolled into view (scrollIntoView honours this).
+                      style={{ scrollMarginBottom: '7rem' }}
+                      title={unavailable ? `${g} is out of stock` : undefined}
+                      className={`min-h-11 px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
+                        selectedGrain === g
+                          ? 'border-himalayan bg-himalayan/10 text-himalayan'
+                          : 'border-gray-200 text-charcoal hover:border-himalayan/50'
+                      } ${unavailable ? 'opacity-60 line-through decoration-charcoal/40' : ''}`}
+                    >
+                      {g}{isSaltLick && choice?.price ? ` — $${Number(choice.price).toFixed(2)}` : ''}
+                      {unavailable && <span className="sr-only"> (out of stock)</span>}
+                    </button>
+                  );
+                })}
               </div>
+              {selectedOutOfStock && (
+                <p className="mt-2 text-xs font-medium text-amber-700">
+                  {selectedOption?.label} is out of stock — choose another option.
+                </p>
+              )}
             </div>
           )}
 
+          {/* The quantity control is a purchase control, so a paused deployment does not
+              render one: a stepper beside a button that says ordering is unavailable still
+              reads as a shop that takes orders, and the figure it holds means nothing. */}
+          {ORDERING_ENABLED && (
           <div className="mb-5">
             <label className="block text-sm font-semibold text-charcoal mb-2">Quantity</label>
             <div className="inline-flex items-center border border-gray-200 rounded-xl overflow-hidden">
               <button
                 type="button"
                 onClick={() => setQty(Math.max(1, qty - 1))}
-                className="px-4 py-3 hover:bg-gray-100 transition-colors"
+                disabled={qty <= 1 || isAdding}
+                className="min-h-11 min-w-11 px-3 py-2 hover:bg-gray-100 transition-colors disabled:opacity-40"
                 aria-label="Decrease quantity"
               >
                 <Minus size={16} />
@@ -233,30 +414,39 @@ export default function ProductDetailView({
               </span>
               <button
                 type="button"
-                onClick={() => setQty(qty + 1)}
-                className="px-4 py-3 hover:bg-gray-100 transition-colors"
+                onClick={() => setQty(maxQuantity === null ? qty + 1 : Math.min(maxQuantity, qty + 1))}
+                disabled={maxQuantity !== null && qty >= maxQuantity}
+                className="min-h-11 min-w-11 px-3 py-2 hover:bg-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 aria-label="Increase quantity"
               >
                 <Plus size={16} />
               </button>
             </div>
+            {maxQuantity !== null && (
+              <p className="mt-2 text-xs text-charcoal/60">
+                {maxQuantity} available — order up to {maxQuantity} in one go.
+              </p>
+            )}
           </div>
+          )}
 
           <div className="flex gap-3">
             <motion.button
               type="button"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              whileHover={!isAdding ? { scale: 1.02 } : undefined}
+              whileTap={!isAdding ? { scale: 0.98 } : undefined}
               onClick={handleAddToCart}
-              disabled={!product.inStock || !priceKnown}
+              disabled={!ORDERING_ENABLED || !product.inStock || !priceKnown || isAdding || needsOption || selectedOutOfStock || (selectedOption !== undefined && selectedOption.price === null)}
+              aria-live="polite"
+              aria-busy={isAdding}
               className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
                 addedToCart
                   ? 'bg-green-500 text-white'
                   : 'bg-himalayan hover:bg-himalayan-dark text-white shadow-lg shadow-himalayan/25'
               }`}
             >
-              <ShoppingCart size={18} />
-              {addedToCart ? 'Added to Cart!' : 'Add to Cart'}
+              {isAdding ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
+              {addToCartLabel}
             </motion.button>
             <motion.button
               type="button"
@@ -265,13 +455,28 @@ export default function ProductDetailView({
               onClick={handleWishlist}
               className="w-14 h-14 border-2 border-gray-200 rounded-xl flex items-center justify-center hover:border-himalayan hover:text-himalayan transition-colors"
               aria-label="Add to wishlist"
+              aria-pressed={wishlisted}
             >
               <Heart size={20} fill={wishlisted ? 'currentColor' : 'none'} />
             </motion.button>
           </div>
+          <p className="mt-2 flex flex-wrap gap-x-4 text-xs text-charcoal-light [&>a]:min-h-11 [&>a]:inline-flex [&>a]:items-center"><Link to="/shipping" className="underline underline-offset-4">Shipping & delivery</Link><Link to="/returns" className="underline underline-offset-4">Returns & eligibility</Link><Link to="/contact" className="underline underline-offset-4">Product questions</Link></p>
+          {product.description && <details className="mt-2 border-t border-himalayan-line">
+            <summary className="min-h-11 py-3 cursor-pointer text-sm font-semibold">Product description</summary>
+            <p className="pb-4 text-charcoal-light text-sm leading-relaxed">{product.description}</p>
+          </details>}
+          <details className="border-t border-himalayan-line">
+            <summary className="min-h-11 py-3 cursor-pointer text-sm font-semibold">Product specifications</summary>
+            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 pb-4 text-sm">
+              {eyebrowCategory && <><dt className="text-charcoal-light">Category</dt><dd>{eyebrowCategory}</dd></>}
+              {(selectedOption?.sku || (!hasVariations && product.sku)) && <><dt className="text-charcoal-light">SKU</dt><dd className="break-words">{selectedOption?.sku || product.sku}</dd></>}
+              {selectedOption && <><dt className="text-charcoal-light">{product.variations?.attributeLabel}</dt><dd>{selectedOption.label}</dd></>}
+              {needsOption && <><dt className="text-charcoal-light">Option</dt><dd>Select an option above for its specifications.</dd></>}
+            </dl>
+          </details>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 
   if (variant === 'modal') {
@@ -284,9 +489,47 @@ export default function ProductDetailView({
           className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
           onClick={onClose}
         >
-          {details}
+          <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={displayName} tabIndex={-1} className="max-h-[90dvh] overflow-y-auto w-full max-w-5xl rounded-2xl">{details}</div>
         </motion.div>
       </AnimatePresence>
+    );
+  }
+
+  if (variant === 'page') {
+    return (
+      <>
+        {details}
+        {ORDERING_ENABLED && (
+          <div
+            className="hk-floating-action md:hidden fixed left-3 right-3 z-30 p-2.5 bg-white/95 backdrop-blur-md border border-himalayan-line/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 transition-all duration-200"
+            style={{ bottom: 'calc(0.5rem + env(safe-area-inset-bottom) + var(--consent-space, 0px))' }}
+          >
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <img
+                src={variationImage || galleryImages[0] || product.image || '/images/placeholder-product.svg'}
+                alt={activeTitle}
+                className="w-11 h-11 rounded-lg object-contain bg-warm-white border border-gray-100 shrink-0"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-charcoal truncate">{activeTitle}</p>
+                <p className="text-sm font-bold text-himalayan-dark tabular-nums">{displayPrice}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddToCart}
+              disabled={!product.inStock || !priceKnown || isAdding || needsOption || selectedOutOfStock || (selectedOption !== undefined && selectedOption.price === null)}
+              className={`shrink-0 px-4 py-2.5 rounded-xl text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                addedToCart
+                  ? 'bg-green-500 text-white'
+                  : 'bg-himalayan hover:bg-himalayan-dark text-white shadow-md shadow-himalayan/20'
+              }`}
+            >
+              {isAdding ? 'Adding…' : addedToCart ? 'Added!' : needsOption ? 'Choose option' : selectedOutOfStock ? 'Out of stock' : 'Add to Cart'}
+            </button>
+          </div>
+        )}
+      </>
     );
   }
 
