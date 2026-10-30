@@ -193,9 +193,11 @@ export default function Footer({ compact = false }: { compact?: boolean }) {
             <img
               src="/logo.svg"
               alt="Himalayan Koh"
+              width={96}
+              height={32}
               loading="lazy"
               decoding="async"
-              className="h-8 mb-2 brightness-0 invert"
+              className="h-8 w-auto mb-2 brightness-0 invert"
             />
             <p className="text-white/80 text-xs sm:text-sm leading-relaxed mb-4 max-w-sm">
               Himalayan pink salt for animals and the kitchen. Sourced from Khewra, Pakistan and distributed from Houston, Texas.

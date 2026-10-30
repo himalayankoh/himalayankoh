@@ -127,7 +127,9 @@ export default function AuthModal({ isOpen, onClose }: Props) {
                 <img
                   src="/logo.svg"
                   alt="Himalayan Koh"
-                  className="h-12 mx-auto mb-4"
+                  width={144}
+                  height={48}
+                  className="h-12 w-auto mx-auto mb-4"
                 />
                 <h2 className="font-serif text-2xl font-bold text-charcoal">
                   {mode === 'login' ? 'Welcome Back' : 'Create Account'}

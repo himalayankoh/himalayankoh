@@ -1000,7 +1000,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
             Continue shopping
           </Link>
           <div className="flex items-center gap-2">
-            <Link to="/" aria-label="Himalayan Koh home"><img src="/logo.svg" alt="Himalayan Koh" className="h-9 w-auto max-w-[145px]" /></Link>
+            <Link to="/" aria-label="Himalayan Koh home"><img src="/logo.svg" alt="Himalayan Koh" width={132} height={44} className="h-9 w-auto max-w-[145px]" /></Link>
             <span className="hidden items-center gap-1 rounded-full border border-himalayan-line bg-white px-2.5 py-1 text-[11px] font-semibold text-charcoal-light sm:inline-flex">
               <Lock size={11} />
               Secure checkout
