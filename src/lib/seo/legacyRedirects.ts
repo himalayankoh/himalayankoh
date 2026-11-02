@@ -280,3 +280,14 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   { source: '/blog/feed', destination: '/blog', permanent: true },
   { source: '/comments/feed', destination: '/blog', permanent: true },
 ];
+
+const PRODUCT_REDIRECT_SOURCES = new Set(
+  LEGACY_REDIRECTS.filter((entry) => /^\/products\/[^/:*]+$/.test(entry.source)).map(
+    (entry) => entry.source,
+  ),
+);
+
+/** A retired `/products/<slug>` route that must not be advertised as canonical. */
+export function isLegacyProductRedirectSource(slug: string): boolean {
+  return PRODUCT_REDIRECT_SOURCES.has(`/products/${slug}`);
+}

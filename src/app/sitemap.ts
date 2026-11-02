@@ -4,6 +4,7 @@ import { buildProductsCategoryPath, productsCategoryTabs } from '@/lib/categoryC
 import { getCatalogProducts } from '@/lib/backend/serverCatalog';
 import { getAllAuthors } from '@/data/authors';
 import { getAllResourceArticles } from '@/data/resources';
+import { isLegacyProductRedirectSource } from '@/lib/seo/legacyRedirects';
 
 type ChangeFrequency = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
 
@@ -84,6 +85,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   for (const product of realProducts) {
+    // The source can still contain a historical product slug after its page has
+    // been permanently redirected to a replacement. Sitemaps should advertise
+    // destinations, not URLs that require another crawl hop (or describe a
+    // different current SKU).
+    if (isLegacyProductRedirectSource(product.slug)) continue;
+
     entries.push({
       url: `${origin}/products/${product.slug}`,
       lastModified: product.updatedAt ? new Date(product.updatedAt) : undefined,
