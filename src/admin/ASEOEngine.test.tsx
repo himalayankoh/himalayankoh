@@ -73,6 +73,9 @@ const mockProducts: Product[] = [
 
 vi.mock('../lib/admin/loadAppProducts', () => ({
   loadAppProducts: vi.fn(async () => mockProducts),
+  getCachedAppProducts: vi.fn(() => []),
+  setCachedAppProducts: vi.fn(),
+  clearAppProductsCache: vi.fn(),
 }));
 
 describe('ASEOEngine Product Dropdown', () => {

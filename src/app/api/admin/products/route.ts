@@ -19,6 +19,7 @@ import {
 } from '@/lib/woo/productPayload';
 import { readProductStatusField } from '@/lib/woo/productStatus';
 import { measurementsForAdmin, measurementsForWoo, readStoreMeasurements } from '@/lib/woo/adminMeasurements';
+import { getCachedAdminProducts, setCachedAdminProducts, invalidateCachedAdminProducts } from '@/lib/woo/adminProductsCache';
 
 /**
  * Maps the request body onto a patch, dropping keys the caller did not send.
@@ -58,6 +59,19 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
+  const isDefaultQuery =
+    !url.searchParams.get('search') &&
+    (!url.searchParams.get('status') || url.searchParams.get('status') === 'any') &&
+    (!url.searchParams.get('page') || url.searchParams.get('page') === '1') &&
+    !url.searchParams.get('categoryId');
+
+  if (isDefaultQuery) {
+    const cached = getCachedAdminProducts();
+    if (cached) {
+      return NextResponse.json({ products: cached }, { headers: { 'X-Cache': 'HIT' } });
+    }
+  }
+
   try {
     const rows = await listWooProducts({
       search: url.searchParams.get('search') ?? undefined,
@@ -69,7 +83,11 @@ export async function GET(request: Request) {
         : undefined,
     });
     const units = await readStoreMeasurements();
-    return NextResponse.json({ products: rows.filter((r) => r.status !== 'trash').map(row => measurementsForAdmin(fromWooProduct(row), units)) });
+    const products = rows.filter((r) => r.status !== 'trash').map(row => measurementsForAdmin(fromWooProduct(row), units));
+    if (isDefaultQuery && products.length > 0) {
+      setCachedAdminProducts(products);
+    }
+    return NextResponse.json({ products });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'The store could not be read.' },
@@ -104,6 +122,7 @@ export async function POST(request: Request) {
   try {
     const units = await readStoreMeasurements();
     const result = await createWooProduct(measurementsForWoo(readPatch(writeBody) as never, units));
+    invalidateCachedAdminProducts();
     return NextResponse.json(
       { ...result, product: measurementsForAdmin(result.product, units), ignored: [...result.ignored, ...unappliedFields(writeBody)] },
       { status: 201 },

@@ -14,7 +14,7 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { listCategories, createCategory, updateCategory, deleteCategory, listProducts, setDbToken } from '../features/catalog/repository';
 import type { CatalogProduct } from '../features/catalog/types';
 import { fetchInventory, type InventoryReport } from '../lib/admin/consoleApi';
-import { loadAppProducts } from '../lib/admin/loadAppProducts';
+import { loadAppProducts, getCachedAppProducts } from '../lib/admin/loadAppProducts';
 // ============================================================================
 // Heavy console sections load on demand, not with this module.
 //
@@ -3422,6 +3422,11 @@ export function AMarketingGen() {
 
   useEffect(() => {
     if (products.length > 0) return;
+    const cached = getCachedAppProducts();
+    if (cached.length > 0) {
+      setProducts(cached);
+      return;
+    }
     let cancelled = false;
     loadAppProducts().then(items => {
       if (!cancelled && items && items.length > 0) setProducts(items);
@@ -4620,6 +4625,11 @@ export function ASEOEngine() {
   // Ensure products are hydrated when visiting SEO Engine directly or from LeadOS
   useEffect(() => {
     if (products.length > 0) return;
+    const cached = getCachedAppProducts();
+    if (cached.length > 0) {
+      setProducts(cached);
+      return;
+    }
     let cancelled = false;
     setLoadingProducts(true);
     loadAppProducts().then(items => {
@@ -5491,6 +5501,11 @@ export function AVariantGen() {
 
   useEffect(() => {
     if (products.length > 0) return;
+    const cached = getCachedAppProducts();
+    if (cached.length > 0) {
+      setProducts(cached);
+      return;
+    }
     let cancelled = false;
     loadAppProducts().then(items => {
       if (!cancelled && items && items.length > 0) setProducts(items);

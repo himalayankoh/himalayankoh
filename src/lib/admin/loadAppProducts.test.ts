@@ -1,5 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { toAppProduct, loadAppProducts } from './loadAppProducts';
+import {
+  toAppProduct,
+  loadAppProducts,
+  getCachedAppProducts,
+  setCachedAppProducts,
+  clearAppProductsCache,
+} from './loadAppProducts';
 
 vi.mock('@/services/wordpressAdminAuth', () => ({
   getAccessToken: vi.fn(() => 'mock-valid-bearer-token'),
@@ -120,11 +126,73 @@ describe('loadAppProducts', () => {
         return { ok: false, status: 404 } as Response;
       }));
 
-      const products = await loadAppProducts();
+      const products = await loadAppProducts({ forceFresh: true });
       expect(products.length).toBeGreaterThanOrEqual(1);
       expect(products[0].id).toBe('101');
       expect(products[0].name).toBe('Product 101');
       expect(products[0].price).toBe(19.99);
+    });
+
+    it('returns cached products synchronously from getCachedAppProducts', () => {
+      clearAppProductsCache();
+      expect(getCachedAppProducts()).toEqual([]);
+
+      const sample = [toAppProduct({ id: '99', name: 'Cached Sample', price: 15 })];
+      setCachedAppProducts(sample);
+
+      const cached = getCachedAppProducts();
+      expect(cached).toHaveLength(1);
+      expect(cached[0].id).toBe('99');
+      expect(cached[0].name).toBe('Cached Sample');
+    });
+
+    it('deduplicates concurrent calls via single-flight', async () => {
+      clearAppProductsCache();
+      let fetchCount = 0;
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+        if (url.includes('/api/admin/products')) {
+          fetchCount++;
+          // Delay to simulate network
+          await new Promise((r) => setTimeout(r, 20));
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ products: [{ id: 77, name: 'Shared Product', price: 10 }] }),
+          } as Response;
+        }
+        return { ok: false, status: 404 } as Response;
+      }));
+
+      const [p1, p2, p3] = await Promise.all([
+        loadAppProducts({ forceFresh: true }),
+        loadAppProducts(),
+        loadAppProducts(),
+      ]);
+
+      expect(fetchCount).toBe(1);
+      expect(p1).toEqual(p2);
+      expect(p2).toEqual(p3);
+      expect(p1[0].name).toBe('Shared Product');
+    });
+
+    it('returns cached products immediately on second call without fetching', async () => {
+      let fetchCalls = 0;
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        fetchCalls++;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ products: [{ id: 1, name: 'P1', price: 5 }] }),
+        } as Response;
+      }));
+
+      await loadAppProducts({ forceFresh: true });
+      expect(fetchCalls).toBe(1);
+
+      // Second call should serve from memory cache with 0 new fetches
+      const second = await loadAppProducts();
+      expect(fetchCalls).toBe(1);
+      expect(second[0].name).toBe('P1');
     });
   });
 });

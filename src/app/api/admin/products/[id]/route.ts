@@ -35,6 +35,7 @@ import {
 import { readProductStatusField } from '@/lib/woo/productStatus';
 import { isNicheProduct } from '@/lib/catalog/niche';
 import { measurementsForAdmin, measurementsForWoo, readStoreMeasurements } from '@/lib/woo/adminMeasurements';
+import { invalidateCachedAdminProducts } from '@/lib/woo/adminProductsCache';
 
 /**
  * Keys this route hands to the mapper.
@@ -216,6 +217,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       ? await updateWooProduct(id, measurementsForWoo(patch as never, units))
       : { product: fromWooProduct(await getWooProduct(id)), applied: [], ignored: [] };
 
+    invalidateCachedAdminProducts();
+
     // A field nobody can store is reported, never shrugged off: the console shows
     // a refused save rather than a success over a value that went nowhere.
     return NextResponse.json({
@@ -241,6 +244,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   const action = url.searchParams.get('action') ?? 'delete';
 
   try {
+    invalidateCachedAdminProducts();
     if (action === 'restore') return NextResponse.json(await restoreWooProduct(id));
     if (action === 'duplicate') return NextResponse.json(await duplicateWooProduct(id), { status: 201 });
     if (action === 'trash') {

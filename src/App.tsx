@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import Modal from './components/common/Modal';
-import { loadAppProducts } from './lib/admin/loadAppProducts';
+import { loadAppProducts, getCachedAppProducts } from './lib/admin/loadAppProducts';
 
 import type {
   AIProvider, ImportHistoryEntry, AIExtractedProduct, EnterpriseVariant,
@@ -203,7 +203,7 @@ export function AppProvider({ children, initialProducts }: { children: ReactNode
     }
     return defaultAppContext.user!;
   });
-  const [products, setProducts] = useState<Product[]>(() => initialProducts || []);
+  const [products, setProducts] = useState<Product[]>(() => (initialProducts && initialProducts.length > 0 ? initialProducts : getCachedAppProducts()));
   const [users, setUsers] = useState<AppUser[]>(INITIAL_USERS);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [categories, setCategories] = useState<AdminCategory[]>([]);

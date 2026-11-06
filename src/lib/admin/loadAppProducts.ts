@@ -4,14 +4,31 @@
  * Hydrates `Product[]` for `AppProvider` and tools like `ASEOEngine`, `AMarketingGen`,
  * and `AVariantGen` which need a populated product dropdown.
  *
- * Tries:
- * 1. Authenticated `/api/admin/products` (WooCommerce store via Bearer token).
- * 2. Authenticated `/api/admin/catalog` (via `listProducts()` from repository).
- * 3. Storefront `/api/catalog`.
- * 4. Static fallback `products.ts`.
+ * Performance Architecture:
+ * 1. Synchronous Cache (`getCachedAppProducts`):
+ *    Returns in-memory or sessionStorage cached products instantly (0ms) so components
+ *    render with populated product dropdowns on initial paint without blocking.
+ * 2. Single-Flight De-duplication:
+ *    Multiple components mounting simultaneously share a single in-flight promise.
+ * 3. Fallback Hierarchy:
+ *    - Authenticated `/api/admin/products`
+ *    - Authenticated `/api/admin/catalog`
+ *    - Storefront `/api/catalog`
+ *    - Static fallback `products.ts`
  */
 
 import type { Product } from '@/App';
+
+const SESSION_CACHE_KEY = 'hk_admin_products_v1';
+const CACHE_TTL_MS = 180_000; // 3 minutes
+
+interface StoredCache {
+  products: Product[];
+  timestamp: number;
+}
+
+let memoryProductsCache: StoredCache | null = null;
+let inflightLoadPromise: Promise<Product[]> | null = null;
 
 export function toAppProduct(p: any): Product {
   const id = String(p.id ?? '');
@@ -78,13 +95,71 @@ export function toAppProduct(p: any): Product {
   };
 }
 
-export async function loadAppProducts(): Promise<Product[]> {
+/**
+ * Synchronous cache reader: returns in-memory or sessionStorage products immediately.
+ * Use this to initialize React state on first render.
+ */
+export function getCachedAppProducts(): Product[] {
+  if (memoryProductsCache && Array.isArray(memoryProductsCache.products) && memoryProductsCache.products.length > 0) {
+    return memoryProductsCache.products;
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.sessionStorage?.getItem(SESSION_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as StoredCache;
+        if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0) {
+          memoryProductsCache = parsed;
+          return parsed.products;
+        }
+      }
+    } catch {
+      // Ignore sessionStorage parsing errors
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Saves products into in-memory and sessionStorage cache.
+ */
+export function setCachedAppProducts(products: Product[]): void {
+  if (!Array.isArray(products) || products.length === 0) return;
+  const entry: StoredCache = { products, timestamp: Date.now() };
+  memoryProductsCache = entry;
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage?.setItem(SESSION_CACHE_KEY, JSON.stringify(entry));
+    } catch {
+      // Ignore quota errors
+    }
+  }
+}
+
+/**
+ * Clears cached products (e.g. after a catalog update or in tests).
+ */
+export function clearAppProductsCache(): void {
+  memoryProductsCache = null;
+  inflightLoadPromise = null;
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage?.removeItem(SESSION_CACHE_KEY);
+    } catch {}
+  }
+}
+
+async function executeProductLoad(): Promise<Product[]> {
   // 1. Try authenticated /api/admin/products
   try {
     const { listWooAdminProducts } = await import('@/lib/admin/wooProductApi');
     const wooProducts = await listWooAdminProducts({ status: 'any' });
     if (Array.isArray(wooProducts) && wooProducts.length > 0) {
-      return wooProducts.map(toAppProduct);
+      const mapped = wooProducts.map(toAppProduct);
+      setCachedAppProducts(mapped);
+      return mapped;
     }
   } catch {
     // If admin auth failed or route not ready, fall through
@@ -95,7 +170,9 @@ export async function loadAppProducts(): Promise<Product[]> {
     const { listProducts } = await import('@/features/catalog/repository');
     const catalogProducts = await listProducts();
     if (Array.isArray(catalogProducts) && catalogProducts.length > 0) {
-      return catalogProducts.map(toAppProduct);
+      const mapped = catalogProducts.map(toAppProduct);
+      setCachedAppProducts(mapped);
+      return mapped;
     }
   } catch {
     // Fall through
@@ -107,7 +184,9 @@ export async function loadAppProducts(): Promise<Product[]> {
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.products) && data.products.length > 0) {
-        return data.products.map(toAppProduct);
+        const mapped = data.products.map(toAppProduct);
+        setCachedAppProducts(mapped);
+        return mapped;
       }
     }
   } catch {
@@ -118,11 +197,40 @@ export async function loadAppProducts(): Promise<Product[]> {
   try {
     const { products } = await import('@/data/products');
     if (Array.isArray(products) && products.length > 0) {
-      return products.map(toAppProduct);
+      const mapped = products.map(toAppProduct);
+      setCachedAppProducts(mapped);
+      return mapped;
     }
   } catch {
     // Fall through
   }
 
   return [];
+}
+
+/**
+ * Loads products for admin views, returning cached data instantly if fresh,
+ * or deduplicating in-flight network requests.
+ */
+export async function loadAppProducts(options: { forceFresh?: boolean } = {}): Promise<Product[]> {
+  if (!options.forceFresh) {
+    if (memoryProductsCache && Date.now() - memoryProductsCache.timestamp < CACHE_TTL_MS) {
+      return memoryProductsCache.products;
+    }
+
+    const cached = getCachedAppProducts();
+    if (cached.length > 0 && memoryProductsCache && Date.now() - memoryProductsCache.timestamp < CACHE_TTL_MS) {
+      return cached;
+    }
+  }
+
+  if (inflightLoadPromise) {
+    return inflightLoadPromise;
+  }
+
+  inflightLoadPromise = executeProductLoad().finally(() => {
+    inflightLoadPromise = null;
+  });
+
+  return inflightLoadPromise;
 }
