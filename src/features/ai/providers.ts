@@ -22,7 +22,7 @@ import type { AIProvider } from './types';
 // https://openrouter.ai/api/v1/models. Keep it to ids that endpoint actually
 // returns: OpenRouter retires `:free` ids without notice, and a retired id
 // fails the whole request with HTTP 404 instead of degrading gracefully.
-export const OPENROUTER_DEFAULT_MODEL = 'google/gemini-2.5-flash';
+export const OPENROUTER_DEFAULT_MODEL = 'google/gemini-3.8-flash';
 
 /**
  * Model ids upstream providers have RETIRED, mapped to a live replacement.
@@ -35,6 +35,14 @@ export const OPENROUTER_DEFAULT_MODEL = 'google/gemini-2.5-flash';
  */
 export const RETIRED_MODEL_SLUGS: Record<string, string> = {
   'minimax/minimax-m3:free': OPENROUTER_DEFAULT_MODEL,
+  'gemini-2.5-flash': 'gemini-3.8-flash',
+  'gemini-2.5-flash-lite': 'gemini-3.5-flash-lite',
+  'gemini-2.5-pro': 'gemini-3.8-flash',
+  'google/gemini-2.5-flash': 'google/gemini-3.8-flash',
+  'google/gemini-2.5-flash-lite': 'google/gemini-3.5-flash-lite',
+  'google/gemini-2.5-pro': 'google/gemini-3.8-flash',
+  'gemini-2.0-flash': 'gemini-3.8-flash',
+  'gemini-1.5-flash': 'gemini-3.8-flash',
 };
 
 /**
@@ -56,9 +64,8 @@ export const DEFAULT_AI_PROVIDERS: AIProvider[] = [
     id: 'openrouter',
     name: 'OpenRouter (Multi-Model)',
     models: [
-      'google/gemini-2.5-flash',
+      'google/gemini-3.8-flash',
       'google/gemini-3.5-flash-lite',
-      'google/gemini-2.5-flash-lite',
       'openrouter/free',
       'nvidia/nemotron-3-super-120b-a12b:free',
       'nvidia/nemotron-3.5-lightning:free',
@@ -66,30 +73,27 @@ export const DEFAULT_AI_PROVIDERS: AIProvider[] = [
       'google/gemma-4-31b-it:free',
       'cohere/north-mini-code:free',
     ],
-    defaultModel: 'google/gemini-2.5-flash',
+    defaultModel: 'google/gemini-3.8-flash',
     enabled: true,
     isDefault: false,
   },
   { id: 'deepseek', name: 'DeepSeek (Fast & Smart)', models: ['deepseek-chat', 'deepseek-reasoner'], defaultModel: 'deepseek-chat', enabled: true, isDefault: false },
   {
     // Direct Google AI Studio (Gemini API). Model ids are the live
-    // `generativelanguage.googleapis.com` endpoints — 2.0/1.5 were shut down, so
+    // `generativelanguage.googleapis.com` endpoints — 2.5/2.0/1.5 were shut down, so
     // only current models are listed, plus the Gemma family AI Studio also serves.
     id: 'gemini',
     name: 'Google AI Studio (Gemini + Gemma)',
     models: [
-      'gemini-3.5-flash-lite',
       'gemini-3.8-flash',
+      'gemini-3.5-flash-lite',
       'gemini-3.1-flash-lite',
       'gemini-3.1-pro-preview',
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
-      'gemini-2.5-pro',
       'gemma-4-26b-a4b-it',
       'gemma-4-31b-it',
       'gemma-3-27b-it',
     ],
-    defaultModel: 'gemini-2.5-flash',
+    defaultModel: 'gemini-3.8-flash',
     enabled: true,
     isDefault: true,
   },

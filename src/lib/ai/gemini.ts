@@ -16,12 +16,38 @@
 import { getSetting } from '../settings/serverSettings';
 import { findProhibitedClaims, type ProhibitedClaim } from '../products/claims';
 
-export const DEFAULT_OPENROUTER_MODEL = 'google/gemini-2.5-flash';
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+export const DEFAULT_OPENROUTER_MODEL = 'google/gemini-3.8-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
 export const DEFAULT_DEEPSEEK_MODEL = 'deepseek-chat';
 export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
 export const DEFAULT_CODEX_MODEL = 'gpt-5-codex';
+
+/**
+ * Model identifiers that upstream Google AI Studio or OpenRouter have deprecated or retired,
+ * mapped to their active replacements.
+ */
+export const RETIRED_GEMINI_MODELS: Record<string, string> = {
+  'gemini-2.5-flash': 'gemini-3.8-flash',
+  'gemini-2.5-flash-lite': 'gemini-3.5-flash-lite',
+  'gemini-2.5-pro': 'gemini-3.8-flash',
+  'google/gemini-2.5-flash': 'google/gemini-3.8-flash',
+  'google/gemini-2.5-flash-lite': 'google/gemini-3.5-flash-lite',
+  'google/gemini-2.5-pro': 'google/gemini-3.8-flash',
+  'gemini-2.0-flash': 'gemini-3.8-flash',
+  'gemini-2.0-flash-exp': 'gemini-3.8-flash',
+  'gemini-1.5-flash': 'gemini-3.8-flash',
+  'gemini-1.5-pro': 'gemini-3.8-flash',
+};
+
+export function normalizeAiModel(model: string): string {
+  if (!model) return model;
+  const trimmed = model.trim();
+  if (Object.prototype.hasOwnProperty.call(RETIRED_GEMINI_MODELS, trimmed)) {
+    return RETIRED_GEMINI_MODELS[trimmed];
+  }
+  return trimmed;
+}
 
 const OPENROUTER_API_ROOT = 'https://openrouter.ai/api/v1';
 const GEMINI_API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
@@ -130,7 +156,7 @@ export async function resolveAiSeoConfig(): Promise<AiSeoConfig> {
 
   const orDbModel = (await getSetting('openrouter', 'model'))?.trim() || '';
   const orEnvModel = process.env.OPENROUTER_MODEL?.trim() || '';
-  const orModel = orDbModel || orEnvModel || DEFAULT_OPENROUTER_MODEL;
+  const orModel = normalizeAiModel(orDbModel || orEnvModel || DEFAULT_OPENROUTER_MODEL);
 
   if (orKey) {
     return {
@@ -148,7 +174,7 @@ export async function resolveAiSeoConfig(): Promise<AiSeoConfig> {
 
   const geminiDbModel = (await getSetting('gemini', 'model'))?.trim() || '';
   const geminiEnvModel = process.env.GEMINI_MODEL?.trim() || '';
-  const geminiModel = geminiDbModel || geminiEnvModel || DEFAULT_GEMINI_MODEL;
+  const geminiModel = normalizeAiModel(geminiDbModel || geminiEnvModel || DEFAULT_GEMINI_MODEL);
 
   return {
     provider: 'gemini',
@@ -175,10 +201,11 @@ export async function resolveConfigFor(provider: AiProviderType, modelOverride?:
   const envKey = spec.envKeys.map((key) => process.env[key]?.trim() || '').find(Boolean) || '';
   const dbModel = (await getSetting(spec.category, 'model'))?.trim() || '';
   const envModel = spec.modelEnvKey ? process.env[spec.modelEnvKey]?.trim() || '' : '';
+  const rawModel = modelOverride || dbModel || envModel || spec.defaultModel;
   return {
     provider: spec.id,
     apiKey: dbKey || envKey,
-    model: modelOverride || dbModel || envModel || spec.defaultModel,
+    model: normalizeAiModel(rawModel),
     keySource: dbKey ? 'console' : envKey ? 'environment' : 'none',
   };
 }
@@ -327,21 +354,32 @@ export async function testAiSeoConnection(
     }
 
     // Direct Gemini
-    const response = await fetch(
-      `${GEMINI_API_ROOT}/models/${encodeURIComponent(config.model)}`,
+    const activeModel = normalizeAiModel(config.model);
+    let response = await fetch(
+      `${GEMINI_API_ROOT}/models/${encodeURIComponent(activeModel)}`,
       {
         headers: { 'x-goog-api-key': config.apiKey },
         signal: controller.signal,
       }
     );
 
+    if (response.status === 404 && activeModel !== DEFAULT_GEMINI_MODEL) {
+      response = await fetch(
+        `${GEMINI_API_ROOT}/models/${encodeURIComponent(DEFAULT_GEMINI_MODEL)}`,
+        {
+          headers: { 'x-goog-api-key': config.apiKey },
+          signal: controller.signal,
+        }
+      );
+    }
+
     if (response.ok) {
       return {
         state: 'CONNECTED',
-        model: config.model,
+        model: activeModel,
         provider: 'gemini',
         keySource: config.keySource,
-        detail: `Connected to Google Gemini. Model: "${config.model}".`,
+        detail: `Connected to Google Gemini. Model: "${activeModel}".`,
       };
     }
 
@@ -456,21 +494,34 @@ export async function chatComplete(
   const temperature = request.temperature ?? 0.2;
 
   if (spec.kind === 'gemini') {
-    const response = await fetch(`${GEMINI_API_ROOT}/models/${encodeURIComponent(config.model)}:generateContent`, {
+    const activeModel = normalizeAiModel(config.model);
+    const bodyPayload = JSON.stringify({
+      ...(request.system ? { systemInstruction: { parts: [{ text: request.system }] } } : {}),
+      contents: [{ role: 'user', parts: [{ text: request.user }] }],
+      generationConfig: {
+        temperature,
+        maxOutputTokens: maxTokens,
+        ...(request.json ? { responseMimeType: 'application/json' } : {}),
+      },
+    });
+
+    let response = await fetch(`${GEMINI_API_ROOT}/models/${encodeURIComponent(activeModel)}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.apiKey },
       signal,
-      body: JSON.stringify({
-        ...(request.system ? { systemInstruction: { parts: [{ text: request.system }] } } : {}),
-        contents: [{ role: 'user', parts: [{ text: request.user }] }],
-        generationConfig: {
-          temperature,
-          maxOutputTokens: maxTokens,
-          ...(request.json ? { responseMimeType: 'application/json' } : {}),
-        },
-      }),
+      body: bodyPayload,
     });
-    if (!response.ok) throw providerRequestError(config, response.status);
+
+    if (response.status === 404 && activeModel !== DEFAULT_GEMINI_MODEL) {
+      response = await fetch(`${GEMINI_API_ROOT}/models/${encodeURIComponent(DEFAULT_GEMINI_MODEL)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.apiKey },
+        signal,
+        body: bodyPayload,
+      });
+    }
+
+    if (!response.ok) throw providerRequestError({ ...config, model: activeModel }, response.status);
     const payload = (await response.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
       promptFeedback?: { blockReason?: string };

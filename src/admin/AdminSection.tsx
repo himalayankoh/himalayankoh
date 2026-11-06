@@ -5,7 +5,7 @@
 // ============================================================================
 import { useState, useEffect, useCallback, ReactNode, Component, Fragment, lazy, Suspense } from 'react';
 import { Routes, Route, Link, useNavigate, useLocation, useParams, Navigate } from 'react-router-dom';
-import { useApp, Modal, CAT_LIST, loadAIProviders, saveAIProviders, callAIProvider, fetchPageContent, serverTestProvider, serverOpenRouterCredits, serverProviderStatus } from '../App';
+import { useApp, Modal, CAT_LIST, loadAIProviders, saveAIProviders, callAIProvider, liveModelFor, fetchPageContent, serverTestProvider, serverOpenRouterCredits, serverProviderStatus } from '../App';
 import { SOCIAL_PROFILES } from '../content/socialProfiles';
 import { SITE_ORIGIN } from '../lib/site/origin';
 import { useAuthStore } from '../store/authStore';
@@ -3601,7 +3601,8 @@ export function AMarketingGen() {
     async function callAI(prompt: string): Promise<string> {
       const prov = activeProviders.find(p => p.id === aiProvider) || activeProviders[0];
       if (!prov) throw new Error('No AI provider enabled. Enable one in AI Hub → AI Provider Configuration.');
-      return callAIProvider(prompt, [{ ...prov, defaultModel: aiModel || prov.defaultModel }], undefined, 'You are an expert marketing copywriter for Himalayan Koh authentic rock salt. Return only valid JSON.');
+      const chosenModel = liveModelFor(aiModel || prov.defaultModel);
+      return callAIProvider(prompt, [{ ...prov, defaultModel: chosenModel }], undefined, 'You are an expert marketing copywriter for Himalayan Koh authentic rock salt. Return only valid JSON.');
     }
 
     function parseJ<T>(raw: string, fb: T): T {
@@ -3707,7 +3708,12 @@ export function AMarketingGen() {
         </div>
         <div>
           <label className="text-xs font-semibold text-gray-600 block mb-1">AI Provider</label>
-          <select value={aiProvider} onChange={e => { setAiProvider(e.target.value); setAiModel(''); }} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400">
+          <select value={aiProvider} onChange={e => {
+            const nextProvId = e.target.value;
+            setAiProvider(nextProvId);
+            const found = activeProviders.find(p => p.id === nextProvId);
+            setAiModel(found ? found.defaultModel : '');
+          }} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400">
             {activeProviders.length === 0 && <option value="">No providers configured</option>}
             {activeProviders.map(p => {
               const cfg = serverCfg?.[p.id];
@@ -3718,7 +3724,7 @@ export function AMarketingGen() {
         </div>
         <div>
           <label className="text-xs font-semibold text-gray-600 block mb-1">Model</label>
-          <select value={aiModel} onChange={e => setAiModel(e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400">
+          <select value={liveModelFor(aiModel || (activeProviders.find(p => p.id === aiProvider)?.defaultModel || ''))} onChange={e => setAiModel(e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400">
             {(activeProviders.find(p => p.id === aiProvider)?.models || []).map(m => <option key={m} value={m}>{m}</option>)}
           </select>
         </div>

@@ -604,12 +604,12 @@ export default function ServiceKeysPanel() {
               <select
                 id="gemini-model-select"
                 className={INPUT}
-                value={edits['gemini\u0000model'] ?? data?.settings['gemini']?.['model'] ?? 'gemini-2.5-flash'}
+                value={edits['gemini\u0000model'] ?? data?.settings['gemini']?.['model'] ?? 'gemini-3.8-flash'}
                 onChange={(e) => setEdit('gemini', 'model', e.target.value)}
               >
-                <option value="gemini-2.5-flash">gemini-2.5-flash (Recommended — Fast &amp; Smart)</option>
-                <option value="gemini-2.5-pro">gemini-2.5-pro (Deep Reasoning &amp; Long-Form)</option>
-                <option value="gemini-2.0-flash">gemini-2.0-flash (Legacy Fast)</option>
+                <option value="gemini-3.8-flash">gemini-3.8-flash (Recommended — Fast &amp; Smart)</option>
+                <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Cost-Effective &amp; Fast)</option>
+                <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview (Deep Reasoning &amp; Long-Form)</option>
               </select>
             </div>
 
@@ -683,10 +683,11 @@ export default function ServiceKeysPanel() {
               <select
                 id="openrouter-model-select"
                 className={INPUT}
-                value={edits['openrouter\u0000model'] ?? data?.settings['openrouter']?.['model'] ?? 'google/gemini-2.5-flash'}
+                value={edits['openrouter\u0000model'] ?? data?.settings['openrouter']?.['model'] ?? 'google/gemini-3.8-flash'}
                 onChange={(e) => setEdit('openrouter', 'model', e.target.value)}
               >
-                <option value="google/gemini-2.5-flash">google/gemini-2.5-flash (Recommended)</option>
+                <option value="google/gemini-3.8-flash">google/gemini-3.8-flash (Recommended)</option>
+                <option value="google/gemini-3.5-flash-lite">google/gemini-3.5-flash-lite</option>
                 <option value="deepseek/deepseek-chat">deepseek/deepseek-chat</option>
                 <option value="meta-llama/llama-3.3-70b-instruct">meta-llama/llama-3.3-70b-instruct</option>
               </select>

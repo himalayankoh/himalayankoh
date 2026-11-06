@@ -7,7 +7,7 @@ import type {
   VariantAttribute, SEOData, SocialSEO, ContentData, SEOScore, StructuredSchemas,
 } from './features/ai/types';
 import {
-  DEFAULT_AI_PROVIDERS, loadAIProviders, saveAIProviders, resolveActiveProvider,
+  DEFAULT_AI_PROVIDERS, loadAIProviders, saveAIProviders, resolveActiveProvider, liveModelFor,
 } from './features/ai/providers';
 import {
   callAIProvider, serverGenerate, serverTestProvider,
@@ -31,7 +31,7 @@ export type {
 };
 export {
   Modal,
-  DEFAULT_AI_PROVIDERS, loadAIProviders, saveAIProviders, resolveActiveProvider,
+  DEFAULT_AI_PROVIDERS, loadAIProviders, saveAIProviders, resolveActiveProvider, liveModelFor,
   callAIProvider, serverGenerate, serverTestProvider, serverOpenRouterCredits,
   serverProviderStatus,
   fetchPageContent, buildExtractionPrompt,

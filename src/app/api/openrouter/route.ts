@@ -11,8 +11,8 @@ interface ChatMessage {
 }
 
 const stableFreeModels = [
-  'google/gemini-2.5-flash',
-  'google/gemini-2.5-flash-lite',
+  'google/gemini-3.8-flash',
+  'google/gemini-3.5-flash-lite',
   'openrouter/free',
   'deepseek/deepseek-v4-flash-0731:free',
   'meta-llama/llama-3.3-70b-instruct:free',
@@ -22,7 +22,7 @@ const stableFreeModels = [
 async function resolveModelCandidates(): Promise<string[]> {
   const dbModel = await getSetting('openrouter', 'model');
   const envModel = process.env.OPENROUTER_MODEL;
-  const preferred = dbModel || envModel || 'google/gemini-2.5-flash';
+  const preferred = dbModel || envModel || 'google/gemini-3.8-flash';
   return Array.from(new Set([preferred, ...stableFreeModels].filter(Boolean))) as string[];
 }
 

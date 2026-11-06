@@ -53,7 +53,7 @@ async function getGeminiModel(): Promise<string> {
   } catch {
     /* fall through to env/default */
   }
-  return process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+  return process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
 }
 
 /** Provider status for the AI Engine "Test Connection" buttons. Never leaks keys. */

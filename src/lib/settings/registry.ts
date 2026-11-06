@@ -201,7 +201,7 @@ export const SETTINGS_REGISTRY: SettingsCategory[] = [
         key: 'model',
         label: 'Model (optional)',
         type: 'text',
-        placeholder: 'gemini-2.5-flash',
+        placeholder: 'gemini-3.8-flash',
         hint: 'Leave blank to use the default. A model this key cannot use is reported by Test connection.',
         envFallback: 'GEMINI_MODEL',
       },

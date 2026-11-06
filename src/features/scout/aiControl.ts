@@ -351,8 +351,8 @@ export const DEFAULT_MODEL_HELP: Record<ProviderId, string> = {
   deepseek: 'deepseek-chat',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-haiku-4-5-20251001',
-  openrouter: 'nvidia/nemotron-3-super-120b-a12b:free',
-  gemini: 'gemini-2.5-flash',
+  openrouter: 'google/gemini-3.8-flash',
+  gemini: 'gemini-3.8-flash',
 };
 
 /** Premium model used under QUALITY strategy for important decisions. */
@@ -360,8 +360,8 @@ const PREMIUM_MODEL: Record<ProviderId, string> = {
   deepseek: 'deepseek-reasoner',
   openai: 'gpt-4o',
   anthropic: 'claude-sonnet-4-6',
-  openrouter: 'openrouter/free',
-  gemini: 'gemini-2.5-pro',
+  openrouter: 'google/gemini-3.8-flash',
+  gemini: 'gemini-3.1-pro-preview',
 };
 
 /** Count of AI calls a provider made today (from the decision log). */

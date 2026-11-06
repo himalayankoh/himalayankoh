@@ -15,9 +15,9 @@ import {
 import { nicheSectionKeyFor } from '../catalog/nicheSections';
 
 describe('Admin AI SEO Engine & English Output Validation', () => {
-  it('defaults to google/gemini-2.5-flash as the active OpenRouter model', () => {
-    expect(DEFAULT_OPENROUTER_MODEL).toBe('google/gemini-2.5-flash');
-    expect(DEFAULT_GEMINI_MODEL).toBe('gemini-2.5-flash');
+  it('defaults to google/gemini-3.8-flash as the active OpenRouter model and gemini-3.8-flash for Gemini', () => {
+    expect(DEFAULT_OPENROUTER_MODEL).toBe('google/gemini-3.8-flash');
+    expect(DEFAULT_GEMINI_MODEL).toBe('gemini-3.8-flash');
   });
 
   it('validates that non-English / Urdu scripts are strictly detected and rejected', () => {
