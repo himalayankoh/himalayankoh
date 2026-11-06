@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import Modal from './components/common/Modal';
+import { loadAppProducts } from './lib/admin/loadAppProducts';
 
 import type {
   AIProvider, ImportHistoryEntry, AIExtractedProduct, EnterpriseVariant,
@@ -192,7 +193,7 @@ const INITIAL_USERS: AppUser[] = [
   { id: 'usr-4', name: 'Wholesale Sales Desk', email: 'sales@himalayankoh.com', role: 'buyer', joined: '2025-02-15', isBlocked: false },
 ];
 
-export function AppProvider({ children }: { children: ReactNode }) {
+export function AppProvider({ children, initialProducts }: { children: ReactNode; initialProducts?: Product[] }) {
   const [currentUser, setCurrentUser] = useState<AppUser>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -202,12 +203,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     return defaultAppContext.user!;
   });
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Product[]>(() => initialProducts || []);
   const [users, setUsers] = useState<AppUser[]>(INITIAL_USERS);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [categories, setCategories] = useState<AdminCategory[]>([]);
   const [blogs, setBlogs] = useState<BlogPost[]>([]);
   const [notif, setNotif] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadAppProducts().then(items => {
+      if (!cancelled && items && items.length > 0) {
+        setProducts(items);
+      }
+    }).catch(err => {
+      console.warn('AppProvider failed to hydrate products:', err);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const notify = useCallback((msg: string, type: 'success' | 'error' | 'info' = 'info') => {
     setNotif({ msg, type });

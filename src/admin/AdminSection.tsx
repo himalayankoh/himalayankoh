@@ -14,6 +14,7 @@ import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { listCategories, createCategory, updateCategory, deleteCategory, listProducts, setDbToken } from '../features/catalog/repository';
 import type { CatalogProduct } from '../features/catalog/types';
 import { fetchInventory, type InventoryReport } from '../lib/admin/consoleApi';
+import { loadAppProducts } from '../lib/admin/loadAppProducts';
 // ============================================================================
 // Heavy console sections load on demand, not with this module.
 //
@@ -3414,10 +3415,19 @@ const EMPTY_VIDEO: VideoScript = { youtubeTitle: '', youtubeDesc: '', youtubeTag
 const META_CTA_OPTIONS = ['Shop Now','Learn More','Get Offer','Order Now','Sign Up','Book Now','Contact Us','Download'];
 
 export function AMarketingGen() {
-  const { products, notify } = useApp();
+  const { products, setProducts, notify } = useApp();
   const nav = useNavigate();
   const [tab, setTab] = useState<MktTab>('google');
   const [selectedProductId, setSelectedProductId] = useState('');
+
+  useEffect(() => {
+    if (products.length > 0) return;
+    let cancelled = false;
+    loadAppProducts().then(items => {
+      if (!cancelled && items && items.length > 0) setProducts(items);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [products.length, setProducts]);
   const [aiProvider, setAiProvider] = useState('');
   const [aiModel, setAiModel] = useState('');
   const [tone, setTone] = useState<MktTone>('luxury');
@@ -4585,6 +4595,7 @@ export function ASEOEngine() {
   const { products, setProducts, notify } = useApp();
   const navigate = useNavigate();
 
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const [selId, setSelId] = useState('');
   const [tab, setTab] = useState<SEOTab>('seo');
   const [tone, setTone] = useState<ToneOption>('Luxury');
@@ -4599,6 +4610,25 @@ export function ASEOEngine() {
   const [aiProviders] = useState<AIProvider[]>(() => {
     return loadAIProviders();
   });
+
+  // Ensure products are hydrated when visiting SEO Engine directly or from LeadOS
+  useEffect(() => {
+    if (products.length > 0) return;
+    let cancelled = false;
+    setLoadingProducts(true);
+    loadAppProducts().then(items => {
+      if (!cancelled && items && items.length > 0) {
+        setProducts(items);
+      }
+    }).catch(err => {
+      console.warn('ASEOEngine failed to load products:', err);
+    }).finally(() => {
+      if (!cancelled) setLoadingProducts(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [products.length, setProducts]);
 
   const [seo, setSeo] = useState<SEOData>({
     title: '', metaDescription: '', keywords: [], slug: '', canonicalUrl: '',
@@ -4624,10 +4654,21 @@ export function ASEOEngine() {
 
   const selProduct = products.find(p => p.id === selId);
 
-  // Auto-populate from product
+  // Auto-populate from product (or restore saved SEO draft)
   useEffect(() => {
     const p = products.find(x => x.id === selId);
     if (!p) return;
+    try {
+      const saved = localStorage.getItem(`luxedge_seo_${p.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.seo) setSeo(parsed.seo);
+        if (parsed.social) setSocial(parsed.social);
+        if (parsed.schemas) setSchemas(parsed.schemas);
+        if (parsed.content) setContent(parsed.content);
+        return;
+      }
+    } catch {}
     const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
     setSeo(prev => ({
       ...prev,
@@ -4807,14 +4848,31 @@ Example: {"${fieldHint}": "your content here"}`;
     }).catch(() => notify('Copy failed — use Ctrl+A in the text area', 'error'));
   }
 
-  function saveToProduct() {
+  async function saveToProduct() {
     if (!selProduct) { notify('Select a product first', 'error'); return; }
     const updates: Partial<Product> = {};
     if (content.premiumTitle) updates.name = content.premiumTitle;
     if (content.luxuryDescription) updates.description = content.luxuryDescription;
     if (content.shortDescription) updates.shortDesc = content.shortDescription;
     setProducts(prev => prev.map(p => p.id === selProduct.id ? { ...p, ...updates } : p));
-    localStorage.setItem(`luxedge_seo_${selProduct.id}`, JSON.stringify({ seo, social, schemas, content }));
+    try {
+      localStorage.setItem(`luxedge_seo_${selProduct.id}`, JSON.stringify({ seo, social, schemas, content }));
+    } catch {}
+
+    if (/^\d+$/.test(selProduct.id)) {
+      try {
+        const { updateWooAdminProduct } = await import('../lib/admin/wooProductApi');
+        await updateWooAdminProduct(Number(selProduct.id), {
+          seo: {
+            title: seo.title || undefined,
+            description: seo.metaDescription || undefined,
+          },
+          seoKeywords: seo.keywords && seo.keywords.length > 0 ? seo.keywords : undefined,
+        });
+      } catch (err) {
+        console.warn('WooCommerce remote sync note:', err);
+      }
+    }
     notify(`SEO data saved to "${selProduct.name}"`, 'success');
   }
 
@@ -4877,11 +4935,14 @@ Example: {"${fieldHint}": "your content here"}`;
       {/* Product selector + AI generate bar */}
       <div className="bg-white rounded-2xl border border-gray-200 p-4 flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-48">
-          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Product</label>
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+            Product {loadingProducts && <span className="text-purple-600 font-normal lowercase">(loading...)</span>}
+          </label>
           <select value={selId} onChange={e => setSelId(e.target.value)}
+            disabled={loadingProducts && products.length === 0}
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none bg-white">
-            <option value="">-- Select a product --</option>
-            {products.map(p => <option key={p.id} value={p.id}>{p.name} · ${p.price}</option>)}
+            <option value="">{loadingProducts && products.length === 0 ? '-- Loading products... --' : '-- Select a product --'}</option>
+            {products.map(p => <option key={p.id} value={p.id}>{p.name} · ${typeof p.price === 'number' && p.price > 0 ? p.price.toFixed(2) : '0.00'}</option>)}
           </select>
         </div>
         <div>
@@ -5421,6 +5482,15 @@ function _detectAttrsFromProduct(product: Product): VariantAttribute[] {
 export function AVariantGen() {
   const { products, setProducts, notify } = useApp();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (products.length > 0) return;
+    let cancelled = false;
+    loadAppProducts().then(items => {
+      if (!cancelled && items && items.length > 0) setProducts(items);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [products.length, setProducts]);
 
   type VGStep = 'product'|'attributes'|'matrix'|'done';
   const [step, setStep] = useState<VGStep>('product');
