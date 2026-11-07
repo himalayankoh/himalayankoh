@@ -57,7 +57,7 @@ describe('LeadOS Outreach Approval Contract & Omnisend Safeguards', () => {
     vi.clearAllMocks();
     mockVerifyAdminRequest.mockResolvedValue({
       ok: true,
-      user: { id: 'admin-1', email: 'sales@himalayankoh.com', role: 'super_admin' },
+      user: { id: 'admin-1', email: 'ws@himalayankoh.com', role: 'super_admin' },
     });
     mockGetServerSetting.mockResolvedValue('[]');
     mockSetServerSettings.mockResolvedValue({ ok: true, saved: 1 });
@@ -290,7 +290,7 @@ describe('LeadOS Outreach Approval Contract & Omnisend Safeguards', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         leadId: 'lead-101',
-        recipientEmail: 'sales@himalayankoh.com',
+        recipientEmail: 'ws@himalayankoh.com',
         recipientName: 'Tractor Store',
         subject: 'Himalayan Salt Wholesale Inquiry',
         message: 'Hello team, reply unsubscribe to opt out.',

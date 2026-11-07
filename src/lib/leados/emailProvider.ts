@@ -28,7 +28,7 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-export function buildOutreachHtml(text: string, fromEmail = 'sales@himalayankoh.com'): string {
+export function buildOutreachHtml(text: string, fromEmail = 'ws@himalayankoh.com'): string {
   return `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#1e293b;">${escapeHtml(text).replace(/\n/g, '<br/>')}<hr><p style="font-size:12px;color:#64748b"><strong>Himalayan Koh</strong><br>Direct B2B inquiries: ${escapeHtml(fromEmail)}</p></div>`;
 }
 
@@ -40,8 +40,8 @@ export async function sendLeadOSMail(
     return { state: 'simulated', provider: 'simulation', providerMessageId: null };
   }
 
-  const fromEmail = 'sales@himalayankoh.com';
-  const fromName = 'Himalayan Koh Commercial Sales';
+  const fromEmail = 'ws@himalayankoh.com';
+  const fromName = 'Himalayan Koh Wholesale';
 
   // Disable actual prospect email sending until authenticated transport is configured and passes
   if (!isCPanelConfigured(fromEmail) || process.env.OUTREACH_PROVIDER_UNAVAILABLE === 'true') {

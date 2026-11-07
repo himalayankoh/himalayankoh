@@ -152,7 +152,7 @@ export async function GET(request: Request) {
       },
       deliverabilityPolicies: {
         oneClickUnsubscribe: 'Enabled on outreach & newsletter templates via RFC 8058 List-Unsubscribe header',
-        fromDomainAlignment: 'sales@himalayankoh.com strictly aligned with root domain himalayankoh.com',
+        fromDomainAlignment: 'ws@himalayankoh.com strictly aligned with root domain himalayankoh.com',
         spamComplaintTarget: '< 0.1% (Gmail & Yahoo 2024 compliance standard)',
       },
       recommendations,

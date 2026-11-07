@@ -2580,7 +2580,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
       }
 
       if (actionType === 'test') {
-        const targetEmail = 'sales@himalayankoh.com';
+        const targetEmail = 'ws@himalayankoh.com';
         const res = await fetch('/api/admin/leados/outreach/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...headers },
@@ -2747,7 +2747,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
               recipientName: bName,
               subject: personalizedSubject,
               message: personalizedBody,
-              senderEmail: 'sales@himalayankoh.com',
+              senderEmail: 'ws@himalayankoh.com',
               outreachMode: 'b2b',
             }),
           });
@@ -2785,7 +2785,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
               recipientName: bName,
               subject: personalizedSubject,
               message: personalizedBody,
-              senderEmail: 'sales@himalayankoh.com',
+              senderEmail: 'ws@himalayankoh.com',
               outreachMode: 'b2b',
               simulation: false,
               actionType: 'send',
@@ -6286,7 +6286,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                       onClick={() => handleSendOutreach('test')}
                       disabled={sendingOutreach}
                       className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-50"
-                      title="Dry run simulation to sales@himalayankoh.com"
+                      title="Dry run simulation to ws@himalayankoh.com"
                     >
                       Simulate Test
                     </button>
@@ -7188,7 +7188,7 @@ export default function LeadOSAdmin({ defaultTab = 'prospects' }: { defaultTab?:
                               ) : (
                                 <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 text-xs space-y-2">
                                   <div className="border-b border-slate-200/80 pb-2 text-[11px] text-slate-600 space-y-1">
-                                    <div><strong className="text-slate-800">From:</strong> Himalayan Koh Sales &lt;{officialSenderEmail}&gt;</div>
+                                    <div><strong className="text-slate-800">From:</strong> Himalayan Koh Wholesale &lt;{officialSenderEmail}&gt;</div>
                                     <div><strong className="text-slate-800">To:</strong> {recipientName} &lt;{recipientEmail || 'buyer@prospect.com'}&gt;</div>
                                     <div><strong className="text-slate-800">Subject:</strong> {emailSubject}</div>
                                   </div>

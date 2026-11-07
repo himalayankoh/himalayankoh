@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       state: result.state,
       providerMessageId: result.providerMessageId,
       omnisendSynced: false,
-      sender: 'sales@himalayankoh.com',
+      sender: 'ws@himalayankoh.com',
       createdAt: new Date().toISOString(),
     };
 

@@ -244,7 +244,7 @@ export async function POST(request: Request) {
       const existingRevision = Number.isInteger(rawRevisionCandidate) ? Number(rawRevisionCandidate) : undefined;
       const recipientFinal = requestedRecipient || (lead.email || '').trim().toLowerCase();
       const senderEmail =
-        body.senderEmail === 'salman@himalayankoh.com' ? 'salman@himalayankoh.com' : 'sales@himalayankoh.com';
+        body.senderEmail === 'salman@himalayankoh.com' ? 'salman@himalayankoh.com' : 'ws@himalayankoh.com';
 
       const draftPayload = {
         leadId,

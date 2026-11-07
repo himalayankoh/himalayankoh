@@ -116,14 +116,14 @@ export function isAuthorizedSender(email: string): email is AuthorizedSender {
 
 export function resolveAuthorizedSender(sender?: string): { email: AuthorizedSender; name: string } {
   if (!sender) {
-    return SENDER_PROFILES['sales@himalayankoh.com'];
+    return SENDER_PROFILES[WHOLESALE_MAILBOX];
   }
   const match = sender.match(/<([^>]+)>/);
   const emailCandidate = (match ? match[1] : sender).trim().toLowerCase();
   if (isAuthorizedSender(emailCandidate)) {
     return SENDER_PROFILES[emailCandidate];
   }
-  return SENDER_PROFILES['sales@himalayankoh.com'];
+  return SENDER_PROFILES[WHOLESALE_MAILBOX];
 }
 
 export interface CPanelCredentials {

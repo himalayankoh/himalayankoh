@@ -40,6 +40,8 @@ describe('LeadOS 2 evidence and identity', () => {
   it('offers only recorded active product IDs and treats private label as potential', () => {
     expect(Object.values(OFFER_PROFILES).flatMap((p)=>p.productIds)).not.toContain('2531');
     expect(createIntroduction(lead,'culinary_salt').message).toContain('16 oz');
+    expect(createIntroduction(lead,'culinary_salt').message).toContain('ws@himalayankoh.com');
+    expect(createIntroduction(lead,'culinary_salt').message).not.toContain('sales@himalayankoh.com');
     expect(createIntroduction(lead,'private_label').message).toContain('subject to confirming our capabilities');
     expect(createIntroduction(lead,'culinary_salt').message).not.toMatch(/5 lb|25 lb|complimentary|certified|free samples/i);
   });
@@ -163,16 +165,16 @@ describe('LeadOS 3.1 Outreach Modes & Claim Compliance (Phase 3 & 4)', () => {
     const retail = createOutreachMessage(leadInfo, {
       mode: 'retail',
       couponCode: 'welcome5',
-      senderEmail: 'sales@himalayankoh.com',
+      senderEmail: 'ws@himalayankoh.com',
     });
 
     expect(retail.mode).toBe('retail');
-    expect(retail.sender).toBe('sales@himalayankoh.com');
+    expect(retail.sender).toBe('ws@himalayankoh.com');
     expect(retail.couponCode).toBe('welcome5');
     expect(retail.productUrl).toBe('https://himalayankoh.com/products/pink-salt-block-lick-2lb');
     expect(retail.subject).toContain('5% Welcome Offer');
     expect(retail.message).toContain('welcome5');
-    expect(retail.message).toContain('sales@himalayankoh.com');
+    expect(retail.message).toContain('ws@himalayankoh.com');
 
     // Must strictly pass validateOutboundCopy
     const check = validateOutboundCopy(`${retail.subject}\n${retail.message}`);
@@ -191,11 +193,11 @@ describe('LeadOS 3.1 Outreach Modes & Claim Compliance (Phase 3 & 4)', () => {
 
     const wholesale = createOutreachMessage(leadInfo, {
       mode: 'wholesale',
-      senderEmail: 'sales@himalayankoh.com',
+      senderEmail: 'ws@himalayankoh.com',
     });
 
     expect(wholesale.mode).toBe('wholesale');
-    expect(wholesale.sender).toBe('sales@himalayankoh.com');
+    expect(wholesale.sender).toBe('ws@himalayankoh.com');
     expect(wholesale.productUrl).toBe('https://himalayankoh.com/wholesale');
     expect(wholesale.subject).toContain('Wholesale Himalayan Salt Distribution');
     expect(wholesale.message).toContain('https://himalayankoh.com/wholesale');
@@ -217,11 +219,11 @@ describe('LeadOS 3.1 Outreach Modes & Claim Compliance (Phase 3 & 4)', () => {
 
     const pl = createOutreachMessage(leadInfo, {
       mode: 'private_label',
-      senderEmail: 'sales@himalayankoh.com',
+      senderEmail: 'ws@himalayankoh.com',
     });
 
     expect(pl.mode).toBe('private_label');
-    expect(pl.sender).toBe('sales@himalayankoh.com');
+    expect(pl.sender).toBe('ws@himalayankoh.com');
     expect(pl.productUrl).toBe('https://himalayankoh.com/wholesale');
     expect(pl.subject).toContain('Private-Label Mineral Salt Discussion');
     expect(pl.message).toContain('Manufacturing schedules and minimum order quantities are confirmed upon technical review');

@@ -586,7 +586,7 @@ export function createIntroduction(lead: { businessName: string; city?: string |
 
   return {
     subject: `Himalayan Koh ${offer.label.toLowerCase()} inquiry — ${name}`,
-    message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh while researching ${lead.category || 'relevant businesses'}${lead.city ? ` in ${lead.city}` : ''}.\n\nWe would welcome an introductory conversation about ${product}. Would this be relevant to your purchasing requirements? We can share current product specifications for review. Packaging, availability, pricing, minimum quantities and freight are confirmed in a separate quote.\n\nIf you are not the right contact, please let us know. To opt out of further communications, please reply “unsubscribe”.\n\nHimalayan Koh Commercial Sales\nsales@himalayankoh.com\nhttps://himalayankoh.com`,
+    message: `Hello ${name} team,\n\nI am reaching out from Himalayan Koh while researching ${lead.category || 'relevant businesses'}${lead.city ? ` in ${lead.city}` : ''}.\n\nWe would welcome an introductory conversation about ${product}. Would this be relevant to your purchasing requirements? We can share current product specifications for review. Packaging, availability, pricing, minimum quantities and freight are confirmed in a separate quote.\n\nIf you are not the right contact, please let us know. To opt out of further communications, please reply “unsubscribe”.\n\nHimalayan Koh Wholesale\nws@himalayankoh.com\nhttps://himalayankoh.com`,
   };
 }
 

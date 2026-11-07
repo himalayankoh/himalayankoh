@@ -3031,7 +3031,7 @@ const [open, setOpen] = useState<Record<string, boolean>>({
         <div className="pt-5">
           <form onSubmit={e => { e.preventDefault(); notify('Store settings saved!'); }} className="grid sm:grid-cols-2 gap-4">
             <div><label className={L}>Store Name</label><input defaultValue="Himalayan Koh" className={I} /></div>
-            <div><label className={L}>Contact Email</label><input defaultValue="sales@himalayankoh.com" className={I} /></div>
+            <div><label className={L}>Contact Email</label><input defaultValue="ws@himalayankoh.com" className={I} /></div>
             <div><label className={L}>Phone</label><input defaultValue="(832) 224-6466" className={I} /></div>
             <div><label className={L}>Address</label><input defaultValue="12620 FM 1960 W Ste A-4, Houston, TX 77065" className={I} /></div>
             <div className="sm:col-span-2">
@@ -3514,7 +3514,7 @@ export function AMarketingGen() {
             ${productLine}
             ${email.urgency ? `<p style="margin:16px 0 0;color:#1E4636;font-weight:600;font-size:14px">${email.urgency}</p>` : ''}
             <p style="text-align:center;margin:24px 0 0"><a href="https://himalayankoh.com/products" style="display:inline-block;background:linear-gradient(135deg,#1E4636,#C5A880);color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:bold;font-size:14px">${email.ctaText || 'Explore Products →'}</a></p>
-            <p style="margin:24px 0 0;color:#9ca3af;font-size:11px;line-height:1.5">You are receiving this because you opted in at himalayankoh.com. Unsubscribe anytime by replying with "unsubscribe".<br/>Himalayan Koh — sales@himalayankoh.com</p>
+            <p style="margin:24px 0 0;color:#9ca3af;font-size:11px;line-height:1.5">You are receiving this because you opted in at himalayankoh.com. Unsubscribe anytime by replying with "unsubscribe".<br/>Himalayan Koh — ws@himalayankoh.com</p>
           </div>
         </div>
       </div>`;
@@ -4198,7 +4198,7 @@ export function AMarketingGen() {
                     className="mt-2 w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-300" />
                 )}
                 {sendTarget === 'leads' && (
-                  <p className="mt-2 text-[11px] text-gray-400">Sends to every opted-in CRM lead (welcome popup / AI chat / manual signups) from sales@himalayankoh.com. Store-account users are not emailed — only the marketing opt-in list.</p>
+                  <p className="mt-2 text-[11px] text-gray-400">Sends to every opted-in CRM lead (welcome popup / AI chat / manual signups) from ws@himalayankoh.com. Store-account users are not emailed — only the marketing opt-in list.</p>
                 )}
               </div>
             </div>
@@ -6904,7 +6904,7 @@ export function AEmailMarketing() {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         // No `to`: the route addresses the deployment's configured forwarding inbox.
-        body: JSON.stringify({ subject: 'Himalayan Koh — Cloudflare email test', text: 'Hi Salman,\n\nThis is a test email sent from sales@himalayankoh.com through Cloudflare Email Routing / Email Sending. If you received this, outbound email from the site works.\n\n— Himalayan Koh' }),
+        body: JSON.stringify({ subject: 'Himalayan Koh — Cloudflare email test', text: 'Hi Salman,\n\nThis is a test email sent from ws@himalayankoh.com through Cloudflare Email Routing / Email Sending. If you received this, outbound email from the site works.\n\n— Himalayan Koh' }),
       });
       const j = await r.json().catch(() => null);
       if (j?.ok) { setTestMail('sent'); setTestMailMsg(`Test email ${j.simulated ? 'simulated for' : 'sent to'} ${forwardInbox || 'the forwarding inbox'} — check that inbox.`); notify('Test email sent', 'success'); }
@@ -6962,7 +6962,7 @@ export function AEmailMarketing() {
             <CloudArrowUp size={20} className="text-blue-600" />
             <div>
               <h2 className="font-bold text-gray-900">Email Routing & Sending — Cloudflare</h2>
-              <p className="text-xs text-gray-500">Inbound forwarding + outbound sender for Himalayan Koh (sales@himalayankoh.com).</p>
+              <p className="text-xs text-gray-500">Inbound forwarding + outbound sender for Himalayan Koh (ws@himalayankoh.com).</p>
             </div>
           </div>
           <button onClick={checkEmail} className="text-xs text-blue-600 hover:underline font-medium">Refresh status</button>
@@ -6995,7 +6995,7 @@ export function AEmailMarketing() {
             )}
             <div className="mt-2 space-y-0.5">
               <p className="text-[11px] font-mono text-blue-700 bg-blue-50 rounded px-2 py-0.5">
-                sales@himalayankoh.com → {forwardInbox || 'not configured'}
+                ws@himalayankoh.com → {forwardInbox || 'not configured'}
               </p>
               <p className="text-[11px] font-mono text-blue-700 bg-blue-50 rounded px-2 py-0.5">
                 anything@himalayankoh.com → {forwardInbox || 'not configured'} (catch-all)
@@ -7014,7 +7014,7 @@ export function AEmailMarketing() {
                 : 'bg-blue-400'
               }`} />
               <p className="text-sm font-semibold text-gray-800">
-                {emailStatus?.outbound?.sender ?? 'sales@himalayankoh.com'}
+                {emailStatus?.outbound?.sender ?? 'ws@himalayankoh.com'}
                 {emailStatus?.outbound?.status === 'SIMULATION' && (
                   <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium">SIMULATION</span>
                 )}
@@ -7809,7 +7809,7 @@ export function AMarketingTraffic() {
             <ul className="text-[11px] text-gray-600 space-y-1">
               <li>• RFC 8058 One-Click List-Unsubscribe Header: <strong>Enabled</strong></li>
               <li>• Spam Complaint Target: <strong>&lt; 0.1%</strong> threshold</li>
-              <li>• From Domain Alignment: <strong>sales@himalayankoh.com</strong></li>
+              <li>• From Domain Alignment: <strong>ws@himalayankoh.com</strong></li>
             </ul>
           </div>
         </div>

@@ -1010,7 +1010,7 @@ function hk_storefront_signup_budget_check( $address ) {
 	if ( $used >= $budget['limit'] ) {
 		return new WP_Error(
 			'hk_storefront_signup_rate_limited',
-			'Too many accounts have been created from this connection. Please try again later, or email sales@himalayankoh.com and we will help you directly.',
+			'Too many accounts have been created from this connection. Please try again later, or email ws@himalayankoh.com and we will help you directly.',
 			array( 'status' => 429 )
 		);
 	}

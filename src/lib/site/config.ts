@@ -13,8 +13,8 @@ export const SITE_CONFIG = {
   siteName: 'Himalayan Koh',
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'https://himalayankoh.com',
   emailDomain: 'himalayankoh.com',
-  defaultFromEmail: 'sales@himalayankoh.com',
-  salesEmail: 'sales@himalayankoh.com',
+  defaultFromEmail: 'ws@himalayankoh.com',
+  salesEmail: 'ws@himalayankoh.com',
   supportEmail: 'support@himalayankoh.com',
   ordersEmail: 'orders@himalayankoh.com',
 

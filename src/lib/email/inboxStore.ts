@@ -444,7 +444,7 @@ async function fetchLiveDnsHealth(domain = 'himalayankoh.com') {
     },
     dmarc: {
       status: 'PASS',
-      record: 'v=DMARC1; p=none; rua=mailto:sales@himalayankoh.com',
+      record: 'v=DMARC1; p=none; rua=mailto:ws@himalayankoh.com',
     },
   };
 
@@ -927,7 +927,7 @@ export async function syncExternalCorrespondenceIntoInbox(force = false): Promis
             ? 'queued'
             : 'draft';
 
-    const senderMailbox = resolveMailboxAddress(payload.senderEmail || 'sales@himalayankoh.com');
+    const senderMailbox = resolveMailboxAddress(payload.senderEmail || 'ws@himalayankoh.com');
     const createdAt = String(wf.created_at || payload.updatedAt || new Date().toISOString());
     const updatedAt = String(wf.updated_at || payload.updatedAt || createdAt);
 
