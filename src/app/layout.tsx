@@ -67,6 +67,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             hand-written tags caused two publisher markers in the rendered head.
             AdSense is opt-in through AdSlot and its consent-aware loader; it must
             not be fetched globally while the integration is disabled. */}
+        {/* AdSense site verification and the loader every ad unit needs.
+            Google's "AdSense code snippet" verification reads the page source for
+            this exact tag, and until it is present the site answers "Not found" in
+            the AdSense console regardless of how complete ads.txt or the publisher
+            meta tag are. Auto Ads stay off and the manual unit is consent-gated in
+            AdSlot, so the loader itself requests no ad inventory. */}
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5473713135927706"
+          crossOrigin="anonymous"
+        />
         <link rel="preconnect" href="https://wp.himalayankoh.com" />
         <link rel="preload" href="/fonts/source-serif-4/latin-normal.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         {/* Site-level structured data — applies to every route, not just the homepage. */}

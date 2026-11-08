@@ -1,3 +1,5 @@
+import { EXTRA_RESOURCE_ARTICLES } from './resourceArticlesExtra';
+
 export interface ResourceArticle {
   id: string;
   slug: string;
@@ -48,6 +50,7 @@ export interface ResourceArticle {
  * to the catalogue fixture.
  */
 export const RESOURCE_ARTICLES: ResourceArticle[] = [
+  ...EXTRA_RESOURCE_ARTICLES,
   {
     id: 'res-1',
     slug: 'salt-block-vs-loose-salt-for-livestock',
