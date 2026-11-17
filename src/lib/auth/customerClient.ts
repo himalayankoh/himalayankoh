@@ -143,9 +143,13 @@ async function postSession(path: string, body: Record<string, unknown>): Promise
 
   const id = Number(data.customer?.id);
   if (!response.ok || !data.token || !Number.isInteger(id) || id <= 0) {
-    throw new Error(
+    // The code is what lets the login page offer a resend for an unconfirmed
+    // account instead of only printing the sentence.
+    const failure = new Error(
       data.error || `That did not work (HTTP ${response.status}). Try again.`
-    );
+    ) as Error & { code?: string };
+    failure.code = (data as { code?: string }).code;
+    throw failure;
   }
 
   const session: CustomerSession = {
@@ -258,3 +262,41 @@ export async function verifyCustomerEmail(login: string, key: string): Promise<v
     throw new Error(body.error || 'This confirmation link is invalid or has expired.');
   }
 }
+
+/**
+ * Ask for a fresh confirmation link.
+ *
+ * The route answers one sentence whether or not the address is registered, so the
+ * page shows that sentence rather than guessing. A 429 (cooldown, or the account's
+ * daily cap) carries WordPress's own explanation.
+ */
+export async function requestVerificationEmail(login: string): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch('/api/auth/customer/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login }),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new Error('Could not reach the confirmation service. Check your connection and try again.');
+  }
+
+  let data: { message?: string; error?: string } = {};
+  try {
+    data = (await response.json()) as typeof data;
+  } catch {
+    /* non-JSON body, fall through to the status-based message */
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || `That did not work (HTTP ${response.status}). Try again.`);
+  }
+
+  return (
+    data.message ||
+    'If that account still needs confirming, we have sent a new link. Check your inbox and spam folder.'
+  );
+}
+

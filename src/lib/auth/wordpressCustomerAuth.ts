@@ -116,6 +116,10 @@ const PLUGIN_ERRORS: Record<string, { status: number; error: string }> = {
     status: 403,
     error: 'Those credentials do not belong to this account.',
   },
+  hk_storefront_verification_throttled: {
+    status: 429,
+    error: 'Please wait before asking for another confirmation email: one was sent recently, or this account has hit the daily limit.',
+  },
   hk_storefront_reset_key_invalid: {
     status: 400,
     error: 'This reset link is invalid or has expired. Request a new one.',
@@ -479,3 +483,46 @@ export async function verifyWordPressCustomerEmail(input: {
     return { ok: false, ...describeFailure(error, 'email confirmation') };
   }
 }
+
+/** What a resend answers with. It never says whether an account exists or mail left. */
+export type VerificationResendResult =
+  | { ok: true }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Sends a fresh confirmation link for an account whose old one expired.
+ *
+ * The route in front of this answers one sentence whether the address is unknown,
+ * already confirmed, or genuinely waiting, and carries nothing else — a field that
+ * differed for a real account would undo that. WordPress owns the cooldown and the
+ * daily cap (user meta); Worker memory cannot count across isolates.
+ */
+export async function resendWordPressCustomerVerification(input: {
+  login: string;
+  origin: string;
+}): Promise<VerificationResendResult> {
+  const login = (input.login || '').trim();
+  if (!login) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Enter the email address or username on the account.',
+    };
+  }
+
+  try {
+    await wordpressRequest<{ ok?: boolean }>(
+      `${NAMESPACE}/customer/resend-verification`,
+      {
+        method: 'POST',
+        body: { login, origin: input.origin },
+        credentials: requireWordPressCredentials(),
+        timeoutMs: TIMEOUT_MS,
+      }
+    );
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, ...describeFailure(error, 'confirmation email') };
+  }
+}
+

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, Loader2, ArrowLeft, UserRound } from 'lucide-react';
 import { useAuthContext } from '../../context/AuthContext';
 import { resolvePostLoginDestination } from '../../lib/auth/roleRouting';
+import { requestVerificationEmail } from '../../lib/auth/customerClient';
 
 /**
  * The development convenience — and only the part of it that is true.
@@ -36,6 +37,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState('');
+  const [canResend, setCanResend] = useState(false);
+  const [resendNotice, setResendNotice] = useState('');
+  const [isResending, setIsResending] = useState(false);
 
   const { signIn, isAuthenticated, isAdmin, profileLoading } = useAuthContext();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,6 +90,8 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
+    setCanResend(false);
+    setResendNotice('');
     setIsSubmitting(true);
 
     try {
@@ -93,12 +99,27 @@ export default function LoginPage() {
       // The effect above performs the redirect once the role is known.
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Login failed. Please try again.');
+      // Only an unconfirmed address gets the resend action; every other refusal
+      // is something a new link cannot fix.
+      setCanResend((err as { code?: string }).code === 'email_unverified');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const isSigningIn = isSubmitting;
+
+  const handleResend = async () => {
+    setResendNotice('');
+    setIsResending(true);
+    try {
+      setResendNotice(await requestVerificationEmail(email));
+    } catch (err) {
+      setResendNotice(err instanceof Error ? err.message : 'Could not send a new link.');
+    } finally {
+      setIsResending(false);
+    }
+  };
 
   const fillAdminEmail = () => {
     if (!devAdmin) return;
@@ -166,6 +187,22 @@ export default function LoginPage() {
               >
                 {formError}
               </motion.div>
+            )}
+
+            {canResend && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+                <p className="mb-2">Has the link expired? We can send a fresh one.</p>
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={isResending}
+                  className="inline-flex items-center gap-2 font-semibold text-himalayan hover:underline disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {isResending && <Loader2 size={16} className="animate-spin" />}
+                  Email me a new confirmation link
+                </button>
+                {resendNotice && <p className="mt-2 text-charcoal-light">{resendNotice}</p>}
+              </div>
             )}
 
             <div>

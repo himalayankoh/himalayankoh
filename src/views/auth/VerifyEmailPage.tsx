@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Check, AlertTriangle, Loader2 } from 'lucide-react';
-import { verifyCustomerEmail } from '../../lib/auth/customerClient';
+import { requestVerificationEmail, verifyCustomerEmail } from '../../lib/auth/customerClient';
 
 /**
  * The page the confirmation link opens.
@@ -20,12 +20,16 @@ type VerifyState = 'checking' | 'success' | 'error';
 
 export default function VerifyEmailPage() {
   const [searchParams] = useSearchParams();
-  const [state, setState] = useState<VerifyState>('checking');
-  const [message, setMessage] = useState('');
-  const started = useRef(false);
 
   const login = (searchParams.get('login') ?? '').trim();
   const key = (searchParams.get('key') ?? '').trim();
+
+  const [state, setState] = useState<VerifyState>('checking');
+  const [message, setMessage] = useState('');
+  const [resendLogin, setResendLogin] = useState(login);
+  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [resendMessage, setResendMessage] = useState('');
+  const started = useRef(false);
 
   useEffect(() => {
     if (started.current) return;
@@ -60,6 +64,19 @@ export default function VerifyEmailPage() {
     };
   }, [login, key]);
 
+  const handleResend = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setResendState('sending');
+    setResendMessage('');
+    try {
+      setResendMessage(await requestVerificationEmail(resendLogin));
+      setResendState('sent');
+    } catch (err) {
+      setResendMessage(err instanceof Error ? err.message : 'Could not send a new link.');
+      setResendState('error');
+    }
+  };
+
   if (state === 'checking') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-cream via-white to-himalayan-lighter flex items-center justify-center p-4">
@@ -85,10 +102,44 @@ export default function VerifyEmailPage() {
           </div>
           <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">We could not confirm that link</h1>
           <p className="text-charcoal-light mb-6">{message}</p>
-          <div className="space-y-3">
+          <form onSubmit={handleResend} className="space-y-3 text-left">
+            <label htmlFor="resend-login" className="block text-sm font-medium text-charcoal">
+              Send a new link
+            </label>
+            <input
+              id="resend-login"
+              type="text"
+              required
+              value={resendLogin}
+              onChange={(event) => setResendLogin(event.target.value)}
+              placeholder="you@example.com or your username"
+              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-charcoal focus:outline-none focus:ring-2 focus:ring-himalayan/30 focus:border-himalayan transition-all"
+            />
+            <button
+              type="submit"
+              disabled={resendState === 'sending'}
+              className="inline-flex w-full items-center justify-center gap-2 px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {resendState === 'sending' && <Loader2 size={18} className="animate-spin" />}
+              Email me a new confirmation link
+            </button>
+            {(resendState === 'sent' || resendState === 'error') && (
+              <p
+                className={
+                  resendState === 'error'
+                    ? 'text-sm text-red-600'
+                    : 'text-sm text-green-700'
+                }
+              >
+                {resendMessage}
+              </p>
+            )}
+          </form>
+
+          <div className="space-y-3 mt-4">
             <Link
               to="/login"
-              className="inline-flex items-center justify-center gap-2 w-full px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors"
+              className="inline-flex items-center justify-center gap-2 w-full px-6 py-3 border border-gray-200 text-charcoal font-semibold rounded-xl hover:bg-gray-50 transition-colors"
             >
               Back to Login
             </Link>
