@@ -1,30 +1,35 @@
 /**
  * Customer sign-up.
  *
- * Creates a WooCommerce customer through WordPress (`wc_create_new_customer`, inside
- * the plugin) and signs the new shopper straight in, in the same shape
- * `/api/auth/customer/login` answers with — so the browser has one code path for
- * "I now have a session".
+ * Creates a WooCommerce customer through WordPress (`wc_create_new_customer`
+ * inside the plugin) and stops there: the account starts **unconfirmed**, so this
+ * route deliberately mints no session. The browser gets a "check your inbox"
+ * answer, and `/api/auth/customer/login` refuses the new account until the link
+ * WordPress emailed has been opened.
  *
- * What it deliberately does not do is create a *second* identity anywhere: there is
- * no Supabase user, no separate profile row. The WordPress user is the account, and
- * the WooCommerce customer id it produces is what the cart and the wishlist are
- * keyed by.
+ * That is the whole gate. Because there is no token, there is nothing for
+ * `/account`, `/orders` or `/wishlist` to accept — the redirect that used to land a
+ * brand-new shopper on their dashboard is now impossible rather than merely
+ * discouraged.
  *
- * The new account gets the browser's existing cart, exactly as a sign-in does — a
- * shopper who built a cart and then created an account should not watch it empty.
+ * What it still does *not* do is create a second identity anywhere: there is no
+ * Supabase user and no profile row. The WordPress user is the account, and the
+ * WooCommerce customer id it produces is what the cart and wishlist are keyed by.
+ *
+ * A guest cart is left alone until the shopper signs in after confirming — the
+ * adoption happens in the login route, which is the first moment there is an
+ * account to adopt it into.
  */
 
 import { NextResponse } from 'next/server';
 
-import { createCustomerSession, isCustomerAuthConfigured } from '@/lib/auth/customerSession';
+import { isCustomerAuthConfigured } from '@/lib/auth/customerSession';
 import { createWordPressCustomer, customerAccountsUnavailable } from '@/lib/auth/wordpressCustomerAuth';
 import { publicMessage } from '@/lib/http/publicError';
-import { readCartSession, writeCartSession } from '@/lib/cart/cookies';
-import { adoptAccountCart } from '@/lib/cart/accountCart';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { clientIp } from '@/lib/http/clientIp';
 import { signupAbuseSignal, signupRefusal } from '@/lib/auth/signupGuard';
+import { SITE_ORIGIN } from '@/lib/site/origin';
 
 /**
  * Sign-up is the one public endpoint on this site that *creates a record* in the
@@ -58,7 +63,8 @@ export async function POST(request: Request) {
   if (!isCustomerAuthConfigured()) {
     // A stranger reaches this route, so the note naming the variable to set stays on
     // the server (`@/lib/http/publicError`) — the same boundary the credential
-    // failures behind it use.
+    // failures behind it use. It is still refused rather than allowed through: an
+    // account that cannot later sign in is worse than a clear "try again".
     return NextResponse.json(
       {
         error: publicMessage({
@@ -98,46 +104,36 @@ export async function POST(request: Request) {
   const signal = signupAbuseSignal(email);
   if (signal) console.warn(`[signup] abuse signal ${signal} from ${ip}`);
 
-  const created = await createWordPressCustomer({ email, password, name, clientIp: ip });
+  const created = await createWordPressCustomer({
+    email,
+    password,
+    name,
+    clientIp: ip,
+    // The confirmation link has to come back to this storefront, and WordPress
+    // cannot know a different origin on its own.
+    origin: SITE_ORIGIN,
+  });
   if (!created.ok) {
     return NextResponse.json({ error: created.error }, { status: created.status });
   }
 
   const customer = created.customer;
 
-  let session;
-  try {
-    session = await createCustomerSession({
-      customerId: customer.id,
+  return NextResponse.json(
+    {
+      verificationRequired: true,
       email: customer.email,
-      name: customer.name,
-    });
-  } catch (error) {
-    console.error('Customer session could not be minted after signup:', error);
-    return NextResponse.json(
-      { error: 'The account was created, but the session could not be created. Sign in.' },
-      { status: 500 }
-    );
-  }
-
-  const guest = await readCartSession();
-  const adoption = await adoptAccountCart(customer.id, guest);
-  if (adoption.error) console.warn('[customer-cart]', adoption.error);
-  await writeCartSession(adoption.session);
-
-  return NextResponse.json({
-    token: session.token,
-    expiresAt: session.payload.exp,
-    customer: {
-      id: customer.id,
-      email: customer.email,
-      name: customer.name,
-      username: customer.username,
+      // False means WordPress created the account but `wp_mail` refused the
+      // confirmation message; the page tells the shopper to ask for help rather
+      // than wait for mail that is not coming.
+      verificationEmailSent: created.verificationEmailSent === true,
+      customer: {
+        id: customer.id,
+        email: customer.email,
+        name: customer.name,
+        username: customer.username,
+      },
     },
-    cart: {
-      adopted: adoption.error === null,
-      merged: adoption.merged,
-      error: adoption.error,
-    },
-  });
+    { status: 201 }
+  );
 }

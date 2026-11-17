@@ -33,7 +33,7 @@ interface AuthContextType {
   error: string | null;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  signUp: (data: SignUpData) => Promise<void>;
+  signUp: (data: SignUpData) => Promise<{ verificationEmailSent: boolean }>;
   signIn: (data: SignInData) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (updates: { full_name?: string; phone?: string; avatar_url?: string }) => Promise<Profile | null>;
@@ -488,21 +488,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      // Creating the account *is* creating the WooCommerce customer: WordPress makes
-      // the WordPress user, WooCommerce records the customer, and this returns a
-      // session — so there is no "now sign in" second step, and no second identity.
-      const session = await createCustomerAccount({
+      // The account is created, but deliberately *not* signed in: the address is
+      // unconfirmed, and a session here is exactly what the verification gate is
+      // meant to withhold. The page shows the "check your inbox" notice instead.
+      const registration = await createCustomerAccount({
         email: data.email.trim(),
         password: data.password,
         name: (data.fullName || '').trim(),
       });
       profileRequestId.current += 1;
-      setUser(customerUserToSessionUser(session.user));
-      setSession(
-        customerSessionForUser(session.user, session.accessToken, session.expiresAt)
-      );
-      setProfile(customerProfileFrom(session.user));
+      setUser(null);
+      setSession(null);
+      setProfile(null);
       setProfileError(null);
+      return { verificationEmailSent: registration.verificationEmailSent };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Sign up failed';
       setError(errorMsg);

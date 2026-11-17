@@ -45,10 +45,12 @@ export interface WordPressCustomer {
   name: string;
   username: string;
   roles: string[];
+  /** False until the address is confirmed. Absent on pre-gate accounts. */
+  emailVerified: boolean;
 }
 
 export type CustomerAccountResult =
-  | { ok: true; customer: WordPressCustomer }
+  | { ok: true; customer: WordPressCustomer; verificationEmailSent?: boolean }
   | { ok: false; status: number; error: string };
 
 interface RawCustomerResponse {
@@ -58,7 +60,9 @@ interface RawCustomerResponse {
     name?: string;
     username?: string;
     roles?: string[];
+    emailVerified?: boolean;
   };
+  verificationEmailSent?: boolean;
 }
 
 function toCustomer(raw: RawCustomerResponse['customer']): WordPressCustomer | null {
@@ -70,6 +74,9 @@ function toCustomer(raw: RawCustomerResponse['customer']): WordPressCustomer | n
     name: String(raw?.name || '').trim(),
     username: String(raw?.username || '').trim(),
     roles: Array.isArray(raw?.roles) ? raw.roles.map(String) : [],
+    // Only an explicit false blocks sign-in: the field is absent from an older
+    // plugin, and treating that as unverified would lock out every existing account.
+    emailVerified: raw?.emailVerified !== false,
   };
 }
 
@@ -112,6 +119,10 @@ const PLUGIN_ERRORS: Record<string, { status: number; error: string }> = {
   hk_storefront_reset_key_invalid: {
     status: 400,
     error: 'This reset link is invalid or has expired. Request a new one.',
+  },
+  hk_storefront_verification_invalid: {
+    status: 400,
+    error: 'This confirmation link is invalid or has expired. Request a new one.',
   },
   hk_storefront_reset_unavailable: {
     status: 400,
@@ -397,6 +408,8 @@ export async function createWordPressCustomer(input: {
    * route it is sent to already requires an administrator application password.
    */
   clientIp?: string;
+  /** Storefront origin the confirmation link must point at (`/verify-email`). */
+  origin: string;
 }): Promise<CustomerAccountResult> {
   const email = (input.email || '').trim();
   if (!email) return { ok: false, status: 400, error: 'Enter your email address.' };
@@ -404,7 +417,7 @@ export async function createWordPressCustomer(input: {
   try {
     const raw = await wordpressRequest<RawCustomerResponse>(`${NAMESPACE}/customer/register`, {
       method: 'POST',
-      body: { email, password: input.password, name: input.name || '' },
+      body: { email, password: input.password, name: input.name || '', origin: input.origin },
       credentials: requireWordPressCredentials(),
       ...(input.clientIp ? { headers: { 'X-HK-Client-IP': input.clientIp } } : {}),
       timeoutMs: TIMEOUT_MS,
@@ -418,8 +431,51 @@ export async function createWordPressCustomer(input: {
         error: 'The account was created but WordPress returned no customer id.',
       };
     }
-    return { ok: true, customer };
+    return { ok: true, customer, verificationEmailSent: raw.verificationEmailSent === true };
   } catch (error) {
     return { ok: false, ...describeFailure(error, 'account creation') };
+  }
+}
+
+/**
+ * Confirms a customer's email address with the key WordPress mailed them.
+ *
+ * The plugin owns the token — a hashed key with a 48-hour expiry — so this only
+ * carries `login` and `key` across and reports what WordPress said.
+ */
+export async function verifyWordPressCustomerEmail(input: {
+  login: string;
+  key: string;
+}): Promise<CustomerAccountResult> {
+  const login = (input.login || '').trim();
+  const key = (input.key || '').trim();
+
+  if (!login || !key) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'This confirmation link is missing its account or key. Request a new one.',
+    };
+  }
+
+  try {
+    const raw = await wordpressRequest<RawCustomerResponse>(`${NAMESPACE}/customer/verify-email`, {
+      method: 'POST',
+      body: { login, key },
+      credentials: requireWordPressCredentials(),
+      timeoutMs: TIMEOUT_MS,
+    });
+
+    const customer = toCustomer(raw.customer);
+    if (!customer) {
+      return {
+        ok: false,
+        status: 502,
+        error: 'The address was confirmed but WordPress returned no customer id.',
+      };
+    }
+    return { ok: true, customer };
+  } catch (error) {
+    return { ok: false, ...describeFailure(error, 'email confirmation') };
   }
 }

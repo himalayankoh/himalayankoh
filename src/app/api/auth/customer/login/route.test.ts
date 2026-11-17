@@ -202,4 +202,25 @@ describe('POST /api/auth/customer/login', () => {
     expect(body.cart.adopted).toBe(false);
     expect(body.cart.error).toMatch(/storefront plugin is not active/);
   });
+
+  it('refuses an unconfirmed account without minting a session', async () => {
+    const wp = useWordPress([
+      {
+        method: 'POST',
+        path: LOGIN,
+        body: { customer: { ...CUSTOMER, emailVerified: false } },
+      },
+    ]);
+
+    const res = await POST(post({ login: 'shopper@example.com', password: 'hunter2!' }));
+    const body = (await res.json()) as { error: string; code?: string; token?: string };
+
+    expect(res.status).toBe(403);
+    expect(body.code).toBe('email_unverified');
+    expect(body.token).toBeUndefined();
+    expect(body.error).toMatch(/Confirm your email address/);
+    // Nothing to adopt a cart into: the account never became a session.
+    expect(wp.callsTo(CART_SESSION, 'POST')).toHaveLength(0);
+  });
+
 });

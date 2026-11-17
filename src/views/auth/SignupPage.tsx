@@ -23,6 +23,7 @@ export default function SignupPage() {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [formError, setFormError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [emailSent, setEmailSent] = useState<boolean | null>(null);
 
   const { signUp, loading, isAuthenticated } = useAuthContext();
   const navigate = useNavigate();
@@ -65,11 +66,12 @@ export default function SignupPage() {
     }
 
     try {
-      await signUp({
+      const result = await signUp({
         email: formData.email,
         password: formData.password,
         fullName: formData.fullName,
       });
+      setEmailSent(result?.verificationEmailSent ?? null);
       setSuccess(true);
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Signup failed. Please try again.');
@@ -87,22 +89,22 @@ export default function SignupPage() {
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <Check size={32} className="text-green-600" />
           </div>
-          <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Welcome to Himalayan Koh</h1>
+          <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Confirm your email</h1>
           <p className="text-charcoal-light mb-6">
-            Your account is ready, and you are signed in. We&apos;ve also emailed{' '}
-            <strong>{formData.email}</strong> a confirmation for your records.
+            We&apos;ve sent a verification link to <strong>{formData.email}</strong>. Open it to
+            activate your account, then sign in. The link expires in 48 hours.
           </p>
-          {/*
-            * "Go to My Account", not "Go to Login": creating the account *is*
-            * signing in here (see `signUp` in AuthContext), so a button labelled
-            * "Login" would send a customer who is already signed in back to a form
-            * asking for the password they just chose.
-            */}
+          {emailSent === false && (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+              The message could not be sent just now. Email ws@himalayankoh.com and we will
+              confirm your address for you.
+            </p>
+          )}
           <Link
-            to="/account"
+            to="/login"
             className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-himalayan hover:bg-himalayan-dark text-white font-semibold rounded-xl transition-colors"
           >
-            Go to My Account
+            Go to Login
           </Link>
         </motion.div>
       </div>

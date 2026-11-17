@@ -167,6 +167,7 @@ describe('WordPress customer authentication', () => {
     ]);
 
     const result = await createWordPressCustomer({
+      origin: 'https://himalayankoh.com',
       email: 'new@example.com',
       password: 'hunter2!',
       name: 'New Shopper',
@@ -179,6 +180,7 @@ describe('WordPress customer authentication', () => {
       email: 'new@example.com',
       password: 'hunter2!',
       name: 'New Shopper',
+      origin: 'https://himalayankoh.com',
     });
   });
 
@@ -193,7 +195,7 @@ describe('WordPress customer authentication', () => {
     ]);
 
     expect(
-      await createWordPressCustomer({ email: 'taken@example.com', password: 'hunter2!' })
+      await createWordPressCustomer({ origin: 'https://himalayankoh.com', email: 'taken@example.com', password: 'hunter2!' })
     ).toEqual({
       ok: false,
       status: 409,
@@ -211,6 +213,7 @@ describe('WordPress customer authentication', () => {
     ]);
 
     await createWordPressCustomer({
+      origin: 'https://himalayankoh.com',
       email: 'new@himalayankoh.com',
       password: 'hunter2!',
       clientIp: '203.0.113.9',
@@ -232,7 +235,7 @@ describe('WordPress customer authentication', () => {
       },
     ]);
 
-    await createWordPressCustomer({ email: 'new@himalayankoh.com', password: 'hunter2!' });
+    await createWordPressCustomer({ origin: 'https://himalayankoh.com', email: 'new@himalayankoh.com', password: 'hunter2!' });
 
     const [call] = wp.callsTo('/hk-storefront/v1/customer/register', 'POST');
     expect(call.headers['X-HK-Client-IP']).toBeUndefined();
@@ -252,6 +255,7 @@ describe('WordPress customer authentication', () => {
     ]);
 
     const result = await createWordPressCustomer({
+      origin: 'https://himalayankoh.com',
       email: 'new@himalayankoh.com',
       password: 'hunter2!',
       clientIp: '203.0.113.9',
@@ -270,7 +274,7 @@ describe('WordPress customer authentication', () => {
   it('requires an email before creating anything', async () => {
     const wp = useWordPress([]);
 
-    expect(await createWordPressCustomer({ email: '  ', password: 'hunter2!' })).toEqual({
+    expect(await createWordPressCustomer({ origin: 'https://himalayankoh.com', email: '  ', password: 'hunter2!' })).toEqual({
       ok: false,
       status: 400,
       error: 'Enter your email address.',
