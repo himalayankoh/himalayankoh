@@ -12,9 +12,9 @@ import { requestVerificationEmail, verifyCustomerEmail } from '../../lib/auth/cu
  * does not sign anyone in: confirmation makes the next sign-in work, which keeps
  * an inbox link from being a credential on its own.
  *
- * The `started` ref is what stops React 18's development double-effect from
- * spending the single-use key twice; the second call would look like an expired
- * link even though the first succeeded.
+ * The `started` ref keeps the effect from spending the single-use key twice when
+ * React runs it again; a repeat call for a confirmed account is a success in the
+ * plugin, but there is no reason to send the same link twice.
  */
 type VerifyState = 'checking' | 'success' | 'error';
 
@@ -35,7 +35,16 @@ export default function VerifyEmailPage() {
     if (started.current) return;
     started.current = true;
 
-    if (!login || !key) {
+    // The router's params are empty on the first client render of this static
+    // route, so a real link looked like "missing key" and was never posted. The
+    // address bar is the same source the link came from, and it is populated.
+    const params = new URLSearchParams(window.location.search);
+    const linkLogin = (params.get('login') || login || '').trim();
+    const linkKey = (params.get('key') || key || '').trim();
+
+    setResendLogin(linkLogin);
+
+    if (!linkLogin || !linkKey) {
       setMessage(
         'This link is missing its account or confirmation key. Open the link from your email again, or contact ws@himalayankoh.com.'
       );
@@ -43,13 +52,14 @@ export default function VerifyEmailPage() {
       return;
     }
 
-    let cancelled = false;
+    // The answer is applied even if React has already run the effect's cleanup:
+    // the page is still the one on screen, and dropping it is what left a
+    // successful confirmation showing "Confirming your email" forever.
     (async () => {
       try {
-        await verifyCustomerEmail(login, key);
-        if (!cancelled) setState('success');
+        await verifyCustomerEmail(linkLogin, linkKey);
+        setState('success');
       } catch (err) {
-        if (cancelled) return;
         setMessage(
           err instanceof Error
             ? err.message
@@ -58,10 +68,6 @@ export default function VerifyEmailPage() {
         setState('error');
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [login, key]);
 
   const handleResend = async (event: React.FormEvent) => {
