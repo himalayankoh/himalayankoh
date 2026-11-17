@@ -32,26 +32,17 @@ export default function ResetPasswordPage() {
   const toast = useToast();
 
   // WordPress sends the account's login name and its reset key. Both are required:
-  // the key alone does not say which account it belongs to.
-  //
-  // They are read from the address bar after mount, not from `useSearchParams()`:
-  // the router's params are empty on the first client render of this static route,
-  // which painted every real link as "Invalid or Expired Link" until hydration.
-  // The empty value is also what the server renders, so waiting for the mount
-  // effect keeps the server and client markup in agreement.
-  const [link, setLink] = useState<{ login: string; key: string } | null>(null);
+  // the key alone does not say which account it belongs to. They are read from the
+  // address bar after mount because the router's params are empty in the server HTML
+  // and on the first client render, which painted every real link as invalid.
+  const [params, setParams] = useState<URLSearchParams | null>(null);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setLink({
-      login: (params.get('login') ?? '').trim(),
-      key: (params.get('key') ?? '').trim(),
-    });
+    setParams(new URLSearchParams(window.location.search));
   }, []);
 
-  const login = link?.login ?? '';
-  const key = link?.key ?? '';
-  const linkUsable = Boolean(login && key);
+  const login = (params?.get('login') ?? '').trim();
+  const key = (params?.get('key') ?? '').trim();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +80,7 @@ export default function ResetPasswordPage() {
     }
   };
 
-  if (!link) {
+  if (!params) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-cream via-white to-himalayan-lighter flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl shadow-xl shadow-black/5 p-8 max-w-md w-full text-center">
@@ -101,7 +92,7 @@ export default function ResetPasswordPage() {
     );
   }
 
-  if (!linkUsable) {
+  if (!login || !key) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-cream via-white to-himalayan-lighter flex items-center justify-center p-4">
         <motion.div
