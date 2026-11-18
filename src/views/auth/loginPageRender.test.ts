@@ -59,4 +59,11 @@ describe('login page render', () => {
       expect(readCode(file)).not.toMatch(/password:\s*['"][^'"]+['"]/);
     }
   });
+
+  it('offers no Google sign-in and no social divider', () => {
+    expect(code).not.toMatch(/Continue with Google/);
+    expect(code).not.toMatch(/Social Login/);
+    expect(code).not.toMatch(/>\s*or\s*</);
+  });
+
 });

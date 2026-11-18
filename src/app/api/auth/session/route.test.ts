@@ -9,7 +9,14 @@
  * which is why they are exercised through the route.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { wordpressCustomerExists } = vi.hoisted(() => ({
+  wordpressCustomerExists: vi.fn(),
+}));
+
+vi.mock('@/lib/auth/wordpressCustomerAuth', () => ({ wordpressCustomerExists }));
+
 import { createAdminSession } from '@/lib/auth/adminSession';
 import { createCustomerSession } from '@/lib/auth/customerSession';
 import { GET } from './route';
@@ -21,6 +28,10 @@ const originalAdmin = process.env.ADMIN_SESSION_SECRET;
 const originalCustomer = process.env.CUSTOMER_SESSION_SECRET;
 
 beforeEach(() => {
+  wordpressCustomerExists.mockReset();
+  // The happy path for the tests below; individual tests override it to model a
+  // deleted account or a WordPress outage.
+  wordpressCustomerExists.mockResolvedValue(true);
   process.env.ADMIN_SESSION_SECRET = ADMIN_SECRET;
   process.env.CUSTOMER_SESSION_SECRET = CUSTOMER_SECRET;
 });
@@ -77,6 +88,37 @@ describe('GET /api/auth/session', () => {
     // The separation the whole design rests on: a shopper's token cannot be read as
     // an administrator, whatever identity it carries.
     expect(payload.role).not.toBe('admin');
+    expect(wordpressCustomerExists).toHaveBeenCalledWith(42);
+  });
+
+  it('answers a customer token whose WordPress user was deleted as signed out', async () => {
+    wordpressCustomerExists.mockResolvedValueOnce(false);
+    const { token } = await createCustomerSession({
+      customerId: 42,
+      email: 'shopper@example.test',
+      name: 'A Shopper',
+    });
+
+    const payload = await body(await GET(request(`Bearer ${token}`)));
+
+    // The signature is valid, but the account it names is gone.
+    expect(payload).toEqual({ authenticated: false, role: null, user: null });
+  });
+
+  it('keeps a signed customer session when WordPress cannot be asked', async () => {
+    wordpressCustomerExists.mockResolvedValueOnce(null);
+    const { token } = await createCustomerSession({
+      customerId: 42,
+      email: 'shopper@example.test',
+      name: 'A Shopper',
+    });
+
+    const payload = await body(await GET(request(`Bearer ${token}`)));
+
+    // An outage is not a deletion: signing every shopper out would be worse than
+    // carrying the signed identity until WordPress answers again.
+    expect(payload.authenticated).toBe(true);
+    expect(payload.role).toBe('customer');
   });
 
   it('refuses a token signed with the wrong secret', async () => {

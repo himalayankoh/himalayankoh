@@ -27,6 +27,7 @@
 import { NextResponse } from 'next/server';
 import { readBearerToken, verifyAdminSessionToken } from '@/lib/auth/adminSession';
 import { verifyCustomerSessionToken } from '@/lib/auth/customerSession';
+import { wordpressCustomerExists } from '@/lib/auth/wordpressCustomerAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +57,19 @@ export async function GET(request: Request) {
 
     const customer = await verifyCustomerSessionToken(token);
     if (customer) {
+      // The token is signed and unexpired, but the person behind it may not exist
+      // any more: WordPress is the account, and deleting the customer there cannot
+      // revoke a stateless token. Ask WordPress on every session read; a definitive
+      // "no such user" is answered as signed out, while a WordPress outage (null)
+      // leaves the session intact rather than signing every shopper out.
+      const exists = await wordpressCustomerExists(customer.cid);
+      if (exists === false) {
+        return NextResponse.json(
+          { authenticated: false, role: null, user: null },
+          { headers: NO_STORE }
+        );
+      }
+
       return NextResponse.json(
         {
           authenticated: true,

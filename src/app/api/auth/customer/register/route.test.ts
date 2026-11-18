@@ -89,4 +89,47 @@ describe('POST /api/auth/customer/register', () => {
     const [call] = stub.callsTo('/hk-storefront/v1/customer/register', 'POST');
     expect(call.headers['X-HK-Client-IP']).toBe('203.0.113.9');
   });
+
+  it('answers with a verification notice and no session, and tells WordPress where the storefront is', async () => {
+    process.env.CUSTOMER_SESSION_SECRET = 'a-test-secret-long-enough-to-sign';
+    const stub = useWordPress([
+      {
+        method: 'POST',
+        path: '/hk-storefront/v1/customer/register',
+        status: 201,
+        body: {
+          customer: {
+            id: 91,
+            email: 'new-shopper@himalayankoh.com',
+            name: 'New Shopper',
+            username: 'new-shopper',
+            roles: ['customer'],
+            emailVerified: false,
+          },
+          verificationEmailSent: true,
+        },
+      },
+    ]);
+
+    const res = await POST(
+      post({ email: 'new-shopper@himalayankoh.com', password: 'hunter2!', name: 'New Shopper' })
+    );
+    const body = (await res.json()) as {
+      token?: string;
+      verificationRequired?: boolean;
+      verificationEmailSent?: boolean;
+      customer?: { id: number };
+    };
+
+    expect(res.status).toBe(201);
+    // The gate: no token, so /account cannot be reached by the new account.
+    expect(body.token).toBeUndefined();
+    expect(body.verificationRequired).toBe(true);
+    expect(body.verificationEmailSent).toBe(true);
+    expect(body.customer?.id).toBe(91);
+    expect(stub.callsTo('/hk-storefront/v1/customer/register', 'POST')[0].body).toMatchObject({
+      origin: expect.stringMatching(/^https?:\/\//),
+    });
+  });
+
 });

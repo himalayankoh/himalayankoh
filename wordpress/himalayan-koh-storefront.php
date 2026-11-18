@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Himalayan Koh — Storefront Account State
  * Description:       Custom tables and REST endpoints for the state WordPress does not already own: per-account storefront state (wishlist, saved addresses, cart binding), the customer operations WooCommerce exposes no REST route for (sign-in, account creation, password reset), and the app's site-content bridge (settings, category-hub overrides, first-party events, newsletter/contact submissions, HK blog fields). This is the WordPress side of the app's Supabase → WordPress migration; the Next.js app talks to the hk-storefront/v1 namespace below.
- * Version:           1.5.5
+ * Version:           1.5.8
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Himalayan Koh
@@ -868,6 +868,7 @@ function hk_storefront_customer_payload( $user ) {
 			'name'     => hk_storefront_customer_name( $user ),
 			'username' => (string) $user->user_login,
 			'roles'    => array_values( (array) $user->roles ),
+			'emailVerified' => hk_storefront_customer_is_verified( $user ),
 		),
 	);
 }
@@ -905,6 +906,180 @@ function hk_storefront_customer_login( WP_REST_Request $request ) {
 	}
 
 	return rest_ensure_response( hk_storefront_customer_payload( $user ) );
+}
+
+/* -------------------------------------------------------------------------
+ * Email verification
+ * ---------------------------------------------------------------------- */
+
+/** User meta: '1' once the address is confirmed, '0' while it is not. */
+function hk_storefront_verified_meta_key() {
+	return 'hk_email_verified';
+}
+
+/**
+ * Whether this customer has confirmed their email address.
+ *
+ * An account created before this gate existed has no meta row at all. Those are
+ * treated as confirmed: the gate is for accounts created from now on, and
+ * retroactively locking out every existing customer would be a worse failure than
+ * the one it fixes.
+ */
+function hk_storefront_customer_is_verified( $user ) {
+	if ( ! $user instanceof WP_User ) {
+		return true;
+	}
+	$flag = get_user_meta( $user->ID, hk_storefront_verified_meta_key(), true );
+	return $flag === '' || $flag === '1' || 1 === (int) $flag;
+}
+
+/**
+ * Issues a confirmation link and emails it.
+ *
+ * The stored half is a hash, so a database read cannot mint a working link; the
+ * message carries the only copy of the token. Expiry is 48 hours — long enough for
+ * a shopper to find the message, short enough that a leaked inbox is not a
+ * permanent key.
+ */
+function hk_storefront_send_email_verification( $user, $origin ) {
+	$token = wp_generate_password( 40, false, false );
+
+	update_user_meta( $user->ID, 'hk_email_verification_key', wp_hash_password( $token ) );
+	update_user_meta( $user->ID, 'hk_email_verification_issued', time() );
+	update_user_meta( $user->ID, 'hk_email_verification_last_sent', time() );
+
+	$url = add_query_arg(
+		array(
+			'login' => rawurlencode( $user->user_login ),
+			'key'   => rawurlencode( $token ),
+		),
+		$origin . '/verify-email'
+	);
+
+	return wp_mail(
+		$user->user_email,
+		sprintf( '[%s] Confirm your email address', wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES ) ),
+		"Welcome to " . wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES ) . ".\n\n"
+			. "Confirm this address to activate your account (the link expires in 48 hours):\n\n"
+			. $url . "\n\n"
+			. "If you did not create this account, you can ignore this message.\n",
+		array(
+			'Content-Type: text/plain; charset=UTF-8',
+			// An explicit sender on the store's own domain: WordPress's default
+			// `wordpress@<host>` is sent from a hostname with no SPF record of its
+			// own, which is the usual reason a confirmation lands in spam.
+			'From: ' . wp_specialchars_decode( get_bloginfo( 'name' ), ENT_QUOTES ) . ' <ws@himalayankoh.com>',
+		)
+	);
+}
+
+/**
+ * Confirms an address from the link WordPress emailed.
+ *
+ * `login` says which account, `key` proves it. The key is checked against the
+ * stored hash and its issue time, then deleted — so a link works once.
+ */
+function hk_storefront_verify_customer_email( WP_REST_Request $request ) {
+	$body  = $request->get_json_params() ?: array();
+	$login = trim( (string) ( $body['login'] ?? '' ) );
+	$token = trim( (string) ( $body['key'] ?? '' ) );
+
+	$invalid = new WP_Error(
+		'hk_storefront_verification_invalid',
+		'This confirmation link is invalid or has expired. Sign in to request a new one.',
+		array( 'status' => 400 )
+	);
+
+	if ( $login === '' || $token === '' ) {
+		return $invalid;
+	}
+
+	$user = hk_storefront_find_user( $login );
+	if ( ! $user ) {
+		return $invalid;
+	}
+
+	// Idempotent: a second click on an already-confirmed link is not an error.
+	if ( hk_storefront_customer_is_verified( $user ) ) {
+		return rest_ensure_response( hk_storefront_customer_payload( $user ) );
+	}
+
+	$stored  = (string) get_user_meta( $user->ID, 'hk_email_verification_key', true );
+	$issued  = (int) get_user_meta( $user->ID, 'hk_email_verification_issued', true );
+	$expired = $issued <= 0 || ( time() - $issued ) > 2 * DAY_IN_SECONDS;
+
+	if ( $stored === '' || $expired || ! wp_check_password( $token, $stored ) ) {
+		return $invalid;
+	}
+
+	update_user_meta( $user->ID, hk_storefront_verified_meta_key(), '1' );
+	delete_user_meta( $user->ID, 'hk_email_verification_key' );
+	delete_user_meta( $user->ID, 'hk_email_verification_issued' );
+
+	return rest_ensure_response( hk_storefront_customer_payload( $user ) );
+}
+
+/**
+ * Sends a fresh confirmation link for an account whose link expired or never arrived.
+ *
+ * The reply is the same for an unknown address, an already-confirmed account and a
+ * real unconfirmed one: this endpoint must not become a way to ask "is this email
+ * registered?" — and nothing in it says whether a message actually went out.
+ *
+ * The cooldown and the daily cap live here rather than in the Worker because
+ * Cloudflare's in-memory limit is per isolate; user meta is the count that survives
+ * a second isolate, and it is per account, so one address cannot be mail-bombed.
+ */
+function hk_storefront_customer_resend_verification( WP_REST_Request $request ) {
+	$body   = $request->get_json_params() ?: array();
+	$login  = trim( (string) ( $body['login'] ?? $body['email'] ?? '' ) );
+	$origin = hk_storefront_reset_origin( $body['origin'] ?? '' );
+	if ( is_wp_error( $origin ) ) {
+		return $origin;
+	}
+
+	if ( $login === '' ) {
+		return new WP_Error(
+			'hk_storefront_login_required',
+			'Enter the email address or username on the account.',
+			array( 'status' => 400 )
+		);
+	}
+
+	$user = hk_storefront_find_user( $login );
+	if ( ! $user || hk_storefront_customer_is_verified( $user ) ) {
+		return array( 'ok' => true, 'sent' => false );
+	}
+
+	$now  = time();
+	$last = (int) get_user_meta( $user->ID, 'hk_email_verification_last_sent', true );
+	if ( $last > 0 && ( $now - $last ) < MINUTE_IN_SECONDS ) {
+		return new WP_Error(
+			'hk_storefront_verification_throttled',
+			'A confirmation email was just sent. Please wait a minute before asking for another one.',
+			array( 'status' => 429 )
+		);
+	}
+
+	$window_start = (int) get_user_meta( $user->ID, 'hk_email_verification_window_start', true );
+	$sent_today   = (int) get_user_meta( $user->ID, 'hk_email_verification_window_count', true );
+	if ( $window_start <= 0 || ( $now - $window_start ) >= DAY_IN_SECONDS ) {
+		$window_start = $now;
+		$sent_today   = 0;
+	}
+	if ( $sent_today >= 5 ) {
+		return new WP_Error(
+			'hk_storefront_verification_throttled',
+			'This account has asked for five confirmation emails today. Email ws@himalayankoh.com and we will help you directly.',
+			array( 'status' => 429 )
+		);
+	}
+
+	update_user_meta( $user->ID, 'hk_email_verification_window_start', $window_start );
+	update_user_meta( $user->ID, 'hk_email_verification_window_count', $sent_today + 1 );
+
+	hk_storefront_send_email_verification( $user, $origin );
+	return array( 'ok' => true );
 }
 
 /** A username derived from the email, made unique against existing logins. */
@@ -1057,6 +1232,10 @@ function hk_storefront_customer_register( WP_REST_Request $request ) {
 	$email    = sanitize_email( (string) ( $body['email'] ?? '' ) );
 	$password = (string) ( $body['password'] ?? '' );
 	$name     = sanitize_text_field( (string) ( $body['name'] ?? '' ) );
+	$origin   = hk_storefront_reset_origin( $body['origin'] ?? '' );
+	if ( is_wp_error( $origin ) ) {
+		return $origin;
+	}
 
 	if ( ! is_email( $email ) ) {
 		return new WP_Error(
@@ -1115,7 +1294,21 @@ function hk_storefront_customer_register( WP_REST_Request $request ) {
 		}
 	}
 
-	return rest_ensure_response( hk_storefront_customer_payload( get_userdata( $customer_id ) ) );
+	// New accounts start unconfirmed. A login with a correct password is still
+	// refused until this flips to '1', which is what makes the emailed link the
+	// only way in.
+	update_user_meta( $customer_id, hk_storefront_verified_meta_key(), '0' );
+	$user = get_userdata( $customer_id );
+	$sent = $user instanceof WP_User ? hk_storefront_send_email_verification( $user, $origin ) : false;
+	if ( ! $sent ) {
+		error_log( 'hk-storefront: verification email could not be sent for user ' . $customer_id );
+	}
+
+	$payload = hk_storefront_customer_payload( $user );
+	if ( is_array( $payload ) ) {
+		$payload['verificationEmailSent'] = (bool) $sent;
+	}
+	return rest_ensure_response( $payload );
 }
 
 /* -------------------------------------------------------------------------
@@ -1487,6 +1680,26 @@ add_action(
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => 'hk_storefront_customer_register',
+				'permission_callback' => 'hk_storefront_can_manage',
+			)
+		);
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/customer/verify-email',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => 'hk_storefront_verify_customer_email',
+				'permission_callback' => 'hk_storefront_can_manage',
+			)
+		);
+
+		register_rest_route(
+			'hk-storefront/v1',
+			'/customer/resend-verification',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => 'hk_storefront_customer_resend_verification',
 				'permission_callback' => 'hk_storefront_can_manage',
 			)
 		);

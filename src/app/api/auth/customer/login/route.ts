@@ -66,6 +66,19 @@ export async function POST(request: Request) {
 
   const customer = verified.customer;
 
+  // The gate. WordPress checked the password, but an unconfirmed address must not
+  // become a session — no token is minted, so /account stays unreachable.
+  if (!customer.emailVerified) {
+    return NextResponse.json(
+      {
+        error:
+          'Confirm your email address before signing in. We sent you a link when you created the account — check your inbox.',
+        code: 'email_unverified',
+      },
+      { status: 403 }
+    );
+  }
+
   let session;
   try {
     session = await createCustomerSession({

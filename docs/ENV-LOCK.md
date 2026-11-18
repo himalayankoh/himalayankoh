@@ -48,3 +48,20 @@ npx vercel --prod
 
 - Admin: `admin@himalayankoh.com` / `Admin123!`
 - Customer: `customer@himalayankoh.com` / `Customer123!`
+
+## Email delivery — WP Mail SMTP is **deactivated** on production
+
+`wp-mail-smtp` is off on `wp.himalayankoh.com` on purpose. Its "Other SMTP" mailer
+held a mailbox password the server rejects — `SMTP Error: Could not authenticate` —
+so every message failed, including WordPress's own password reset, while callers
+that only read `wp_mail()`'s boolean were told the mail had been sent.
+
+With the plugin off, WordPress sends through PHP mail and the host's local MTA. The
+customer verification email has been delivered end-to-end since: an external inbox
+received it, the link opened, the address confirmed, and sign-in succeeded.
+
+**Do not reactivate it without a mailbox password that actually authenticates.**
+Prove a change with a real send — the signup flow or a password reset — not with a
+boolean. Verification mail leaves with `From: … <ws@himalayankoh.com>`, which is
+aligned with the domain's SPF/DKIM.
+

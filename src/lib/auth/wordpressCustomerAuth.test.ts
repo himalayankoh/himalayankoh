@@ -11,7 +11,11 @@ vi.hoisted(() => {
   process.env.WORDPRESS_ADMIN_APP_PASSWORD = 'abcdEFGHijklMNOPqrstUVWX';
 });
 
-import { createWordPressCustomer, verifyWordPressCustomerCredentials } from './wordpressCustomerAuth';
+import {
+  createWordPressCustomer,
+  verifyWordPressCustomerCredentials,
+  wordpressCustomerExists,
+} from './wordpressCustomerAuth';
 
 const realFetch = globalThis.fetch;
 
@@ -167,6 +171,7 @@ describe('WordPress customer authentication', () => {
     ]);
 
     const result = await createWordPressCustomer({
+      origin: 'https://himalayankoh.com',
       email: 'new@example.com',
       password: 'hunter2!',
       name: 'New Shopper',
@@ -179,6 +184,7 @@ describe('WordPress customer authentication', () => {
       email: 'new@example.com',
       password: 'hunter2!',
       name: 'New Shopper',
+      origin: 'https://himalayankoh.com',
     });
   });
 
@@ -193,7 +199,7 @@ describe('WordPress customer authentication', () => {
     ]);
 
     expect(
-      await createWordPressCustomer({ email: 'taken@example.com', password: 'hunter2!' })
+      await createWordPressCustomer({ origin: 'https://himalayankoh.com', email: 'taken@example.com', password: 'hunter2!' })
     ).toEqual({
       ok: false,
       status: 409,
@@ -211,6 +217,7 @@ describe('WordPress customer authentication', () => {
     ]);
 
     await createWordPressCustomer({
+      origin: 'https://himalayankoh.com',
       email: 'new@himalayankoh.com',
       password: 'hunter2!',
       clientIp: '203.0.113.9',
@@ -232,7 +239,7 @@ describe('WordPress customer authentication', () => {
       },
     ]);
 
-    await createWordPressCustomer({ email: 'new@himalayankoh.com', password: 'hunter2!' });
+    await createWordPressCustomer({ origin: 'https://himalayankoh.com', email: 'new@himalayankoh.com', password: 'hunter2!' });
 
     const [call] = wp.callsTo('/hk-storefront/v1/customer/register', 'POST');
     expect(call.headers['X-HK-Client-IP']).toBeUndefined();
@@ -252,6 +259,7 @@ describe('WordPress customer authentication', () => {
     ]);
 
     const result = await createWordPressCustomer({
+      origin: 'https://himalayankoh.com',
       email: 'new@himalayankoh.com',
       password: 'hunter2!',
       clientIp: '203.0.113.9',
@@ -270,11 +278,67 @@ describe('WordPress customer authentication', () => {
   it('requires an email before creating anything', async () => {
     const wp = useWordPress([]);
 
-    expect(await createWordPressCustomer({ email: '  ', password: 'hunter2!' })).toEqual({
+    expect(await createWordPressCustomer({ origin: 'https://himalayankoh.com', email: '  ', password: 'hunter2!' })).toEqual({
       ok: false,
       status: 400,
       error: 'Enter your email address.',
     });
     expect(wp.calls).toHaveLength(0);
+  });
+
+  it('finds the WordPress user behind a customer id, authenticated as the app', async () => {
+    const wp = useWordPress([
+      { method: 'GET', path: '/wp/v2/users/42', body: { id: 42, roles: ['customer'] } },
+    ]);
+
+    expect(await wordpressCustomerExists(42)).toBe(true);
+
+    const [call] = wp.callsTo('/wp/v2/users/42', 'GET');
+    expect(call.query.get('context')).toBe('edit');
+    expect(call.headers.Authorization).toBe(
+      `Basic ${Buffer.from('salman:abcdEFGHijklMNOPqrstUVWX').toString('base64')}`
+    );
+  });
+
+  it('reads a user-shaped 404 as a deleted account', async () => {
+    useWordPress([
+      {
+        method: 'GET',
+        path: '/wp/v2/users/42',
+        status: 404,
+        body: { code: 'rest_user_invalid_id', message: 'Invalid user ID.' },
+      },
+    ]);
+
+    expect(await wordpressCustomerExists(42)).toBe(false);
+  });
+
+  it('does not read a missing core route as mass deletion', async () => {
+    useWordPress([
+      {
+        method: 'GET',
+        path: '/wp/v2/users/42',
+        status: 404,
+        body: { code: 'rest_no_route', message: 'No route was found.' },
+      },
+    ]);
+
+    expect(await wordpressCustomerExists(42)).toBeNull();
+  });
+
+  it('returns null when WordPress cannot answer, rather than signing the shopper out', async () => {
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    useWordPress([
+      {
+        method: 'GET',
+        path: '/wp/v2/users/42',
+        status: 503,
+        body: { code: 'service_unavailable', message: 'Down for maintenance.' },
+      },
+    ]);
+
+    expect(await wordpressCustomerExists(42)).toBeNull();
+    expect(warned.mock.calls.flat().join(' ')).toMatch(/customer-session/);
+    warned.mockRestore();
   });
 });

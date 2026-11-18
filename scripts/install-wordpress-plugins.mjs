@@ -53,7 +53,7 @@ const UPDATE_SLUG = (() => {
 })();
 
 const PLUGINS = [
-  { slug: 'himalayan-koh-storefront', version: '1.5.5' },
+  { slug: 'himalayan-koh-storefront', version: '1.5.8' },
   { slug: 'himalayan-koh-leados', version: '2.3.0' },
   { slug: 'hk-wholesale', version: '1.3.2' },
 ];

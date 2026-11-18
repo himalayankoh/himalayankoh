@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, Eye, EyeOff, Loader2, Check, AlertTriangle } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
@@ -22,7 +22,6 @@ import { useToast } from '../../context/ToastContext';
  * state a missing recovery session used to produce even when the link was fine.
  */
 export default function ResetPasswordPage() {
-  const [searchParams] = useSearchParams();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -33,10 +32,17 @@ export default function ResetPasswordPage() {
   const toast = useToast();
 
   // WordPress sends the account's login name and its reset key. Both are required:
-  // the key alone does not say which account it belongs to.
-  const login = (searchParams.get('login') ?? '').trim();
-  const key = (searchParams.get('key') ?? '').trim();
-  const linkUsable = Boolean(login && key);
+  // the key alone does not say which account it belongs to. They are read from the
+  // address bar after mount because the router's params are empty in the server HTML
+  // and on the first client render, which painted every real link as invalid.
+  const [params, setParams] = useState<URLSearchParams | null>(null);
+
+  useEffect(() => {
+    setParams(new URLSearchParams(window.location.search));
+  }, []);
+
+  const login = (params?.get('login') ?? '').trim();
+  const key = (params?.get('key') ?? '').trim();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +80,19 @@ export default function ResetPasswordPage() {
     }
   };
 
-  if (!linkUsable) {
+  if (!params) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-cream via-white to-himalayan-lighter flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-xl shadow-black/5 p-8 max-w-md w-full text-center">
+          <Loader2 size={32} className="animate-spin text-himalayan mx-auto mb-6" />
+          <h1 className="font-serif text-2xl font-bold text-charcoal mb-2">Checking your reset link</h1>
+          <p className="text-charcoal-light">This only takes a moment.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!login || !key) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-cream via-white to-himalayan-lighter flex items-center justify-center p-4">
         <motion.div

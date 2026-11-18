@@ -143,9 +143,13 @@ async function postSession(path: string, body: Record<string, unknown>): Promise
 
   const id = Number(data.customer?.id);
   if (!response.ok || !data.token || !Number.isInteger(id) || id <= 0) {
-    throw new Error(
+    // The code is what lets the login page offer a resend for an unconfirmed
+    // account instead of only printing the sentence.
+    const failure = new Error(
       data.error || `That did not work (HTTP ${response.status}). Try again.`
-    );
+    ) as Error & { code?: string };
+    failure.code = (data as { code?: string }).code;
+    throw failure;
   }
 
   const session: CustomerSession = {
@@ -180,20 +184,119 @@ export function signInWithCustomerPassword(login: string, password: string): Pro
   return postSession('/api/auth/customer/login', { login: identifier, password });
 }
 
+/** What sign-up answers with: no session, and whether the mail went out. */
+export interface CustomerRegistration {
+  verificationRequired: boolean;
+  email: string;
+  verificationEmailSent: boolean;
+}
+
 /**
- * Create an account and sign in with it.
+ * Create an account.
  *
- * The account is a WooCommerce customer and the session comes back in the same
- * shape as a sign-in, so a caller does not have two ways to become signed in.
+ * The account is a WooCommerce customer, but it is **not** signed in: the address
+ * is unconfirmed, and the sign-in route refuses it until the emailed link is
+ * opened. So this returns a notice rather than a session.
  */
-export function createCustomerAccount(input: {
+export async function createCustomerAccount(input: {
   email: string;
   password: string;
   name?: string;
-}): Promise<CustomerSession> {
-  return postSession('/api/auth/customer/register', {
-    email: input.email,
-    password: input.password,
-    name: input.name || '',
-  });
+}): Promise<CustomerRegistration> {
+  let response: Response;
+  try {
+    response = await fetch('/api/auth/customer/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: input.email,
+        password: input.password,
+        name: input.name || '',
+      }),
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+  } catch {
+    throw new Error(NETWORK_ERROR);
+  }
+
+  let data: {
+    verificationRequired?: boolean;
+    email?: string;
+    verificationEmailSent?: boolean;
+    error?: string;
+  } = {};
+  try {
+    data = (await response.json()) as typeof data;
+  } catch {
+    /* non-JSON body — fall through to the status-based message */
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || `That did not work (HTTP ${response.status}). Try again.`);
+  }
+
+  return {
+    verificationRequired: data.verificationRequired !== false,
+    email: String(data.email || input.email),
+    verificationEmailSent: data.verificationEmailSent !== false,
+  };
 }
+
+/** Confirm an address with the `login` and `key` from the emailed link. */
+export async function verifyCustomerEmail(login: string, key: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch('/api/auth/customer/verify-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login, key }),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new Error('Could not reach the confirmation service. Check your connection and try again.');
+  }
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || 'This confirmation link is invalid or has expired.');
+  }
+}
+
+/**
+ * Ask for a fresh confirmation link.
+ *
+ * The route answers one sentence whether or not the address is registered, so the
+ * page shows that sentence rather than guessing. A 429 (cooldown, or the account's
+ * daily cap) carries WordPress's own explanation.
+ */
+export async function requestVerificationEmail(login: string): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetch('/api/auth/customer/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ login }),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new Error('Could not reach the confirmation service. Check your connection and try again.');
+  }
+
+  let data: { message?: string; error?: string } = {};
+  try {
+    data = (await response.json()) as typeof data;
+  } catch {
+    /* non-JSON body, fall through to the status-based message */
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || `That did not work (HTTP ${response.status}). Try again.`);
+  }
+
+  return (
+    data.message ||
+    'If that account still needs confirming, we have sent a new link. Check your inbox and spam folder.'
+  );
+}
+
