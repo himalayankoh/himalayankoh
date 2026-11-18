@@ -30,6 +30,49 @@ export async function validateShippingAddressClient(params: {
   return body as AddressValidationResponse;
 }
 
+export interface AddressSuggestionsResponse {
+  configured: boolean;
+  original: AddressValidationResponse;
+  suggestions: CheckoutShippingAddress[];
+}
+
+/**
+ * Asks the server for standard US layouts of an address the carrier refused.
+ *
+ * The response always carries the original validation so the page can show the
+ * carrier's message as well as any corrections; `suggestions` is empty when the
+ * address already validates or no safe layout could be found.
+ */
+export async function fetchAddressSuggestions(params: {
+  address: CheckoutShippingAddress;
+  email?: string;
+}): Promise<AddressSuggestionsResponse> {
+  const response = await fetch('/api/shippo/address-suggestions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      address: params.address,
+      email: params.email,
+    }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || 'Unable to check this address.');
+  }
+
+  return {
+    configured: Boolean(body.configured),
+    original: {
+      ...(body.original as AddressValidationResponse),
+      configured: Boolean(body.configured),
+    },
+    suggestions: Array.isArray(body.suggestions)
+      ? (body.suggestions as CheckoutShippingAddress[])
+      : [],
+  };
+}
+
 export async function fetchShippoRates(params: {
   address: CheckoutShippingAddress;
   email?: string;

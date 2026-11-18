@@ -18,6 +18,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import Stripe from 'stripe';
 import {
   getStripeSignatureVerifier,
   mayApplyPaymentsForMode,
@@ -58,7 +59,15 @@ export async function POST(request: Request) {
     // conflating the two reported "invalid signature" for a valid delivery that was
     // simply not destined for this environment.
     stripe = await getStripeSignatureVerifier();
-    event = await stripe.webhooks.constructEventAsync(rawBody, signature, webhookSecret);
+    // Workers expose WebCrypto, not Node's `crypto`. Passing the Subtle provider
+    // explicitly is what makes signature verification work in the deployed runtime.
+    event = await stripe.webhooks.constructEventAsync(
+      rawBody,
+      signature,
+      webhookSecret,
+      undefined,
+      Stripe.createSubtleCryptoProvider(),
+    );
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error('Stripe webhook verification error:', detail);
