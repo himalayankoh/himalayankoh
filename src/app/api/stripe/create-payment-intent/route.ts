@@ -186,6 +186,20 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to create payment intent.';
+    // The catch used to return the raw message, which is how a bare "Failed to
+    // fetch" reached the checkout with no way to tell which dependency failed.
+    // Keep the detail server-side; the shopper gets a retryable sentence.
+    console.error('[stripe/create-payment-intent] failed:', {
+      name: error instanceof Error ? error.name : typeof error,
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    if (error instanceof TypeError && /fetch/i.test(message)) {
+      return NextResponse.json(
+        { error: 'We could not reach the payment provider. Please try again in a moment.' },
+        { status: 503 },
+      );
+    }
     return NextResponse.json({ error: message }, { status: 409 });
   }
 }

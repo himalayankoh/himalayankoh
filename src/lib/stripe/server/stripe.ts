@@ -278,12 +278,34 @@ export async function stripeConfigError(): Promise<NextResponse | null> {
   return NextResponse.json({ error: stripeRefusalMessage(readiness) }, { status: 503 });
 }
 
+/**
+ * Stripe SDK options for Cloudflare Workers.
+ *
+ * The SDK's default HTTP client is Node's `https` module. Under Workers that
+ * module is only a compatibility shim: a PaymentIntent create fails with a bare
+ * `Failed to fetch` instead of ever reaching Stripe. `createFetchHttpClient()`
+ * sends the same request through the runtime's native `fetch`, which works in
+ * both Workers and Node.
+ *
+ * The timeout is deliberately shorter than a Worker invocation: one retry plus
+ * a 10s attempt stays inside Cloudflare's request budget, so a slow Stripe
+ * response becomes an actionable checkout error rather than a killed request.
+ */
+function stripeClientOptions(): Stripe.StripeConfig {
+  return {
+    apiVersion: '2025-02-24.acacia',
+    httpClient: Stripe.createFetchHttpClient(),
+    maxNetworkRetries: 1,
+    timeout: 10_000,
+  };
+}
+
 export async function getStripeClient(): Promise<Stripe> {
   const readiness = await evaluateCurrentStripeReadiness();
   const secretKey = await resolveStripeSecretKey();
   if (!secretKey) throw new Error('STRIPE_SECRET_KEY is not configured.');
   if (!readiness.chargingEnabled) throw new Error(stripeRefusalMessage(readiness));
-  return new Stripe(secretKey, { apiVersion: '2025-02-24.acacia' });
+  return new Stripe(secretKey, stripeClientOptions());
 }
 
 /**
@@ -301,7 +323,7 @@ export async function getStripeClient(): Promise<Stripe> {
 export async function getStripeSignatureVerifier(): Promise<Stripe> {
   const secretKey = await resolveStripeSecretKey();
   if (!secretKey) throw new Error('STRIPE_SECRET_KEY is not configured.');
-  return new Stripe(secretKey, { apiVersion: '2025-02-24.acacia' });
+  return new Stripe(secretKey, stripeClientOptions());
 }
 
 /** Whether an incoming live-mode delivery may be applied to an order here. */
