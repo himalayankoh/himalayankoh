@@ -214,6 +214,8 @@ describe('cart transport', () => {
     const result = await readStoreCart({ cartToken: 'token-1', nonce: null });
 
     expect(stub.callsTo('/wc/store/v1/cart')[0].url).toContain('/staging/wp-json/wc/store/v1/cart');
+    // The store's page cache answers the bare cart URL with an old empty cart.
+    expect(stub.callsTo('/wc/store/v1/cart')[0].url).toContain('_hk=');
     expect(stub.callsTo('/wc/store/v1/cart')[0].headers['Cart-Token']).toBe('token-1');
     // The token is rotated by the store, so the caller must adopt the new one or
     // the next request is a different cart.

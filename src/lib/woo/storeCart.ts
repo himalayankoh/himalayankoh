@@ -338,6 +338,12 @@ export async function storeApiRequest<T>(
     nonce?: string | null;
     timeoutMs?: number;
     signal?: AbortSignal;
+    /**
+     * Adds a one-off query parameter so a page cache cannot answer a cart read.
+     * LiteSpeed caches the Store API cart GET despite `no-store`, which makes every
+     * read after an add return the empty cart it cached earlier.
+     */
+    cacheBust?: boolean;
   } = {}
 ): Promise<StoreApiResponse<T>> {
   const base = backendConfig.wordpressApiRoot;
@@ -370,9 +376,14 @@ export async function storeApiRequest<T>(
   if (options.nonce) headers.Nonce = options.nonce;
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
 
+  const target = buildWordPressUrl(path, base);
+  const requestUrl = options.cacheBust
+    ? `${target}${target.includes('?') ? '&' : '?'}_hk=${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    : target;
+
   let response: Response;
   try {
-    response = await fetch(buildWordPressUrl(path, base), {
+    response = await fetch(requestUrl, {
       method,
       headers,
       signal: controller.signal,
@@ -461,6 +472,7 @@ export async function readStoreCart(session: CartSession): Promise<{
   const response = await storeApiRequest<StoreCartRaw>(`${STORE_API}/cart`, {
     cartToken: session.cartToken,
     nonce: session.nonce,
+    cacheBust: true,
   });
   return {
     cart: response.data,
