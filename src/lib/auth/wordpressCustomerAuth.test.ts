@@ -11,7 +11,11 @@ vi.hoisted(() => {
   process.env.WORDPRESS_ADMIN_APP_PASSWORD = 'abcdEFGHijklMNOPqrstUVWX';
 });
 
-import { createWordPressCustomer, verifyWordPressCustomerCredentials } from './wordpressCustomerAuth';
+import {
+  createWordPressCustomer,
+  verifyWordPressCustomerCredentials,
+  wordpressCustomerExists,
+} from './wordpressCustomerAuth';
 
 const realFetch = globalThis.fetch;
 
@@ -280,5 +284,61 @@ describe('WordPress customer authentication', () => {
       error: 'Enter your email address.',
     });
     expect(wp.calls).toHaveLength(0);
+  });
+
+  it('finds the WordPress user behind a customer id, authenticated as the app', async () => {
+    const wp = useWordPress([
+      { method: 'GET', path: '/wp/v2/users/42', body: { id: 42, roles: ['customer'] } },
+    ]);
+
+    expect(await wordpressCustomerExists(42)).toBe(true);
+
+    const [call] = wp.callsTo('/wp/v2/users/42', 'GET');
+    expect(call.query.get('context')).toBe('edit');
+    expect(call.headers.Authorization).toBe(
+      `Basic ${Buffer.from('salman:abcdEFGHijklMNOPqrstUVWX').toString('base64')}`
+    );
+  });
+
+  it('reads a user-shaped 404 as a deleted account', async () => {
+    useWordPress([
+      {
+        method: 'GET',
+        path: '/wp/v2/users/42',
+        status: 404,
+        body: { code: 'rest_user_invalid_id', message: 'Invalid user ID.' },
+      },
+    ]);
+
+    expect(await wordpressCustomerExists(42)).toBe(false);
+  });
+
+  it('does not read a missing core route as mass deletion', async () => {
+    useWordPress([
+      {
+        method: 'GET',
+        path: '/wp/v2/users/42',
+        status: 404,
+        body: { code: 'rest_no_route', message: 'No route was found.' },
+      },
+    ]);
+
+    expect(await wordpressCustomerExists(42)).toBeNull();
+  });
+
+  it('returns null when WordPress cannot answer, rather than signing the shopper out', async () => {
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    useWordPress([
+      {
+        method: 'GET',
+        path: '/wp/v2/users/42',
+        status: 503,
+        body: { code: 'service_unavailable', message: 'Down for maintenance.' },
+      },
+    ]);
+
+    expect(await wordpressCustomerExists(42)).toBeNull();
+    expect(warned.mock.calls.flat().join(' ')).toMatch(/customer-session/);
+    warned.mockRestore();
   });
 });

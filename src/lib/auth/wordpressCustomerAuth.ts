@@ -265,6 +265,49 @@ export async function verifyWordPressCustomerCredentials(
   }
 }
 
+/**
+ * Is the WordPress user behind this customer id still there?
+ *
+ * A customer session is a locally signed token, so without this check a deleted
+ * account would keep rendering `/account` until the token expired — the browser
+ * holds a valid signature for a person WordPress no longer knows. Sign-in already
+ * proves the account exists; a session read has to ask again, because the account
+ * can be deleted while the token is still valid.
+ *
+ * Returns `true`/`false` when WordPress answered, and `null` when it could not be
+ * asked at all (outage, missing or refused application password). Callers keep the
+ * session on `null`: a WordPress outage must not sign every shopper out, while a
+ * definitive 404 is a deleted account. A missing core REST route is also `null`
+ * rather than `false`, so a disabled REST API cannot masquerade as mass deletion.
+ */
+export async function wordpressCustomerExists(customerId: number): Promise<boolean | null> {
+  const id = Number(customerId);
+  if (!Number.isInteger(id) || id <= 0) return false;
+
+  try {
+    const user = await wordpressRequest<{ id?: number }>(`/wp/v2/users/${id}`, {
+      params: { context: 'edit' },
+      credentials: requireWordPressCredentials(),
+      timeoutMs: TIMEOUT_MS,
+    });
+    return Number(user?.id) === id;
+  } catch (error) {
+    if (error instanceof WordPressApiError) {
+      if (error.status === 404) {
+        // `rest_no_route` means the core users route is unavailable, not that this
+        // particular user is gone; only a user-shaped 404 is a deletion.
+        return error.code === 'rest_no_route' ? null : false;
+      }
+      console.warn(
+        `[customer-session] could not check WordPress user ${id} (HTTP ${error.status} ${error.code || 'unknown'}); keeping the signed session`
+      );
+      return null;
+    }
+    console.warn(`[customer-session] could not check WordPress user ${id}; keeping the signed session`);
+    return null;
+  }
+}
+
 export type PasswordResetRequestResult = { ok: true } | { ok: false; status: number; error: string };
 
 /**
