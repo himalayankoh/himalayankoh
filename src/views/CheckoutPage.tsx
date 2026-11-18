@@ -53,7 +53,16 @@ import { getErrorMessage } from '../lib/errors';
 import { useToast } from '../context/ToastContext';
 import { orderConfirmationUrl } from '../lib/orders/paths';
 import { formatUsPostalCode, normalizeUsState } from '../lib/address/usStates';
-import { fetchShippoRates, validateShippingAddressClient, type AddressValidationResponse } from '../lib/shippo/client';
+import {
+  addressSuggestionFields,
+  tidySuggestedAddress,
+  type AddressSuggestionKey,
+} from '../lib/address/suggestions';
+import {
+  fetchAddressSuggestions,
+  fetchShippoRates,
+  type AddressValidationResponse,
+} from '../lib/shippo/client';
 import type { CheckoutShippingAddress, ShippoRate } from '../lib/shippo/types';
 
 function pickDefaultShippoRateId(rates: ShippoRate[]): string | null {
@@ -147,6 +156,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
   const [shippoRatesError, setShippoRatesError] = useState<string | null>(null);
   const [shippoRatesAttempted, setShippoRatesAttempted] = useState(false);
   const [addressValidation, setAddressValidation] = useState<AddressValidationResponse | null>(null);
+  const [addressSuggestions, setAddressSuggestions] = useState<CheckoutShippingAddress[]>([]);
   const [addressValidating, setAddressValidating] = useState(false);
   const [billingSameAsShipping, setBillingSameAsShipping] = useState(true);
   /**
@@ -324,6 +334,26 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       .join(' · ');
   }, [form]);
 
+  /**
+   * The first correction the carrier offered, if any.
+   *
+   * `recommendedAddress` is the existing single-address path (ZIP+4, a corrected
+   * suffix); `addressSuggestions` is the list produced when the typed layout was
+   * rejected outright. Both render through the same per-field card so the shopper
+   * sees the change instead of an error they cannot act on.
+   */
+  const suggestedAddress = addressSuggestions[0]
+    ? tidySuggestedAddress(addressSuggestions[0])
+    : addressValidation?.recommendedAddress
+      ? tidySuggestedAddress(addressValidation.recommendedAddress)
+      : undefined;
+  const suggestedAddressFields = suggestedAddress
+    ? addressSuggestionFields(buildShippingAddress(form), suggestedAddress)
+    : [];
+  const hasAddressSuggestion = Boolean(
+    suggestedAddress && suggestedAddressFields.length > 0,
+  );
+
   const checkoutPayload = useMemo(() => ({
     email: form.email,
     phone: form.phone || undefined,
@@ -391,6 +421,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       setShippoRates([]);
       setSelectedShippoRateId(null);
       setAddressValidation(null);
+      setAddressSuggestions([]);
       return;
     }
 
@@ -406,6 +437,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       setShippoRates([]);
       setSelectedShippoRateId(null);
       setAddressValidation(null);
+      setAddressSuggestions([]);
       setShippoRatesAttempted(false);
       return;
     }
@@ -418,11 +450,13 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       const shippingAddress = buildShippingAddress(form);
 
       try {
-        const validation = await validateShippingAddressClient({
+        const suggestionResult = await fetchAddressSuggestions({
           address: shippingAddress,
           email: form.email,
         });
+        const validation = suggestionResult.original;
         setAddressValidation(validation);
+        setAddressSuggestions(suggestionResult.suggestions);
 
         const normalized = validation.normalizedAddress;
         const recommended = validation.recommendedAddress;
@@ -492,6 +526,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       } catch (err) {
         setShippoRates([]);
         setSelectedShippoRateId(null);
+        setAddressSuggestions([]);
         setShippoRatesAttempted(true);
         setShippoRatesError(err instanceof Error ? err.message : 'Unable to load live shipping rates.');
       } finally {
@@ -533,18 +568,18 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
     if (addressValidation?.isValid && !addressValidation.recommendedAddress) setAddressEditing(false);
   }, [addressValidation?.isValid, addressValidation?.recommendedAddress]);
 
-  const applySuggestedAddress = () => {
-    if (!addressValidation?.recommendedAddress) return;
-    const suggested = addressValidation.recommendedAddress;
+  const applyAddressSuggestion = (suggested: CheckoutShippingAddress) => {
+    const clean = tidySuggestedAddress(suggested);
     setForm((current) => ({
       ...current,
-      addressLine1: suggested.addressLine1,
-      addressLine2: suggested.addressLine2 || '',
-      city: suggested.city,
-      state: suggested.state,
-      postalCode: suggested.postalCode,
-      country: suggested.country,
+      addressLine1: clean.addressLine1,
+      addressLine2: clean.addressLine2 || '',
+      city: clean.city,
+      state: clean.state,
+      postalCode: clean.postalCode,
+      country: clean.country,
     }));
+    setAddressSuggestions([]);
     setAddressValidation((current) =>
       current
         ? {
@@ -552,10 +587,23 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
             isValid: true,
             recommendedAddress: undefined,
             messages: [],
-            normalizedAddress: suggested,
+            normalizedAddress: clean,
           }
         : current,
     );
+  };
+
+  const applyAddressField = (field: AddressSuggestionKey, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    setAddressSuggestions([]);
+    setAddressValidation(null);
+    setShippingSelected(false);
+  };
+
+  const applySuggestedAddress = () => {
+    const suggested = addressSuggestions[0] ?? addressValidation?.recommendedAddress;
+    if (!suggested) return;
+    applyAddressSuggestion(suggested);
   };
 
   const handleChange = (field: keyof typeof form, value: string) => {
@@ -570,6 +618,7 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
       field === 'country'
     ) {
       setAddressValidation(null);
+      setAddressSuggestions([]);
       setShippingSelected(false);
     }
   };
@@ -1101,6 +1150,9 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                 </Field>
                 <Field label="Address line 1" error={fieldErrors.addressLine1}>
                   <input required name="addressLine1" autoComplete="shipping address-line1" value={form.addressLine1} onChange={(event) => handleChange('addressLine1', event.target.value)} placeholder="Street address" className={inputClass} />
+                  <span className="mt-1 block text-[11px] leading-4 text-charcoal-light">
+                    House number first, then street name (e.g. 4027 Block Dr).
+                  </span>
                 </Field>
                 <Field label="Address line 2">
                   <input name="addressLine2" autoComplete="shipping address-line2" value={form.addressLine2} onChange={(event) => handleChange('addressLine2', event.target.value)} placeholder="Suite, building, ranch name" className={inputClass} />
@@ -1128,26 +1180,41 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       Verifying your shipping address…
                     </div>
                   )}
-                  {!addressValidating && addressValidation?.isValid && !addressValidation.recommendedAddress && (
-                    <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900 flex items-start gap-2">
-                      <CheckCircle size={18} className="text-green-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold">Address verified</p>
-                      </div>
-                    </div>
-                  )}
-                  {!addressValidating && addressValidation?.recommendedAddress && (
+                  {!addressValidating && hasAddressSuggestion && suggestedAddress && (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                       <div className="flex items-start gap-2">
                         <MapPin size={18} className="text-himalayan flex-shrink-0 mt-0.5" />
                         <div className="flex-1">
-                          <p className="font-semibold">Did you mean this address?</p>
-                          <p className="mt-2 leading-6">
-                            {formatAddressLines(addressValidation.recommendedAddress)}
+                          <p className="font-semibold">Suggested address</p>
+                          <p className="mt-1 text-xs text-amber-900/80">
+                            We found the standard US version of what you entered. Apply one field or
+                            the whole address.
                           </p>
-                          {addressValidation.messages.length > 0 && (
-                            <p className="mt-2 text-amber-900/90">{addressValidation.messages[0]}</p>
-                          )}
+                          <p className="mt-2 leading-6">{formatAddressLines(suggestedAddress)}</p>
+                          <div className="mt-3 space-y-2">
+                            {suggestedAddressFields.map((field) => (
+                              <div key={field.key} className="rounded-lg bg-white/80 px-3 py-2">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-900/70">
+                                  {field.label}
+                                </p>
+                                <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                                  <span className="text-xs text-amber-900/60 line-through">
+                                    {field.current || '—'}
+                                  </span>
+                                  <span className="text-sm font-semibold text-amber-950">
+                                    {field.suggested}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => applyAddressField(field.key, field.suggested)}
+                                    className="min-h-8 rounded-full border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100"
+                                  >
+                                    Use
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                           <button
                             type="button"
                             onClick={applySuggestedAddress}
@@ -1159,10 +1226,18 @@ export default function CheckoutPage({ retailOnly = false }: { retailOnly?: bool
                       </div>
                     </div>
                   )}
+                  {!addressValidating && !hasAddressSuggestion && addressValidation?.isValid && (
+                    <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900 flex items-start gap-2">
+                      <CheckCircle size={18} className="text-green-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold">Address verified</p>
+                      </div>
+                    </div>
+                  )}
                   {!addressValidating &&
+                    !hasAddressSuggestion &&
                     addressValidation &&
-                    !addressValidation.isValid &&
-                    !addressValidation.recommendedAddress && (
+                    !addressValidation.isValid && (
                       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                         <p className="font-semibold">Please double-check your address</p>
                         <p className="mt-1">
